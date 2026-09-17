@@ -718,8 +718,8 @@ def derive_address_id_local(
     state: HarmonizeState,
     street_column: str = 'address_street',
     number_column: str = 'address_number',
-    city_column: str = 'city',
-    admin4_column: str = 'admin4_id',
+    city_column: str | None = 'city',
+    admin4_column: str | None = 'admin4_id',
     output_column: str = 'address_id_local',
     output_column_city: str = 'address_id_local_city',
 ) -> HarmonizeState:
@@ -747,6 +747,13 @@ def derive_address_id_local(
     (see ``link_by_id``'s column-priority gap-fill, which makes running the
     city-inclusive join before the plain one a safe two-pass fallback).
 
+    *admin4_column* may be None (``null`` in a recipe) for a key scoped
+    only by the file being processed (one admin unit, e.g. a county):
+    the form a source with no town id can share, such as a building
+    permit export that carries street, number and city but no admin4
+    unit. Such a key can collide where two towns of one county share a
+    street name and number; use it where no town-scoped key is possible.
+
     A no-op when *street_column* or *number_column* is absent from the spine.
     """
     if state.spine is None:
@@ -755,35 +762,16 @@ def derive_address_id_local(
     if street_column not in spine.columns or number_column not in spine.columns:
         return state
 
-    from openplaces.core.schema import AdminId
-    from openplaces.geo.address import canonicalize_for_match
-
-    admin_str = str(state.admin_id) if state.admin_id else ''
-    admin_levels = AdminId(admin_str).levels if admin_str else ()
-    admin1_id = admin_levels[0] if admin_levels else None
-
-    street = spine[street_column].astype('string').fillna('')
-    canon_map = {
-        s: canonicalize_for_match(s, admin1_id) if s else '' for s in street.unique()
-    }
-    canon_street = street.map(canon_map)
-    number = spine[number_column].astype('string').str.strip().str.upper().fillna('')
-    admin4 = (
-        spine[admin4_column].astype('string').fillna('')
-        if admin4_column in spine.columns
-        else pd.Series('', index=spine.index)
+    add_address_id_local(
+        spine,
+        state.admin_id,
+        street_column=street_column,
+        number_column=number_column,
+        city_column=city_column,
+        admin4_column=admin4_column,
+        output_column=output_column,
+        output_column_city=output_column_city,
     )
-
-    has_base = canon_street.ne('') & number.ne('')
-    base_key = admin4 + '|' + canon_street + '|' + number
-    spine[output_column] = base_key.where(has_base, pd.NA)
-
-    if city_column in spine.columns:
-        city = spine[city_column].astype('string').str.strip().str.upper().fillna('')
-        has_city = has_base & city.ne('')
-        spine[output_column_city] = (base_key + '|' + city).where(has_city, pd.NA)
-    else:
-        spine[output_column_city] = pd.Series(pd.NA, index=spine.index, dtype='string')
 
     state.spine = spine
     if state.verbose:
@@ -794,3 +782,78 @@ def derive_address_id_local(
             f'({n_city:,} with city).'
         )
     return state
+
+
+def add_address_id_local(
+    frame: pd.DataFrame,
+    admin_id,
+    street_column: str = 'address_street',
+    number_column: str = 'address_number',
+    city_column: str | None = 'city',
+    admin4_column: str | None = 'admin4_id',
+    output_column: str = 'address_id_local',
+    output_column_city: str | None = 'address_id_local_city',
+) -> pd.DataFrame:
+    """Write the address matching keys of :func:`derive_address_id_local`.
+
+    The frame-level core of that step, so a reference table can be keyed
+    with exactly the same normalization as the spine it is joined to
+    (see ``link_by_id``'s *ref_address_key*). Mutates and returns *frame*.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Table carrying *street_column* and *number_column*.
+    admin_id : str or AdminId or None
+        Admin unit being processed; its country selects the street
+        canonicalization rules.
+    street_column, number_column : str
+        Street name and house number columns.
+    city_column : str or None
+        City column for *output_column_city*; None or absent leaves that
+        key null.
+    admin4_column : str or None
+        Town id scoping the key; None or absent scopes it by the frame's
+        own admin unit only.
+    output_column, output_column_city : str
+        Names of the plain and the city-inclusive key; a None
+        *output_column_city* writes no city-inclusive key.
+
+    Returns
+    -------
+    pandas.DataFrame
+        *frame*, with both key columns written (null where the street or
+        number is missing).
+    """
+    from openplaces.core.schema import AdminId
+    from openplaces.geo.address import canonicalize_for_match
+
+    admin_str = str(admin_id) if admin_id else ''
+    admin_levels = AdminId(admin_str).levels if admin_str else ()
+    admin1_id = admin_levels[0] if admin_levels else None
+
+    street = frame[street_column].astype('string').fillna('')
+    canon_map = {
+        s: canonicalize_for_match(s, admin1_id) if s else '' for s in street.unique()
+    }
+    canon_street = street.map(canon_map)
+    number = frame[number_column].astype('string').str.strip().str.upper().fillna('')
+    admin4 = (
+        frame[admin4_column].astype('string').fillna('')
+        if admin4_column and admin4_column in frame.columns
+        else pd.Series('', index=frame.index)
+    )
+
+    has_base = canon_street.ne('') & number.ne('')
+    base_key = admin4 + '|' + canon_street + '|' + number
+    frame[output_column] = base_key.where(has_base, pd.NA)
+
+    if output_column_city is None:
+        return frame
+    if city_column and city_column in frame.columns:
+        city = frame[city_column].astype('string').str.strip().str.upper().fillna('')
+        has_city = has_base & city.ne('')
+        frame[output_column_city] = (base_key + '|' + city).where(has_city, pd.NA)
+    else:
+        frame[output_column_city] = pd.Series(pd.NA, index=frame.index, dtype='string')
+    return frame

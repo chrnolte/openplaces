@@ -25,7 +25,7 @@ from openplaces.core.constants import (
 from openplaces.core.schema import AdminId, admin_scope_covers
 from openplaces.geo import get_crs
 from openplaces.geo.ids import add_parcel_id_alnum, get_geo_ids
-from openplaces.geo.overlay import overlay_admin_ids
+from openplaces.geo.overlay import overlay_admin_ids, prefer_located_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
     fix_polygons,
@@ -1136,12 +1136,30 @@ class TableIngester:
                 k: v for k, v in admin_specs.items() if k in _overlay_keys
             }
             cols_before = set(df.columns)
+            # `fallback_to_existing: true` keeps an admin id the recipe
+            # already derived (e.g. from a county-name column) for rows
+            # whose location resolves no unit, and reports how often the
+            # two disagree. Without it the overlay overwrites the column
+            # in place and a row without coordinates loses its unit.
+            _admin_col = admin_geometries.index.name
+            existing_ids = None
+            if (
+                not use_spatial_mask
+                and admin_specs.get('fallback_to_existing')
+                and _admin_col in df.columns
+            ):
+                existing_ids = df[_admin_col].copy()
             df = overlay_admin_ids(
                 df,
                 admin_geometries=admin_geometries,
                 timer=self.timer,
                 **kwargs_overlay,
             )
+            if existing_ids is not None:
+                df[_admin_col], counts = prefer_located_admin_ids(
+                    df[_admin_col], existing_ids
+                )
+                self._report_located_admin_ids(_admin_col, counts)
             _new_cols = [v for v in df.columns if v not in cols_before]
             cols_added += _new_cols
 
@@ -1154,7 +1172,6 @@ class TableIngester:
             # columns the overlay added: `overlay_admin_ids` writes that
             # column in place, so a recipe that already maps or derives it
             # added no column at all and the drop never ran.
-            _admin_col = admin_geometries.index.name
             if use_spatial_mask and _admin_col in df.columns:
                 df = df[df[_admin_col].notna()]
 
@@ -1565,6 +1582,36 @@ class TableIngester:
                 )
 
     # Utilities
+
+    def _report_located_admin_ids(self, column, counts):
+        """Report how location-derived admin ids compared with the recipe's.
+
+        Printed unconditionally, like the save messages: a share of rows
+        moving to a neighboring unit changes what every downstream file
+        of that unit holds, so it should not depend on `verbose`. The
+        counts are kept on the instance (summed over chunks) for callers
+        and tests.
+
+        Parameters
+        ----------
+        column : str
+            Admin id column that was assigned.
+        counts : dict of str to int
+            Output of `prefer_located_admin_ids`.
+        """
+        totals = getattr(self, 'located_admin_id_counts', None) or {}
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+        self.located_admin_id_counts = totals
+        n_rows = sum(counts[k] for k in ('located', 'fallback', 'unresolved'))
+        share = counts['disagree'] / counts['located'] if counts['located'] else 0.0
+        print(
+            f'  {column} by location: {counts["located"]:,d} of {n_rows:,d} '
+            f'rows; {counts["disagree"]:,d} ({share:.1%}) moved from the '
+            f'recipe-derived unit; {counts["fallback"]:,d} kept the '
+            f'recipe-derived unit (no location match); '
+            f'{counts["unresolved"]:,d} unresolved.'
+        )
 
     def _get_labels(self, column):
         """Get code → label dict for a categorical column.

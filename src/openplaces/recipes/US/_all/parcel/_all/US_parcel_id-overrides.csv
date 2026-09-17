@@ -2,6 +2,7 @@ admin_id,source_id,kind,pattern,conv,tolerance,source
 US-WI-ON,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,,
 US-WI-VI,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,0.03,
 US-NC-CAB,nconemap,parcel,,simple,,parcel_id_admin3
+US-NC-CAM,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-CAR,,parcel,,simple,,parcel_id_admin3
 US-NC-CAR,carteretcounty,parcel,,simple,,parcel_id_assessor
 US-NC-CHE,nconemap,parcel,,simple,,parcel_id_admin3
@@ -10,7 +11,9 @@ US-NC-COL,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-CRA,nconemap,parcel,,no_conv,,parcel_id_admin3
 US-NC-CUM,cumberlandcounty,parcel,,simple,,
 US-NC-CUM,nconemap,parcel,,simple,,parcel_id_admin3
+US-NC-DUP,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-HER,hertfordcounty,parcel,,simple,,
+US-NC-JOH,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-NOR,northamptoncounty,parcel,,simple,,
 US-NC-PAM,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-PAM,pamlicocounty,parcel,,simple,,
