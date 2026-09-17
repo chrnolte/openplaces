@@ -698,6 +698,16 @@ Steps are organized by the nature of the transformation:
   the points it uniquely moves are 0.294 precise against a 0.425 base rate.
   It is kept as evidence, and as the mechanism
   `notebooks/05_curate/mmh_separability.py` measures with.
+  `derive_group_count` and `derive_group_rank` are the same kind of
+  groupby, counting or ranking (largest first, ties by id) the rows of
+  a group that satisfy voting indicators. **The footprint recipe votes
+  twice on `occupancy_type`**: they read the first vote's classes of a
+  parcel's primaries, and a second `resolve_by_vote` (`base_output:
+  occupancy_type_pass1`) turns small secondary Manufactured Home
+  footprints into Secondary. It is safe only because the second pass
+  writes secondaries and reads primaries; it reads which labels carried
+  the first pass through the `has_token` predicate, which matches whole
+  `+`-separated parts of `occupancy_type_source`.
 - `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical

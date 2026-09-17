@@ -54,8 +54,13 @@ validation:
     Low-Rise Multi-Family: Multi-Family
     Mid-Rise Multi-Family: Multi-Family
     High-Rise Multi-Family: Multi-Family
-  # Manufactured Home counts as single: a double wide is one home.
-  single_dwelling_classes: [Single-Family, Manufactured Home]
+  # Manufactured Home counts as single: a double wide is one home. So
+  # does RV Dwelling, one unit, one dwelling. It is not in `classes`
+  # because neither the survey nor the permits label it; the matrices
+  # keep it in a column of its own (ValidationContext.matrix_labels),
+  # never under Non-residential. Add it to `classes` for a reference
+  # that labels it (a Cameron CAD roll reference, not yet declared).
+  single_dwelling_classes: [Single-Family, Manufactured Home, RV Dwelling]
   link:
     # Street View pins land just off the roof polygon (Brunswick median
     # 1.7 m, 98% under 20 m); 15 m clears the offsets without grabbing
@@ -200,7 +205,10 @@ share:
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
   class_map: occupancy-class-map.csv          # recipe-relative; pattern,match_type,occupancy_type
-  residential_classes: [Single-Family, Multi-Family, Manufactured Home]
+  # RV Dwelling: a travel trailer or park-model RV occupied as a
+  # dwelling (plans/travel-trailers-in-building-inventory.md, 5.1),
+  # a class of its own and not a Manufactured Home subtype.
+  residential_classes: [Single-Family, Multi-Family, Manufactured Home, RV Dwelling]
   secondary_class: Secondary
   # Weighted consensus voting across sources: heaviest class wins. Ties fall to
   # the earliest listed entry (NSI-first). Multiple lower-rank agreeing sources
@@ -296,6 +304,15 @@ pipeline:
       # group_building_nsi / group_footprint_fema -- NSI and FEMA under a
       # second name. Only the rule route may carry weight downstream.
       land_use_class_source: land_use_class_source_parcel
+      # Dwelling kinds the parcel's roll or building record lists
+      # (declared all-null on the parcel where no source states them).
+      # The mobile-home count sets the second occupancy pass's cap and
+      # keep below; the RV counts feed the RV Dwelling decision.
+      n_manufactured_home_units: n_manufactured_home_units_parcel
+      n_travel_trailers: n_travel_trailers_parcel
+      n_park_models: n_park_models_parcel
+      n_residential_buildings: n_residential_buildings_parcel
+      has_homestead_exemption: has_homestead_exemption_parcel
 
   # Apportion curated parcel values to footprints:
   # - improvement_value is split by footprint overlap-area share (residential splitting
@@ -793,6 +810,99 @@ pipeline:
     target: occupancy_type
     base_output: occupancy_type_prevote
     decisions:
+      # A travel trailer or park-model RV lived in as a dwelling
+      # (plans/travel-trailers-in-building-inventory.md, 5.1 to 5.3;
+      # user decisions 2026-09-16: a class of its own, and a dwelling
+      # only with occupancy evidence). Listed before Manufactured Home
+      # so that a tie at min_score goes to the roll's own statement
+      # over the elongation both share.
+      #
+      # Evidence is the roll or the parcel's land use, never shape
+      # alone: towable_size carries weight 1 and cannot reach min_score
+      # by itself. Every input is the footprint's own parcel (a count
+      # its roll lists, its land-use class); there is no spatial
+      # neighbor search and no learned parameter.
+      - class: RV Dwelling
+        source: rv_dwelling
+        min_score: 2
+        require:
+          - {type: numeric_at_least, column: area_m2, min: 12}
+          # One dwelling, or a context that makes the footprint a unit
+          # whatever its dwelling count: an RV park, or a roll listing
+          # exactly one residential building on the parcel and that one
+          # a travel trailer or park model (the owner's own lot, which
+          # 5.1 counts as occupancy evidence).
+          - type: any_of
+            indicators:
+              - {type: equals, column: dwelling_multiplicity, value: single}
+              - &rv_park_parcel
+                type: all_of
+                indicators:
+                  - {type: equals, column: land_use_class_parcel, value: RV Park}
+                  - {type: equals, column: land_use_class_source_parcel, value: rule}
+              - &one_rv_unit_on_roll
+                type: all_of
+                indicators:
+                  - type: numeric_at_most
+                    column: n_residential_buildings_parcel
+                    max: 1
+                  - type: any_of
+                    indicators:
+                      - type: all_of
+                        indicators:
+                          - type: numeric_at_least
+                            column: n_travel_trailers_parcel
+                            min: 1
+                          - type: numeric_at_most
+                            column: n_travel_trailers_parcel
+                            max: 1
+                          - type: numeric_at_most
+                            column: n_park_models_parcel
+                            max: 0
+                      - type: all_of
+                        indicators:
+                          - type: numeric_at_least
+                            column: n_park_models_parcel
+                            min: 1
+                          - type: numeric_at_most
+                            column: n_park_models_parcel
+                            max: 1
+                          - type: numeric_at_most
+                            column: n_travel_trailers_parcel
+                            max: 0
+        indicators:
+          # The roll's own class on a one-unit parcel, sufficient alone.
+          # Restricted to the parcel's primary (or unranked) footprint:
+          # on a lot holding one trailer and a shed, the shed must not
+          # take the trailer's class. The plan's 5.3 does not name this
+          # restriction; it follows from 5.7's rule that a trailer label
+          # is only assignable where it cannot land on a shed.
+          - type: all_of
+            weight: 2
+            label: roll_class
+            indicators:
+              - *one_rv_unit_on_roll
+              - {type: in_set, column: priority_on_parcel, values: [primary, unknown]}
+          # An RV park parcel (the parcel lane's rule route only, as for
+          # parcel_park below) paired with a unit-sized footprint: the
+          # pair is weight 2, like parcel_community, so a clubhouse or
+          # bathhouse on the same parcel does not qualify. The pad or
+          # space counts of 5.2 (Aransas) are deferred.
+          - type: all_of
+            weight: 2
+            label: rv_park
+            indicators:
+              - *rv_park_parcel
+              - {type: numeric_at_most, column: area_m2, max: 45}
+          # Towable dimensions: a travel trailer body is about 2.4 to
+          # 2.6 m wide, a park model 3.5 to 4 m, both elongated. Shared
+          # with sheds and containers, hence weight 1.
+          - type: all_of
+            label: towable_size
+            indicators:
+              - {type: numeric_at_most, column: area_m2, max: 40}
+              - {type: numeric_at_most, column: width_m, max: 4.2}
+              - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
       - class: Manufactured Home
         source: manufactured_home
         min_score: 2
@@ -984,6 +1094,129 @@ pipeline:
           - {type: equals, column: priority_on_parcel, value: secondary, label: priority}
         indicators:
           - {type: equals, column: priority_on_parcel, value: secondary, label: priority}
+
+  # Second pass on small secondary Manufactured Home footprints
+  # (plans/travel-trailers-in-building-inventory.md, "Primary-class
+  # condition for parcel-level Manufactured Home labels", proposed rule
+  # adopted by the user 2026-09-16). The vote above calls an elongated
+  # 20 to 185 m2 footprint Manufactured Home whatever its priority, and
+  # its parcel-level labels (FEMA's dominant group, the assessor
+  # keyword) mark every footprint on a parcel alike. Measured on the
+  # shipped bundles against county rolls and building records, the
+  # small secondary ones are almost all sheds beside the parcel's home.
+  #
+  # It cannot be an indicator of the vote above: it reads that vote's
+  # classes of the parcel's primaries. Two parcel indicators are
+  # derived from the first pass, then a second vote writes Secondary.
+  # Pass 2 writes secondaries only and reads primaries only, so it
+  # cannot feed back into what it reads.
+  #
+  # Method: a groupby on the footprint's own parcel_id, a rank by its
+  # own area_m2 within that parcel, and a unit count read from that
+  # parcel's own record. No neighboring parcel, buffer, union or other
+  # geometry operation, no learned parameter, no score or link
+  # strength, and no link added or removed (patent-risk section of
+  # AGENTS.md, shapes 1 to 4).
+  - step: derive_group_count
+    group_column: parcel_id
+    output: n_primary_manufactured_homes_per_parcel
+    where:
+      - {type: equals, column: priority_on_parcel, value: primary}
+      - {type: equals, column: occupancy_type, value: Manufactured Home}
+
+  # 1 for the parcel's largest first-pass Manufactured Home footprint,
+  # ties broken by footprint id: where the record lists n mobile homes,
+  # the n largest keep the class.
+  - step: derive_group_rank
+    group_column: parcel_id
+    output: manufactured_home_rank_on_parcel
+    rank_by: area_m2
+    where:
+      - {type: equals, column: occupancy_type, value: Manufactured Home}
+
+  - step: resolve_by_vote
+    target: occupancy_type
+    base_output: occupancy_type_pass1
+    decisions:
+      - class: Secondary
+        source: small_secondary
+        min_score: 1
+        require:
+          - {type: equals, column: priority_on_parcel, value: secondary}
+          - {type: equals, column: occupancy_type_pass1, value: Manufactured Home}
+          # Exceptions that never flip: an NSI point on the structure
+          # itself, and the community/park indicators. Tokens are read
+          # as whole '+'-separated parts, so keyword_probability is not
+          # keyword.
+          - type: none_of
+            indicators:
+              - type: has_token
+                column: occupancy_type_source
+                values: [nsi, parcel_park, parcel_community]
+          # The record keep, on both paths: where the parcel's roll or
+          # building record lists mobile-home units, its largest
+          # Manufactured Home footprints up to that count stay.
+          - type: any_of
+            indicators:
+              - {type: is_null, column: n_manufactured_home_units_parcel}
+              - type: column_greater_than
+                column: manufactured_home_rank_on_parcel
+                other: n_manufactured_home_units_parcel
+        indicators:
+          # Names the reason in occupancy_type_source; no weight.
+          - {type: equals, column: priority_on_parcel, value: secondary,
+             weight: 0, label: priority}
+          # Shape path: morphology carried the first pass and neither
+          # parcel label did. Under 40 m2 in every county, with no
+          # primary condition: the shape path is mostly a site-built
+          # house and its shed, whose primary is not Manufactured Home.
+          - type: all_of
+            label: small_shape
+            indicators:
+              - {type: has_token, column: occupancy_type_source, values: [morphology]}
+              - type: none_of
+                indicators:
+                  - type: has_token
+                    column: occupancy_type_source
+                    values: [fema, keyword]
+              - {type: numeric_below, column: area_m2, max: &small_secondary_mh_m2 40}
+          # Parcel-label path: FEMA or the keyword fired, or keyword
+          # probability or no improvement value fired without
+          # morphology. Flips only where a primary footprint on the
+          # parcel is itself Manufactured Home, under 40 m2, or under
+          # 55 m2 where the parcel's roll or building record carries a
+          # mobile-home unit count (NC stays at 40 m2 without one, user
+          # decision 2026-09-16).
+          - type: all_of
+            label: primary_manufactured_home
+            indicators:
+              - type: any_of
+                indicators:
+                  - type: has_token
+                    column: occupancy_type_source
+                    values: [fema, keyword]
+                  - type: all_of
+                    indicators:
+                      - type: has_token
+                        column: occupancy_type_source
+                        values: [keyword_probability, no_improvement_value]
+                      - type: none_of
+                        indicators:
+                          - type: has_token
+                            column: occupancy_type_source
+                            values: [morphology]
+              - type: numeric_at_least
+                column: n_primary_manufactured_homes_per_parcel
+                min: 1
+              - type: any_of
+                indicators:
+                  - type: numeric_below
+                    column: area_m2
+                    max: *small_secondary_mh_m2
+                  - type: all_of
+                    indicators:
+                      - {type: not_null, column: n_manufactured_home_units_parcel}
+                      - {type: numeric_below, column: area_m2, max: 55}
 
   # Split Multi-Family into height bands. This is the same weighted vote as
   # every other classification here, not a bespoke cascade: each band
@@ -1188,6 +1421,12 @@ pipeline:
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base
       - occupancy_type_prevote
+      # The second occupancy pass's snapshot and parcel indicators:
+      # a flipped footprint's occupancy_type_source names the pass-2
+      # evidence, and pass 1's class of it is always Manufactured Home.
+      - occupancy_type_pass1
+      - n_primary_manufactured_homes_per_parcel
+      - manufactured_home_rank_on_parcel
       # Question 1's answer: a scoring intermediate the occupancy decisions
       # gate on, not a published attribute.
       - dwelling_multiplicity
