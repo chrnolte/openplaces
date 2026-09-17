@@ -103,6 +103,9 @@ transformations:
     type: remap_file
     input: county_name
     # All 254 TX counties, generated from the admin spine's own name list.
+    # The source value (county_name) is the first column, the admin3_id
+    # the second: the reader keys on the first column, so a sidecar
+    # written id-first maps every county to nothing (2026-09-16).
     # 99.77% of rows resolve; the remainder are 'OUT OF STATE', 'UNKNOWN'
     # and 'RETAILER LOT' placeholders plus genuinely out-of-state counties,
     # all of which correctly drop out.
