@@ -14,8 +14,8 @@ sys.path.insert(0, str(Path('_ext').resolve()))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'openplaces'
-copyright = 'openplaces contributors'
-author = 'openplaces contributors'
+copyright = '2025-2026, Trustees of Boston University and Christoph Nolte'
+author = 'Christoph Nolte'
 release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------

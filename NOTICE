@@ -1,5 +1,14 @@
 openplaces
-Copyright ownership under institutional review -- see LICENSE.md and DISCLAIMER.md.
+Copyright (c) 2025-2026 Trustees of Boston University
+Copyright (c) 2025-2026 Christoph Nolte
+
+Licensed under the Apache License, Version 2.0 (see LICENSE.md).
+
+Development was supported in part by U.S. federal research awards from the
+National Aeronautics and Space Administration (NASA), the National Science
+Foundation (NSF) and the U.S. Geological Survey (USGS); the awards are
+listed in README.md. The funding agencies retain the rights reserved to
+them under the terms of those awards.
 
 This product includes software developed by third parties, listed below with
 the licence under which it is redistributed. Where a file carries its own

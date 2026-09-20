@@ -92,22 +92,26 @@ with it.
 ## 7. No government endorsement
 
 Development of this codebase has been supported in part by U.S. federal research
-grants from the National Science Foundation (NSF) and the National Aeronautics and
-Space Administration (NASA). Nothing in this document or in the software
+awards from the National Science Foundation (NSF), the National Aeronautics and
+Space Administration (NASA) and the U.S. Geological Survey (USGS), listed in the
+[README](README.md). Nothing in this document or in the software
 constitutes an endorsement by, or reflects an official position of, those
 agencies, Boston University, or any other funder.
 
-## 8. Ownership and hosting of this repository (under review)
+## 8. Ownership and hosting of this repository
 
-Copyright ownership of the contents of this repository — as between individual
-contributors and any institution to which they are affiliated, including Boston
-University — has not yet been finally determined and is currently under
-institutional review (see the Governance section of the [README](README.md)).
-This repository is presently hosted under a contributor's personal GitHub
-account rather than an institutional one; that hosting arrangement is also
-under review and may change. Nothing in this repository, including any past or
-present copyright notice, should be read as a final resolution of ownership,
-custody, or hosting rights by any party.
+Copyright in the contents of this repository is held by the Trustees of Boston
+University and by Christoph Nolte, as stated in [NOTICE](NOTICE), and the work
+is licensed to everyone under the Apache License 2.0
+([LICENSE.md](LICENSE.md)). Contributions are accepted under the Developer
+Certificate of Origin described in [CONTRIBUTING.md](CONTRIBUTING.md);
+contributors keep the copyright in what they contribute and license it under
+the same terms. Third-party code redistributed here keeps its own copyright
+and licence, listed in NOTICE.
+
+This repository is hosted under a maintainer's personal GitHub account rather
+than an institutional one. That arrangement may change; a change of hosting
+does not alter the licence.
 
 ## 9. Reporting a concern
 
