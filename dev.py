@@ -12,8 +12,31 @@ import subprocess
 import sys
 from pathlib import Path
 
+# This script runs on whatever interpreter the user has before the
+# environment exists, so it cannot rely on environment.yml's PYTHONUTF8.
+# On Windows the check marks below reach a real console fine, but a
+# redirected or piped stdout falls back to the locale encoding (cp1252),
+# where they raise UnicodeEncodeError -- which would end an otherwise
+# successful `python dev.py setup` in a traceback. Must run before the
+# first print, and PKG_MGR below prints at import time.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+
 DEFAULT_ENV_NAME = 'openplaces'
+STUDENT_ENV_NAME = 'openplaces-student'
 GPU_ENV_NAME = 'openplaces-amd'
+
+# `setup`/`update` build one of these. The student profile is a strict
+# subset; environment-student.yml's header lists what it drops and why.
+# It also skips the contributor tooling, since pre-commit rewriting a
+# commit is a confusing first experience for someone who is not sending
+# patches. The nbstripout hook is installed either way -- it is the
+# privacy control from AGENTS.md, not a convenience.
+ENV_PROFILES = {
+    False: (DEFAULT_ENV_NAME, 'environment.yml'),
+    True: (STUDENT_ENV_NAME, 'environment-student.yml'),
+}
 GPU_MIN_DRIVER = '26.2.2'  # Adrenalin release required by the AMD GPU wheels
 
 # Shown before asking for the identity that goes in openplaces' User-Agent.
@@ -126,12 +149,10 @@ def get_package_manager():
 PKG_MGR = get_package_manager()
 
 
-def get_env_name():
+def get_env_name(default=DEFAULT_ENV_NAME):
     """Prompt user for environment name."""
-    env_name = input(
-        f'Environment name (press Enter for "{DEFAULT_ENV_NAME}"): '
-    ).strip()
-    return env_name if env_name else DEFAULT_ENV_NAME
+    env_name = input(f'Environment name (press Enter for "{default}"): ').strip()
+    return env_name if env_name else default
 
 
 def run(cmd, check=True):
@@ -429,15 +450,30 @@ def save_identity(env_name, nickname, place):
         print('    python -m openplaces.config --set-identity NICKNAME PLACE')
 
 
-def setup():
-    """Create conda environment and install package in editable mode."""
+def setup(student=False):
+    """Create conda environment and install package in editable mode.
+
+    Parameters
+    ----------
+    student : bool
+        Build the smaller coursework environment
+        (``environment-student.yml``) and skip the contributor tooling.
+        See ``ENV_PROFILES``.
+    """
 
     pkg_mgr = PKG_MGR.split(os.sep)[-1]
+    default_env_name, env_file = ENV_PROFILES[student]
 
-    print('This will create a development environment for `openplaces`.\n')
+    if student:
+        print('This will create a coursework environment for `openplaces`.')
+        print('It leaves out PyTorch, the workflow driver, the browser')
+        print('scrapers and the contributor tooling. To add them later,')
+        print('run `python dev.py setup` without --student.\n')
+    else:
+        print('This will create a development environment for `openplaces`.\n')
     print(f'Found package manager: {PKG_MGR}\n')
 
-    env_name = get_env_name()
+    env_name = get_env_name(default_env_name)
     zip_response = (
         input(
             '\nEnsure `7z` is installed to unzip more ZIP formats?\n'
@@ -472,8 +508,8 @@ def setup():
     print(f'Creating environment: {env_name}')
 
     # Create environment with specified name
-    print('\nCreating conda environment from environment.yml...')
-    if not run(f'{PKG_MGR} env create -f environment.yml -n {env_name} -y'):
+    print(f'\nCreating conda environment from {env_file}...')
+    if not run(f'{PKG_MGR} env create -f {env_file} -n {env_name} -y'):
         print('✗ Failed to create environment')
         return
 
@@ -493,8 +529,9 @@ def setup():
     print('\nSetting up nbstripout for automatic notebook cleaning...')
     run(f'{PKG_MGR} run -n {env_name} nbstripout --install')
 
-    print('\nInstalling pre-commit hooks...')
-    run(f'{PKG_MGR} run -n {env_name} pre-commit install')
+    if not student:
+        print('\nInstalling pre-commit hooks...')
+        run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
     save_identity(env_name, nickname, place)
 
@@ -504,7 +541,8 @@ def setup():
     if launcher_response in ('', 'y'):
         install_launcher(env_name)
 
-    print('\n✓ Development environment ready!')
+    kind = 'Coursework' if student else 'Development'
+    print(f'\n✓ {kind} environment ready!')
     print('\nNext steps:')
 
     if launcher_response in ('', 'y'):
@@ -659,15 +697,28 @@ def setup_gpu():
         print('  python dev.py gpu')
 
 
-def update():
-    """Update existing environment with latest dependencies."""
-    env_name = get_env_name()
+def update(student=False):
+    """Update existing environment with latest dependencies.
+
+    Parameters
+    ----------
+    student : bool
+        Update against ``environment-student.yml`` rather than
+        ``environment.yml``. Pass this if the environment was created
+        with ``setup --student``: ``--prune`` makes the two profiles
+        interchangeable in both directions, so updating a student
+        environment from the development file would install PyTorch and
+        the rest of it, and updating a development environment from the
+        student file would remove them.
+    """
+    default_env_name, env_file = ENV_PROFILES[student]
+    env_name = get_env_name(default_env_name)
 
     print(f'\nUsing package manager: {PKG_MGR}')
     print(f'Updating environment: {env_name}')
 
-    print('\nUpdating conda environment...')
-    run(f'{PKG_MGR} env update -f environment.yml -n {env_name} --prune')
+    print(f'\nUpdating conda environment from {env_file}...')
+    run(f'{PKG_MGR} env update -f {env_file} -n {env_name} --prune')
 
     qgis_response = input('\nReinstall QGIS processing scripts? [y/N] ').strip().lower()
 
@@ -685,8 +736,9 @@ def update():
     print('\nEnsuring nbstripout is configured...')
     run(f'{PKG_MGR} run -n {env_name} nbstripout --install')
 
-    print('\nEnsuring pre-commit hooks are installed...')
-    run(f'{PKG_MGR} run -n {env_name} pre-commit install')
+    if not student:
+        print('\nEnsuring pre-commit hooks are installed...')
+        run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
     if qgis_response == 'y':
         install_qgis()
@@ -803,6 +855,11 @@ def list_envs():
 
 def main():
     """Main entry point."""
+    # Only `setup` and `update` take a flag, so parse the one flag here
+    # rather than growing an argparse tree for a dispatch table.
+    student = '--student' in sys.argv[1:]
+    argv = [arg for arg in sys.argv[1:] if arg != '--student']
+
     commands = {
         'setup': ('Create development environment', setup),
         'gpu': ('Create GPU (AMD/CUDA) environment for ML enrichment', setup_gpu),
@@ -825,15 +882,30 @@ def main():
         ),
     }
 
-    if len(sys.argv) < 2 or sys.argv[1] not in commands:
+    if not argv or argv[0] not in commands:
         print(f'Development environment manager (using {PKG_MGR})')
-        print('\nUsage: python dev.py <command>')
+        print('\nUsage: python dev.py <command> [--student]')
         print('\nDevelopment commands:')
         for cmd, (desc, _) in commands.items():
             print(f'  {cmd:8} - {desc}')
+        print('\nFlags:')
+        print(
+            '  --student - with setup/update: build the smaller coursework\n'
+            f'              environment ({STUDENT_ENV_NAME}) from\n'
+            '              environment-student.yml, without PyTorch, the\n'
+            '              workflow driver or the contributor tooling'
+        )
         sys.exit(1)
 
-    commands[sys.argv[1]][1]()
+    command = argv[0]
+    if student and command not in ('setup', 'update'):
+        print(f'✗ --student does not apply to `{command}`.')
+        sys.exit(1)
+
+    if command in ('setup', 'update'):
+        commands[command][1](student=student)
+    else:
+        commands[command][1]()
 
 
 if __name__ == '__main__':
