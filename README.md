@@ -1,6 +1,5 @@
 # openplaces
 
-[![PyPI version](https://img.shields.io/pypi/v/openplaces.svg)](https://pypi.org/project/openplaces/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://openplaces.readthedocs.io/en/latest/)
 
@@ -49,23 +48,25 @@ catalog in the docs linked below.
 
 - Get started: https://docs.openplaces.io/en/latest/2_get-started
 
-## Governance
+## Contributing
 
 `openplaces` is developed by a network of contributors, including researchers
-affiliated with Boston University. Ownership of the intellectual property in this
-repository — including any Boston University interest arising from grant-funded
-or in-scope faculty research — is under institutional review; see
-[DISCLAIMER.md](DISCLAIMER.md). Nothing on this page should be read as a final
-determination of ownership by any party.
+affiliated with Boston University. New recipes, fixes and documentation are
+welcome: [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the checks a
+change has to pass, and the sign-off each commit carries under the
+[Developer Certificate of Origin](DCO.md).
 
 Contact **contact@openplaces.io** if you would like to get involved.
 
 ## License
 
-Released under the **Apache License 2.0**. See [LICENSE.md](LICENSE.md) for details.
+Copyright (c) 2025-2026 Trustees of Boston University and Christoph Nolte.
+
+Released under the **Apache License 2.0**. See [LICENSE.md](LICENSE.md) for the
+licence and [NOTICE](NOTICE) for the copyright notice and third-party code.
 
 See [DISCLAIMER.md](DISCLAIMER.md) for additional disclaimers, including on data
-privacy, IP ownership, and the project's intended scope of use.
+privacy and the project's intended scope of use.
 
 ## Citation
 
@@ -82,7 +83,13 @@ If you use **openplaces** in academic work, please cite:
 
 ## Acknowledgments
 
-This codebase combines code contributions developed under five federal research grants, supported by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA), and a U.S. Geological Survey (USGS) subaward through the Southeast Climate Adaptation Science Center.
+This codebase combines code contributions developed under five U.S. federal research awards:
+
+- NASA award 80NSSC20K1486 (conservation impacts in the Colombian Andes)
+- NSF award 2149243 (Human-Environment and Geographical Sciences: land values)
+- NASA award 80NSSC22K0919 (hedonic valuation of lake water quality)
+- NSF award 2209190 (Coastlines and People: CHEER)
+- USGS award G24AC00311-00 (Puerto Rico), through the Southeast Climate Adaptation Science Center
 
 For more information, visit: https://placeslab.org/research
 

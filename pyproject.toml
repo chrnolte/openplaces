@@ -6,10 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "openplaces"
 version = "0.1.0"
 authors = [
-    {name = "Christoph Nolte", email = "nolte.christoph@gmail.com"},
+    {name = "Christoph Nolte", email = "chrnolte@bu.edu"},
 ]
 maintainers = [
-    {name = "Christoph Nolte", email = "nolte.christoph@gmail.com"},
+    {name = "Christoph Nolte", email = "chrnolte@bu.edu"},
 ]
 description = "A Python package for place-based geospatial analysis"
 readme = "README.md"

@@ -34,18 +34,26 @@ repository.
   tests something, and the failure modes a history rewrite hits.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
-## Intellectual property: ownership is under review
-- Ownership of this repository's IP — Boston University vs. individual
-  contributors, and how any personal-time contributions are separated from
-  grant-funded or in-scope faculty work — is currently under institutional
-  review (see `DISCLAIMER.md`). Until that's resolved: never add a
-  "Copyright <name>" header to a new file, and never edit
-  copyright/ownership/hosting language in `LICENSE.md`, `README.md`, or
-  `DISCLAIMER.md` without asking the user first, even to "fix" or "simplify"
-  it — a wrong assertion here is a legal problem, not a style one.
-- This includes the repository's hosting arrangement (currently a personal
-  GitHub account, not an institutional one) — don't propose or perform an org
-  transfer, mirror, or similar hosting change unprompted.
+## Intellectual property: one notice, in one place
+- Copyright is held by the Trustees of Boston University and Christoph Nolte
+  (maintainer's decision, 2026-09-20), and the work is licensed under
+  Apache-2.0. `NOTICE` carries the copyright lines and is the single source
+  of truth; `LICENSE.md` is the verbatim licence text and must stay verbatim;
+  `README.md`, `DISCLAIMER.md` section 8, `docs/conf.py` and `CITATION.cff`
+  repeat the holders and have to change together with `NOTICE`.
+- Never add a "Copyright <name>" header to a new file: files carry no
+  per-file notice, except third-party code, which keeps its upstream header
+  (see the next section). Never edit copyright, ownership or hosting language
+  in any of the files above without asking the user first, even to "fix" or
+  "simplify" it: a wrong assertion here is a legal problem, not a style one.
+- Contributions come in under the Developer Certificate of Origin (`DCO.md`,
+  `CONTRIBUTING.md`): every commit by a person carries a `Signed-off-by`
+  line (`git commit -s`). An agent never writes a sign-off for a person and
+  never adds one in its own name; the sign-off is the human committer's
+  statement, in the same way co-authorship is reserved for people.
+- The repository is hosted under a personal GitHub account, not an
+  institutional one. Don't propose or perform an org transfer, mirror, or
+  similar hosting change unprompted.
 
 ## Restricted-licence sources: the terms decide what may be committed
 
