@@ -1,0 +1,225 @@
+# Recipe: Wake County, NC building cards (heated area, year built,
+# stories, units, construction codes per card), supplementing the
+# county property roll US-NC-WAK_property-wakecounty-2026.
+#
+# Source: the same daily fixed-width extract as the roll; see its
+# header for the file, the link scraping, the layout and the key.
+# Every record is one building card; this recipe reads them all and
+# the property spine reduces them onto the roll's properties by
+# parcel_id_local (aggregation_function below).
+#
+# Card counts, MEASURED 2026-09-16: 472,571 cards over 456,600 REIDs;
+# 5,179 REIDs carry more than one card (land class C 1,796, R 1,052,
+# E 978, G 719), and 15,960 non-first cards carry heated area, 17.4%
+# of all heated area in the file.
+#
+# FLOOR AREA. "Heated Area" (11 wide at 472) maps to living_area_sqft
+# and is summed over a property's cards: the finished, heated area
+# the registry defines, on commercial cards the heated building area.
+# The file has no gross or total area field, so gross_floor_area_sqft
+# is not mapped. MEASURED 2026-09-16 on the file: heated area > 0 on
+# 87.4% of cards; the card sum is > 0 on 397,290 of 456,600 REIDs
+# (87.0%), 98.8% of residential land classes (R, N, M, O, T) and
+# 99.8% of REIDs whose card 01 is type-and-use 01 (one family);
+# p10/p50/p90 of positive sums 1,232 / 2,156 / 3,798 sqft.
+# The sum, not card 01, is what the county itself publishes: on the
+# REST parcel layer (maps.wake.gov .../Property/Parcels/MapServer/0),
+# which has no condominium rows, HEATEDAREA > 0 on 379,137 parcels
+# summing 1,378.7 million sqft (server statistics, 2026-09-16);
+# the file's non-condominium REIDs (land class not N or O) give
+# 379,757 with a positive card sum totalling 1,393.9 million sqft
+# (1.1% more), while card 01 alone totals 1,147.8 million. A property
+# with no heated card keeps 0 (vacant land, for one), as the county
+# publishes it.
+#
+# Other fields, MEASURED 2026-09-16 on cards:
+#   Year Built (456)      > 0 on 87.6%, range 1760-2027; 0 is nulled
+#                         by the registry. The earliest card is taken.
+#   Effective Year (492)  > 0 on 87.6%; the latest card is taken.
+#   Remodeled Year (496)  > 0 on 2.7%; the latest card is taken.
+#   Units (466)           > 0 on 82.8%; 1 on one-family cards (type
+#                         and use 01), a median 12 on garden
+#                         apartments (07); summed. Recycled Units
+#                         (646) equals it on 96.8% and is not read.
+#   Story Height (510)    a letter code on 87.4%, decoded to
+#                         n_stories below; the tallest card is taken.
+#   Design Style (511), Foundation Basement (512), Exterior Wall
+#   (515), Heat (527)     single-letter codes, kept verbatim for
+#                         curate (decoded in the county's
+#                         CodeDescriptions.pdf); the first card's
+#                         code is taken.
+#
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of cards whose Design Style is M (MANUF SINGLE) or N (MANUF MULTI),
+# summed per REID. A REID with cards but no manufactured style gets 0.
+# Land classes M (MFG HOME) and T (MOBILE HOME PK) mostly have no
+# manufactured-style card (2,256 REIDs against 2, measured 2026-09-16
+# in plans/travel-trailers-in-building-inventory.md): their homes are
+# personal property, and a 0 there means the card file does not list
+# them, not that the parcel holds none.
+#
+# Not mapped: "# of Rooms" (460) is 0 on every card. Bath (533) is a
+# letter code whose top classes read "THREE BATH" and "3 1/2 BATH"
+# with nothing above, so a count would be top-coded; Bath Fixtures is
+# filled on 6.0%. Air (530) reads "SEPARATE"/"COMBINED"/"UNIT", not
+# central or not, so has_central_air is not derived. Grade (615) mixes
+# letter grades with plain numbers. Year of Addition,
+# Interior Finish, Roof Floor System and the built-in descriptions
+# have no registry home.
+
+description: >-
+  Wake County, NC building cards (heated area, year built, stories,
+  units, style, wall, heat, foundation) supplementing the county
+  property roll.
+
+admin_id: US-NC-WAK
+
+entity:
+  entity_type: property
+  source:
+    source_id: wakecounty
+    # Same download and terms as the roll; see its note.
+    license: >-
+      public record (N.C.G.S. ch. 132), provided "as is" without
+      warranties; no licence stated
+    terms_url: "https://www.wake.gov/disclaimers"
+    redistribution_restricted: null
+    portal_url: "https://www.wake.gov/departments-government/tax-administration/data-files-statistics-and-reports/real-estate-property-data-files"
+    download_url_source: "https://services.wake.gov/realdata_extracts/"
+    download_url_source_regex: '(/realdata_extracts/RealEstData[0-9]+\.zip)'
+  version: "2026"
+
+download_by:
+  admin_level: 3
+
+process_by:
+  admin_level: 3
+
+compressed_file_name: "RealEstData.zip"
+uncompressed_file_name: "RealEstData*.txt"
+
+encoding: latin-1
+
+# 1-based starts from the layout, checked on the file: REID 176, Card
+# 183, Year Built 456, # of Rooms 460, Units 466, Heated Area 472,
+# Effective Year 492, Remodeled Year 496, Story Height 510, Design
+# Style 511, Foundation Basement 512, Exterior Wall 515, Heat 527.
+fixed_width:
+  - [filler, 175] # Owner 1 through Mailing Address 3 (not read)
+  - [reid, 7]
+  - [filler, 273] # Card Number through Property Index
+  - [year_built_raw, 4]
+  - [filler, 6] # # of Rooms (0 on every card)
+  - [units, 6]
+  - [heated_area, 11]
+  - [filler, 9] # Utilities, Pavement, Topography, Year of Addition
+  - [effective_year, 4]
+  - [remodeled_year, 4]
+  - [filler, 10] # Unused, Special Write In
+  - [story_height, 1]
+  - [design_style, 1]
+  - [foundation, 1]
+  - [filler, 2] # Foundation Basement %
+  - [exterior_wall_code, 1]
+  - [filler, 11] # Common Wall through Interior Finish 2 %
+  - [heat, 1]
+
+columns:
+  parcel_id_assessor: reid
+  year_built: year_built_raw
+  effective_year_built: effective_year
+  renovation_year: remodeled_year
+  n_dwellings: units
+  living_area_sqft: heated_area
+  building_style: design_style
+  foundation_description: foundation
+  exterior_wall: exterior_wall_code
+  heating_type: heat
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  # Story Height codes (CodeDescriptions.pdf). H (MULTI STORY) names
+  # no count and O is not in the list (4 cards); both stay null.
+  - type: remap
+    input: story_height
+    mapping:
+      "A": 1.0
+      "B": 1.5
+      "C": 2.0
+      "D": 2.5
+      "E": 3.0
+      "F": 3.5
+      "G": 4.0
+      "I": 1.75
+      "J": 1.4
+      "K": 1.63
+      "L": 1.88
+      "M": 2.4
+      "N": 2.63
+      "R": 2.75
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # One per card of a manufactured design style; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: "building_style.isin(['M', 'N']).astype('float64')"
+    inputs: [building_style]
+    output: n_manufactured_home_units
+
+drop_columns:
+  - story_height
+
+columns_to_categorical:
+  - building_style
+  - foundation_description
+  - exterior_wall
+  - heating_type
+
+# A property with several cards: floor area and units are the sum
+# over them, stories the tallest card, year built the earliest, the
+# effective and remodel years the latest, codes the first card that
+# has one.
+aggregation_function:
+  living_area_sqft: sum
+  n_dwellings: sum
+  n_manufactured_home_units: sum
+  n_stories: max
+  year_built: min
+  effective_year_built: max
+  renovation_year: max
+  building_style: first
+  foundation_description: first
+  exterior_wall: first
+  heating_type: first
+
+supplements: US-NC-WAK_property-wakecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
+  filename: building-cards

@@ -98,6 +98,27 @@ def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
     return values.where(values >= 100, values + century)
 
 
+def _set_null(x: pd.Series) -> pd.Series:
+    """Empty a column, keeping its dtype wherever the dtype can hold NA.
+
+    Used to discard a source column that is wrong for one admin unit
+    (see a transformation's `admin_ids`), so the column stays in the
+    schema and a later source can fill it. A NumPy integer or boolean
+    column cannot hold a missing value, so it becomes the matching
+    nullable dtype ('Int64', 'UInt64', 'boolean') rather than float64.
+    A categorical keeps its categories.
+
+    Parameters
+    ----------
+    x : pd.Series
+        Column to empty.
+    """
+    nullable = {'i': 'Int64', 'u': 'UInt64', 'b': 'boolean'}
+    if isinstance(x.dtype, np.dtype) and x.dtype.kind in nullable:
+        x = x.astype(nullable[x.dtype.kind])
+    return x.mask(np.ones(len(x), dtype=bool))
+
+
 UNARY_OPS: dict[str, Callable] = {
     'log': np.log,
     'arcsinh': np.arcsinh,
@@ -114,6 +135,7 @@ UNARY_OPS: dict[str, Callable] = {
     'round': lambda x, decimals=0: pd.to_numeric(x, errors='coerce').round(decimals),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
     'null_if_equal': lambda x, value: x.mask(x == value),
+    'set_null': _set_null,
     'acres_to_sqft': lambda x: pd.to_numeric(x, errors='coerce') * AC_TO_SQFT,
 }
 
@@ -304,11 +326,72 @@ def _resolve_crosswalk_id(crosswalk_id: str, admin_id: Any) -> str:
     return crosswalk_id
 
 
+def _in_admin_scope(
+    config: dict[str, Any], process_admin_id: Any, silent: bool = False
+) -> bool:
+    """Decide whether an admin-scoped transformation applies to a chunk.
+
+    A transformation entry may carry `admin_ids`, a list of admin ids.
+    It then runs only on a chunk whose admin unit is one of them or a
+    descendant of one (`US-TX-ORA` is covered by `US-TX-ORA` and by
+    `US-TX`). A statewide source is often wrong in one county only, and
+    this is how a recipe corrects that county without forking the
+    recipe or naming geography in code.
+
+    The decision is made per chunk, never per row: a chunk coarser than
+    a listed id (a whole state, when `US-TX-ORA` is listed) mixes rows
+    inside and outside the scope, so the transformation is skipped with
+    a warning rather than applied to rows it was not written for. The
+    same holds when no chunk admin unit is known at all.
+
+    Parameters
+    ----------
+    config : dict
+        One transformation entry. Without `admin_ids` it always
+        applies.
+    process_admin_id : str or AdminId or None
+        Admin unit the chunk being transformed covers.
+    silent : bool
+        Suppress the warning for a chunk that cannot be scoped.
+
+    Returns
+    -------
+    bool
+        True when the transformation should run on this chunk.
+    """
+    scope = config.get('admin_ids')
+    if scope is None:
+        return True
+    if isinstance(scope, str):
+        scope = [scope]
+    listed = [str(s) for s in scope]
+    target = config.get('output', config.get('pattern'))
+    if process_admin_id is None:
+        if not silent:
+            warnings.warn(
+                f"Skipping admin-scoped transformation to '{target}' "
+                f'(admin_ids {listed}): the chunk has no admin unit.'
+            )
+        return False
+    chunk = str(process_admin_id)
+    if any(chunk == s or chunk.startswith(s + '-') for s in listed):
+        return True
+    if any(s.startswith(chunk + '-') for s in listed) and not silent:
+        warnings.warn(
+            f"Skipping admin-scoped transformation to '{target}' "
+            f'(admin_ids {listed}): chunk {chunk} is coarser than the '
+            'scope, so its rows cannot be told apart. Process the recipe '
+            'at the scope level or finer.'
+        )
+    return False
+
+
 def apply_transformations(
     df: pd.DataFrame | gpd.GeoDataFrame,
     recipe: dict[str, Any],
     silent: bool = False,
     admin_id: Any = None,
+    process_admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """
     Apply transformations from recipe to dataframe.
@@ -329,12 +412,20 @@ def apply_transformations(
         national recipe read a per-state crosswalk sidecar. Without it
         such a placeholder is left alone and the lookup fails loudly
         rather than silently reading the wrong state's table.
+    process_admin_id : str or AdminId, optional
+        Admin unit of the chunk being transformed (for a statewide file
+        split per county by `process_by`, the county). An entry that
+        declares `admin_ids` runs only where this unit is one of the
+        listed ids or a descendant of one; see `_in_admin_scope`.
+        Defaults to *admin_id* when not given.
 
     Returns
     -------
     DataFrame or GeoDataFrame
         Transformed dataframe with new columns added
     """
+    if process_admin_id is None:
+        process_admin_id = admin_id
     df = df.copy()
 
     # Check for duplicate columns
@@ -349,13 +440,23 @@ def apply_transformations(
     # Apply individual transformations
     if 'transformations' in recipe:
         for transform_config in recipe['transformations']:
-            df = apply_transformation(df, transform_config, silent, admin_id=admin_id)
+            df = apply_transformation(
+                df,
+                transform_config,
+                silent,
+                admin_id=admin_id,
+                process_admin_id=process_admin_id,
+            )
 
     # Apply pattern-based transformations
     if 'transformation_patterns' in recipe:
         for pattern_config in recipe['transformation_patterns']:
             df = apply_transformation_pattern(
-                df, pattern_config, silent, admin_id=admin_id
+                df,
+                pattern_config,
+                silent,
+                admin_id=admin_id,
+                process_admin_id=process_admin_id,
             )
 
     return df
@@ -387,12 +488,30 @@ def apply_transformation(
     config: dict[str, Any],
     silent: bool = False,
     admin_id: Any = None,
+    process_admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """Apply a single transformation based on configuration.
 
-    *admin_id* is the partition's admin unit, used only to resolve an
-    `{adminN_id}` placeholder in a `remap_file` step's `crosswalk_id`.
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        Input data to transform.
+    config : dict
+        One transformation entry. An optional `admin_ids` list limits
+        it to chunks inside those admin units (see `_in_admin_scope`).
+    silent : bool
+        Suppress warnings.
+    admin_id : str or AdminId, optional
+        The partition's admin unit, used to resolve an `{adminN_id}`
+        placeholder in a `remap_file` step's `crosswalk_id`.
+    process_admin_id : str or AdminId, optional
+        Admin unit of the chunk, checked against `admin_ids`. Defaults
+        to *admin_id*.
     """
+    if process_admin_id is None:
+        process_admin_id = admin_id
+    if not _in_admin_scope(config, process_admin_id, silent):
+        return df
     transform_type = config['type']
     output_col = config['output']
 
@@ -747,12 +866,18 @@ def apply_transformation_pattern(
     config: dict[str, Any],
     silent: bool = False,
     admin_id: Any = None,
+    process_admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """Apply pattern-based transformation to multiple columns.
 
-    *admin_id* is forwarded to each per-column transformation; see
-    :func:`apply_transformation`.
+    *admin_id* and *process_admin_id* are forwarded to each per-column
+    transformation, and an `admin_ids` list on the pattern entry scopes
+    the whole pattern; see :func:`apply_transformation`.
     """
+    if process_admin_id is None:
+        process_admin_id = admin_id
+    if not _in_admin_scope(config, process_admin_id, silent):
+        return df
     pattern = config['pattern']
     transform_type = config['type']
     apply_to_columns = config.get('apply_to_columns', [])
@@ -787,7 +912,13 @@ def apply_transformation_pattern(
                 f"got '{transform_type}'"
             )
 
-        df = apply_transformation(df, individual_config, silent, admin_id=admin_id)
+        df = apply_transformation(
+            df,
+            individual_config,
+            silent,
+            admin_id=admin_id,
+            process_admin_id=process_admin_id,
+        )
 
     return df
 

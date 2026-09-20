@@ -39,7 +39,10 @@ class TerrainLayer(NamedTuple):
     Attributes
     ----------
     layer : lonboard.SolidPolygonLayer
-        The extruded, colored layer.
+        The extruded, colored layer. In `elevation_mode='mesh'` its
+        geometry is each polygon's terrain mesh (`viz.elevation.
+        mesh_parcel_elevation`) rather than the polygon itself; `gdf`
+        still carries the polygon.
     elevation_scale : float
         The `elevation_scale` argument actually used (the explicit value, or
         `DEFAULT_ELEVATION_SCALE` if not overridden) — returned for
@@ -68,6 +71,13 @@ class TerrainLayer(NamedTuple):
         A companion wireframe-only layer outlining each polygon in a darker
         shade of its own fill color, or `None` when `outline_width=0`. Add
         it to the `Map` alongside `layer` if present.
+    interior_layer : lonboard.SolidPolygonLayer or None
+        Mesh mode only: the cap triangles that touch no parcel edge,
+        drawn flat at the top of the extrusion. Only `layer` is extruded,
+        and it holds just the rim triangles: deck.gl draws three walls
+        per extruded triangle, and every wall of an interior triangle is
+        hidden inside the parcel, so extruding them all cost several
+        times the visible geometry. Add this to the map beside `layer`.
     ghost_layer : lonboard.PolygonLayer or None
         A companion outline-only layer holding the rows with no value, drawn
         as a flat ring floating `ghost_offset` meters above whatever they
@@ -93,6 +103,7 @@ class TerrainLayer(NamedTuple):
     outline_layer: PolygonLayer | None
     clipped_layer: SolidPolygonLayer | None
     ghost_layer: PolygonLayer | None
+    interior_layer: SolidPolygonLayer | None = None
 
 
 def show_value_terrain_layer(
@@ -112,6 +123,12 @@ def show_value_terrain_layer(
     elevation_column: str | None = None,
     elevation_recipe: str | dict | None = None,
     elevation_mode: str = 'flat',
+    mesh_cells: int = 8,
+    mesh_min_resolution: float = 10.0,
+    mesh_relief_threshold: float = 0.5,
+    mesh_profile_tolerance: float = 0.5,
+    mesh_max_vertices: int | None = 2_000_000,
+    simplify_tolerance: float | None = None,
     terrain_exaggeration: float = 1.0,
     elevation_datum: float = 0.0,
     stack_on: TerrainLayer | None = None,
@@ -262,7 +279,7 @@ def show_value_terrain_layer(
         reused across calls whose rows haven't changed shape -- see the
         `viz.elevation` module docstring. Defaults to `None`: no DEM-based
         elevation.
-    elevation_mode : {'flat', 'drape'}
+    elevation_mode : {'flat', 'drape', 'mesh'}
         How `elevation_recipe` grounds this layer; ignored when
         `elevation_recipe` is `None`. `'flat'` (the default -- use for
         buildings) samples one zonal-mean elevation per polygon
@@ -276,6 +293,41 @@ def show_value_terrain_layer(
         `elevation_column`/`stack_on` scalar offset is still added on top
         of the per-vertex terrain in `'drape'` mode (see
         `viz.elevation.add_z_offset`), not used to overwrite it.
+        `'mesh'` fixes drape's cap: deck.gl triangulates a draped ring
+        from its x/y alone, so a large polygon with a vertex-dense road
+        edge is fanned into slivers that each tilt with their own three
+        terrain samples and render as a hatched, partly black fill. Mesh
+        mode extrudes a per-polygon grid mesh instead
+        (`viz.elevation.mesh_parcel_elevation`): each piece's top is
+        planar or cell-sized, and the outer pieces' sides are the walls,
+        so cap and walls share every vertex. Use it for land/parcel
+        layers over real terrain, with `alpha=1`: the pieces' interior
+        sides show through a translucent top as a faint grid.
+    mesh_cells : int
+        `'mesh'` mode only: target grid cells per axis across a polygon's
+        bounding box, bounding the mesh at about `mesh_cells ** 2` cells
+        per polygon. Defaults to 8.
+    mesh_min_resolution : float
+        `'mesh'` mode only: smallest grid cell size in meters; a polygon
+        smaller than one cell is a single piece. Defaults to 10.
+    mesh_relief_threshold : float
+        `'mesh'` mode only: boundary elevation range in meters (raw
+        terrain, before `terrain_exaggeration`) under which a polygon
+        gets a single flat cap at its boundary mean instead of a mesh.
+        Defaults to 0.5.
+    mesh_max_vertices : int or None
+        `'mesh'` mode only: a budget for the whole scene's mesh vertices,
+        default 2,000,000 (a static HTML export of roughly 30 MB). The
+        grid is coarsened to fit (`_mesh_cells_for_budget`), and when
+        even a 2 x 2 grid per polygon would not fit, the layer is built
+        in `'drape'` mode instead, one polygon per row, which is what a
+        city-scale scene can carry. None disables the budget.
+    simplify_tolerance : float, optional
+        Simplify the polygons as a coverage (`shapely.coverage_simplify`)
+        by this many meters before rendering. Neighbors keep identical
+        shared edges, which is what lets their walls meet, and a
+        vertex-dense road edge loses most of its vertices. 0.5 is a
+        good value; `None` (default) leaves the geometry as loaded.
     terrain_exaggeration : float
         Multiplier applied to real-world ground elevation (from
         `elevation_column` and/or `elevation_recipe`, including every
@@ -452,9 +504,9 @@ def show_value_terrain_layer(
             f'{sorted(M2_PER_AREA_UNIT)}.'
         )
 
-    if elevation_mode not in ('flat', 'drape'):
+    if elevation_mode not in ('flat', 'drape', 'mesh'):
         raise ValueError(
-            f"elevation_mode must be 'flat' or 'drape', got {elevation_mode!r}."
+            f"elevation_mode must be 'flat', 'drape' or 'mesh', got {elevation_mode!r}."
         )
 
     if missing_value not in ('render', 'drop', 'ghost'):
@@ -589,6 +641,13 @@ def show_value_terrain_layer(
     ]
     gdf = gdf[[*lead_columns, *other_columns, 'geometry']]
 
+    cache_key = ''
+    if simplify_tolerance:
+        gdf['geometry'] = _simplify_coverage(gdf.geometry, simplify_tolerance)
+        # The elevation caches are keyed by row index, which encodes
+        # the unsimplified shape; a simplified ring needs its own.
+        cache_key = f'_s{simplify_tolerance:g}'
+
     has_own_ground_elevation = (
         elevation_column is not None or elevation_recipe is not None
     )
@@ -625,10 +684,50 @@ def show_value_terrain_layer(
         extra_z = extra_z + contribution
 
     draped = False
-    if elevation_recipe is not None and elevation_mode == 'drape':
-        drape_geometry, mean_elevation = elevation.drape_parcel_elevation(
-            gdf, elevation_recipe, silent=silent
-        )
+    mesh_geometry = None
+    if elevation_recipe is not None and elevation_mode == 'mesh':
+        mesh_cells = _mesh_cells_for_budget(len(gdf), mesh_cells, mesh_max_vertices)
+        if mesh_cells < 2:
+            if not silent:
+                print(
+                    f'{len(gdf):,} rows exceed the mesh budget of '
+                    f'{mesh_max_vertices:,} vertices; using elevation_mode='
+                    "'drape' (one polygon per row) instead."
+                )
+            elevation_mode = 'drape'
+        elif mesh_cells < 8 and not silent:
+            print(f'mesh budget: {len(gdf):,} rows, {mesh_cells} cells per axis.')
+    if elevation_recipe is not None and elevation_mode in ('drape', 'mesh'):
+        if elevation_mode == 'mesh':
+            # The mesh supplies the ring too (flat under a flat mesh),
+            # which the outline and ghost layers are built from. Both
+            # are referenced, clamped and exaggerated in the same order.
+            mesh_geometry, drape_geometry, mean_elevation = (
+                elevation.mesh_parcel_elevation(
+                    gdf,
+                    elevation_recipe,
+                    cells=mesh_cells,
+                    min_resolution=mesh_min_resolution,
+                    relief_threshold=mesh_relief_threshold,
+                    profile_tolerance=mesh_profile_tolerance,
+                    silent=silent,
+                    cache_key=cache_key,
+                )
+            )
+            mesh_geometry = elevation.scale_z(
+                elevation.clamp_z(
+                    elevation.add_z_offset(
+                        mesh_geometry.to_numpy(),
+                        np.full(len(gdf), -float(elevation_datum)),
+                    ),
+                    lower=0.0,
+                ),
+                terrain_exaggeration,
+            )
+        else:
+            drape_geometry, mean_elevation = elevation.drape_parcel_elevation(
+                gdf, elevation_recipe, silent=silent, cache_key=cache_key
+            )
         # Reference to the datum, clamp at the ground plane, then
         # exaggerate -- in that order. Exaggerating first would scale
         # the datum offset too, and clamping last would let a negative
@@ -680,6 +779,8 @@ def show_value_terrain_layer(
 
     if draped:
         gdf['geometry'] = elevation.add_z_offset(gdf.geometry.to_numpy(), extra_z)
+    if mesh_geometry is not None:
+        mesh_geometry = elevation.add_z_offset(mesh_geometry, extra_z)
     elif (
         elevation_column is not None
         or elevation_recipe is not None
@@ -698,8 +799,42 @@ def show_value_terrain_layer(
             "missing_value='render' to draw them, or 'drop' to skip them."
         )
 
+    # In mesh mode the extruded geometry is the mesh, not the ring: the
+    # pieces' tops are the cap and the outer pieces' sides the walls.
+    # deck.gl draws solid sides only together with a solid top
+    # (`filled` gates both), so a walls-only ring is not an option.
+    fill_gdf = gdf[solid]
+    interior_layer = None
+    if mesh_geometry is not None:
+        rim, interior = _split_rim_pieces(mesh_geometry, gdf.geometry.to_numpy())
+        fill_gdf = fill_gdf.copy()
+        fill_gdf['geometry'] = gpd.GeoSeries(
+            rim[solid], index=fill_gdf.index, crs=gdf.crs
+        )
+        has_interior = np.array([g is not None for g in interior])
+        interior_rows = has_interior & (
+            np.ones(len(gdf), dtype=bool) if is_ghost is None else ~is_ghost
+        )
+        if interior_rows.any():
+            # Flat, at the top of the extrusion, so its triangles share
+            # every vertex with the rim triangles' tops.
+            interior_gdf = gdf[interior_rows].copy()
+            interior_gdf['geometry'] = gpd.GeoSeries(
+                elevation.add_z_offset(
+                    interior[interior_rows], rendered_elevation[interior_rows]
+                ),
+                index=interior_gdf.index,
+                crs=gdf.crs,
+            )
+            interior_layer = SolidPolygonLayer.from_geopandas(
+                interior_gdf,
+                extruded=False,
+                filled=True,
+                wireframe=False,
+                get_fill_color=fill_color[interior_rows],
+            )
     layer = SolidPolygonLayer.from_geopandas(
-        gdf[solid],
+        fill_gdf,
         extruded=True,
         filled=True,
         wireframe=False,
@@ -783,6 +918,91 @@ def show_value_terrain_layer(
         outline_layer,
         clipped_layer,
         ghost_layer,
+        interior_layer,
+    )
+
+
+def _mesh_cells_for_budget(n_rows: int, cells: int, max_vertices: int | None) -> int:
+    """Grid cells per axis that keep a scene's mesh within a vertex budget.
+
+    A meshed row costs about six vertices per grid cell (two triangles,
+    closed rings), so `n_rows * 6 * cells**2` is the scene's vertex
+    count before the rim is thinned. Solving for `cells` gives the
+    largest grid the budget affords; the configured `cells` is the cap.
+
+    Parameters
+    ----------
+    n_rows : int
+        Rows in the scene (all admin units together).
+    cells : int
+        The requested cells per axis; never exceeded.
+    max_vertices : int or None
+        Budget for the whole scene; None returns `cells` unchanged.
+
+    Returns
+    -------
+    int
+        Cells per axis, possibly 0 or 1, which callers treat as
+        "the mesh does not fit".
+    """
+    if max_vertices is None or n_rows <= 0:
+        return cells
+    affordable = int(np.sqrt(max_vertices / (6.0 * n_rows)))
+    return max(0, min(cells, affordable))
+
+
+def _split_rim_pieces(mesh_geometry, rings):
+    """Split each row's mesh into rim pieces (an edge on the ring) and the rest.
+
+    A piece is a rim piece when at least two of its vertices coincide
+    with ring vertices, which for a triangle means one of its edges is a
+    ring edge and needs a wall. Vertex identity is exact: the mesh
+    carries the ring's own coordinates (`_snap_to_ring`).
+
+    Returns
+    -------
+    rim : ndarray of shapely.MultiPolygon
+        Per row; a row whose mesh is a single piece keeps it here.
+    interior : ndarray of shapely.MultiPolygon or None
+        Per row; None when every piece is a rim piece.
+    """
+    ring_xy = shapely.get_coordinates(rings)
+    ring_keys = ring_xy[:, 0] + 1j * ring_xy[:, 1]
+    rim = np.empty(len(mesh_geometry), dtype=object)
+    interior = np.full(len(mesh_geometry), None, dtype=object)
+    for i, geom in enumerate(mesh_geometry):
+        parts = shapely.get_parts(geom)
+        if len(parts) <= 1:
+            rim[i] = geom
+            continue
+        xy, part_index = shapely.get_coordinates(parts, return_index=True)
+        on_ring = np.isin(xy[:, 0] + 1j * xy[:, 1], ring_keys)
+        # A ring's closing vertex repeats its first; count each once.
+        first = np.flatnonzero(np.r_[True, np.diff(part_index) != 0])
+        on_ring[first] = False
+        n_on_ring = np.bincount(part_index, weights=on_ring, minlength=len(parts))
+        is_rim = n_on_ring >= 2
+        rim[i] = shapely.multipolygons(parts[is_rim]) if is_rim.any() else geom
+        if not is_rim.all():
+            interior[i] = shapely.multipolygons(parts[~is_rim])
+    return rim, interior
+
+
+def _simplify_coverage(geometry: gpd.GeoSeries, tolerance: float) -> gpd.GeoSeries:
+    """Coverage-simplify polygons by `tolerance` meters, in a metric CRS.
+
+    `shapely.coverage_simplify` rather than per-polygon `simplify`: it
+    removes the same vertices from both sides of a shared edge, so
+    neighbors still touch exactly afterward. Per-polygon simplification
+    would leave slivers and gaps between them.
+    """
+    metric_crs = (
+        geometry.crs if geometry.crs.is_projected else geometry.estimate_utm_crs()
+    )
+    metric = geometry.to_crs(metric_crs)
+    simplified = shapely.coverage_simplify(metric.to_numpy(), tolerance)
+    return gpd.GeoSeries(simplified, index=geometry.index, crs=metric_crs).to_crs(
+        geometry.crs
     )
 
 

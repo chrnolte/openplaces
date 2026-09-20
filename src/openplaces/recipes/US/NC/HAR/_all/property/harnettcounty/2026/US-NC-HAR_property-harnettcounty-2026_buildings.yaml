@@ -1,0 +1,264 @@
+# Recipe: Harnett County, NC buildings (heated area, year built,
+# effective year, stories), supplementing the county property roll
+# US-NC-HAR_property-harnettcounty-2026.
+#
+# SOURCE. Building_Info.csv from the county's 2026 appraisal files;
+# see the roll's header for the page, the terms and the ="..."
+# quoting. One row per building (BuildingID unique), numbered 1, 2, ...
+# within a parcel.
+#
+# ROW SHAPE, MEASURED 2026-09-16: 57,062 buildings on 54,626 parcel
+# numbers, every one of them in the roll; 1,362 parcels carry more than
+# one building (up to 30). Valuation models: single family residential
+# 45,450, manufactured home 6,926, commercial 2,527, apartments 1,060,
+# warehouse/industrial 901, condominiums 193, office 5.
+# Seven rows are shifted by the quoting (a building name holding a
+# comma): their area and style columns hold neighboring fields. The
+# reader drops them (on_bad_lines), leaving 57,055 rows; they are also
+# the only rows whose TotalActualArea lacks the '.000' decimals every
+# real area carries, which the query below checks. 73 parcel numbers
+# here (their roll rows are lost, see the roll's LOST ROWS) have no
+# roll row to join.
+#
+# FLOOR AREA. Three per-building fields, none of them a parcel total
+# repeated on each row (on multi-building parcels the buildings'
+# values differ on all but 60 of 1,362):
+# - HeatedAreaCard maps to living_area_sqft, summed over a property's
+#   buildings. It is exactly the sum of the building's heated subarea
+#   codes in BuildingSubarea_Info (base, finished upper story, finished
+#   basement, manufactured-home and townhouse bases, commercial type
+#   areas; the list is in the ..._building-subareas header): equal on
+#   all but 3 of 57,062 buildings. The county's own parcel total,
+#   Parcel_Info HeatedAreaAllBuildings, equals the per-parcel sum of
+#   HeatedAreaCard on 54,546 of 54,616 parcels.
+# - TotalAcutalAreaHeated (the county's spelling) equals HeatedAreaCard
+#   on 99.3% of buildings. On 384 it is larger, and on 376 of those by
+#   exactly the area of an FEP subarea ("Porch, Enclosed, Finished,
+#   Heated"), which it counts on only 377 of the 2,973 buildings that
+#   have one. That inconsistent porch treatment (0.3% of the county's
+#   heated area) is why it is not the mapped field.
+# - TotalActualArea is the sum of every subarea (all but 6 buildings),
+#   decks, patios, stoops, canopies and carports included (equal on
+#   every building), so it is not
+#   gross floor area; gross comes from the subarea supplement instead.
+# A building with no heated area (1 row, 0) is null, not 0.
+# MEASURED 2026-09-16 after ingest: living_area_sqft > 0 on 57,054 of
+# 57,055 buildings (p10/p50/p90 1,092 / 1,782 / 3,048 sqft). Summed
+# per property on the roll: > 0 on 54,547 of 80,562 properties
+# (67.7%), p10/p50/p90 1,116 / 1,793 / 3,041; on every residential
+# property that has a building record (52,092); 79.5% of improvement
+# type single family residential and 48.4% of rural home site, both of
+# which include vacant lots. Every property with living area has a
+# parcel_id_local found in the statewide parcels.
+#
+# REST CROSS-CHECK. The county's REST parcel layer
+# (gis.harnett.org .../Tax/Parcels/MapServer/0, 85,646 polygons over
+# 82,569 PIDs) carries TotalAcutalAreaHeated > 0 on 54,897 PIDs,
+# totalling 121.9 million sqft. That value is building 1's alone: on
+# the 1,358 multi-building parcels it equals building 1's
+# TotalAcutalAreaHeated on 99.4% and the sum over buildings on none.
+# This file's building 1 gives > 0 on 54,625 parcel numbers totalling
+# 121.3 million (0.5% below the service). The ingested living area,
+# summed over all buildings, is > 0 on 54,547 properties totalling
+# 132.2 million; 54,134 parcel numbers are > 0 in both, 763 in the
+# service only and 413 here only.
+#
+# OTHER FIELDS, per building then reduced per property:
+# - year_built (ActualYearBuilt, 1 zero nulled): earliest building.
+# - effective_year_built (EffectiveYearBuilt, 9 zeros nulled): latest.
+# - n_stories from DwellingStyleDescription ("1.0 Story" ... "2.25
+#   Stories"; "Ranch w/ basement" is one story above grade), tallest
+#   building. Null for "2.5 Stories or More" (770 buildings: a lower
+#   bound, not a count), "Split Level" and "Split Foyer", and for
+#   every non-residential valuation model: commercial, warehouse and
+#   office buildings carry a dwelling style too (2,176 of 2,527
+#   commercial buildings read "1.0 Story"), and their height lives in
+#   WallHeight, not a story count.
+#
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of buildings whose ValuationModelDescription is MANUFACTURED HOME
+# (6,926 of the file's buildings, see ROW SHAPE), summed per property.
+# A property with buildings but none of that model gets 0; the roll's
+# properties with no building row (26,002 parcels, mostly homes held
+# as personal property) stay missing, not 0.
+#
+# NOT MAPPED: UnitCount (n_dwellings) is filled on 1,101 buildings
+# (591 of 1,060 apartment buildings, 254 of 45,450 single family), so
+# a per-property sum would silently undercount; NumberOfFloors is
+# empty on every row; bedroom and bath counts are out of scope for
+# now; addresses, card notes, building names and the mobile-home title
+# and permit fields are not read.
+
+description: >-
+  Harnett County, NC buildings (heated area, year built, effective year,
+  stories) supplementing the county property roll, from the 2026
+  appraisal CSV files.
+
+admin_id: US-NC-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: harnettcounty
+    # Same page and terms as the roll; see its note.
+    license: >-
+      unknown (no terms on the county's appraisal data page; site
+      footer copyright notice only)
+    terms_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    redistribution_restricted: null
+    portal_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    download_url: "https://www.harnett.org/tax/downloads/Building_Info.csv"
+  version: "2026"
+
+uncompressed_file_name: "Building_Info.csv"
+
+csv_dtype: str
+
+# The shifted rows carry more fields than the header, and the reader
+# refuses the whole file on the first of them; they are dropped with a
+# warning. The query below stays as a guard should a shifted row ever
+# carry the header's field count.
+on_bad_lines: warn
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  living_area_sqft: HeatedAreaCard
+  year_built: ActualYearBuilt
+  effective_year_built: EffectiveYearBuilt
+
+# Drop the seven rows shifted by the quoting (see ROW SHAPE).
+query: "TotalActualArea.str.contains('.', regex=False, na=False)"
+
+transformations:
+  # Unwrap the ="..." quoting; plain values pass unchanged.
+  - type: string
+    operation: extract_named
+    input: parcel_id_assessor
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: living_area_sqft
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: living_area_sqft
+  - type: string
+    operation: extract_named
+    input: year_built
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: year_built
+  - type: string
+    operation: extract_named
+    input: effective_year_built
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: effective_year_built
+  - type: string
+    operation: extract_named
+    input: DwellingStyleDescription
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: dwelling_style
+  - type: string
+    operation: extract_named
+    input: ValuationModelDescription
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: valuation_model
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args:
+      value: 0
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    args:
+      value: 0
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: null_if_equal
+    input: effective_year_built
+    args:
+      value: 0
+    output: effective_year_built
+  # Dwelling style descriptions that name a story count.
+  - type: remap
+    input: dwelling_style
+    mapping:
+      "1.0 Story": 1.0
+      "1.25 Stories": 1.25
+      "1.5 Stories": 1.5
+      "1.75 Stories": 1.75
+      "2.0 Stories": 2.0
+      "2.25 Stories": 2.25
+      "Ranch w/ basement": 1.0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # Residential valuation models only (1), else null.
+  - type: remap
+    input: valuation_model
+    mapping:
+      "SINGLE FAMILY RESIDENTIAL": 1.0
+      "MANUFACTURED HOME": 1.0
+      "APARTMENTS": 1.0
+      "CONDOMINIUMS": 1.0
+    output: is_residential_model
+  - type: unary
+    operation: to_numeric
+    input: is_residential_model
+    output: is_residential_model
+  - type: expression
+    expression: "n_stories * is_residential_model"
+    inputs: [n_stories, is_residential_model]
+    output: n_stories
+  # One per building of the manufactured-home valuation model; see
+  # MOBILE-HOME UNITS.
+  - type: expression
+    expression: "(valuation_model == 'MANUFACTURED HOME').astype('float64')"
+    inputs: [valuation_model]
+    output: n_manufactured_home_units
+
+drop_columns:
+  - dwelling_style
+  - valuation_model
+  - is_residential_model
+
+# Several buildings on one property: heated area sums, year built
+# takes the earliest building, effective year the latest, stories the
+# tallest, mobile-home units the sum.
+aggregation_function:
+  n_manufactured_home_units: sum
+  living_area_sqft: sum
+  year_built: min
+  effective_year_built: max
+  n_stories: max
+
+# The buildings detail the roll's properties. Joined on the raw
+# parcel number, not parcel_id_local, because the `simple` conversion
+# folds 17 pairs of parcel numbers onto one key (see the roll).
+supplements: US-NC-HAR_property-harnettcounty-2026
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: core
+  filename: buildings

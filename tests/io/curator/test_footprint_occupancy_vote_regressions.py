@@ -17,7 +17,11 @@ import pytest
 from shapely.geometry import Polygon
 
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import derive_indicators
+from openplaces.io.curator.inferers import (
+    derive_group_count,
+    derive_group_rank,
+    derive_indicators,
+)
 from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import get_recipe_by_id
 
@@ -27,6 +31,13 @@ RECIPE_ID = 'US_footprint-openplaces-2026'
 # class, so it has to run after the vote that decides it.
 VOTE_TARGETS = ('dwelling_multiplicity', 'occupancy_type', 'n_sections')
 
+# Steps between the votes that derive what the second occupancy pass
+# reads from the first.
+PARCEL_INDICATOR_STEPS = {
+    'derive_group_count': derive_group_count,
+    'derive_group_rank': derive_group_rank,
+}
+
 # Every column the votes may read. A column absent from the frame makes
 # evaluate_indicator return all-False, so an indicator referencing it would
 # silently never fire -- see test_every_vote_input_is_available.
@@ -34,6 +45,8 @@ DEFAULTS = {
     'occupancy_type': None,
     'use_group_combined_parcel': None,
     'use_group_combined_labeled_parcel': None,
+    # The roll's structure description; most rolls publish none.
+    'building_style_parcel': None,
     'group_parcel': None,
     'group_footprint_fema': None,
     'occupancy_type_building_nsi': None,
@@ -58,7 +71,17 @@ DEFAULTS = {
     # test reads -- distinct from the apportioned pair above.
     'improvement_value_parcel_total': 150_000.0,
     'land_value_parcel_total': 50_000.0,
+    # The footprint sits on a parcel: the absence reading of the
+    # manufactured-home value test needs one. A case modelling a footprint
+    # no parcel covers sets it to None.
+    'parcel_id': 'p1',
     'n_stories': None,
+    # Dwelling kinds the parcel's roll lists: missing (no roll with
+    # unit types) unless a case sets them.
+    'n_manufactured_home_units_parcel': None,
+    'n_travel_trailers_parcel': None,
+    'n_park_models_parcel': None,
+    'n_residential_buildings_parcel': None,
     # A plainly non-manufactured shape unless a case overrides it.
     'length_m': 20.0,
     'width_m': 15.0,
@@ -119,15 +142,21 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
     derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
     state = derive_indicators(state, derive['indicators'])
 
-    for target in VOTE_TARGETS:
-        for vote in _votes(recipe, target):
+    # The votes and the parcel indicators the second occupancy pass
+    # reads, in the recipe's own order.
+    for step in recipe['pipeline']:
+        if step['step'] in PARCEL_INDICATOR_STEPS:
+            kwargs = {k: v for k, v in step.items() if k != 'step'}
+            state = PARCEL_INDICATOR_STEPS[step['step']](state, **kwargs)
+        elif step['step'] == 'resolve_by_vote' and step['target'] in VOTE_TARGETS:
             state = resolve_by_vote(
                 state,
-                target=vote['target'],
-                decisions=vote['decisions'],
-                preserve_base=vote.get('preserve_base', True),
-                base_output=vote.get('base_output'),
-                default_source=vote.get('default_source', 'vote'),
+                target=step['target'],
+                decisions=step['decisions'],
+                preserve_base=step.get('preserve_base', True),
+                base_output=step.get('base_output'),
+                default_source=step.get('default_source', 'vote'),
+                append_source=step.get('append_source', False),
             )
     return state.curated
 
@@ -153,11 +182,13 @@ def _multiplicity(recipe, rows: list[dict]) -> pd.Series:
 def _referenced_columns(indicators, out):
     """Collect every column an indicator tree reads."""
     for ind in indicators:
-        if ind.get('type') in ('any_of', 'all_of'):
+        if ind.get('type') in ('any_of', 'all_of', 'none_of'):
             _referenced_columns(ind.get('indicators', []), out)
             continue
         if ind.get('column'):
             out.add(ind['column'])
+        if ind.get('type') == 'column_greater_than':
+            out.add(ind['other'])
         if ind.get('type') in ('value_share_below', 'value_share_at_least'):
             out.add(ind['value'])
             out.update(ind.get('total', []))
@@ -201,6 +232,8 @@ def test_every_vote_input_is_available(recipe):
     for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             written.add(vote['target'])
+            # Its provenance sidecar, which a later vote may read.
+            written.add(f'{vote["target"]}_source')
             if vote.get('base_output'):
                 written.add(vote['base_output'])
     provided = (
@@ -655,6 +688,31 @@ def test_site_built_house_gets_no_section_count(recipe):
     assert pd.isna(out['n_sections'].astype(object).iloc[0])
 
 
+def test_single_family_keyword_reads_a_dropped_l(recipe):
+    """A county vocabulary spelling SINGE FAMILY still names the class.
+
+    One eastern NC county's land-use text reads 'SINGE FAMILY
+    RESIDENTIAL' throughout. Its only other Single-Family word came from
+    an address-type list that was removed at ingest (2026-09-16), after
+    which 1,084 permit-confirmed houses fell to NSI's Agricultural class.
+    """
+    label = 'RURAL HOME SITE -  SINGE FAMILY RESIDENTIAL'
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': label,
+                'use_group_combined_labeled_parcel': label,
+                'n_dwellings_overture': 1,
+                'length_m': 15.0,
+                'width_m': 12.0,
+            }
+        ],
+    )
+    assert out['occupancy_keyword_class'].astype(object).iloc[0] == 'Single-Family'
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
 def test_raw_code_does_not_fire_a_text_rule(recipe):
     """A code-only county's land use must not match keyword patterns.
 
@@ -801,6 +859,74 @@ class TestManufacturedHomeValueTestBasis:
         )
 
 
+class TestNoImprovementValueWithoutAParcelTotal:
+    """The absence reading: a zero improvement value counts on a parcel the
+    assessor never valued, while a zero or missing total still yields no
+    share (the Sampson County protection, 1f59d42).
+
+    Eleven surveyed manufactured homes (Beaufort 8, Halifax 3) sat on
+    parcels with a zero or missing whole-parcel total and lost this
+    evidence when the share reading alone stopped matching there; NSI or
+    FEMA alone then fell short of min_score and they shipped Single-Family.
+    """
+
+    NSI_MH = {
+        'occupancy_type_building_nsi': 'Manufactured Home',
+        'n_dwellings_overture': 1,
+    }
+
+    @pytest.mark.parametrize('whole', [None, 0.0])
+    def test_zero_value_on_an_unvalued_parcel_is_evidence(self, recipe, whole):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': whole,
+                    'land_value_parcel_whole': whole,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+        assert 'no_improvement_value' in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_a_missing_value_on_an_unvalued_parcel_is_not(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': None,
+                    'improvement_value_parcel_whole': None,
+                    'land_value_parcel_whole': None,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_a_zero_without_a_parcel_is_not(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'parcel_id': None,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': None,
+                    'land_value_parcel_whole': None,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+
 class TestSecondaryFootprintsAreNotManufacturedByValueAlone:
     """An accessory building must never be called a manufactured home just
     because it was allocated no improvement value.
@@ -871,3 +997,449 @@ class TestSecondaryFootprintsAreNotManufacturedByValueAlone:
             'manufactured-home decision by itself; a secondary footprint '
             'allocated no value would be reclassified on that alone'
         )
+
+
+# A site-built house: overture sees one dwelling, the shape is not
+# elongated.
+_HOUSE = {'n_dwellings_overture': 1, 'length_m': 15.0, 'width_m': 12.0}
+# A keyword-labeled mobile-home parcel's home: large and elongated.
+_KEYWORD_HOME = {
+    'use_group_combined_parcel': 'MOBILE HOME',
+    'length_m': 20.0,
+    'width_m': 4.5,
+}
+
+
+def _cls(out, i):
+    return out['occupancy_type'].astype(object).iloc[i]
+
+
+def _src(out, i):
+    return str(out['occupancy_type_source'].astype(object).iloc[i])
+
+
+class TestSecondPassOnSmallSecondaryManufacturedHomes:
+    """The two-pass rule of the travel-trailer plan's proposed rule.
+
+    Every parcel in a case is its own `parcel_id`, so the groupby the
+    pass reads sees exactly the footprints the case lists.
+    """
+
+    def test_shape_path_flips_under_40(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {**_HOUSE, 'parcel_id': 'a'},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'n_dwellings_overture': 1,
+                    'length_m': 10.0,
+                    'width_m': 3.5,
+                },
+            ],
+        )
+        assert _cls(out, 0) == 'Single-Family'
+        assert _cls(out, 1) == 'Secondary'
+        assert _src(out, 1) == 'priority+small_shape'
+        assert 'imputed' not in _src(out, 1)
+
+    def test_shape_path_keeps_40_and_above(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {**_HOUSE, 'parcel_id': 'a'},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'n_dwellings_overture': 1,
+                    'length_m': 12.0,
+                    'width_m': 4.0,
+                },
+            ],
+        )
+        assert _cls(out, 1) == 'Manufactured Home'
+
+    def test_label_path_needs_a_primary_manufactured_home(self, recipe):
+        out = _run(
+            recipe,
+            [
+                # A keyword parcel with a primary home and a small shed.
+                {**_KEYWORD_HOME, 'parcel_id': 'a'},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'use_group_combined_parcel': 'MOBILE HOME',
+                    'length_m': 6.0,
+                    'width_m': 5.0,
+                },
+                # The same shed on a keyword parcel with no primary.
+                {
+                    'parcel_id': 'b',
+                    'priority_on_parcel': 'secondary',
+                    'use_group_combined_parcel': 'MOBILE HOME',
+                    'length_m': 6.0,
+                    'width_m': 5.0,
+                },
+            ],
+        )
+        assert _cls(out, 0) == 'Manufactured Home'
+        assert _cls(out, 1) == 'Secondary'
+        assert _src(out, 1) == 'priority+primary_manufactured_home'
+        assert _cls(out, 2) == 'Manufactured Home'
+
+    def test_label_path_cap_is_55_only_with_a_unit_count(self, recipe):
+        shed_45 = {
+            'priority_on_parcel': 'secondary',
+            'use_group_combined_parcel': 'MOBILE HOME',
+            'length_m': 9.0,
+            'width_m': 5.0,
+        }
+        out = _run(
+            recipe,
+            [
+                {**_KEYWORD_HOME, 'parcel_id': 'a'},
+                {**shed_45, 'parcel_id': 'a'},
+                {
+                    **_KEYWORD_HOME,
+                    'parcel_id': 'b',
+                    'n_manufactured_home_units_parcel': 1,
+                },
+                {**shed_45, 'parcel_id': 'b', 'n_manufactured_home_units_parcel': 1},
+            ],
+        )
+        assert _cls(out, 1) == 'Manufactured Home'
+        assert _cls(out, 3) == 'Secondary'
+
+    def test_record_keeps_as_many_homes_as_it_lists(self, recipe):
+        shed_30 = {
+            'priority_on_parcel': 'secondary',
+            'use_group_combined_parcel': 'MOBILE HOME',
+            'length_m': 6.0,
+            'width_m': 5.0,
+        }
+        out = _run(
+            recipe,
+            [
+                {
+                    **_KEYWORD_HOME,
+                    'parcel_id': 'a',
+                    'n_manufactured_home_units_parcel': 2,
+                },
+                {**shed_30, 'parcel_id': 'a', 'n_manufactured_home_units_parcel': 2},
+                {
+                    **_KEYWORD_HOME,
+                    'parcel_id': 'b',
+                    'n_manufactured_home_units_parcel': 0,
+                },
+                {**shed_30, 'parcel_id': 'b', 'n_manufactured_home_units_parcel': 0},
+            ],
+        )
+        # Rank 2 of a record listing two homes stays.
+        assert _cls(out, 1) == 'Manufactured Home'
+        # A record listing buildings but no mobile home keeps none.
+        assert _cls(out, 3) == 'Secondary'
+
+    def test_keep_applies_to_the_shape_path_too(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {**_HOUSE, 'parcel_id': 'a', 'n_manufactured_home_units_parcel': 1},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'n_dwellings_overture': 1,
+                    'n_manufactured_home_units_parcel': 1,
+                    'length_m': 10.0,
+                    'width_m': 3.5,
+                },
+            ],
+        )
+        # The house is not Manufactured Home, so the small one is rank 1
+        # and holds the one home the record lists.
+        assert _cls(out, 1) == 'Manufactured Home'
+
+    def test_nsi_on_the_structure_never_flips(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {**_HOUSE, 'parcel_id': 'a'},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Manufactured Home',
+                    'length_m': 10.0,
+                    'width_m': 3.5,
+                },
+            ],
+        )
+        assert _cls(out, 1) == 'Manufactured Home'
+        assert 'nsi' in _src(out, 1).split('+')
+
+    def test_a_primary_is_never_changed(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'parcel_id': 'a',
+                    'n_dwellings_overture': 1,
+                    'length_m': 10.0,
+                    'width_m': 3.5,
+                }
+            ],
+        )
+        assert _cls(out, 0) == 'Manufactured Home'
+
+
+class TestRvDwelling:
+    """The RV Dwelling decision of the travel-trailer plan, 5.3."""
+
+    _ONE_TRAILER = {
+        'n_travel_trailers_parcel': 1,
+        'n_park_models_parcel': 0,
+        'n_residential_buildings_parcel': 1,
+    }
+
+    def test_roll_class_names_the_primary_on_a_one_trailer_lot(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self._ONE_TRAILER,
+                    'parcel_id': 'a',
+                    'length_m': 12.0,
+                    'width_m': 8.0,
+                },
+                {
+                    **self._ONE_TRAILER,
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'length_m': 5.0,
+                    'width_m': 4.0,
+                },
+            ],
+        )
+        assert _cls(out, 0) == 'RV Dwelling'
+        assert _src(out, 0) == 'roll_class'
+        assert _cls(out, 1) == 'Secondary'
+
+    def test_roll_class_needs_a_one_unit_parcel(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self._ONE_TRAILER,
+                    'n_residential_buildings_parcel': 2,
+                    'parcel_id': 'a',
+                    'length_m': 12.0,
+                    'width_m': 8.0,
+                }
+            ],
+        )
+        assert _cls(out, 0) != 'RV Dwelling'
+
+    def test_rv_park_pairs_with_a_unit_sized_footprint(self, recipe):
+        park = {
+            'parcel_id': 'a',
+            'land_use_class_parcel': 'RV Park',
+            'land_use_class_source_parcel': 'rule',
+            'priority_on_parcel': 'secondary',
+        }
+        out = _run(
+            recipe,
+            [
+                {**park, 'length_m': 9.0, 'width_m': 3.5},
+                {**park, 'length_m': 10.0, 'width_m': 6.0},
+                # The parcel lane's fill route is not a park claim.
+                {
+                    **park,
+                    'parcel_id': 'b',
+                    'land_use_class_source_parcel': 'nsi',
+                    'length_m': 9.0,
+                    'width_m': 3.5,
+                },
+            ],
+        )
+        assert _cls(out, 0) == 'RV Dwelling'
+        assert _src(out, 0) == 'rv_park+towable_size'
+        assert _cls(out, 1) == 'Secondary'
+        assert _cls(out, 2) != 'RV Dwelling'
+
+    def test_towable_size_alone_never_decides(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {**_HOUSE, 'parcel_id': 'a'},
+                {
+                    'parcel_id': 'a',
+                    'priority_on_parcel': 'secondary',
+                    'n_dwellings_overture': 1,
+                    'length_m': 8.0,
+                    'width_m': 3.0,
+                },
+            ],
+        )
+        assert _cls(out, 1) != 'RV Dwelling'
+
+    def test_rv_dwelling_is_a_residential_and_single_dwelling_class(self, recipe):
+        assert 'RV Dwelling' in recipe['occupancy']['residential_classes']
+        assert 'RV Dwelling' in recipe['validation']['single_dwelling_classes']
+        vote = next(
+            v
+            for v in _votes(recipe, 'occupancy_type')
+            if any(d['class'] == 'Manufactured Home' for d in v['decisions'])
+        )
+        order = [d['class'] for d in vote['decisions']]
+        assert order.index('RV Dwelling') < order.index('Manufactured Home')
+
+
+class TestMultiSectionShapeBand:
+    """The double-wide band: aspect in [2.0, 2.5), area <= 220 m2, weight 1.
+
+    Fabricated boxes: 18.2 m by 8.3 m is aspect ~2.2 and ~151 m2, a
+    typical double-wide; 23.5 m by 10.7 m has the same aspect at ~251 m2.
+    """
+
+    DOUBLE_WIDE = {'length_m': 18.2, 'width_m': 8.3}
+    TOO_LARGE = {'length_m': 23.5, 'width_m': 10.7}
+
+    def test_band_plus_one_source_is_a_manufactured_home(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Manufactured Home',
+                    **self.DOUBLE_WIDE,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source.split('+') == ['shape_band', 'nsi']
+        # A double-wide's width puts it in the multi-section class.
+        assert str(out['n_sections'].astype(object).iloc[0]) == '2'
+
+    def test_band_with_no_improvement_value_alone_is_not_enough(self, recipe):
+        """Permit-scored: this pairing was mostly site-built houses."""
+        result = _classify(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': 0.0,
+                    'improvement_value_parcel_total': 0.0,
+                    **self.DOUBLE_WIDE,
+                }
+            ],
+        )
+        assert result.iloc[0] != 'Manufactured Home'
+
+    def test_band_alone_does_not_reach_the_threshold(self, recipe):
+        result = _classify(recipe, [{'n_dwellings_overture': 1, **self.DOUBLE_WIDE}])
+        assert result.iloc[0] == 'Single-Family'
+
+    def test_band_does_not_fire_above_its_area_ceiling(self, recipe):
+        result = _classify(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Manufactured Home',
+                    **self.TOO_LARGE,
+                }
+            ],
+        )
+        assert result.iloc[0] == 'Single-Family'
+
+    def test_band_and_morphology_never_score_together(self, recipe):
+        """Half-open at the morphology cutoff, so a value on it scores once."""
+        mh = next(
+            d
+            for v in _votes(recipe, 'occupancy_type')
+            for d in v['decisions']
+            if d['class'] == 'Manufactured Home'
+        )
+        band = next(i for i in mh['indicators'] if i.get('label') == 'shape_band')
+        morph = next(i for i in mh['indicators'] if i.get('label') == 'morphology')
+        upper = next(
+            i
+            for i in band['indicators']
+            if i['column'] == 'aspect_ratio' and i['type'] != 'numeric_at_least'
+        )
+        lower = next(i for i in morph['indicators'] if i['column'] == 'aspect_ratio')
+        assert upper['type'] == 'numeric_below'
+        assert float(upper['max']) == float(lower['min'])
+        assert float(band.get('weight', 1)) < float(mh['min_score'])
+
+
+class TestMultiFamilyProvenance:
+    """occupancy_type_source keeps the evidence that decided Multi-Family."""
+
+    def test_height_band_appends_to_the_deciding_evidence(self, recipe):
+        out = _run(recipe, [{'n_dwellings_overture': 4, 'n_stories': 2}])
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Low-Rise Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'overture_count+height_band'
+        # A classification vote is never marked as an imputed value.
+        assert 'imputed' not in source.split('+')
+
+    def test_unbanded_multi_family_keeps_its_evidence_alone(self, recipe):
+        out = _run(recipe, [{'n_dwellings_overture': 4, 'n_stories': None}])
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'overture_count'
+
+    def test_every_carried_label_is_named(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Multi-Family, 10-19 units',
+                    'group_footprint_fema': 'Multi-Family',
+                    'n_stories': 3,
+                }
+            ],
+        )
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'nsi_fema+nsi_units+height_band'
+
+
+class TestStructureDescriptionLane:
+    """The roll's dwelling style speaks where the land use is silent."""
+
+    DUPLEX = {
+        'use_group_combined_parcel': 'RESIDENTIAL PRIMARY',
+        'building_style_parcel': 'Duplex/Triplex',
+        'occupancy_type_building_nsi': 'Multi-Family, 2 units',
+        'group_footprint_fema': 'Multi-Family',
+        'n_dwellings_overture': 1,
+    }
+
+    def test_duplex_style_with_nsi_agreement_is_multi_family(self, recipe):
+        out = _run(recipe, [dict(self.DUPLEX)])
+        assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source.split('+')[:2] == ['assessor_keyword', 'nsi_fema']
+
+    def test_style_is_ignored_where_the_land_use_names_a_class(self, recipe):
+        row = {**self.DUPLEX, 'use_group_combined_parcel': 'SINGLE FAMILY'}
+        out = _run(recipe, [row])
+        assert out['style_keyword_class'].isna().iloc[0]
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+    def test_style_alone_does_not_decide(self, recipe):
+        """The keyword guard still applies: one story, one dwelling and
+        NSI saying single-family keep the row single."""
+        row = {
+            **self.DUPLEX,
+            'occupancy_type_building_nsi': 'Single Family, 1 story, no basement',
+            'group_footprint_fema': 'Single Family',
+            'n_stories': 1,
+        }
+        result = _classify(recipe, [row])
+        assert result.iloc[0] == 'Single-Family'

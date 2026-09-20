@@ -1,0 +1,130 @@
+# Recipe: New Hanover County, NC iasWorld tax table (living area),
+# supplementing the county property roll.
+#
+# Source: the county's `IASTAX` feature service, layer 1, a table with
+# no geometry (gis.nhcgov.com/server/rest/services/Layers/IASTAX/
+# FeatureServer/1), published through ArcGIS Hub as item
+# 6463621815a3413aa98159bf166403af. Downloaded as the Hub's cached CSV
+# export (~40 MB, UTF-8 with a byte-order mark) rather than by paging
+# the REST table (12 requests at its 10,000-row limit). The Hub export
+# is generated asynchronously; a 404 on a cold cache means "not built
+# yet", not "gone".
+#
+# One row per tax account, all tax years 2026: the county's Tyler
+# iasWorld extract (owner, situs, parcel, appraised value and sale
+# blocks, plus residential and commercial card summaries). Only the
+# account id and living area are mapped here; the property roll
+# (US-NC-NHA_property-nhcgov-2026) already carries values, owner,
+# situs, sale and year built, and its fixed-width file has no area.
+#
+# Measured 2026-09-16:
+# - Export 115,651 rows against 115,833 on the live service
+#   (`returnCountOnly`); the 182-row deficit is export-snapshot lag.
+#   `SFLA` > 0 on 93,328 rows in both.
+# - `PARID` is filled on every row, shape A99999-999-999-999 (first
+#   letter R on all rows), one repeated value (two rows, same `SFLA`).
+#   `PAR_PARID` equals it except on 671 rows that carry no parcel
+#   block at all (`CLASS`, `SFLA`, `AREASUM` all empty); `PARID` is
+#   used.
+# - Against the roll's account id (parcel_id_assessor, emulated from
+#   the local nhclttax.zip): 99.42% of `PARID`s are roll accounts (the
+#   671 empty-block rows are the rest) and 99.96% of the roll's
+#   115,028 accounts are here. Every `PARID` with `SFLA` > 0 is a roll
+#   account.
+#
+# JOIN KEY. `supplements_key: parcel_id_assessor`, the account id,
+# not parcel_id_local. The roll's parcel_id_local is its lot key (the
+# sub-lot forced to 000), which every account on a lot shares, so a
+# join on it would give each condominium unit the sum of its whole
+# lot's living area. On the account id each property gets its own
+# value; the roll's lot key still carries it to the lot's parcel in
+# curate. No parcel_id_local is built here, for the same reason.
+#
+# FLOOR AREA.
+# - `SFLA` (text) maps to living_area_sqft: the iasWorld dwelling
+#   square feet of living area field. > 0 on 93,328 rows (p10 1,024,
+#   median 1,710, p90 3,124), 0 on 21,652 rows, which are exactly the
+#   accounts with no residential card (`R_CARD` 0 on 21,651). Zero
+#   means not recorded and is nulled. Emulated on the roll: 81.1% of
+#   accounts get a value, 91.8% of `CLASS` RES accounts, 75.1% of unit
+#   accounts (sub-lot other than 000).
+#   The table carries one summed value per account, so it is not
+#   known whether an account with several residential cards (`R_CARD`
+#   2 to 60 on 1,039 rows) sums them; not checked against cards.
+# - `AREASUM` (text), > 0 on 6,593 rows (the commercial cards, median
+#   3,839), is NOT mapped to gross_floor_area_sqft: the county
+#   publishes no definition, and reading it as gross floor area is
+#   the iasWorld convention, not something this source states.
+#   81 accounts carry both `SFLA` and `AREASUM`.
+#
+# Not mapped: owner block (never), situs and legal fields, `LUC`,
+# `CLASS`, `NBHD`, `ZONING`, `ACRES`, appraised values and sale
+# fields (all on the roll), card counts `R_CARD`/`C_CARD`, and the
+# `XCOORD`/`YCOORD` point.
+
+description: >-
+  New Hanover County, NC iasWorld tax table (living area per account)
+  supplementing the county property roll, from the ArcGIS Hub CSV
+  export.
+
+admin_id: US-NC-NHA
+
+entity:
+  entity_type: property
+  source:
+    source_id: nhcgov
+    # Checked 2026-09-16: the Hub item declares license "none" and no
+    # licence text; the service copyright is "New Hanover, NC". The
+    # Hub site's home page carries a use-at-your-own-risk disclaimer,
+    # not a licence (checked 2026-09-13 for the county's parcel layer,
+    # US-NC-NHA_parcel-nhcgov-2026). The download needs no
+    # click-through.
+    license: "unknown (disclaimer only)"
+    terms_url: "https://opendata.nhcgov.com"
+    redistribution_restricted: null
+    portal_url: "https://opendata.nhcgov.com"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/6463621815a3413aa98159bf166403af_1/downloads/data?format=csv&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "nhc_iastax.csv"
+encoding: utf-8-sig
+
+# Every field as text: ids keep their shape, and SFLA is published as
+# text anyway; it is cast below.
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARID
+  living_area_sqft: SFLA
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  # Zero is "no residential card", not a measured zero area.
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args:
+      value: 0
+    output: living_area_sqft
+
+# One row per account (one repeated id, identical rows), so max only
+# collapses that duplicate. Not sum: an all-null group sums to 0,
+# which would put back the zeros nulled above.
+aggregation_function:
+  living_area_sqft: max
+
+# The table's rows are the roll's accounts, so it adds columns to the
+# roll's properties rather than rows of its own (see JOIN KEY above).
+supplements: US-NC-NHA_property-nhcgov-2026
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: core
+  filename: iastax

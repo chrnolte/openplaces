@@ -32,7 +32,10 @@ from openplaces.recipe import (
 # enrich < curate). It is a job this graph derives from the target
 # recipe's own `share: delivery:` block: pool the region's curated
 # files into the shareable bundle, once, after every county is built.
-STAGES = ('ingest', 'harmonize', 'enrich', 'curate', 'deliver')
+# 'validate' follows it the same way: it re-scores a shipped region by
+# executing the validation notebooks the recipe's `validation:` block
+# declares for that region, then regenerates the docs tables.
+STAGES = ('ingest', 'harmonize', 'enrich', 'curate', 'deliver', 'validate')
 
 # Node fill colors per stage in to_mermaid() (pastel, dark text)
 _STAGE_COLORS = {
@@ -41,18 +44,25 @@ _STAGE_COLORS = {
     'enrich': '#fff2cc',
     'curate': '#f4cccc',
     'deliver': '#e6d0f0',
+    'validate': '#d0e0e3',
 }
+
+# File the validate job writes into the region's accuracies/ folder
+# once every notebook has run: its declared output, and the record of
+# which notebooks ran and how each ended.
+VALIDATION_MANIFEST_SUFFIX = 'validation-run.json'
 
 
 @dataclass(frozen=True)
 class StageNode:
     """One orchestrated job: a (stage, recipe, admin unit, region) tuple.
 
-    `region` is set on 'deliver' jobs only. It is part of a delivery
-    job's identity because two declared regions can roll up to the same
-    admin unit (the footprint recipe ships both an eastern and a western
-    North Carolina bundle, and two Boston ones): keyed on the unit alone
-    the two nodes are indistinguishable, so the second never shipped.
+    `region` is set on 'deliver' and 'validate' jobs only. It is part of
+    a delivery job's identity because two declared regions can roll up
+    to the same admin unit (the footprint recipe ships both an eastern
+    and a western North Carolina bundle, and two Boston ones): keyed on
+    the unit alone the two nodes are indistinguishable, so the second
+    never shipped.
     """
 
     stage: str
@@ -98,7 +108,9 @@ def node_key(node: StageNode) -> tuple:
     """Identity of one job: (recipe, admin unit, region).
 
     The stage is not part of it, because a recipe has exactly one, and
-    the region is None everywhere except a delivery job.
+    the region is None everywhere except a delivery or validation job.
+    A validation job shares its recipe, unit and region with the
+    delivery it scores, so its key carries the stage as a fourth part.
 
     Parameters
     ----------
@@ -109,7 +121,35 @@ def node_key(node: StageNode) -> tuple:
     -------
     tuple
     """
+    if node.stage == 'validate':
+        return (node.recipe_id, node.admin_id, node.region, node.stage)
     return (node.recipe_id, node.admin_id, node.region)
+
+
+def validation_manifest_path(recipe, region: str) -> Path:
+    """The file a validate job writes once every notebook has run.
+
+    It sits in the region's accuracies/ folder, beside the tables the
+    notebooks write, and records which notebooks ran and how each ended.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Curate recipe id or dict.
+    region : str
+        Delivery region id.
+
+    Returns
+    -------
+    pathlib.Path
+    """
+    from openplaces.io.delivery import delivery_accuracy_dir
+    from openplaces.recipe import get_recipe_id
+
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    accuracies = delivery_accuracy_dir(recipe, region=region)
+    return accuracies / f'{get_recipe_id(recipe)}_{VALIDATION_MANIFEST_SUFFIX}'
 
 
 def parse_deliver_config(value) -> bool | None:
@@ -124,6 +164,8 @@ def parse_deliver_config(value) -> bool | None:
     then read as None and let an unscoped run ship and overwrite every
     declared bundle. Everything that is not already a bool is normalized
     through its string form instead.
+
+    The same reading applies to `--config validate=...`.
 
     Parameters
     ----------
@@ -163,6 +205,11 @@ class RecipeDAG:
         the bundle is built when the run covers the region the target recipe
         declares, and skipped when it does not, so a scoped debug run leaves
         the shipped files alone. See `_delivery_in_scope`.
+    validate : bool, optional
+        Force the validation jobs on or off. None (default) follows
+        *deliver*: a region that ships is re-scored, under the same
+        scope rules. A region is validated only when its recipe declares
+        notebooks for it (`validation: notebooks:`).
     """
 
     def __init__(
@@ -171,6 +218,7 @@ class RecipeDAG:
         admin_ids: list[str] | None = None,
         exclude_recipe_ids: set[str] | None = None,
         deliver: bool | None = None,
+        validate: bool | None = None,
     ):
         self.target_recipe_id = target_recipe_id
         self.exclude_recipe_ids = set(exclude_recipe_ids or ())
@@ -322,6 +370,16 @@ class RecipeDAG:
                 if member_key in seen:
                     self._edges.append((member_key, consumer_key))
 
+        self.validation_nodes = self._build_validation_nodes(
+            deliver if validate is None else validate
+        )
+        delivered = {node_key(node) for node, _ in self.delivery_nodes}
+        for node, _ in self.validation_nodes:
+            self._nodes.append(node)
+            shipped = (node.recipe_id, node.admin_id, node.region)
+            if shipped in delivered:
+                self._edges.append((shipped, node_key(node)))
+
     @property
     def delivery_node(self):
         """The single delivery job, for recipes that ship exactly one region.
@@ -381,6 +439,34 @@ class RecipeDAG:
         members = {str(a) for a in spec.get('admin_ids') or []}
         return bool(members) and members <= set(self.admin_ids)
 
+    def _regions_in_scope(self, flag: bool | None) -> list[tuple[dict, str]]:
+        """(region spec, bundle admin unit) for each region this run covers.
+
+        The scope rule shared by delivery and validation: *flag* None
+        decides from the requested units, True also forces regions the
+        run touches, False selects nothing.
+        """
+        from openplaces.io.delivery import delivery_admin_id, delivery_regions
+
+        if flag is False:
+            return []
+        recipe = self._recipe(self.target_recipe_id)
+        selected = []
+        for spec in delivery_regions(recipe):
+            admin_id = delivery_admin_id(recipe, region=spec['region_id'])
+            ship = self._delivery_in_scope(spec, admin_id)
+            # deliver=True overrides the narrow-run veto, but only for a
+            # region this run actually touches: forcing a ship from a
+            # handful of Texas counties must not also rebuild the
+            # Carolina bundle, which those counties contribute nothing to.
+            if not ship and flag is True:
+                ship = not self.requested_admin_ids or bool(
+                    set(self.admin_ids) & {str(a) for a in spec['admin_ids']}
+                )
+            if ship:
+                selected.append((spec, str(admin_id)))
+        return selected
+
     def _build_delivery_nodes(
         self, deliver: bool | None
     ) -> list[tuple[StageNode, dict]]:
@@ -390,36 +476,47 @@ class RecipeDAG:
         footprint recipe ships Eastern NC and coastal Texas from identical
         curation logic -- so this is a list, not a single node.
         """
-        from openplaces.io.delivery import delivery_admin_id, delivery_regions
+        return [
+            (
+                StageNode(
+                    'deliver', self.target_recipe_id, admin_id, spec['region_id']
+                ),
+                spec,
+            )
+            for spec, admin_id in self._regions_in_scope(deliver)
+        ]
 
-        if deliver is False:
-            return []
-        recipe = self._recipe(self.target_recipe_id)
+    def _build_validation_nodes(
+        self, validate: bool | None
+    ) -> list[tuple[StageNode, list[str]]]:
+        """One (node, notebooks) per in-scope region that declares any.
+
+        Scoped exactly like delivery, so a one-county debug run neither
+        ships nor re-scores a region. A team twin is never validated on
+        its own: it holds the rows of its public region, whose accuracies
+        are the published ones.
+        """
         nodes = []
-        for spec in delivery_regions(recipe):
-            admin_id = delivery_admin_id(recipe, region=spec['region_id'])
-            ship = self._delivery_in_scope(spec, admin_id)
-            # deliver=True overrides the narrow-run veto, but only for a
-            # region this run actually touches: forcing a ship from a
-            # handful of Texas counties must not also rebuild the
-            # Carolina bundle, which those counties contribute nothing to.
-            if not ship and deliver is True:
-                ship = not self.requested_admin_ids or bool(
-                    set(self.admin_ids) & {str(a) for a in spec['admin_ids']}
+        for spec, admin_id in self._regions_in_scope(validate):
+            if spec.get('audience') == 'team':
+                continue
+            notebooks = self.notebooks_for(self.target_recipe_id, spec['region_id'])
+            if notebooks:
+                node = StageNode(
+                    'validate', self.target_recipe_id, admin_id, spec['region_id']
                 )
-            if ship:
-                nodes.append(
-                    (
-                        StageNode(
-                            'deliver',
-                            self.target_recipe_id,
-                            str(admin_id),
-                            spec['region_id'],
-                        ),
-                        spec,
-                    )
-                )
+                nodes.append((node, notebooks))
         return nodes
+
+    def notebooks_for(self, recipe_id: str, region: str) -> list[str]:
+        """Notebooks a validate job runs, relative to the repository root."""
+        from openplaces.io.curator.validation import validation_notebooks
+
+        return validation_notebooks(self._recipe(recipe_id), region)
+
+    def validation_manifest_path(self, recipe_id: str, region: str) -> Path:
+        """The declared output of one validate job; see the module function."""
+        return validation_manifest_path(self._recipe(recipe_id), region)
 
     def _recipe(self, recipe_id: str) -> dict:
         if recipe_id not in self._recipes:
@@ -572,6 +669,10 @@ class RecipeDAG:
         """
         if stage == 'deliver':
             return self._delivery_paths(recipe_id, admin_id, region)['canonical']
+        if stage == 'validate':
+            return self.validation_manifest_path(
+                recipe_id, self._delivery_region(recipe_id, admin_id, region)
+            )
         return primary_output_path(
             self._recipe(recipe_id), admin_id=self._node_admin(recipe_id, admin_id)
         )
@@ -658,7 +759,7 @@ class RecipeDAG:
         if self._produced_paths_cache is None:
             produced: set[str] = set()
             for node in self._nodes:
-                if node.stage == 'deliver':
+                if node.stage in ('deliver', 'validate'):
                     continue
                 try:
                     produced.add(
@@ -726,6 +827,11 @@ class RecipeDAG:
             # "Missing input files for rule all".
             bundle = self._delivery_paths(recipe_id, admin_id, region)
             return [bundle[role] for role in ('point', 'geo', 'evidence', 'terms')]
+        if stage == 'validate':
+            # What each notebook writes depends on the data it finds (a
+            # reference without rows writes nothing), so only the
+            # manifest is declared.
+            return []
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)
@@ -763,6 +869,11 @@ class RecipeDAG:
     ) -> list[Path]:
         """The input files of one job: upstream outputs plus link sidecars."""
         recipe = self._recipe(recipe_id)
+        if stage == 'validate':
+            # The shipped bundle it scores, so a reship re-scores. The
+            # notebooks are deliberately not inputs: editing one should
+            # not re-score every region on the next unrelated run.
+            return [self._delivery_paths(recipe_id, admin_id, region)['canonical']]
         if stage == 'deliver':
             # Every member county's curated file, so the bundle rebuilds
             # whenever any one of them does. Scoped to this bundle's own
@@ -875,7 +986,7 @@ class RecipeDAG:
         is built, so asking for its output directly raised instead of
         listing the 121 files the run actually produces.
         """
-        if self.delivery_nodes:
+        if self.delivery_nodes or self.validation_nodes:
             paths: list[Path] = []
             for node, _ in self.delivery_nodes:
                 paths.extend(
@@ -883,11 +994,20 @@ class RecipeDAG:
                         node.recipe_id, node.admin_id, node.region
                     ).values()
                 )
+            for node, _ in self.validation_nodes:
+                paths.append(
+                    self.output_path(
+                        node.stage, node.recipe_id, node.admin_id, node.region
+                    )
+                )
             return paths
         paths = []
         seen: set[Path] = set()
         for node in self._nodes:
-            if node.recipe_id != self.target_recipe_id or node.stage == 'deliver':
+            if node.recipe_id != self.target_recipe_id or node.stage in (
+                'deliver',
+                'validate',
+            ):
                 continue
             path = self.output_path(node.stage, node.recipe_id, node.admin_id)
             if path not in seen:
@@ -1076,6 +1196,8 @@ class RecipeDAG:
                 label += f'<br/>{group[1]}'
                 if len(group) > 2 and group[2]:
                     label += f'<br/>{group[2]}'
+                if len(group) > 3:
+                    label += f'<br/>{group[3]}'
             elif collapse_admin and len(info['admins']) > 1:
                 label += f'<br/>({len(info["admins"])} admin units)'
             lines.append(f'    {ids[group]}["{label}"]')

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
@@ -1358,6 +1359,166 @@ def derive_group_class_share(
             f'  derive_group_class_share: {output} over {group_column} -- '
             f'{int(share.notna().sum()):,} rows, mean '
             f'{described.get("mean", float("nan")):.3f}'
+        )
+    return state
+
+
+def _rows_where(curated: pd.DataFrame, where: list[dict] | None) -> pd.Series:
+    """Rows satisfying every indicator in *where* (all rows when empty)."""
+    from openplaces.io.curator.indicators import evaluate_indicator
+
+    matched = pd.Series(True, index=curated.index)
+    for indicator in where or []:
+        matched = matched & evaluate_indicator(curated, indicator)
+    return matched.fillna(False).astype(bool)
+
+
+@_register('derive_group_count')
+def derive_group_count(
+    state: CurateState,
+    group_column: str,
+    output: str,
+    where: list[dict] | None = None,
+) -> CurateState:
+    """Count, per row, the rows of its own group that satisfy *where*.
+
+    Writes the same count onto every row of a group, the row itself
+    included when it qualifies. The motivating case is the second
+    occupancy pass on small secondary footprints: how many footprints on
+    this footprint's parcel are primary and were voted Manufactured Home
+    by the first pass (``n_primary_manufactured_homes_per_parcel``).
+
+    Method note: a groupby on the entity's own id
+    ---------------------------------------------
+    The group is an identifier the row already carries (``parcel_id``),
+    and the count is a plain groupby over it. No geometry is read: no
+    buffering, no union of boundaries, no nearest-neighbor or distance
+    search, and nothing from neighboring groups, and no parameter is
+    learned from the data. That keeps it apart from the geometric
+    "community" detection shape of the patent-risk section of AGENTS.md,
+    in the same way as :func:`derive_group_class_share`.
+
+    Feedback loops
+    --------------
+    A count over a vote's output may feed a later vote only if that
+    vote cannot change the rows counted. The second occupancy pass
+    counts primaries and rewrites secondaries only, which is what makes
+    reading the first pass's classes safe there.
+
+    Parameters
+    ----------
+    group_column : str
+        Column holding the group id. Rows without one get a missing
+        count, and a missing group column leaves *output* unwritten.
+    output : str
+        Column to write the count into (nullable integer).
+    where : list of dict, optional
+        Voting indicators (see
+        :func:`~openplaces.io.curator.indicators.evaluate_indicator`) a
+        row must all satisfy to be counted; every row counts when
+        omitted.
+    """
+    curated = state.curated
+    if group_column not in curated.columns:
+        if state.verbose:
+            print(f'  derive_group_count: {group_column} absent, {output} not derived.')
+        return state
+    groups = curated[group_column]
+    qualifies = _rows_where(curated, where) & groups.notna()
+    counts = qualifies.astype('int64').groupby(groups).transform('sum')
+    curated[output] = counts.where(groups.notna()).astype('Int64')
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  derive_group_count: {output} over {group_column}, '
+            f'{int(qualifies.sum()):,} qualifying rows'
+        )
+    return state
+
+
+@_register('derive_group_rank')
+def derive_group_rank(
+    state: CurateState,
+    group_column: str,
+    output: str,
+    rank_by: str,
+    where: list[dict] | None = None,
+    id_column: str | None = None,
+) -> CurateState:
+    """Rank the qualifying rows of each group by *rank_by*, largest first.
+
+    A qualifying row's rank is 1 plus the number of qualifying rows of
+    its group that come before it: a larger *rank_by*, or an equal one
+    and a smaller id. Ties are therefore broken deterministically by id,
+    never by row order, so a rerun ranks a parcel's footprints the same
+    way. Rows that do not qualify, or have no group, get a missing rank;
+    a missing *rank_by* ranks after every present value.
+
+    The second occupancy pass reads it against a record's unit count:
+    where a parcel's roll lists two mobile homes, its two largest
+    Manufactured Home footprints keep that class
+    (``manufactured_home_rank_on_parcel``). Like
+    :func:`derive_group_count` it is a groupby on an id the row carries,
+    with no geometry and no learned parameter.
+
+    Parameters
+    ----------
+    group_column : str
+        Column holding the group id.
+    output : str
+        Column to write the rank into (nullable integer).
+    rank_by : str
+        Numeric column ranked in descending order (e.g. ``area_m2``).
+    where : list of dict, optional
+        Voting indicators a row must all satisfy to be ranked; every row
+        with a group is ranked when omitted.
+    id_column : str, optional
+        Column breaking ties, ascending. Defaults to the frame's index
+        (the entity id on a curated table).
+    """
+    curated = state.curated
+    if group_column not in curated.columns or rank_by not in curated.columns:
+        if state.verbose:
+            print(
+                f'  derive_group_rank: {group_column} or {rank_by} absent, '
+                f'{output} not derived.'
+            )
+        return state
+    groups = curated[group_column]
+    qualifies = _rows_where(curated, where) & groups.notna()
+    rank = pd.Series(pd.NA, index=curated.index, dtype='Int64')
+    if qualifies.any():
+        ids = (
+            curated[id_column]
+            if id_column and id_column in curated.columns
+            else pd.Series(curated.index, index=curated.index)
+        )
+        frame = pd.DataFrame(
+            {
+                'group': groups[qualifies].to_numpy(),
+                'value': pd.to_numeric(curated[rank_by], errors='coerce')[
+                    qualifies
+                ].to_numpy(),
+                'id': ids[qualifies].astype(str).to_numpy(),
+                'position': np.flatnonzero(qualifies.to_numpy()),
+            }
+        )
+        frame = frame.sort_values(
+            ['group', 'value', 'id'],
+            ascending=[True, False, True],
+            na_position='last',
+            kind='mergesort',
+        )
+        frame['rank'] = frame.groupby('group', sort=False).cumcount() + 1
+        values = rank.to_numpy(dtype=object)
+        values[frame['position'].to_numpy()] = frame['rank'].to_numpy()
+        rank = pd.Series(values, index=curated.index).astype('Int64')
+    curated[output] = rank
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  derive_group_rank: {output} over {group_column} by {rank_by}, '
+            f'{int(qualifies.sum()):,} ranked rows'
         )
     return state
 

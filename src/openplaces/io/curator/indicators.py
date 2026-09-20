@@ -67,6 +67,13 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       matches. A zero or missing total never matches: a parcel with no
       assessed value at all says nothing about the share, and letting it
       match voted Condominium on 77% of Sampson County NC (2026-09-13).
+      "This row carries no value" is a different question from "this
+      row's share is small", and is asked as one: ``numeric_at_most``
+      with ``max: 0`` on the value column (False on a missing value),
+      inside an ``all_of`` with whatever presence test the row needs,
+      pooled with the share test through ``any_of`` when both readings
+      should count once. The footprint recipe's ``no_improvement_value``
+      indicator is the worked example.
     - ``value_share_at_least``: ``value / sum(total) >= min_ratio``, the mirror
       of ``value_share_below``. No ``include_zero`` option: a zero ``value``
       can never satisfy ``>= min_ratio`` for any positive ``min_ratio``.
@@ -84,6 +91,21 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       all-False like every other type, not all-True.
     - ``numeric_at_least`` (alias ``count_at_least``): ``column >= min``.
     - ``numeric_at_most``: ``column <= max``.
+    - ``numeric_below``: ``column < max``, the strict bound, for a cutoff
+      stated as "under" (a footprint under 40 m2 is not one of 40 m2),
+      and for a band that must stop short of a cutoff another indicator
+      starts at, so a value on the cutoff scores once (the footprint
+      recipe's ``shape_band`` below the ``morphology`` aspect cutoff).
+    - ``column_greater_than``: ``column > other``, two columns of the same
+      row compared numerically; False where either is missing. For a
+      rank read against a count (the third-largest home on a parcel
+      whose record lists two).
+    - ``has_token``: the ``+``-separated parts of ``column`` include one
+      of ``values``. Matches whole parts only, the way
+      ``provenance.is_imputed`` reads its marker, so a provenance token
+      ``keyword_probability+morphology`` has the part
+      ``keyword_probability`` and not ``keyword``. For a later vote that
+      asks which labeled indicators carried an earlier one.
     - ``any_of``: true where any of the nested ``indicators`` matches. Lets a
       backing signal corroborate an existing indicator (e.g. an independent
       source agreeing with a generic column) without contributing an extra
@@ -93,6 +115,11 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       an elongation ratio is evidence of a manufactured home only together
       with a small footprint area, since a long warehouse satisfies the
       ratio alone.
+    - ``none_of``: true where none of the nested ``indicators`` matches,
+      the vocabulary's one negation. A nested indicator over an absent
+      column matches nowhere, so ``none_of`` over it holds everywhere:
+      "no evidence of X" is read as not X, which is what an exception
+      list wants and what a positive claim must not rely on.
     """
     false = pd.Series(False, index=curated.index)
     kind = indicator['type']
@@ -102,6 +129,21 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
         for sub in indicator.get('indicators', []):
             matched = matched | evaluate_indicator(curated, sub)
         return matched
+
+    if kind == 'none_of':
+        matched = false
+        for sub in indicator.get('indicators', []):
+            matched = matched | evaluate_indicator(curated, sub)
+        return ~matched
+
+    if kind == 'column_greater_than':
+        col = indicator.get('column')
+        other = indicator.get('other')
+        if col not in curated.columns or other not in curated.columns:
+            return false
+        left = pd.to_numeric(curated[col], errors='coerce')
+        right = pd.to_numeric(curated[other], errors='coerce')
+        return (left > right).fillna(False).astype(bool)
 
     if kind == 'all_of':
         nested = indicator.get('indicators', [])
@@ -179,6 +221,28 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
             pd.to_numeric(curated[col], errors='coerce') <= float(indicator['max'])
         ).fillna(False)
 
+    if kind == 'numeric_below':
+        return (
+            pd.to_numeric(curated[col], errors='coerce') < float(indicator['max'])
+        ).fillna(False)
+
+    if kind == 'has_token':
+        wanted = {str(v) for v in indicator['values']}
+        text = curated[col].astype(object)
+        present = text.notna()
+        matched = pd.Series(False, index=curated.index)
+        if present.any():
+            # Decided once per distinct token, not once per row: a
+            # provenance column holds a few dozen tokens over millions
+            # of rows.
+            tokens = text[present].astype(str)
+            lookup = {
+                token: not wanted.isdisjoint(token.split('+'))
+                for token in tokens.unique()
+            }
+            matched.loc[present] = tokens.map(lookup).astype(bool)
+        return matched.astype(bool)
+
     raise ValueError(f'Unknown voting indicator type: {kind!r}.')
 
 
@@ -222,11 +286,15 @@ def score_decisions(
     token : pandas.Series
         How the winning decision was carried: the ``label`` of every one of
         its indicators that actually fired for that row, joined with ``+``
-        in recipe order. Falls back to the decision's declared ``source``
-        where it labeled no indicators (or none of them matched), and is
-        missing where it set neither -- callers apply their own default.
-        Labeling indicators is therefore opt-in per recipe, and an
-        unannotated recipe keeps its previous behavior.
+        in recipe order. An indicator may name a ``label_column`` instead
+        (or as well), whose own per-row value is used as the label, so a
+        decision relaying an earlier vote's answer can report that vote's
+        recorded evidence; a missing value there adds nothing. Falls back
+        to the decision's declared ``source`` where it labeled no
+        indicators (or none of them matched), and is missing where it
+        set neither -- callers apply their own default. Labeling
+        indicators is therefore opt-in per recipe, and an unannotated
+        recipe keeps its previous behavior.
     best_score, second_score : pandas.Series
         Winning and runner-up scores among decisions that individually
         reached their own ``min_score``. ``second_score`` is missing where
@@ -258,6 +326,15 @@ def score_decisions(
             label = indicator.get('label')
             if label:
                 fired = fired + np.where(matched.to_numpy(), f'{label}+', '')
+            label_column = indicator.get('label_column')
+            if label_column and label_column in curated.columns:
+                # The evidence an earlier vote recorded, carried forward
+                # so a decision that only relays that vote names what
+                # actually decided it rather than the relay.
+                carried = curated[label_column].astype('string')
+                usable = matched & carried.notna() & carried.str.len().gt(0)
+                usable = usable.fillna(False).astype(bool)
+                fired = fired.where(~usable, fired + carried.fillna('') + '+')
         if score_classes and decision['class'] in score_classes:
             scores[decision['class']] = score
         fired = fired.str.rstrip('+')

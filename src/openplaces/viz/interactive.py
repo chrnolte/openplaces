@@ -201,6 +201,7 @@ def set_camera_pitch(
     pitch: float | None = None,
     max_pitch: float = 85.0,
     min_pitch: float | None = None,
+    reassert_above: float | None = 59.0,
 ):
     """Raise a lonboard map's camera pitch ceiling, and keep it raised.
 
@@ -220,8 +221,10 @@ def set_camera_pitch(
     is not visible in Python either — the widget reports whatever came back
     last.
 
-    This sets the constraint once and installs a `view_state` observer that
-    re-applies it whenever a round-trip drops it. `pitch` (the starting
+    This sets the constraint once, installs a `view_state` observer that
+    re-applies it where the default ceiling would bind, and stops
+    ipywidgets from bouncing each camera echo back to the browser as a
+    reset (the reason pitch reads as locked: see the inline note). `pitch` (the starting
     tilt) is deliberately applied only once: re-asserting it on every change
     would fight the user's own dragging, whereas the ceiling is a constraint
     they never set by hand.
@@ -240,6 +243,17 @@ def set_camera_pitch(
         starts z-fighting — so 90 is unusable in practice.
     min_pitch : float, optional
         Pitch floor in degrees. `None` (default) leaves it unmanaged.
+    reassert_above : float, optional
+        Only re-apply the constraints when the echoed pitch is above this
+        many degrees (default 59, just under lonboard's 60 ceiling).
+        Every write from Python is a camera reset on the JS side (lonboard
+        feeds `view_state` back to deck.gl as `initialViewState`), and the
+        echo it answers lags the pointer, so writing on every interaction
+        drags the camera back toward its last echoed pose: a drag toward
+        pitch 0 stalls a few degrees at a time, which reads as a locked
+        floor. Below the default ceiling nothing needs re-applying unless
+        a floor above lonboard's default 0 was requested, so no write is
+        made there. `None` re-applies on every echo, the old behavior.
 
     Returns
     -------
@@ -274,14 +288,88 @@ def set_camera_pitch(
 
     def _reassert(change):
         new = change['new']
-        # Guard against recursing forever: assigning inside the observer
-        # fires it again, and the second pass must find nothing to do.
-        if not isinstance(new, MapViewState) or new.max_pitch == max_pitch:
-            return
-        map_widget.view_state = _constrain(new, include_pitch=False)
+        if _needs_reassert(new, max_pitch, min_pitch, reassert_above):
+            map_widget.view_state = _constrain(new, include_pitch=False)
 
     map_widget.observe(_reassert, names='view_state')
+
+    # Stop ipywidgets bouncing every camera move back to the browser.
+    # lonboard's frontend sends the pose without its constraints, the
+    # trait validates it into a full MapViewState (max_pitch 60, min_pitch
+    # 0 by default), and ipywidgets, seeing a value that serializes
+    # differently from what arrived, sends it straight back. Each such
+    # bounce is a camera reset to a pose already behind the pointer, with
+    # the ceiling back at 60: a drag stalls and reads as a locked pitch.
+    # A view state carrying lonboard's own default constraints while the
+    # frontend's value is locked can only be that echo; our re-assert
+    # above carries the requested constraints and still goes through.
+    original_should_send = map_widget._should_send_property
+    defaults = MapViewState()
+
+    def _should_send(key, value):
+        if (
+            key == 'view_state'
+            and key in map_widget._property_lock
+            and isinstance(value, MapViewState)
+            and value.max_pitch == defaults.max_pitch
+            and value.min_pitch == defaults.min_pitch
+        ):
+            return False
+        return original_should_send(key, value)
+
+    map_widget._should_send_property = _should_send
     return map_widget
+
+
+def _needs_reassert(view_state, max_pitch, min_pitch, reassert_above) -> bool:
+    """Whether an echoed view state needs its pitch constraints re-applied.
+
+    False when the constraints already hold (which also stops the
+    observer recursing on its own write), and false below
+    `reassert_above`, where the defaults lonboard's echo falls back to
+    (ceiling 60, floor 0) do not bind; see `set_camera_pitch`.
+    """
+    from lonboard.view_state import MapViewState
+
+    if not isinstance(view_state, MapViewState):
+        return False
+    if view_state.max_pitch == max_pitch and (
+        min_pitch is None or view_state.min_pitch == min_pitch
+    ):
+        return False
+    if reassert_above is None or view_state.pitch > reassert_above:
+        return True
+    # Below the ceiling only a requested floor above lonboard's default
+    # (0) can still bind, so only that is worth a write.
+    return min_pitch is not None and min_pitch > 0
+
+
+# A MapLibre style that needs no API key. lonboard draws its map
+# controls (fullscreen, navigation, scale) through the MapLibre basemap,
+# so a Map without one loses them; its default style is CARTO's, which
+# now asks for a key. OpenFreeMap serves this one without.
+KEYLESS_BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
+
+
+def get_maplibre_basemap(style: str = KEYLESS_BASEMAP_STYLE):
+    """A lonboard MapLibre basemap that needs no API key.
+
+    Pass as `Map(..., basemap=get_maplibre_basemap())` under a raster
+    `get_basemap_layer`, which covers it; it is there for the map
+    controls and as the ground the camera pans against.
+
+    Parameters
+    ----------
+    style : str
+        URL of a MapLibre style. Default `KEYLESS_BASEMAP_STYLE`.
+
+    Returns
+    -------
+    lonboard.basemap.MaplibreBasemap
+    """
+    from lonboard.basemap import MaplibreBasemap
+
+    return MaplibreBasemap(style=style)
 
 
 def get_basemap_layer(
@@ -339,13 +427,22 @@ def _drape_boundary(
     elevation_recipe,
     terrain_exaggeration: float,
     elevation_datum: float = 0.0,
+    densify: float = 10.0,
+    profile_tolerance: float = 0.5,
 ) -> gpd.GeoDataFrame:
-    """Set each boundary vertex's Z from the DEM, exaggerated to match."""
+    """Set each boundary vertex's Z from the DEM, exaggerated to match.
+
+    Segments longer than `densify` meters get intermediate vertices
+    first: deck.gl draws a straight chord between consecutive vertices,
+    and a town boundary's kilometer-long straight runs would otherwise
+    cut through or float above every hill in between.
+    """
     if elevation_recipe is None:
         return gdf
 
     elevation_module = _elevation_module()
     draping = gdf.copy()
+    draping.geometry = elevation_module._densify(draping.geometry, densify)
     column = '_dem_admin_id'
     draping[column] = elevation_module.resolve_dem_admin_ids(draping, elevation_recipe)
 
@@ -366,6 +463,14 @@ def _drape_boundary(
         draping, elevation_recipe, admin_id_column=column, cache=False
     )
     draping = draping.drop(columns=column)
+    # Thin the densified line where the profile is nearly straight, the
+    # same way the parcel rings are thinned, so a boundary crossing a
+    # plain costs a handful of vertices and one through a river valley
+    # keeps every bend of the profile.
+    draped_geometry = elevation_module.thin_profile(
+        gpd.GeoSeries(np.asarray(draped_geometry), index=draping.index, crs=gdf.crs),
+        profile_tolerance,
+    )
     # Reference, clamp, then exaggerate -- the same order
     # `viz.terrain.show_value_terrain_layer` uses, so a boundary and the
     # terrain it outlines land on the same surface.
@@ -380,6 +485,177 @@ def _drape_boundary(
         crs=gdf.crs,
     )
     return draping
+
+
+def _to_crs_keep_z(geometry: gpd.GeoSeries, crs) -> np.ndarray:
+    """Reproject x/y and carry each vertex's z through untouched."""
+    source = geometry.to_numpy()
+    if geometry.crs == crs:
+        return source
+    projected = geometry.to_crs(crs).to_numpy()
+    if not shapely.has_z(source).any():
+        return projected
+    xyz = shapely.get_coordinates(source, include_z=True)
+    xy = shapely.get_coordinates(projected)
+    return shapely.set_coordinates(
+        shapely.force_3d(projected, z=0.0), np.column_stack([xy, xyz[:, 2]])
+    )
+
+
+def _snap_boundary_to_vertices(
+    lines: gpd.GeoDataFrame,
+    snap_to,
+    tolerance: float,
+    max_gap: float,
+) -> gpd.GeoDataFrame:
+    """Pin draped boundary lines to the vertices of an adjacent 3D layer.
+
+    A boundary and the parcels along it are draped from different vertex
+    sets, and deck.gl draws each as straight segments between its own
+    vertices, so their ground lines agree only where a vertex happens to
+    coincide. This inserts every `snap_to` vertex within `tolerance`
+    meters of a line into that line, at its projection, carrying the
+    vertex's own z, and re-derives the z of the line's original vertices
+    by linear interpolation between the inserted neighbors, which is
+    exactly the chord the adjacent wall top follows. An original vertex
+    whose inserted neighbors are more than `max_gap` meters apart (no
+    parcels along that stretch, e.g. open water) keeps its draped z.
+
+    Parameters
+    ----------
+    lines : geopandas.GeoDataFrame
+        Boundary lines with z already set (draped).
+    snap_to : geopandas.GeoDataFrame or GeoSeries
+        3D geometry in scene z, e.g. the `gdf` of a terrain layer.
+    tolerance : float
+        Distance in meters within which a vertex counts as on the line.
+    max_gap : float
+        Longest stretch, in meters, between inserted vertices across
+        which original vertices are re-interpolated.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        `lines` with the snapped geometry, in the input CRS.
+    """
+    snap_geometry = gpd.GeoSeries(getattr(snap_to, 'geometry', snap_to))
+    if not shapely.has_z(snap_geometry.to_numpy()).any():
+        warnings.warn(
+            'snap_to carries no z coordinates; boundary not snapped.', stacklevel=3
+        )
+        return lines
+    metric_crs = lines.crs if lines.crs.is_projected else lines.estimate_utm_crs()
+    metric_lines = _to_crs_keep_z(lines.geometry, metric_crs)
+    snap_xyz = shapely.get_coordinates(
+        _to_crs_keep_z(snap_geometry, metric_crs), include_z=True
+    )
+    snap_xyz = np.unique(np.round(snap_xyz, 3), axis=0)
+    tree = shapely.STRtree(shapely.points(snap_xyz[:, :2]))
+
+    parts, part_index = shapely.get_parts(metric_lines, return_index=True)
+    snapped_parts = []
+    for part in parts:
+        own = shapely.get_coordinates(part, include_z=True)
+        steps = np.hypot(np.diff(own[:, 0]), np.diff(own[:, 1]))
+        d_own = np.concatenate([[0.0], np.cumsum(steps)])
+
+        near = tree.query(part, predicate='dwithin', distance=tolerance)
+        if len(near) == 0:
+            snapped_parts.append(part)
+            continue
+        d_snap = shapely.line_locate_point(part, shapely.points(snap_xyz[near, :2]))
+        z_snap = snap_xyz[near, 2]
+        # Two neighbors sharing a vertex insert it twice; keep one.
+        d_snap, first = np.unique(np.round(d_snap, 3), return_index=True)
+        z_snap = z_snap[first]
+
+        # Original vertices between two inserted ones take the chord.
+        z_own = own[:, 2].copy()
+        after = np.searchsorted(d_snap, d_own)
+        has_both = (after > 0) & (after < len(d_snap))
+        prev_d = d_snap[np.clip(after - 1, 0, len(d_snap) - 1)]
+        next_d = d_snap[np.clip(after, 0, len(d_snap) - 1)]
+        interpolate = has_both & ((next_d - prev_d) <= max_gap)
+        # An inserted vertex coinciding with an original replaces it.
+        coincides = np.isin(np.round(d_own, 3), d_snap)
+        interpolate |= coincides
+        if interpolate.any():
+            z_own[interpolate] = np.interp(d_own[interpolate], d_snap, z_snap)
+        keep = ~coincides
+        keep[0] = keep[-1] = True
+
+        snap_xy = shapely.get_coordinates(shapely.line_interpolate_point(part, d_snap))
+        merged_d = np.concatenate([d_own[keep], d_snap])
+        merged = np.vstack(
+            [
+                np.column_stack([own[keep, :2], z_own[keep]]),
+                np.column_stack([snap_xy, z_snap]),
+            ]
+        )
+        merged = merged[np.argsort(merged_d, kind='stable')]
+        # A closed ring must end where it starts, at the start's z.
+        if np.allclose(own[0, :2], own[-1, :2]):
+            merged[-1] = merged[0]
+        snapped_parts.append(shapely.linestrings(merged))
+
+    snapped_parts = np.asarray(snapped_parts, dtype=object)
+    result = np.empty(len(metric_lines), dtype=object)
+    for i in range(len(metric_lines)):
+        own_parts = snapped_parts[part_index == i]
+        result[i] = (
+            own_parts[0] if len(own_parts) == 1 else shapely.multilinestrings(own_parts)
+        )
+    out = lines.copy()
+    out.geometry = gpd.GeoSeries(
+        _to_crs_keep_z(gpd.GeoSeries(result, crs=metric_crs), lines.crs),
+        index=lines.index,
+        crs=lines.crs,
+    )
+    return out
+
+
+def _ribbon_from_lines(lines: gpd.GeoDataFrame, half_width: float) -> gpd.GeoSeries:
+    """One thin quad per line segment, its corners at the segment's own z.
+
+    A quad per segment rather than one buffered ribbon: deck.gl
+    triangulates a polygon's cap with earcut, which drops vertices that
+    are collinear in x/y, and a ribbon's long straight runs are exactly
+    that. Their cap then chorded between the corners while the walls
+    followed every vertex, a slanted face hanging under the fence top. A
+    quad has four corners, none collinear, so nothing can be dropped;
+    neighboring quads share their end vertices, so the fence stays
+    closed.
+    """
+    metric_crs = lines.crs if lines.crs.is_projected else lines.estimate_utm_crs()
+    metric_lines = _to_crs_keep_z(lines.geometry, metric_crs)
+    has_z = shapely.has_z(metric_lines)
+    result = np.empty(len(metric_lines), dtype=object)
+    for i, line in enumerate(metric_lines):
+        quads = []
+        for part in shapely.get_parts(line):
+            xyz = shapely.get_coordinates(part, include_z=True)
+            if not has_z[i]:
+                xyz[:, 2] = 0.0
+            a, b = xyz[:-1], xyz[1:]
+            direction = b[:, :2] - a[:, :2]
+            length = np.hypot(direction[:, 0], direction[:, 1])
+            keep = length > 0
+            a, b, direction, length = a[keep], b[keep], direction[keep], length[keep]
+            normal = (
+                np.column_stack([-direction[:, 1], direction[:, 0]]) / length[:, None]
+            )
+            offset = np.column_stack([normal * half_width, np.zeros(len(normal))])
+            corners = np.stack([a + offset, b + offset, b - offset, a - offset], axis=1)
+            quads.append(shapely.polygons(corners))
+        quads = np.concatenate(quads) if quads else np.empty(0, dtype=object)
+        if not has_z[i]:
+            quads = shapely.force_2d(quads)
+        result[i] = shapely.multipolygons(quads)
+    return gpd.GeoSeries(
+        _to_crs_keep_z(gpd.GeoSeries(result, crs=metric_crs), lines.crs),
+        index=lines.index,
+        crs=lines.crs,
+    )
 
 
 def get_terrain_basemap_layer(
@@ -710,6 +986,9 @@ def get_admin_boundary_layer(
     elevation_recipe: str | dict | None = None,
     terrain_exaggeration: float = 1.0,
     elevation_datum: float = 0.0,
+    snap_to=None,
+    snap_tolerance: float = 1.0,
+    snap_max_gap: float = 100.0,
 ) -> PathLayer | PolygonLayer:
     """Get a lonboard layer representing administrative boundary outlines.
 
@@ -778,6 +1057,22 @@ def get_admin_boundary_layer(
         value passed to every other layer in the scene -- compute it once
         with `viz.elevation.get_elevation_datum`. Ground is clamped at z=0
         afterward so nothing sinks under a flat basemap.
+    snap_to : geopandas.GeoDataFrame or GeoSeries, optional
+        3D geometry already in scene z, typically the `gdf` of the terrain
+        layer the boundary runs through (`show_value_terrain_layer(...).gdf`).
+        Every vertex of it within `snap_tolerance` meters of the boundary
+        is inserted into the boundary line with its own z, and the line's
+        original vertices in between are re-interpolated along the chord,
+        so the boundary's ground line is flush with the walls beside it
+        rather than sampled from the DEM at its own, different vertices.
+        Requires `elevation_recipe`; see `_snap_boundary_to_vertices`.
+    snap_tolerance : float
+        Distance in meters within which a `snap_to` vertex counts as on
+        the boundary. Default 1.
+    snap_max_gap : float
+        Longest stretch in meters between two inserted vertices across
+        which the boundary's own vertices are re-interpolated; a longer
+        gap (no parcels there) keeps the draped z. Default 100.
 
     Returns
     -------
@@ -786,6 +1081,16 @@ def get_admin_boundary_layer(
     if gdf is None:
         gdf = get_admin(admin_id, level=level, recipe=recipe, geom=True)
 
+    # Both modes start from the draped boundary line, snapped to the
+    # adjacent layer if asked; the fence then thickens it into a ribbon.
+    lines = gdf.copy()
+    lines.geometry = gdf.geometry.boundary
+    lines = _drape_boundary(
+        lines, elevation_recipe, terrain_exaggeration, elevation_datum
+    )
+    if snap_to is not None and elevation_recipe is not None:
+        lines = _snap_boundary_to_vertices(lines, snap_to, snap_tolerance, snap_max_gap)
+
     rgba_color = _parse_line_color(color, opacity=opacity)
     rgba_fill_color = _parse_line_color(fill_color, opacity=fill_opacity)
 
@@ -793,18 +1098,12 @@ def get_admin_boundary_layer(
         # Raise walls to elevation (default to 10.0m if not specified)
         wall_height = 10.0 if elevation is None else elevation
 
-        # Buffer the boundary to create a very narrow 3D wall footprint
-        # Project to EPSG:3857 to buffer in meters, then project back
-        boundary_gdf = gdf.copy()
-        boundary_gdf.geometry = (
-            gdf.geometry.boundary.to_crs('EPSG:3857').buffer(0.05).to_crs(gdf.crs)
-        )
-        # Drape the wall's footprint, not its top: `get_elevation` then
-        # raises a constant-height wall from wherever the ground is, so
-        # the fence follows the terrain instead of being sliced by it.
-        boundary_gdf = _drape_boundary(
-            boundary_gdf, elevation_recipe, terrain_exaggeration, elevation_datum
-        )
+        # A very narrow wall footprint around the line, each vertex at
+        # the line's own ground z: `get_elevation` then raises a
+        # constant-height wall from wherever the ground is, so the fence
+        # follows the terrain instead of being sliced by it.
+        boundary_gdf = lines.copy()
+        boundary_gdf.geometry = _ribbon_from_lines(lines, half_width=0.05)
 
         return PolygonLayer.from_geopandas(
             boundary_gdf,
@@ -831,10 +1130,8 @@ def get_admin_boundary_layer(
         extensions.append(PathStyleExtension(dash=True))
         extra_kwargs['get_dash_array'] = list(dash_array)
 
-    boundary_gdf = gdf.copy()
-    boundary_gdf.geometry = gdf.geometry.boundary
+    boundary_gdf = lines
     draped = elevation_recipe is not None
-    boundary_gdf = _drape_boundary(boundary_gdf, elevation_recipe, terrain_exaggeration)
 
     if elevation is not None:
         import shapely

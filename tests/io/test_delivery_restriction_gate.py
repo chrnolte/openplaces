@@ -367,3 +367,47 @@ def test_a_team_bundle_still_withholds_sources_not_cleared_for_it(
     team = export_delivery(_recipe(), region='test-region.team')
 
     assert _read(team, 'canonical').loc[['a', 'b'], 'year_built'].isna().all()
+
+
+# A source that is not a layer.
+
+
+def test_a_column_source_is_withheld_by_its_columns_only():
+    """A permit table linked for one evidence column touches nothing else.
+
+    Its recipe maps year_built and county_fips like any roll, and its scope
+    is national, but `restricted_inputs` lists only the columns the link
+    let through. Read as a layer, the layer rules emptied year_built and
+    county_fips across every county of a bundle; read as what it is,
+    only its own column goes, and 'parcel' tokens say nothing about it.
+    """
+    permits = {
+        **_source(
+            'permitvendor',
+            'US',
+            ['occupancy_type_property_permitvendor', 'n_permits_per_footprint'],
+            'property',
+        ),
+        'layer_source': False,
+    }
+    frame = _frame()
+    frame['occupancy_type_property_permitvendor'] = ['Single', None, 'Multi']
+    frame['county_fips'] = ['37001', '37003', '37005']
+
+    cells = find_restricted(frame, [permits], 'admin3_id')['cells']
+
+    assert cells['occupancy_type_property_permitvendor'].tolist() == [
+        True,
+        False,
+        True,
+    ]
+    assert 'year_built' not in cells
+    assert 'county_fips' not in cells
+    assert 'address' not in cells
+
+
+def test_a_layer_source_keeps_the_layer_rules():
+    """The Edgecombe case is unchanged by the column-source distinction."""
+    layer = {**CLOSED, 'layer_source': True}
+    cells = find_restricted(_frame(), [layer], 'admin3_id')['cells']
+    assert cells['address'].tolist() == [True, False, False]

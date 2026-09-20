@@ -25,7 +25,7 @@ from openplaces.core.constants import (
 from openplaces.core.schema import AdminId, admin_scope_covers
 from openplaces.geo import get_crs
 from openplaces.geo.ids import add_parcel_id_alnum, get_geo_ids
-from openplaces.geo.overlay import overlay_admin_ids
+from openplaces.geo.overlay import overlay_admin_ids, prefer_located_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
     fix_polygons,
@@ -647,7 +647,12 @@ class TableIngester:
                 )
                 extracted_path = extracted_paths.get(str(data_path))
                 if extracted_path is None:
-                    unzip(data_path, self.recipe_heap_dir)
+                    unzip(
+                        data_path,
+                        self.recipe_heap_dir,
+                        members=self.recipe.get('extract_members'),
+                        verbose=self.verbose,
+                    )
                     extracted_path = find_latest_file_or_gdb(self.recipe_heap_dir)
                     if extracted_path is None:
                         raise OSError(
@@ -938,11 +943,20 @@ class TableIngester:
             # a download partition (several tests drive `process` directly
             # on a prepared frame).
             partition = getattr(self, 'download_partition', None) or {}
+            partition_admin_id = partition.get(
+                'admin_id_to_download'
+            ) or self.recipe.get('admin_id')
+            # The chunk's own admin unit decides an entry's `admin_ids`
+            # scope: a statewide file split per county by `process_by`
+            # downloads as the state, and only the chunk knows the
+            # county. Without a process chunk the frame covers the
+            # partition, so that is its unit.
+            chunk = getattr(self, 'processing_chunk', None) or {}
             df = apply_transformations(
                 df,
                 self.recipe,
-                admin_id=partition.get('admin_id_to_download')
-                or self.recipe.get('admin_id'),
+                admin_id=partition_admin_id,
+                process_admin_id=chunk.get('admin_id_to_process') or partition_admin_id,
             )
             cols_added = [v for v in df if v not in cols_before]
         else:
@@ -1141,12 +1155,30 @@ class TableIngester:
                 k: v for k, v in admin_specs.items() if k in _overlay_keys
             }
             cols_before = set(df.columns)
+            # `fallback_to_existing: true` keeps an admin id the recipe
+            # already derived (e.g. from a county-name column) for rows
+            # whose location resolves no unit, and reports how often the
+            # two disagree. Without it the overlay overwrites the column
+            # in place and a row without coordinates loses its unit.
+            _admin_col = admin_geometries.index.name
+            existing_ids = None
+            if (
+                not use_spatial_mask
+                and admin_specs.get('fallback_to_existing')
+                and _admin_col in df.columns
+            ):
+                existing_ids = df[_admin_col].copy()
             df = overlay_admin_ids(
                 df,
                 admin_geometries=admin_geometries,
                 timer=self.timer,
                 **kwargs_overlay,
             )
+            if existing_ids is not None:
+                df[_admin_col], counts = prefer_located_admin_ids(
+                    df[_admin_col], existing_ids
+                )
+                self._report_located_admin_ids(_admin_col, counts)
             _new_cols = [v for v in df.columns if v not in cols_before]
             cols_added += _new_cols
 
@@ -1159,7 +1191,6 @@ class TableIngester:
             # columns the overlay added: `overlay_admin_ids` writes that
             # column in place, so a recipe that already maps or derives it
             # added no column at all and the drop never ran.
-            _admin_col = admin_geometries.index.name
             if use_spatial_mask and _admin_col in df.columns:
                 df = df[df[_admin_col].notna()]
 
@@ -1623,6 +1654,36 @@ class TableIngester:
                 )
 
     # Utilities
+
+    def _report_located_admin_ids(self, column, counts):
+        """Report how location-derived admin ids compared with the recipe's.
+
+        Printed unconditionally, like the save messages: a share of rows
+        moving to a neighboring unit changes what every downstream file
+        of that unit holds, so it should not depend on `verbose`. The
+        counts are kept on the instance (summed over chunks) for callers
+        and tests.
+
+        Parameters
+        ----------
+        column : str
+            Admin id column that was assigned.
+        counts : dict of str to int
+            Output of `prefer_located_admin_ids`.
+        """
+        totals = getattr(self, 'located_admin_id_counts', None) or {}
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+        self.located_admin_id_counts = totals
+        n_rows = sum(counts[k] for k in ('located', 'fallback', 'unresolved'))
+        share = counts['disagree'] / counts['located'] if counts['located'] else 0.0
+        print(
+            f'  {column} by location: {counts["located"]:,d} of {n_rows:,d} '
+            f'rows; {counts["disagree"]:,d} ({share:.1%}) moved from the '
+            f'recipe-derived unit; {counts["fallback"]:,d} kept the '
+            f'recipe-derived unit (no location match); '
+            f'{counts["unresolved"]:,d} unresolved.'
+        )
 
     def _get_labels(self, column):
         """Get code → label dict for a categorical column.

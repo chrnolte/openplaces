@@ -133,6 +133,24 @@ additional_layers:
         operation: to_numeric
         input: n_stories
         output: n_stories
+      # LOT_SIZE is in the unit LOT_UNITS names, one per town: A
+      # (acres) on 2,295,001 of the 2025 layer's 2,550,012 rows (313
+      # of 351 towns, median 0.26) and S (sqft) on 255,011 (median
+      # 18,050). Converted here so land_area_sqft is sqft on every
+      # row; the unit column is then dropped, since it would describe
+      # the source value rather than the converted one. Before
+      # 2026-09-13 acres passed through unconverted.
+      - type: remap
+        input: land_area_units
+        mapping: {"A": 43560, "S": 1}
+        output: land_area_sqft_factor
+      - type: expression
+        expression: "land_area_sqft * land_area_sqft_factor"
+        inputs: [land_area_sqft, land_area_sqft_factor]
+        output: land_area_sqft
+    drop_columns:
+      - land_area_sqft_factor
+      - land_area_units
     columns_to_categorical:
       - city
       - zip

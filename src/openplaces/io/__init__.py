@@ -3,6 +3,7 @@ Input/output utilities
 """
 
 import bz2
+import fnmatch
 import gc
 import json
 import math
@@ -292,36 +293,67 @@ def _sniff_ext(chunk: bytes) -> str | None:
     return None
 
 
-def unzip(in_path, out_dir=None, members=None, verbose=True):
-    """Extract files from a zip archive.
+# Archive members that unzip() opens in turn instead of leaving in the
+# output directory. Only .zip: a .kmz is a KML container GDAL reads as
+# it is, and a .jar is never data. No recipe reads a .zip member in
+# place (checked over the recipe tree on 2026-09-16), so extracting
+# them cannot take away a file a recipe names.
+_NESTED_ARCHIVE_SUFFIXES = {'.zip'}
 
-    Supports standard ZIP (deflate) and Deflate64 ZIP files. Deflate64
-    extraction requires 7z to be installed (see dev.py ensure_7zip()).
+# A zip nested deeper than this is treated as malformed (or as a
+# self-reproducing zip) rather than unpacked without end.
+_MAX_ARCHIVE_NESTING = 5
+
+
+def unzip(in_path, out_dir=None, members=None, verbose=True):
+    """Extract files from an archive, including archives nested in it.
+
+    Supports standard ZIP (deflate) and Deflate64 ZIP files, tar.gz,
+    tar.bz2 and bare bz2. Deflate64 extraction requires 7z to be
+    installed (see dev.py ensure_7zip()).
+
+    A .zip member is extracted in turn, into the directory it was
+    extracted to, and then deleted, down to any depth up to five levels.
+    Sources ship zips of zips (a county roll with one zip per table; a
+    file host wrapping a download in a zip of its own), and a reader
+    cannot open the inner archive, so after this call the output
+    directory holds the files a recipe names, as if the source had
+    shipped one archive.
 
     Parameters
     ----------
     in_path : str or Path
-        Path to input zip file
+        Path to input archive.
     out_dir : str or Path, optional
         Output directory. If None, extracts to directory named after
         the zip file (without extension) in the same location.
         Example: 'data.zip' -> 'data/'
     members : list of str, optional
-        Specific files to extract. If None, extracts all files.
-        Note: ignored when falling back to 7z.
-    verbose:
-        If True, might print warnings, e.g. when switching to 7z
+        Names or glob patterns (case-insensitive, matched against a
+        member's full path or its file name) of the files to extract.
+        If None, extracts all files. Nested .zip members are always
+        opened, and the patterns then select among their members.
+        Ignored when falling back to 7z and for tar archives.
+    verbose : bool, default True
+        If True, might print warnings, e.g. when switching to 7z.
 
     Returns
     -------
     Path
         Path to output directory
 
+    Raises
+    ------
+    ValueError
+        If two archives write the same file (a nested archive
+        extracted beside its siblings would otherwise overwrite one
+        table with another), or if archives nest more than five deep.
+
     Examples
     --------
     >>> unzip('data/raw/parcels.zip')  # -> data/raw/parcels/
     >>> unzip('data.zip', 'data/heap')  # -> data/heap/
-    >>> unzip('data.zip', members=['file1.txt', 'file2.csv'])
+    >>> unzip('data.zip', members=['file1.txt', '*_INFO.TXT'])
     """
     in_path = Path(in_path)
     if not in_path.exists():
@@ -332,6 +364,13 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
         out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    written = _extract_archive(in_path, out_dir, members, verbose)
+    _extract_nested_archives(in_path, written, members, verbose)
+    return out_dir
+
+
+def _extract_archive(in_path, out_dir, members, verbose):
+    """Extract one archive level and return the files it wrote."""
     suffixes = [s.lower() for s in in_path.suffixes]
     _is_tar_gz = in_path.suffix.lower() == '.tgz' or (
         len(suffixes) >= 2 and suffixes[-2] == '.tar' and suffixes[-1] == '.gz'
@@ -339,7 +378,7 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
     if _is_tar_gz:
         with tarfile.open(in_path, 'r:gz') as tar:
             tar.extractall(out_dir)
-        return out_dir
+            return [out_dir / m.name for m in tar.getmembers() if m.isfile()]
 
     if in_path.suffix.lower() in {'.bz2', '.tbz2'}:
         # Casefolded like the tar.gz test above: uppercase extensions
@@ -347,16 +386,70 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
         if in_path.stem.lower().endswith('.tar') or in_path.suffix.lower() == '.tbz2':
             with tarfile.open(in_path, 'r:bz2') as tar:
                 tar.extractall(out_dir)
+                return [out_dir / m.name for m in tar.getmembers() if m.isfile()]
         # Handle bare .bz2 (single compressed file)
-        else:
-            out_file = out_dir / in_path.stem
-            with bz2.open(in_path, 'rb') as src, out_file.open('wb') as dst:
-                shutil.copyfileobj(src, dst)
-        return out_dir
+        out_file = out_dir / in_path.stem
+        with bz2.open(in_path, 'rb') as src, out_file.open('wb') as dst:
+            shutil.copyfileobj(src, dst)
+        return [out_file]
 
     if _needs_7z(in_path):
+        if members and verbose:
+            print(f'Extracting every member of {in_path.name}: 7z ignores `members`.')
         return _unzip_with_7z(in_path, out_dir, verbose)
     return _unzip_standard(in_path, out_dir, members)
+
+
+def _is_nested_archive(path):
+    return path.suffix.lower() in _NESTED_ARCHIVE_SUFFIXES and path.is_file()
+
+
+def _extract_nested_archives(in_path, written, members, verbose):
+    """Extract every .zip among `written`, recursively, then delete it.
+
+    Each inner archive is extracted into its own directory rather than
+    into a subdirectory named after it, so a recipe names the file it
+    reads exactly as it would in a single-level archive. The price is
+    that sibling archives share a directory; a file written twice is
+    therefore an error, not a silent overwrite.
+    """
+    origin = {path: in_path.name for path in written}
+    pending = [(path, 1) for path in written if _is_nested_archive(path)]
+    while pending:
+        archive, depth = pending.pop(0)
+        if depth > _MAX_ARCHIVE_NESTING:
+            raise ValueError(
+                f'{archive.name} is nested more than {_MAX_ARCHIVE_NESTING} '
+                f'archives deep inside {in_path.name}.'
+            )
+        if verbose:
+            print(f'Extracting nested archive {archive.name}...')
+        inner = _extract_archive(archive, archive.parent, members, verbose)
+        for path in inner:
+            if origin.get(path, archive.name) != archive.name:
+                raise ValueError(
+                    f'{path.name} is in both {origin[path]} and {archive.name} '
+                    f'(inside {in_path.name}); extracting both into '
+                    f'{archive.parent} would overwrite one with the other.'
+                )
+            origin[path] = archive.name
+        # The inner archive is only a copy of bytes still inside the
+        # source archive; keeping it would double the heap's size.
+        archive.unlink()
+        pending.extend((path, depth + 1) for path in inner if _is_nested_archive(path))
+
+
+def _member_selected(name, patterns):
+    """Return True if a zip member name matches one of `patterns`."""
+    if not patterns:
+        return True
+    lowered = name.lower()
+    base = lowered.rsplit('/', 1)[-1]
+    for pattern in patterns:
+        pattern = pattern.lower()
+        if fnmatch.fnmatchcase(lowered, pattern) or fnmatch.fnmatchcase(base, pattern):
+            return True
+    return False
 
 
 def _needs_7z(zip_path):
@@ -385,12 +478,26 @@ def _needs_7z(zip_path):
 
 
 def _unzip_standard(in_path, out_dir, members):
-    """Extract using Python's zipfile (deflate and store)."""
+    """Extract using Python's zipfile (deflate and store).
+
+    Returns the paths of the files written. `members` holds names or
+    glob patterns; nested .zip members are kept whatever it says, so
+    that the patterns can select among their members in turn.
+    """
+    written = []
     with ZipFile(in_path, 'r') as z:
         all_members = z.namelist()
-        member_list = members or all_members
+        member_list = [
+            m
+            for m in all_members
+            if m.endswith('/')
+            or Path(m).suffix.lower() in _NESTED_ARCHIVE_SUFFIXES
+            or _member_selected(m, members)
+        ]
 
-        strip_prefix = _get_strip_prefix(member_list)
+        # Computed over every member, so a pattern selecting a single
+        # file does not change the directory it lands in.
+        strip_prefix = _get_strip_prefix(all_members)
 
         total_size = sum(z.getinfo(m).file_size for m in member_list)
         with tqdm(
@@ -407,14 +514,16 @@ def _unzip_standard(in_path, out_dir, members):
                 else:
                     target = out_dir / member
                 if member.endswith('/'):
-                    target.mkdir(parents=True, exist_ok=True)
+                    if not members:
+                        target.mkdir(parents=True, exist_ok=True)
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with z.open(member) as src, open(target, 'wb') as dst:
                         while chunk := src.read(8192):
                             dst.write(chunk)
                             pbar.update(len(chunk))
-    return out_dir
+                    written.append(target)
+    return written
 
 
 def _find_7z():
@@ -430,7 +539,13 @@ def _find_7z():
 
 
 def _unzip_with_7z(in_path, out_dir, verbose=True):
-    """Extract using 7z for compression types unsupported by zipfile."""
+    """Extract using 7z for compression types unsupported by zipfile.
+
+    Returns the paths of the files written, as far as they can be
+    listed: a zip container zipfile opens (a Deflate64 entry) is listed
+    by name, while a 7z or rar container is not, so archives nested in
+    one are left unextracted.
+    """
     sz = _find_7z()
     if not sz:
         raise RuntimeError(
@@ -448,7 +563,11 @@ def _unzip_with_7z(in_path, out_dir, verbose=True):
     )
     if result.returncode != 0:
         raise BadZipFile(f'7z failed to extract {in_path.name}:\n{result.stderr}')
-    return out_dir
+    try:
+        with ZipFile(in_path, 'r') as z:
+            return [out_dir / m for m in z.namelist() if not m.endswith('/')]
+    except BadZipFile:
+        return []
 
 
 def _get_strip_prefix(member_list):

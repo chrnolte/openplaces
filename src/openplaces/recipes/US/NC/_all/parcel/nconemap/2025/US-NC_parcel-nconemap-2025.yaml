@@ -83,6 +83,31 @@ columns:
   source_deed: sourceref
   source_map: mapref
 
+# County-scoped corrections (admin_ids: the step runs on that county's
+# chunk only; see _instructions/ingest_recipes.md).
+#
+# US-NC-HAR: parusedsc2 is not a land use in Harnett's submission but
+# the types of the address points on the parcel, singly or as a comma
+# list. Measured on the 2025 layer (83,708 rows): 97.4% of values are
+# built only from that vocabulary (Single Family 54.3%, No Addresses on
+# this Parcel 20.6%, Vacant 13.3%, Mobile Home 3.2%, ...), and
+# parusecd2 is blank on every row. The curate keyword rule MOBILE
+# matched the list entry, and 3,065 of the 4,671 Harnett primary
+# footprints shipped Manufactured Home on the keyword lane alone had
+# "Mobile Home" only there (plans/travel-trailers-in-building-
+# inventory.md). Harnett's land use stays in parusedesc.
+transformations:
+  - type: unary
+    operation: set_null
+    input: use_subgroup
+    output: use_subgroup
+    admin_ids: [US-NC-HAR]
+  - type: unary
+    operation: set_null
+    input: use_subgroup_code
+    output: use_subgroup_code
+    admin_ids: [US-NC-HAR]
+
 columns_to_categorical:
   - use_group
   - use_group_code

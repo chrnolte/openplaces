@@ -66,8 +66,15 @@ columns:
   section_length_ft_2: Length2
   section_width_ft_3: Width3
   section_length_ft_3: Length3
-  # Floor area as certified, not lot area. Whether it is living or
-  # gross area is not documented; mapped as gross.
+  # Floor area as certified, not lot area. It is the sections' box
+  # area: SqrFeet equals the sum of width x length exactly on 71.2%
+  # of the 1,064,569 rows carrying both, within 5% on 94.3% (median
+  # ratio 1.000; where it falls short, by about 2.4 ft of length,
+  # probably the hitch). A single-story box with no garage or
+  # basement has living, gross and footprint areas within a few
+  # percent of each other, so the name matters little. It is gross
+  # because it comes from outside dimensions, not a measured
+  # finished area (checked 2026-09-13).
   gross_floor_area_sqft: SqrFeet
   # HUD wind zone (1-3); zone 2/3 units are built to higher wind standards
   # and the coast is where they concentrate.
@@ -96,6 +103,9 @@ transformations:
     type: remap_file
     input: county_name
     # All 254 TX counties, generated from the admin spine's own name list.
+    # The source value (county_name) is the first column, the admin3_id
+    # the second: the reader keys on the first column, so a sidecar
+    # written id-first maps every county to nothing (2026-09-16).
     # 99.77% of rows resolve; the remainder are 'OUT OF STATE', 'UNKNOWN'
     # and 'RETAILER LOT' placeholders plus genuinely out-of-state counties,
     # all of which correctly drop out.

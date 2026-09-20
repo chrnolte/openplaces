@@ -1,0 +1,142 @@
+# Recipe: Harnett County, NC property roll, one row per parcel record
+# of the county's 2026 appraisal files.
+#
+# SOURCE. The Tax Department's "Real Property Appraisal Data" page
+# (www.harnett.org/tax/real-property-appraisal-data.asp) links eight
+# plain CSV files under "2026 Appraisal Files", each a table of the
+# county's BI-TEK ITS CAMA system. Three are read by this recipe and
+# its two supplements: Parcel_Info.csv (this roll, 100 MB),
+# Building_Info.csv (US-NC-HAR_property-harnettcounty-2026_buildings,
+# 532 MB, most of it a sketch XML column) and BuildingSubarea_Info.csv
+# (..._building-subareas, 37 MB). Served files are dated 2026-08-14
+# (Last-Modified). Account_Info.csv carries owner names and mailing
+# addresses and is never read; Land_Info, Neighborhood_Info,
+# OBXF_Info and Sale_Info are not needed for floor area.
+#
+# EXCEL-STYLE QUOTING. Most values are written as ="..." (an Excel
+# text formula), others as plain quoted text, so every mapped column
+# is read as text and unwrapped with the extract pattern below. A
+# value holding both a comma and a slash (a building name, a comment)
+# is written as ="a, b/c", which a CSV parser splits at the comma and
+# shifts the rest of the row. MEASURED 2026-09-16 against a parse with
+# the quoting repaired: 134 rows of this file shift, from about column
+# 100 (UseCode, HeatedAreaAllBuildings) onward.
+#
+# LOST ROWS. The ingester reads every column, so a shifted row has
+# more fields than the header and the CSV reader refuses the file;
+# `on_bad_lines: warn` drops those 134 rows instead. 73 of them have
+# buildings (by improvement type: manufactured home 54, commercial
+# 20, single family 16, others), whose rows in the two supplements
+# then have no roll row to join. Recovering them needs a reader that
+# understands the ="..." quoting (or reads only the named columns),
+# a shared ingester change, not a recipe one.
+#
+# ROW SHAPE, MEASURED 2026-09-16: 80,696 rows in the file, one per
+# ParcelID (the CAMA's internal key) and one per ParcelNumber; 80,562
+# after the lost rows; TaxYear 2026 on every row. Condominium units
+# (improvement type CONDOMINIUM, 229 rows) are parcel numbers of their
+# own. AccountNumber is the owner account (58,918 distinct), not a
+# property id, and is not read.
+#
+# JOIN KEY. ParcelNumber is NC OneMap's altparno for Harnett, checked
+# by value, not by pattern: after the bundled Harnett conversion
+# (`simple`, from geo/parcel_id_links.csv), 99.98% of this roll's keys
+# are statewide parcel_id_local values and 99.82% of the distinct
+# statewide Harnett keys are found here (statewide 2025 snapshot,
+# 83,708 rows; 96.2% of its rows, the rest mostly 2,895 rows whose
+# altparno is a word, not a parcel number).
+# The raw ParcelNumber equals altparno on 99.96% of rows. Its forms
+# are '999999    9999 99' (runs of spaces inside), '99999999  9999'
+# and '99999999999999' (fabricated examples); `simple` deletes the
+# spaces, which folds 17 pairs of distinct ParcelNumbers onto one key
+# (80,545 keys on 80,562 rows), the same fold the statewide layer
+# gets. The
+# supplements therefore join on the raw parcel_id_assessor
+# (supplements_key), not on parcel_id_local.
+# PinNumber ('9999-99-9999.999') equals the statewide parno on 99.94%
+# of rows and maps to parcel_id_admin3. The county's REST parcel layer
+# (gis.harnett.org .../Tax/Parcels/MapServer/0) carries the same two
+# ids as PID (99.9% of ParcelNumbers found) and PIN.
+#
+# NOT MAPPED, deliberately: owner, mailing and mortgage-holder fields
+# (MortgageHolder, MortgageLoanNumber: personal data); situs address,
+# values, sale fields (NC OneMap's Harnett parcels carry situs and
+# values); ImprovementType / UseCode (a two-digit improvement-type
+# vocabulary, e.g. 01 single family, 50 rural home site). NC OneMap's
+# Harnett use_group_code is a different, four-digit composite code, so
+# mapping these here would put two vocabularies in one parcel column;
+# add them once the parcel classifier has a Harnett crosswalk.
+# HeatedAreaAllBuildings (the county's parcel heated-area total) is
+# left to the buildings supplement: it equals that supplement's sum of
+# HeatedAreaCard on 54,546 of 54,616 parcels and is shifted on 133
+# rows by the quoting above.
+
+description: >-
+  Harnett County, NC property roll (parcel number, PIN, tax year) from
+  the county's 2026 BI-TEK appraisal CSV files.
+
+admin_id: US-NC-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: harnettcounty
+    # Checked 2026-09-16: the download page states no licence, terms,
+    # resale or redistribution condition and no click-through; the
+    # site footer reads only "Copyright 2026 - Harnett County, North
+    # Carolina". North Carolina government records are public records
+    # (N.C.G.S. ch. 132).
+    license: >-
+      unknown (no terms on the county's appraisal data page; site
+      footer copyright notice only)
+    terms_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    redistribution_restricted: null
+    portal_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    download_url: "https://www.harnett.org/tax/downloads/Parcel_Info.csv"
+  version: "2026"
+
+uncompressed_file_name: "Parcel_Info.csv"
+
+csv_dtype: str
+
+# The rows shifted by the quoting carry more fields than the header,
+# and the reader refuses the whole file on the first of them. They are
+# dropped with a warning (see LOST ROWS in the header).
+on_bad_lines: warn
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  parcel_id_admin3: PinNumber
+  tax_year: TaxYear
+
+# Unwrap the ="..." quoting (see header); plain values pass unchanged.
+transformations:
+  - type: string
+    operation: extract_named
+    input: parcel_id_assessor
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: parcel_id_admin3
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: parcel_id_admin3
+  - type: string
+    operation: extract_named
+    input: tax_year
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

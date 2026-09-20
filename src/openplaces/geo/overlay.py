@@ -132,6 +132,56 @@ def overlay_admin_ids(
     return gdf
 
 
+def prefer_located_admin_ids(
+    located: pd.Series, existing: pd.Series
+) -> tuple[pd.Series, dict[str, int]]:
+    """Combine location-derived admin ids with ids derived another way.
+
+    A source can name its admin unit in two ways that disagree: a text
+    or code column (a county name) and the location of each record. The
+    location is the better key wherever it resolves, because a text
+    column records whatever the publisher's own pipeline assigned, and
+    that can be a neighbor for whole jurisdictions at a time (a permit
+    office whose records carry the county it serves rather than the one
+    the building stands in). The text is kept only for rows whose
+    location resolves no unit (no coordinates, or a point outside every
+    unit loaded), so those rows are not lost.
+
+    Parameters
+    ----------
+    located : pandas.Series
+        Admin id per row from a spatial join, missing where the location
+        resolved no unit.
+    existing : pandas.Series
+        Admin id per row derived without the location (e.g. a crosswalk
+        of a name column), on the same index.
+
+    Returns
+    -------
+    ids : pandas.Series
+        The located id where present, else the existing one, as object
+        dtype.
+    counts : dict of str to int
+        `located` (rows keyed by location), `fallback` (rows keyed by
+        the existing id because the location resolved nothing),
+        `disagree` (located rows whose existing id names a different
+        unit), and `unresolved` (rows with neither).
+    """
+    located = located.astype(object).where(located.notna(), None)
+    existing = existing.reindex(located.index).astype(object)
+    existing = existing.where(existing.notna(), None)
+    has_located = located.notna()
+    has_existing = existing.notna()
+    ids = located.where(has_located, existing)
+    counts = {
+        'located': int(has_located.sum()),
+        'fallback': int((~has_located & has_existing).sum()),
+        'disagree': int((has_located & has_existing & located.ne(existing)).sum()),
+        'unresolved': int((~has_located & ~has_existing).sum()),
+    }
+    return ids, counts
+
+
 def _detect(attr_path: Path, geo_path: Path) -> tuple[str, str, list[str], str]:
     """Return (index_name, join_key, data_columns, crs) from parquet metadata."""
     schema = pq.read_schema(attr_path)

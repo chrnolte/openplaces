@@ -41,11 +41,21 @@ def test_discover_link_sources_ma_property_layer_uses_layer_key():
 def test_discover_link_sources_nc_roll_is_property_not_parcel():
     # New Hanover's county roll is a property recipe since 2026-09-13
     # (one row per account, condo and sub-lot units included), so
-    # parcel discovery finds NC OneMap's geometry alone and the roll
-    # arrives through property discovery, keyed on parcel_id_local.
+    # parcel discovery finds only parcel layers (NC OneMap's and the
+    # county's own polygons), and the roll arrives through property
+    # discovery, keyed on parcel_id_local.
     state = _state('US-NC-NHA')
     parcel = links._discover_link_sources(state, 'parcel')
-    assert {m['recipe_id'] for m in parcel} == {'US-NC_parcel-nconemap-2025'}
+    assert {m['recipe_id'] for m in parcel} == {
+        'US-NC_parcel-nconemap-2025',
+        'US-NC-NHA_parcel-nhcgov-2026',
+    }
+    # Least specific first, so the county layer is joined last and
+    # OneMap's attributes (which the county layer lacks) still attach.
+    assert [m['recipe_id'] for m in parcel if m['layer'] is None] == [
+        'US-NC_parcel-nconemap-2025',
+        'US-NC-NHA_parcel-nhcgov-2026',
+    ]
 
     prop = links._discover_link_sources(state, 'property')
     nhcgov = next(m for m in prop if m['recipe_id'] == 'US-NC-NHA_property-nhcgov-2026')

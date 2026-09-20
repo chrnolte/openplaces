@@ -1,0 +1,262 @@
+# Recipe: Cameron County, TX certified appraisal roll, improvement
+# detail member (PACS File #8, one row per building component). Same
+# download as US-TX-CAM_property-cameroncad-2026; read that roll's
+# header for the source and its terms.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description, reviewed over the complete code table of
+# the 2026 export (207 types; listed, never matched by prefix). Areas
+# are imprv_det_area in square feet, summed over the property's listed
+# components; an area of 0 or 1 reads as missing.
+#
+# MAIN AREA IS NOT RESIDENTIAL BY ITSELF. Cameron codes every
+# building's main area as MA, MA2 to MA8 or MAA, commercial ones
+# included: 14,035 of 162,976 MA rows sit under commercial improvements
+# (File #5 imprv_type_cd 'C'), where the construction class names an
+# office, store, warehouse, clubhouse and so on. The type code cannot
+# tell a house from a store, so living area also filters on
+# imprv_det_class_cd, reviewed over the 549 classes found on main-area
+# rows, keeping the residential class families only:
+# - R{F,M,S,V}n with an optional M or P suffix: residence frame,
+#   masonry, stucco, veneer, grade n (RF2 is 'R-RESIDENCE FRAME 2' in
+#   the type table).
+# - RTH{F,M,S,V}n townhouses; C{F,M,V}n condominiums ('R-CONDOS VENEER
+#   1'), digits only, so the commercial C classes (CCA1, CDGL, CS3, ...)
+#   stay out.
+# - {2,3,4}P{F,M,V}n plexes ('RC-PLEX FRAME 2'); MP{F,M,V}n and
+#   RRMP{F,M,V}n multiplex apartment buildings (median main area
+#   2,000 to 3,900 sq ft; about half sit under commercial improvement
+#   records, as apartment complexes commonly do).
+# - MH and MHn mobile homes; PKn and XPKn park models; TTn and XTTn
+#   travel trailers (see BORDERLINE); the classes MHA, MA2 and MAA (a
+#   few rows, none commercial).
+# Every other class family names a commercial, farm or storage
+# building: a letter or a digit followed by a construction and quality
+# code (YCA, VCG4 'C-SMALL OFFICE', 3EA 'C-STORAGE WAREHOUSE', TCA,
+# WEA, ...), almost all of whose rows sit under commercial improvement
+# records; sheds on main-area rows (ESS, ESF, OSS, OSF, EF, OF, OS);
+# garages (GM); storage (TF, TM); spaces (MHS, RVS) and MISC.
+#
+# BLANK CLASS, JUDGED BY ITS BUILDING. Cameron leaves the class blank
+# ('*') on every upper floor (MA2 to MA8) and addition (MAA) row, and
+# never on MA. A blank-class row therefore counts unless its own
+# improvement (File #8 imprv_id, unique across properties) has a
+# main-area row of a non-residential class: the upper floors of an
+# office count for no one. Without that step 1,910 commercial (state
+# class F1) properties took a living area from their upper floors and
+# additions alone (2,306 MA2, 266 MA3 to MA8 and 3,178 MAA rows under
+# commercial improvements). The same test drops the gross-area types
+# below from a commercial building.
+#
+# LIVING AREA (living_area_sqft), under that class filter: MA main
+# area, MA2 to MA8 (second to eighth floor), MAA main area addition,
+# MHA, MHB, MHC, MHD 'MOBILE HOME ADDITION 1' to 4, MHA1 and MHA2
+# 'RCM-MOBILE HOME ADDN', MH2 and MH3 'RCM-MOBILE HOME', PKA 'PARK
+# MODEL ADDN', TTA 'P/P TRAVEL TRAILER ADDN', RF2, RF3, RS2, RV2
+# 'R-RESIDENCE ...', CV1 'R-CONDOS VENEER 1', 2PF2 and 2PF3 'RC-PLEX
+# FRAME'. Against the 2023 check (MA, MAA, MA2 to MA8) this adds the
+# class filter, the mobile-home, park-model and travel-trailer
+# additions and the handful of residence, condo and plex type codes.
+#
+# BORDERLINE. Travel trailers (TT, XTT classes; TTA) and park models
+# (PK, XPK; PKA) are counted as dwellings: Cameron's RV and
+# winter-resident parks hold them as the occupied unit, on mobile-home
+# (M) improvement records, with median main areas of 224 to 396 sq ft.
+# Multiplex apartment classes (MP, RRMP) are counted as living area.
+# Barn-like shed classes on a main-area row (ESS, ESF, OSS, OSF) are
+# not, although most sit on residential improvement records; about 100
+# class A properties whose only main area has such a class get no
+# living area.
+#
+# LEFT OUT OF LIVING AREA. COM 'COMMON ELEMENTS' (area 0), storage and
+# second-floor storage (ST1-3, 2S1-3, 3S1-3), enclosed and open sheds,
+# greenhouses, all porches, decks, carports, garages, pools, paving,
+# fences and the commercial type codes (1CA 'C-SERVICE GARAGE', 3CA
+# 'C-STORAGE WAREHOUSE', NCA 'C-LAUNDROMAT', VCG4 'C-SMALL OFFICE W/O
+# ELEV', CCA1 'C-CLUBHOUSES', 6BA2 'C-PARKING STRUCTURE', ...).
+#
+# GROSS FLOOR AREA (gross_floor_area_sqft): the living rows plus
+# attached garages and enclosed porches, GR1, GR2, GR3 'GARAGE 1/3' to
+# '2/3' (on the house's own improvement record on every row, built the
+# house's year on 89% to 98%), EP1, EP2, EP3 'ENCLOSED PORCH'. The
+# added types are dropped on an improvement with a non-residential
+# main area (see BLANK CLASS) and otherwise not class filtered, as
+# their class names the component or is blank. Commercial buildings
+# therefore carry no gross area, as in Jefferson and Nueces. Open and
+# screened porches, decks, carports, sheds, storage rooms (ST, 2S, 3S:
+# the description does not say enclosed), greenhouses, pools, paving,
+# detached garages and commercial types are excluded, never a sum of
+# all segments.
+#
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): a
+# detached garage is usually its own footprint, so its area stays out
+# of gross area and is carried here, under the same commercial
+# building test; curate adds it back where the parcel has no separate
+# footprint for it. Types: GF1-3, GM1-3, GV1-3 'RC-DETACHED GARAGES';
+# GS1-3 'GARAGE STEEL', which does not say detached but is built in
+# the house's year on only 18% to 30% of rows (detached types 56% to
+# 83%, GR 89% to 98%); GAR 'GARAGE - FLAT VALUE' (one row, not on a
+# house's improvement).
+#
+# YEAR BUILT. year_built is yr_built of the living-area rows, the
+# earliest per property.
+#
+# MEASURED on the 2026 export (aggregates only): File #8 holds 961,790
+# rows over 176,828 improvements; 292,299 are listed types. Share of
+# the roll's properties with living area > 0, by improvement state
+# class (roll imprv_state_cd): A 96.1% of 128,511 (2023 check: 93.5%),
+# B 99.8%, E 84.2%, M 97.1%; commercial F1 5.3% (27.8% before the
+# building test). Class A per-property living area p10/p50/p90 815 /
+# 1,374 / 2,407; gross 816 / 1,518 / 2,829 without detached garages
+# (816 / 1,536 / 2,860 with them), never below living, equal to it on
+# 57.7%; detached_garage_area_sqft > 0 on 3.6%, median 480. Of the
+# 5,039 class A properties without living area,
+# 105 have a main area whose class is a shed or commercial (ESS, ESF,
+# OSS, OSF mostly); the rest carry only drives, fences, storage
+# buildings, porches and the like. 67.1% of TxGIO's Cameron parcel
+# ids have a living area here; 83.6% of properties with one are in
+# TxGIO.
+
+description: >-
+  Cameron County, TX certified appraisal roll, improvement detail member:
+  living and gross floor area and year built, summed per property.
+
+admin_id: US-TX-CAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: cameroncad
+    # Same download as the roll; see its terms note.
+    license: "public domain (district data disclaimer; without warranty)"
+    terms_url: "https://ftp.cameroncad.org/Pages/Data"
+    redistribution_restricted: false
+    portal_url: "https://ftp.cameroncad.org/Pages/Data"
+    download_url: "https://ftp.cameroncad.org/cad/exports/certified/2026/cameron-2026-certified-appraisal-export-20260723.zip"
+  version: 2026
+
+compressed_file_name: "cameron-2026-certified-appraisal-export-20260723.zip"
+uncompressed_file_name: "2026-07-23_2026_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+extract_members:
+  - "2026-07-23_2026_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+# The class code '*' is the district's blank.
+null_value_strings: ['*']
+
+# Only the listed component types; every other row carries nothing.
+query: >-
+  imprv_det_type_cd in ['MA', 'MA2', 'MA3', 'MA4', 'MA5', 'MA6', 'MA7',
+  'MA8', 'MAA', 'MHA', 'MHB', 'MHC', 'MHD', 'MHA1', 'MHA2', 'MH2', 'MH3',
+  'PKA', 'TTA', 'RF2', 'RF3', 'RS2', 'RV2', 'CV1', '2PF2', '2PF3', 'GR1',
+  'GR2', 'GR3', 'GF1', 'GF2', 'GF3', 'GM1', 'GM2', 'GM3', 'GV1', 'GV2',
+  'GV3', 'GS1', 'GS2', 'GS3', 'GAR', 'EP1', 'EP2', 'EP3']
+
+columns:
+  year_built: yr_built
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  # A residential class, see the header's class families.
+  - type: expression
+    expression: >-
+      imprv_det_class_cd.str.match('(R[FMSV][0-9][MP]?|RTH[FMSV][0-9]|C[FMV][0-9]|[2-4]P[FMV][0-9]|MP[FMV][0-9]|RRMP[FMV][0-9]|MH[0-9]?|MHA|X?PK[0-9]|X?TT[0-9]|MA2|MAA)$',
+      na=False)
+    inputs: [imprv_det_class_cd]
+    output: residential_class
+  # The improvement has a main-area row of a non-residential class; see
+  # BLANK CLASS, JUDGED BY ITS BUILDING.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['MA', 'MA2', 'MA3', 'MA4', 'MA5', 'MA6', 'MA7',
+      'MA8', 'MAA']) & imprv_det_class_cd.notna() & (residential_class ==
+      False)).groupby(imprv_id).transform('max')
+    inputs: [imprv_det_type_cd, imprv_det_class_cd, residential_class, imprv_id]
+    output: commercial_building
+  # Living rows: a living type with a residential class, or a blank
+  # class outside a commercial building.
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA2', 'MA3', 'MA4',
+      'MA5', 'MA6', 'MA7', 'MA8', 'MAA', 'MHA', 'MHB', 'MHC', 'MHD', 'MHA1',
+      'MHA2', 'MH2', 'MH3', 'PKA', 'TTA', 'RF2', 'RF3', 'RS2', 'RV2', 'CV1',
+      '2PF2', '2PF3']) & (residential_class | (imprv_det_class_cd.isna() &
+      (commercial_building == False))) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd, imprv_det_class_cd,
+      residential_class, commercial_building]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where((living_area_sqft.notna() |
+      (imprv_det_type_cd.isin(['GR1', 'GR2', 'GR3', 'EP1', 'EP2', 'EP3']) &
+      (commercial_building == False))) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd, living_area_sqft,
+      commercial_building]
+    output: gross_floor_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['GF1', 'GF2', 'GF3', 'GM1',
+      'GM2', 'GM3', 'GV1', 'GV2', 'GV3', 'GS1', 'GS2', 'GS3', 'GAR']) &
+      (commercial_building == False) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd, commercial_building]
+    output: detached_garage_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(living_area_sqft.notna() & (year_built > 1800) &
+      (year_built <= 2027))
+    inputs: [year_built, living_area_sqft]
+    output: year_built
+
+drop_columns:
+  - imprv_id
+  - imprv_det_type_cd
+  - imprv_det_class_cd
+  - imprv_det_area
+  - residential_class
+  - commercial_building
+
+aggregation_function:
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
+  year_built: min
+
+supplements: US-TX-CAM_property-cameroncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

@@ -63,8 +63,9 @@ def test_drape_parcel_elevation_shared_corner_matches(gradient_raster):
 
     assert z_at(geometry.iloc[0], 1, 1) == pytest.approx(z_at(geometry.iloc[1], 1, 1))
     assert z_at(geometry.iloc[0], 1, 2) == pytest.approx(z_at(geometry.iloc[1], 1, 2))
-    # gradient raster: value at x=1 is column index 1.
-    assert z_at(geometry.iloc[0], 1, 1) == pytest.approx(1.0)
+    # gradient raster: value = column index at pixel centers (0.5, 1.5,
+    # ...), so bilinear sampling at x=1 reads 0.5.
+    assert z_at(geometry.iloc[0], 1, 1) == pytest.approx(0.5)
 
     coords_a = np.asarray(shapely.get_coordinates(geometry.iloc[0], include_z=True))
     assert mean_elevation[0] == pytest.approx(coords_a[:, 2].mean())
@@ -84,7 +85,7 @@ def test_drape_parcel_elevation_cache_reuse(gradient_raster, mock_data_root):
 
     # Corrupt the on-disk cache for p1 with an obviously-wrong elevation, to
     # prove a second call reuses the cache rather than resampling.
-    cache_file = elevation._cache_path('US-XX-AA', 'parcel_elevation')
+    cache_file = elevation._cache_path('US-XX-AA', 'parcel_elevation_bilinear')
     cached = gpd.read_parquet(cache_file)
     cached['mean_elevation'] = 12345.0
     cached['geometry'] = [shapely.force_3d(poly1, z=12345.0)]
@@ -134,9 +135,10 @@ def test_drape_parcel_elevation_missing_dem_auto_ingests(gradient_raster, tmp_pa
     mock_ingest.assert_called_once_with(
         'US_land-elevation-usgs-3dep', admin_ids='US-XX-AA', verbose=False
     )
-    # Ring [(2,2),(3,2),(3,3),(2,3),(2,2)] samples columns [2,3,3,2,2] on
-    # the gradient raster (value = column index) -> mean 2.4.
-    assert mean_elevation[0] == pytest.approx(2.4)
+    # Ring [(2,2),(3,2),(3,3),(2,3),(2,2)] samples x = [2,3,3,2,2] on the
+    # gradient raster; bilinear between pixel centers reads x - 0.5, so
+    # [1.5,2.5,2.5,1.5,1.5] -> mean 1.9.
+    assert mean_elevation[0] == pytest.approx(1.9)
 
 
 def test_drape_parcel_elevation_missing_dem_no_coverage_raises(tmp_path):

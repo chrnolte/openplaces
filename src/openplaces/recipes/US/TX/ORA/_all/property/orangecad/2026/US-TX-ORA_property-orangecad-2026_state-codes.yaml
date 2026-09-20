@@ -1,0 +1,102 @@
+# Recipe: Orange County, TX certified appraisal roll, state property
+# class per account, from the Tyler Orion vendor export ("2026 Certified
+# Export Vendor.zip", PropertyExport member). Same download as
+# US-TX-ORA_property-orangecad-2026; read that roll's header for the
+# format, the nested ZIP, the join key and the terms.
+#
+# WHY. TxGIO's Orange state class (STAT_LAND_USE) sits on the wrong
+# parcels and is blanked for US-TX-ORA in US-TX_parcel-txgio-2025 (see
+# plans/txgio-orange-attributes-on-wrong-parcels.md). This table puts
+# the class back on the right account, keyed on QuickRefID like the
+# roll.
+#
+# WHICH MEMBER. The vendor PropertyExport is one row per account
+# (64,920 rows, 64,920 distinct PropertyQuickRefID, all RecordType 1,
+# SupplementNumber CERT, TaxYear 2026) and carries both StateCodeImp and
+# StateCodeLand. The Property Data Export's Improvement member carries
+# only the improvement code, one row per improvement: 327 accounts hold
+# more than one code there, and accounts without an improvement (vacant
+# land, class C) have none. StateCodeImp equals the account's first
+# Improvement StateCode on 100.0% of the 37,320 accounts in both.
+#
+# RULE. use_group_code is StateCodeImp, else StateCodeLand, matching
+# what TxGIO's STAT_LAND_USE reports elsewhere (the improvement class on
+# improved accounts, the land class on vacant ones). Codes are the Texas
+# Comptroller state categories: a first character A to X with a
+# district-set second character, the same vocabulary TxGIO's
+# one-character crosswalk keys on, so the sidecar
+# ..._state-codes_use-group-code-remap.csv is that crosswalk (without
+# its Kleberg-scoped row).
+#
+# MEASURED on the 2026 export. StateCodeImp filled on 77.8% of
+# accounts, StateCodeLand on 72.7%; the coalesced code is filled on
+# 99.98% of R (real property) accounts, first character A 31,994,
+# C 7,930, F 2,103, E 2,034, X 1,616, D 1,503, M 674, B 245, J 136,
+# O 83, G 1. 98.9% of TxGIO's distinct Orange Prop_IDs have a code
+# through QuickRefID. M, P and N accounts carry no parcel_id_local (see
+# the roll), so a manufactured home held as its own M account does not
+# reach a parcel through this table.
+
+description: >-
+  Orange County, TX certified appraisal roll, vendor export: state property
+  class per account (improvement class, else land class).
+
+admin_id: US-TX-ORA
+
+entity:
+  entity_type: property
+  source:
+    source_id: orangecad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site disclaimer of warranty only; no terms on the data)"
+    terms_url: "https://orangecad.net/disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://orangecad.net/data-downloads/"
+    download_url: "https://orangecad.net/wp-content/uploads/2026/07/2026-Certified-Appraisal-Roll-Export-Files.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Appraisal-Roll-Export-Files.zip"
+# In "2026 Certified Export Vendor.zip"; the ingester extracts the
+# nested archive. The date-stamped name changes on re-export.
+uncompressed_file_name: "2026_07_29_1339_PropertyExport.txt"
+extract_members:
+  - "2026_07_29_1339_PropertyExport.txt"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+csv_dtype: str
+
+columns:
+  use_group_code: StateCodeImp
+
+transformations:
+  # Same key as the roll: QuickRefID, not PropertyID (see its header).
+  - type: string
+    operation: lstrip
+    input: PropertyQuickRefID
+    args:
+      chars: "R0"
+    output: parcel_id_assessor
+  - type: expression
+    expression: "use_group_code.fillna(StateCodeLand)"
+    inputs: [use_group_code, StateCodeLand]
+    output: use_group_code
+
+drop_columns:
+  - StateCodeLand
+
+columns_to_categorical:
+  - use_group_code
+
+supplements: US-TX-ORA_property-orangecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: state-codes

@@ -32,7 +32,7 @@ extensions = [
     'sphinxcontrib.mermaid',
 ]
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts', '**/_generated']
 
 # -- AutoAPI configuration ---------------------------------------------------
 

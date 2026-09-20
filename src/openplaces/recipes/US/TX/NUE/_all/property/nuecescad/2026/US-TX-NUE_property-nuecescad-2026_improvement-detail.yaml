@@ -1,0 +1,196 @@
+# Recipe: Nueces County, TX certified appraisal roll, improvement
+# detail member (PACS File #8, one row per building component). Same
+# download as US-TX-NUE_property-nuecescad-2026; read that roll's
+# header for the source and its terms.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description, reviewed over the complete code table of
+# the 2026 export (357 types; listed, never matched by prefix). Areas
+# are imprv_det_area in square feet, summed over the property's listed
+# components; an area of 0 or 1 reads as missing (the district puts 1
+# in the area of components valued as a unit, such as pools and
+# fireplaces).
+#
+# NO PREFIX RULE. A startswith('MA') filter would add MARKET
+# (supermarket), MAUSO (mausoleum) and MALL ENC (enclosed mall).
+#
+# LIVING AREA (living_area_sqft): MA main area, MA1.5 main area half
+# story, MA2, MA3 and MA4 (second to fourth floor), LQ and LQ2 living
+# quarters (first and second floor), MH mobile home, ADD addition
+# (nearly all on mobile-home improvements; porches, decks and sheds
+# for mobile homes have their own -MH codes), AGC attached garage
+# conversion, GH guest house, SQ servants quarters, APT apartment,
+# SENAPTS senior apartments, HISTHM historic homes. Against the
+# inventory list (MA, MA2, MA3, LQ, LQ2, MH) this adds MA1.5, MA4,
+# ADD, AGC, GH, SQ and the apartment and historic-home building types.
+#
+# LEFT OUT OF LIVING AREA. ATC attic, LOFT, SOL solarium, UTIL utility
+# room, GP and GPO glass porches: enclosed, but the table does not say
+# finished or heated (they are in gross area). GCOTT guest cottage sits
+# on the commercial schedule (six properties) and reads as lodging,
+# as do MOTEL, HOTEL*, RMHOUSE rooming house, DORM, NURS and AL
+# assisted living; CLBHAPT is an apartment clubhouse. Commercial
+# building types carry no living area.
+#
+# GROSS FLOOR AREA (gross_floor_area_sqft): the living types plus AG
+# attached garage, APG apartment garage, EPO and EPO-MH enclosed
+# porches, GP and GPO glass porches, ATC attic, LOFT, SOL solarium,
+# UTIL utility room. Covered and open porches, patios, decks,
+# balconies, carports, canopies, storage buildings, sheds, workshops,
+# barns, pools, paving, detached garages and commercial building types
+# are excluded: never a sum of all segments (which adds covered
+# porches, patios and parking).
+#
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): a
+# detached garage is usually its own footprint, so its area stays out
+# of gross area and is carried here; curate adds it back where the
+# parcel has no separate footprint for it. Types: DGF and DGM detached
+# garages, DG-MH detached garage for a mobile home, and GAR 'GARAGE',
+# which does not say attached (the district has AG for that) and sits
+# apart from the house's improvement on 23% of its rows.
+#
+# YEAR BUILT. year_built is yr_built of the living-area components, the
+# earliest per property.
+#
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of improvements (imprv_id) carrying an MH component, summed per
+# property. MEASURED on the 2026 export: 4,787 improvements carry MH,
+# one row on 4,719, two to five on 68. A property with listed
+# components but no mobile home gets 0; one absent stays missing.
+#
+# MEASURED on the 2026 export (aggregates only): File #8 holds 641,956
+# rows over 128,724 properties; 249,962 are listed types. Share of the
+# roll's properties with living area > 0, by improvement state class
+# (roll imprv_state_cd): A 96.2% of 114,029, B 98.0%, E 78.4%, M
+# 99.2%. Class A per-property living area p10/p50/p90 898 / 1,512 /
+# 2,549; gross 936 / 1,848 / 3,028 without detached garages (991 /
+# 1,897 / 3,090 with them; median gross/living 1.19, was 1.23), never
+# below living; detached_garage_area_sqft > 0 on 13.5%, median 400.
+# Class A properties without living area carry only storage, mobile-home
+# hookups, carports or a CA common-area row with area 1 (condominium
+# units whose area the export does not state); class E ones mostly a
+# barn. 72.7% of TxGIO's Nueces parcel ids have a living area here;
+# 91.5% of properties with one are in TxGIO.
+
+description: >-
+  Nueces County, TX certified appraisal roll, improvement detail member:
+  living and gross floor area and year built, summed per property.
+
+admin_id: US-TX-NUE
+
+entity:
+  entity_type: property
+  source:
+    source_id: nuecescad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://nuecescad.net/downloads-reports/"
+    download_url: "https://nuecescad.net/wp-content/uploads/2026/08/Certified-Public-Export-2026.zip"
+  version: 2026
+
+compressed_file_name: "Certified-Public-Export-2026.zip"
+uncompressed_file_name: "2026-08-06_001254_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+extract_members:
+  - "2026-08-06_001254_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #8 (Improvement Detail); the 622-character record
+# matches 8.0.34 over the fields read here.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+# Only the listed component types; every other row carries nothing.
+query: >-
+  imprv_det_type_cd in ['MA', 'MA1.5', 'MA2', 'MA3', 'MA4', 'LQ', 'LQ2',
+  'MH', 'ADD', 'AGC', 'GH', 'SQ', 'APT', 'SENAPTS', 'HISTHM', 'AG', 'DGF',
+  'DGM', 'GAR', 'DG-MH', 'APG', 'EPO', 'EPO-MH', 'GP', 'GPO', 'ATC', 'LOFT',
+  'SOL', 'UTIL']
+
+columns:
+  year_built: yr_built
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA2',
+      'MA3', 'MA4', 'LQ', 'LQ2', 'MH', 'ADD', 'AGC', 'GH', 'SQ', 'APT',
+      'SENAPTS', 'HISTHM']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(~imprv_det_type_cd.isin(['DGF', 'DGM', 'DG-MH',
+      'GAR']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: gross_floor_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['DGF', 'DGM', 'DG-MH',
+      'GAR']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: detached_garage_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA2', 'MA3',
+      'MA4', 'LQ', 'LQ2', 'MH', 'ADD', 'AGC', 'GH', 'SQ', 'APT', 'SENAPTS',
+      'HISTHM']) & (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  # One per improvement holding a mobile home; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['MH']) &
+      ~imprv_id.where(imprv_det_type_cd.isin(['MH'])).duplicated()).astype('float64')
+    inputs: [imprv_det_type_cd, imprv_id]
+    output: n_manufactured_home_units
+
+drop_columns:
+  - imprv_id
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  n_manufactured_home_units: sum
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
+  year_built: min
+
+supplements: US-TX-NUE_property-nuecescad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

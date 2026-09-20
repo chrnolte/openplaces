@@ -109,6 +109,36 @@ def test_custom_keys(monkeypatch):
     assert out['occupancy_type_nsi'].tolist() == ['SF', 'MF']
 
 
+def test_missing_ref_column_raises_by_default(monkeypatch):
+    entity = pd.DataFrame({'parcel_id': ['p1']})
+    ref = pd.DataFrame({'parcel_id': ['p1'], 'group_parcel': ['A']})
+    _patch(monkeypatch, ref)
+
+    with pytest.raises(ValueError, match="'building_style' missing"):
+        link_curated_entity(
+            _state(entity),
+            recipe_id='ref',
+            columns={'building_style': 'building_style_parcel'},
+        )
+
+
+def test_allow_missing_writes_an_empty_column(monkeypatch):
+    # A structure description only some rolls publish: absent from this
+    # unit's curated parcels, so the column exists and is empty.
+    entity = pd.DataFrame({'parcel_id': ['p1', 'p2']})
+    ref = pd.DataFrame({'parcel_id': ['p1', 'p2'], 'group_parcel': ['A', 'B']})
+    _patch(monkeypatch, ref)
+
+    out = link_curated_entity(
+        _state(entity),
+        recipe_id='ref',
+        columns={'building_style': 'building_style_parcel', 'group_parcel': 'g'},
+        allow_missing=True,
+    ).curated
+    assert out['building_style_parcel'].isna().all()
+    assert out['g'].tolist() == ['A', 'B']
+
+
 def test_requires_curate_stage(monkeypatch):
     entity = pd.DataFrame({'parcel_id': ['p1']})
     ref = pd.DataFrame({'parcel_id': ['p1']})

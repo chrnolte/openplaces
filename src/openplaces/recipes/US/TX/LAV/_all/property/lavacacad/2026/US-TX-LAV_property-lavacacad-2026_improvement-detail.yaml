@@ -22,18 +22,18 @@
 # 100.0% populated on main-area rows; min differs from mean for 12.0% of
 # multi-row properties.
 #
-# AREA (measured 2026-09-13). gross_floor_area_sqft sums the main-area
-# segments: on 4,634 single-family (A) properties it equals
-# living_area_sqft from the sibling ..._improvement-features on 98.6%,
-# the rest differing by the MA3 to MA5 components that recipe also
-# counts.
-# PACS publishes no gross area, and this segment sum is the closest
-# figure. The segment sums can include open porches and decks, so
-# they run slightly above true gross floor area.
+# AREA. No floor area is mapped here (removed 2026-09-16). This recipe
+# used to map the sum of its MA-prefixed rows to gross_floor_area_sqft,
+# which was neither living nor gross floor area: it held no garage or
+# enclosed porch, and in Lavaca the MA types also carry the main area
+# of commercial buildings (offices, stores, warehouses). Both
+# living_area_sqft and gross_floor_area_sqft now come from the sibling
+# ..._improvement-features recipe, which reads every component row
+# against explicit type and class lists (see its FLOOR AREA note).
 
 description: >-
   Lavaca County, TX certified appraisal roll, improvement detail member:
-  year built and floor area per building component, aggregated to property.
+  year built per main-area building component, aggregated to property.
 
 admin_id: US-TX-LAV
 
@@ -68,8 +68,6 @@ fixed_width:
   - [filler, 25] # imprv_det_type_desc -- not needed, see header NOTE
   - [filler, 10] # imprv_det_class_cd -- deliberately unmapped
   - [yr_built, 4]
-  - [filler, 4] # depreciation_yr
-  - [imprv_det_area, 15]
 
 query: "imprv_det_type_cd.str.startswith('MA')"
 
@@ -83,13 +81,11 @@ transformations:
 
 columns:
   year_built: yr_built
-  gross_floor_area_sqft: imprv_det_area
 
 drop_columns:
   - imprv_det_type_cd
 
 aggregation_function:
-  gross_floor_area_sqft: sum
   year_built: min
 
 # Details the roll's properties; joined by link_by_id, skipped by the

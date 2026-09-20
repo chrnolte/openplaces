@@ -371,6 +371,77 @@ def test_value_share_below_include_zero_matches_zero_beside_a_positive_total():
     assert matched.iloc[0]
 
 
+# Mirrors the footprint recipe's no_improvement_value indicator: the share
+# reading (undefined without a positive total) pooled with the absence
+# reading (a zero value on a row that has a parcel at all).
+NO_IMPROVEMENT_VALUE = {
+    'type': 'any_of',
+    'label': 'no_improvement_value',
+    'indicators': [
+        {
+            'type': 'value_share_below',
+            'value': 'improvement_value',
+            'total': ['improvement_value_whole', 'land_value_whole'],
+            'max_ratio': 0.025,
+            'include_zero': True,
+        },
+        {
+            'type': 'all_of',
+            'indicators': [
+                {'type': 'numeric_at_most', 'column': 'improvement_value', 'max': 0},
+                {'type': 'not_null', 'column': 'parcel_id'},
+            ],
+        },
+    ],
+}
+
+
+def test_no_improvement_value_fires_on_a_zero_value_without_a_total():
+    # A manufactured home on a parcel the assessor never valued (whole
+    # totals missing or zero) still carries no improvement value; the
+    # share reading is undefined there but the absence reading holds.
+    df = pd.DataFrame(
+        {
+            'improvement_value': [0.0, 0.0],
+            'improvement_value_whole': [None, 0.0],
+            'land_value_whole': [None, 0.0],
+            'parcel_id': ['p1', 'p2'],
+        }
+    )
+    share = evaluate_indicator(df, NO_IMPROVEMENT_VALUE['indicators'][0])
+    assert not share.any()
+    assert evaluate_indicator(df, NO_IMPROVEMENT_VALUE).all()
+
+
+def test_no_improvement_value_needs_a_parcel_and_a_recorded_zero():
+    # A missing improvement value is not a zero, and a zero on a footprint
+    # with no parcel is an apportionment artifact, not an assessment.
+    df = pd.DataFrame(
+        {
+            'improvement_value': [None, 0.0, 85_000.0],
+            'improvement_value_whole': [None, None, 85_000.0],
+            'land_value_whole': [None, None, 30_000.0],
+            'parcel_id': ['p1', None, 'p3'],
+        }
+    )
+    assert not evaluate_indicator(df, NO_IMPROVEMENT_VALUE).any()
+
+
+def test_no_improvement_value_keeps_the_share_reading():
+    # A small but non-zero share of a positive total still matches through
+    # the share reading, which the absence reading cannot see.
+    df = pd.DataFrame(
+        {
+            'improvement_value': [1_000.0, 20_000.0],
+            'improvement_value_whole': [1_000.0, 20_000.0],
+            'land_value_whole': [99_000.0, 80_000.0],
+            'parcel_id': ['p1', 'p2'],
+        }
+    )
+    matched = evaluate_indicator(df, NO_IMPROVEMENT_VALUE)
+    assert matched.tolist() == [True, False]
+
+
 def test_value_share_at_least_true_when_ratio_meets_minimum():
     df = pd.DataFrame({'land_value': [50_000], 'improvement_value': [150_000]})
     matched = evaluate_indicator(

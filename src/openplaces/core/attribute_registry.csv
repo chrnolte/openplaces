@@ -5,7 +5,7 @@ use_group_combined,Combined use group and subgroup label,,categorical,join_nonnu
 purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,
 purpose_subgroup,Building construction-purpose subgroup,,categorical,join_nonnull,11,building,
 purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull,12,footprint,curate
-occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
+occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / RV Dwelling / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
 group,OpenPlaces top-level group,,categorical,first,14,,
 land_value,Assessed land value,USD,float,sum,20,,
 land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, then city-scoped, falling back to a county-wide residential-vs-non-residential average) times the parcel's own lot area",USD,float,sum,20.5,parcel,curate
@@ -47,6 +47,13 @@ occupancy_type_review,Flag where improvement value is a small nonzero share of t
 p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
 manufactured_home_community,"Flag where the parcel is classified as a manufactured-home community/park; footprints get the same-named, richer refinement of it (a parcel with more than the threshold count of manufactured-home footprints, per the final footprint occupancy)",,bool,first,82,,curate
 n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
+n_primary_manufactured_homes_per_parcel,"Number of footprints on the footprint's parcel that are primary on it and that the first occupancy vote classed Manufactured Home; read by the second pass on small secondary footprints",,float,first,,footprint,curate
+manufactured_home_rank_on_parcel,"Rank of a footprint the first occupancy vote classed Manufactured Home among its parcel's such footprints, 1 for the largest by area_m2 (ties by footprint id); missing on every other footprint",,float,first,,footprint,curate
+n_manufactured_home_units,"Number of mobile or manufactured home units the appraisal roll or building record lists for the property (one per improvement or building of a mobile-home type); 0 where the record lists buildings but none of that type, missing where the source records no unit types",,float,sum,52.1,,
+n_travel_trailers,"Number of travel trailers the appraisal roll lists as improvements of the property (a towable RV assessed as a dwelling unit); 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.2,,
+n_park_models,"Number of park-model RVs the appraisal roll lists as improvements of the property; 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.3,,
+n_residential_buildings,"Number of residential buildings (main-area improvements of a residential class, mobile homes and RVs included) the appraisal roll lists for the property; a structure count, not a dwelling-unit count",,float,sum,52.4,,
+has_homestead_exemption,"Whether the property carries a residence homestead exemption as the appraisal roll records it (Texas: the owner's principal residence)",,bool,max,52.6,,
 land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
@@ -252,6 +259,7 @@ has_central_air,Whether the building has central air conditioning,,bool,max,59.2
 garage_type,"Garage type as described by the source (e.g. attached, detached, built-in, basement)",,categorical,first,66.1,,,
 n_garage_spaces,Number of garage parking spaces (car capacity),,float,sum,66.2,,,
 garage_area_sqft,Garage floor area,sqft,float,sum,66.3,,,
+detached_garage_area_sqft,"Floor area of detached garages, kept out of gross_floor_area_sqft (a detached garage is usually its own footprint) so curate can add it back where no separate footprint exists for it",sqft,float,sum,66.35,,,
 has_carport,Whether the property has a carport,,bool,max,66.4,,,
 n_parking_spaces,"Number of off-street parking spaces as the source reports them (garage, carport, driveway or deeded spaces); common for urban lots and condominium units",,float,sum,66.5,,,
 basement_area_sqft,"Basement floor area, finished and unfinished",sqft,float,sum,67.1,,,
