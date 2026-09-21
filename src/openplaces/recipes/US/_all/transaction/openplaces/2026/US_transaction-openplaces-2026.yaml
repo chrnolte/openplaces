@@ -37,10 +37,19 @@ save_to:
   data_dir: share
 
 pipeline:
+  # A recorder states a date, a roll a year and month (or a month-only
+  # date); every step below compares sales by year and month.
+  - step: derive_sale_period
+
   # A source published as overlapping rolling windows lists the same
-  # recorded document twice. Same key, same row: keep one.
+  # recorded document twice. Same key, same row: keep one. The record
+  # kind is part of the key so that a deed and the assessor's last-sale
+  # record of it are never taken for one row listed twice; columns a
+  # county lacks read as missing.
   - step: dedup_transactions
     key_columns:
+      - sale_record_kind
+      - parcel_id_local
       - parcel_id_assessor
       - sale_year
       - sale_month
@@ -48,14 +57,31 @@ pipeline:
       - sale_book
       - sale_page
       - sale_clerk_instrument
+      # The North Carolina recorders' spelling; without it two deeds
+      # on one parcel in one month at price 0 would read as one.
+      - book
+      - page
+      # Wisconsin's RETR names its document; MassGIS's last sales sit
+      # on property rows with no parcel key of their own.
+      - instrument_number
+      - property_id_assessor
 
   # The deed behind each row, spelled per source: Florida records a
   # clerk instrument number for newer sales and an official-record book
-  # and page for older ones. Another source adds its own candidate here.
+  # and page for older ones. Another source adds its own candidate here:
+  # the North Carolina county recorders map `book` and `page`. An
+  # assessor last-sale row citing a deed's book and page gets a scoped
+  # identifier, so it is never counted or aggregated as a second parcel
+  # of that deed, while the last-sale rows of one multi-parcel deed
+  # still share theirs.
   - step: derive_document_id
     candidates:
       - [sale_clerk_instrument]
+      - [instrument_number]
       - [sale_book, sale_page]
+      - [book, page]
+    scope_column: sale_record_kind
+    unscoped_value: deed
 
   # How many parcels the deed covered, on every row, so the count
   # survives the aggregation below and a consumer can tell an
@@ -113,6 +139,45 @@ pipeline:
           "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": 0.0
           "Disqualified - mortgage fraud per law enforcement notification": 0.0
           "Disqualified - allocated price as part of a package or bulk transaction": 0.0
+          # The same state codes, undecoded. Assessor last-sale rows
+          # read from the statewide parcel layer
+          # (US-FL_parcel-floridagio-2026) carry the two-digit code, not
+          # its label: measured 2026-09-21, none of `US-FL-MI`'s 1,401
+          # last-sale rows was graded while 99.7% of its deeds were.
+          # Generated from the labels above through the state's code
+          # table, so the two spellings cannot disagree. That recipe
+          # now ships the label table and decodes at its next ingest;
+          # these keys can go once every county has been re-ingested.
+          "01": 1.0
+          "02": 1.0
+          "03": 0.7
+          "04": 0.7
+          "05": 0.7
+          "06": 0.7
+          "11": 0.0
+          "12": 0.0
+          "13": 0.0
+          "14": 0.0
+          "16": 0.0
+          "17": 0.0
+          "18": 0.0
+          "19": 0.0
+          "20": 0.0
+          "21": 0.0
+          "30": 0.0
+          "31": 0.0
+          "32": 0.0
+          "33": 0.0
+          "34": 0.0
+          "35": 0.0
+          "36": 0.0
+          "37": 0.0
+          "38": 0.0
+          "39": 0.0
+          "40": 0.0
+          "41": 0.0
+          "42": 0.0
+          "43": 0.0
       # The two 0.7 groups are different problems a consumer treats
       # differently: a parcel that changed between assessment and sale
       # is a target problem, a deed covering several parcels an area
@@ -144,7 +209,11 @@ pipeline:
           "Disqualified - transfer to/from bankruptcy trustee/administrator/executor/guardian/receiver": disqualified
           "Disqualified - transfer to/from utility company": disqualified
           "Disqualified - contract or agreement for deed": disqualified
-          "Disqualified - transfer between relatives or corporate affiliates": disqualified
+          # Its own group, not 'disqualified': it is the state's record
+          # that the parties are related (family or affiliated
+          # companies; the code does not say which), the counterpart of
+          # Wisconsin's `related_parties_*` groups below.
+          "Disqualified - transfer between relatives or corporate affiliates": related_parties
           "Disqualified - trade or exchange of land": disqualified
           "Disqualified - abnormal time between contract and sale date": disqualified
           "Disqualified - incomplete or unbuilt common property": disqualified
@@ -158,13 +227,117 @@ pipeline:
           "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": disqualified
           "Disqualified - mortgage fraud per law enforcement notification": disqualified
           "Disqualified - allocated price as part of a package or bulk transaction": disqualified
-      # Every row of the spine is a recorded deed today; an assessor's
-      # last-sale field, when a source contributes one, maps to
-      # 'assessor_last_sale' here.
+          # The undecoded state codes; see the confidence map above.
+          "01": qualified
+          "02": qualified
+          "03": qualified_parcel_changed
+          "04": qualified_parcel_changed
+          "05": qualified_multi_parcel
+          "06": qualified_multi_parcel
+          "11": disqualified
+          "12": disqualified
+          "13": disqualified
+          "14": disqualified
+          "15": removed
+          "16": disqualified
+          "17": disqualified
+          "18": disqualified
+          "19": disqualified
+          "20": disqualified
+          "21": disqualified
+          "30": related_parties
+          "31": disqualified
+          "32": disqualified
+          "33": disqualified
+          "34": disqualified
+          "35": disqualified
+          "36": disqualified
+          "37": disqualified
+          "38": disqualified
+          "39": disqualified
+          "40": disqualified
+          "41": disqualified
+          "42": disqualified
+          "43": disqualified
+          "98": pending
+          "99": pending
+      # Wisconsin RETR (US-WI_transaction-widor-2020 and -2026). The
+      # state assigns no qualification. It asks the parties two things
+      # instead: what kind of conveyance this is, and how they are
+      # related. Each answer is graded on its own and the confidence is
+      # the lower of the two, because a transfer is at arm's length
+      # only if it is a sale *and* the parties are unrelated. A row
+      # missing either answer is left missing, not graded.
+      #
+      # Conveyance: 1.0 for 'Sale', 0.0 for each of the other 25 types
+      # the export uses (gifts, exchanges, transfers into trusts, deeds
+      # in satisfaction of a land contract, corrections, ...), whose
+      # price is 0 or an estimate: measured on 1.16M rows, 95.1% of
+      # sales carry a price and no other type of any size does. Listed
+      # by `default`, since the vocabulary is open.
+      - output: _conveyance_grade
+        type: value_map
+        column: [conveyance_type]
+        mapping:
+          "Sale": 1.0
+        default: 0.0
+      # Relationship: 1.0 for none. 0.7 for 'Other': the parties say
+      # they are related and not how, the one genuinely unclear answer.
+      # 0.0 for family (the newer export also names spouses, ex-spouses
+      # and parent/child), for partners, shareholders or members, and
+      # for a financial relationship. An answer not listed here is left
+      # missing rather than guessed at.
+      - output: _relationship_grade
+        type: value_map
+        column: [sale_party_relationship]
+        mapping:
+          "No relationship": 1.0
+          "Other": 0.7
+          "Family": 0.0
+          "Spouses": 0.0
+          "Ex-spouses": 0.0
+          "Parent/child or grandparent/grandchild": 0.0
+          "Shareholder/partner/member": 0.0
+          "Financial": 0.0
+      # `fill_only`, so a unit holding another source's grades keeps
+      # them. The two scratch columns are unregistered and do not
+      # survive keep_registered_columns.
+      - output: sale_arms_length_confidence
+        type: minimum
+        fill_only: true
+        columns: [_conveyance_grade, _relationship_grade]
+      # Why, in the group: a consumer treats 'the parties are family'
+      # differently from 'this was a gift'. A conveyance that is not a
+      # sale is `not_a_sale` whoever the parties are; a sale takes its
+      # group from the relationship.
+      - output: sale_qualification_group
+        type: value_map
+        fill_only: true
+        column: [conveyance_type]
+        mapping:
+          "Sale": null
+        default: not_a_sale
+      - output: sale_qualification_group
+        type: value_map
+        fill_only: true
+        column: [sale_party_relationship]
+        mapping:
+          "No relationship": qualified
+          "Other": related_parties_unspecified
+          "Family": related_parties_family
+          "Spouses": related_parties_family
+          "Ex-spouses": related_parties_family
+          "Parent/child or grandparent/grandchild": related_parties_family
+          "Shareholder/partner/member": related_parties_business
+          "Financial": related_parties_financial
+      # The spine states the kind (append_last_sales); a spine built
+      # before that step has no such column and its rows are deeds.
       - output: sale_record_kind
         type: value_map
-        column: sale_qualification_code
-        mapping: {}
+        column: sale_record_kind
+        mapping:
+          deed: deed
+          assessor_last_sale: assessor_last_sale
         default: deed
 
   # A second document for the same parcel at the same price within a
@@ -175,6 +348,15 @@ pipeline:
     key_column: parcel_id_assessor
     max_gap_months: 1
     output: sale_double_closing_earlier_leg
+    within: [sale_record_kind]
+
+  # A county with a recorder's table and a roll reports its latest
+  # sales twice. Both rows stay; the last-sale row that repeats a deed
+  # (same parcel, year, month and price, exactly) is flagged so that a
+  # consumer can keep the deed and drop its echo. On Pitt County NC
+  # that is 89.9% of last-sale rows whose parcel has any deed.
+  - step: flag_sales_matching_other_kind
+    key_column: parcel_id_local
 
   # A recorder's nominal consideration is not a price, and which value
   # it uses is the recorder's choice: Florida stamps 100 dollars on a
@@ -228,6 +410,41 @@ pipeline:
         type: ratio
         numerator: price
         denominator: [land_value, improvement_value]
+
+  # Nothing personal leaves the build. A recorder's table names the
+  # parties to every deed, and Wisconsin's RETR is ingested with all 78
+  # of its raw columns, among them the names and addresses of grantor,
+  # grantee, their agents, the preparer and the tax-bill recipient. An
+  # allow-list, since no list of names to drop could be complete: a
+  # column stays if the attribute registry knows it, or if it is named
+  # under `keep` (non-personal source columns the registry has no row
+  # for yet). Registered personal attributes (owner, grantor, grantee)
+  # are dropped too, unless the person running this chose to keep them
+  # on their own installation (`python -m openplaces.config
+  # --keep-personal-columns true`), e.g. to tell a sale within a family
+  # from one at arm's length in a state whose records state no
+  # relationship. No recipe can make that choice, which is why none is
+  # made here; and a delivery withholds these columns whatever it was.
+  - step: keep_registered_columns
+    keep:
+      - _join_id
+      - source
+      - admin3_id
+      - n_records_per_key
+      - parcel_id_alnum
+      # Florida SDF
+      - tax_use_subgroup
+      - value_group
+      - tax_market_area
+      - submission_id
+      - parcel_id_admin2_2
+      # Wisconsin RETR
+      - conveyance_date
+      - property_type
+      - property_use_type
+      - n_units
+      - estimated_value
+      - transfer_fee
 
   - step: cast_categoricals
 

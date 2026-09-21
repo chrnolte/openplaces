@@ -148,7 +148,24 @@ BINARY_OPS: dict[str, Callable] = {
     'mod': lambda x, y: x % y,
 }
 
+
+def _coalesce(cols: list[pd.Series], fill_na=None) -> pd.Series:
+    """First non-missing value across *cols*, in the order given.
+
+    For a source that states one fact in two columns depending on the
+    row: Eau Claire County WI has two assessors, and a parcel's working
+    number is the city's where the city assesses it and the county's
+    elsewhere. An empty string counts as missing, since that is how a
+    text column says "nothing here".
+    """
+    result = cols[0].astype(object).where(cols[0].notna() & cols[0].ne(''))
+    for col in cols[1:]:
+        result = result.where(result.notna(), col.where(col.ne('')))
+    return result if fill_na is None else result.fillna(fill_na)
+
+
 AGGREGATE_OPS: dict[str, Callable] = {
+    'coalesce': _coalesce,
     'sum': lambda cols, fill_na=None: _aggregate_cols(cols, 'sum', fill_na),
     'min': lambda cols, fill_na=None: _aggregate_cols(cols, 'min', fill_na),
     'max': lambda cols, fill_na=None: _aggregate_cols(cols, 'max', fill_na),

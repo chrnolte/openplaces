@@ -30,7 +30,11 @@ from openplaces.io.avenu_selectors import TRANSACTION_DOC_TYPES
 from openplaces.io.readers import get_admin
 from openplaces.io.transform import apply_transformations
 from openplaces.path import recipe_path
-from openplaces.recipe import get_output_path, get_recipe_by_id
+from openplaces.recipe import (
+    get_output_path,
+    get_process_admin_level,
+    get_recipe_by_id,
+)
 from openplaces.timing import Timer
 
 
@@ -123,7 +127,9 @@ class RegistryIngester:
         crosswalk_path = recipe_path(
             recipe['admin_id'], recipe['entity'], filename=crosswalk_name + '.csv'
         )
-        self._crosswalk = self._load_crosswalk(crosswalk_path, recipe['admin_id'])
+        self._crosswalk = self._load_crosswalk(
+            crosswalk_path, recipe['admin_id'], get_process_admin_level(recipe)
+        )
 
     def ingest(self) -> None:
         """Run the full crawl (synchronous entry point).
@@ -383,7 +389,15 @@ class RegistryIngester:
             if column not in df.columns:
                 df[column] = None
         df = apply_transformations(df, self.recipe)
-        df['admin4_id'] = admin4_id
+        # Named by the id's own level, not always `admin4_id`. This
+        # module predates the 2026-08 re-mint, when a Massachusetts town
+        # was a level-4 unit; towns are level 3 now and New England has
+        # no level 4. A town id under `admin4_id` scoped every deed's
+        # `address_id_local` with a prefix no parcel key carries, and
+        # 0 of Somerville's 7,086 keyed deeds reached a parcel
+        # (measured 2026-09-21).
+        level = len(str(admin4_id).split('-'))
+        df[f'admin{level}_id'] = admin4_id
 
         out_path = get_output_path(self.recipe, admin4_id, partition_id=partition_id)
 
@@ -526,8 +540,16 @@ class RegistryIngester:
         self._coverage_cache.pop(admin4_id, None)
 
     @staticmethod
-    def _load_crosswalk(csv_path: Path, admin_id: str) -> dict[str, dict]:
-        """Return mapping of admin4_id → {'base_url', 'town_name'}."""
+    def _load_crosswalk(
+        csv_path: Path, admin_id: str, level: int = 4
+    ) -> dict[str, dict]:
+        """Return mapping of town admin id → {'base_url', 'town_name'}.
+
+        Towns are read at *level*, the recipe's `process_by` admin level:
+        since the 2026-08 re-mint a Massachusetts town is a level-3 unit
+        and the state has no level 4, so the fixed level-4 lookup this
+        method used to make raised for every run.
+        """
         import csv
 
         raw: dict[str, str] = {}
@@ -535,7 +557,7 @@ class RegistryIngester:
             for row in csv.DictReader(f):
                 raw[row['town_name']] = row['base_url']
 
-        admin4_df = get_admin(admin_id, level=4)
+        admin4_df = get_admin(admin_id, level=level)
         crosswalk: dict[str, dict] = {}
         for idx, row in admin4_df.iterrows():
             name = row['name']

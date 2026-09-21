@@ -42,6 +42,18 @@ pipeline:
       - auto_discover: true
         entity_type: transaction
 
+  # The assessor last-sale lane: one row per recorded last sale on the
+  # admin unit's ingested property and parcel tables, marked
+  # sale_record_kind = assessor_last_sale (deed rows read 'deed'). It
+  # is what gives a state with no recorder's feed any prices at all. A
+  # row needs a price and a real date or year; the key is the roll
+  # row's own parcel_id_local, so nothing is matched here. A county
+  # with both kinds keeps both; the curate stage decides between them.
+  # A last-sale field is the most recent sale only: these rows support
+  # cross-sectional work, not a repeat-sales index.
+  - step: append_last_sales
+    entity_types: [property, parcel]
+
   # Standardize addresses across sources. Each unioned row only ever has one
   # source's columns populated (sources are disjoint by admin scope), so the
   # usual multi-source conflict logic in reconcile_addresses just picks the
@@ -65,6 +77,20 @@ pipeline:
     # as a street address's city (e.g. Newton, MA contains Newton Centre,
     # Waban, ...) -- do not synthesize one from the containing town.
 
+  # The town a record names, as an id. A parcel's address key is scoped
+  # by its town (`admin4_id`), and a return that only *names* its
+  # municipality ("Saint Germain, Town of", Wisconsin's RETR) gets an
+  # empty scope, so its key can match nothing: 0 of Vilas County's
+  # 12,203 keyed returns found a parcel by address, 0.759 with the scope
+  # ignored. The pattern is this source's spelling; the match against
+  # the county's level-4 units is exact and unique or not made (99.15%
+  # of 2.76M returns resolve, none ambiguously). A no-op where the
+  # pattern does not fit or the state has no level 4 (New England).
+  - step: assign_admin_id_from_name
+    name_column: city
+    level: 4
+    name_pattern: '^(?P<name>.*?),?\s+(?P<type>town|village|city)\b(?:\s+of?)?$'
+
   # Town-scoped fallback matching key for masslandrecords, which carries no
   # parcel_id_local (see US_parcel-spine-2026's own derive_address_id_local
   # step, computed identically there).
@@ -85,6 +111,18 @@ pipeline:
     entity_type: parcel
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+
+  # Which rule linked a row, recorded after each pass below. The parcel
+  # number is tried first and an exact address key only where it found
+  # nothing, and the two are not equally sure: a number names one
+  # parcel, an address can sit on a lot that was split since. The label
+  # is a fixed word per rule, written once and never changed; it is not
+  # a score, and no pass takes an earlier link back.
+  - step: record_link_method
+    label: parcel_id_local
+    spine_key: parcel_id_local
+    auto_discover: true
+    entity_type: parcel
 
   # MA: no parcel_id_local on the transaction side; join by address instead.
   # Two passes, most specific first -- link_by_id's existing column-priority
@@ -108,6 +146,10 @@ pipeline:
     fill_only: true
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+  - step: record_link_method
+    label: parcel_id_local
+    spine_key: parcel_id_local
+    recipe_id: US_parcel-spine-2026
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
@@ -115,6 +157,10 @@ pipeline:
     ref_key: address_id_local_city
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+  - step: record_link_method
+    label: address_id_local_city
+    spine_key: address_id_local_city
+    recipe_id: US_parcel-spine-2026
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
@@ -122,6 +168,10 @@ pipeline:
     ref_key: address_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+  - step: record_link_method
+    label: address_id_local
+    spine_key: address_id_local
+    recipe_id: US_parcel-spine-2026
 
   # A multi-unit deed sale's address_number (e.g. '704-706', a duplex) never
   # matches a parcel's own single-number address_id_local key via the two

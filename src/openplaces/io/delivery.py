@@ -447,6 +447,46 @@ def _share_spec(recipe):
     return columns, point_columns
 
 
+class PersonalColumnError(ValueError):
+    """Raised when a recipe declares a personal column as deliverable."""
+
+
+def _is_personal_column(column: str) -> bool:
+    """Return whether *column* names or locates a person.
+
+    Reads through a provenance suffix and a trailing `_source`, so that
+    `owner_name_parcel` and `grantor_source` count as well as `grantor`.
+    """
+    from openplaces.core.attribute_registry import is_personal_attribute
+    from openplaces.recipe import resolve_attribute_name
+
+    return is_personal_attribute(
+        resolve_attribute_name(column.removesuffix(SOURCE_SUFFIX))
+    ) or is_personal_attribute(resolve_attribute_name(column))
+
+
+def _refuse_personal_columns(columns) -> None:
+    """Refuse a delivery whose declared columns include a personal one.
+
+    A curated table may hold the parties to a deed or a property's
+    owner where the installation chose to keep them
+    (`config.get_keep_personal_columns`). That choice is about one
+    installation's own working data. A delivery leaves it, so these
+    columns are withheld from every delivered file whatever the choice
+    was, and a recipe that lists one under `share: columns` is refused
+    outright rather than quietly shipped without it: the bundle would
+    not be what its recipe says.
+    """
+    personal = [column for column in columns if _is_personal_column(column)]
+    if personal:
+        raise PersonalColumnError(
+            'A delivery never carries personal columns, and this recipe '
+            f'declares {personal} under `share`. Remove them from the '
+            'recipe; they can stay in the curated table on an '
+            'installation that keeps them.'
+        )
+
+
 def _source_columns(columns, available):
     """Return the `{column}_source` sidecars available for *columns*.
 
@@ -821,6 +861,7 @@ def export_delivery(
     # are never in memory at the same time as the polygons: pooled
     # over a region, either one alone runs to several GB.
     declared = [*canonical_columns, *point_columns]
+    _refuse_personal_columns(declared)
     frames = []
     for process_id, path in inputs:
         available = parquet_columns(path)
@@ -907,7 +948,15 @@ def export_delivery(
     evidence_frames = []
     for process_id, path in inputs:
         available = parquet_columns(path)
-        wanted = [column for column in available if column not in delivered]
+        # The evidence file takes every remaining column, which is where
+        # an owner or a party to a deed would ride out: a curated table
+        # holds them on an installation that chose to keep them. Never
+        # read, so never written.
+        wanted = [
+            column
+            for column in available
+            if column not in delivered and not _is_personal_column(column)
+        ]
         # Sources ride along in both files: dictionary-encoded, they
         # cost almost nothing, and either file reads on its own.
         wanted += _source_columns(canonical_columns, available)

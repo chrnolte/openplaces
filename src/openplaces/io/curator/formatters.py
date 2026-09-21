@@ -52,6 +52,73 @@ def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
     return state
 
 
+@_register('keep_registered_columns')
+def keep_registered_columns(
+    state: CurateState,
+    exclude: list[str] | None = None,
+    keep: list[str] | None = None,
+) -> CurateState:
+    """Keep only columns the attribute registry knows, minus *exclude*.
+
+    An allow-list, for a curated entity whose sources carry columns that
+    must not leave the build. A recorder's table names the parties to
+    each deed (grantor, grantee, their mailing addresses), and a source
+    ingested with `keep_unnamed_columns` brings every raw column along
+    under the source's own header, where no deny-list of names can be
+    complete. So the rule runs the other way: a column stays only if it,
+    or the attribute left after stripping a provenance suffix or a
+    trailing `_source`, is registered, and is not named in *exclude*.
+    The registry lists personal attributes because ingest needs their
+    types, which is why being registered is necessary and not enough.
+
+    Personal attributes
+    (`openplaces.core.attribute_registry.is_personal_attribute`: owner,
+    grantor and grantee columns) are dropped unless this installation
+    chose to keep them, `python -m openplaces.config
+    --keep-personal-columns true`. A research installation may need the
+    parties' names to tell a sale within a family from one at arm's
+    length where the source states no relationship. That choice is a
+    user's, stored in their own config, so a recipe cannot make it for
+    them; and it reaches curated tables only, because a delivery
+    withholds personal columns whatever it says. Unregistered columns
+    are dropped either way: a raw source header is not something the
+    choice was made about.
+
+    Parameters
+    ----------
+    exclude : list of str, optional
+        Registered attributes to drop whatever the installation chose,
+        suffixed forms included (`owner_name` also drops
+        `owner_name_parcel`).
+    keep : list of str, optional
+        Unregistered columns to keep (an internal join id).
+    """
+    from openplaces.config import get_keep_personal_columns
+    from openplaces.core.attribute_registry import (
+        is_personal_attribute,
+        load_registry,
+    )
+
+    registered = set(load_registry().index)
+    excluded = set(exclude or [])
+    kept = set(keep or [])
+    keep_personal = get_keep_personal_columns()
+    curated = state.curated
+    dropped = []
+    for col in curated.columns:
+        if col == 'geometry' or col in kept:
+            continue
+        base = col.removesuffix(SOURCE_SUFFIX) if col not in registered else col
+        attr = resolve_attribute_name(base)
+        personal = is_personal_attribute(attr) and not keep_personal
+        if attr not in registered or attr in excluded or base in excluded or personal:
+            dropped.append(col)
+    state.curated = curated.drop(columns=dropped)
+    if state.verbose:
+        print(f'  keep_registered_columns: dropped {len(dropped)} column(s)')
+    return state
+
+
 @_register('cast_categoricals')
 def cast_categoricals(state: CurateState) -> CurateState:
     """Cast registry-defined categoricals and provenance sidecars to Categorical.

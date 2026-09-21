@@ -101,6 +101,26 @@ def get_null_placeholder(attr: str) -> object | None:
     return None if pd.isna(value) else value
 
 
+# Attributes that name or locate a person: the parties to a deed and a
+# property's owner, mailing address included. One definition, because
+# two places act on it: an installation may choose to keep these in its
+# own curated tables (`config.get_keep_personal_columns`), and a
+# delivery withholds them whatever that choice was.
+PERSONAL_ATTRIBUTE_PREFIXES = ('owner_', 'grantor', 'grantee')
+
+
+def is_personal_attribute(attr: str) -> bool:
+    """Return whether *attr* names or locates a person.
+
+    Parameters
+    ----------
+    attr : str
+        A registry attribute name, already stripped of any provenance
+        suffix (see `openplaces.recipe.resolve_attribute_name`).
+    """
+    return str(attr).startswith(PERSONAL_ATTRIBUTE_PREFIXES)
+
+
 def get_categorical_attrs() -> frozenset[str]:
     """Return the set of attribute names whose ``data_type`` is ``'categorical'``."""
     reg = load_registry()

@@ -19,11 +19,14 @@ entity:
   version: "2026"
 
 # One download partition per calendar month. `first`/`last` are YYYYMM.
-# The portal's earliest published month appears to be 2021-01; `last` should
+# The portal's history begins on 2021-01-12, so its 2021-01 file holds
+# 12,418 of that month's 19,455 documents. The first *complete* month is
+# 2021-02, which is where this recipe starts; 2014-01 to 2021-01 come
+# from the older export (US-WI_transaction-widor-2020). `last` should
 # track the most recent published month.
 download_by:
   partition: year_month
-  first: 202101
+  first: 202102
   last: 202601
 
 # The portal serves each month as RETRHistoricalReport{YYYYMM}.csv. Declaring
@@ -63,6 +66,11 @@ columns:
   conveyance_date: "Conveyance Date"
   doc_type: "Document Type"
   conveyance_type: "Conveyance Type"
+  # RETR asks the parties how they are related: No relationship,
+  # Financial, Shareholder/partner/member, Family, Other. It is what
+  # lets a Wisconsin sale be graded for arm's length at all, and it is a
+  # source field, so no names are compared to get it.
+  sale_party_relationship: "Grantor/Grantee Relationship"
   property_type: "Property Type"
   property_use_type: "Property Use Type"
   parcel_id_tax: "Parcel Number"
@@ -83,6 +91,18 @@ transformations:
     operation: parse_currency
     input: price_raw
     output: price
+  # Dates arrive as 'MM-DD-YYYY' text and were stored as text until
+  # 2026-09-21, which sorted 01-02-2024 before 12-31-2023 and left the
+  # curate stage to parse them. Parsed here, as
+  # US-WI_transaction-widor-2020 does for the older export.
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+  - type: unary
+    operation: to_datetime
+    input: conveyance_date
+    output: conveyance_date
   # Expose the raw parcel number under the canonical name parcel_id_assessor
   # (a copy of parcel_id_tax) so both sides of the parcel-transaction join
   # derive parcel_id_local from parcel_id_assessor.

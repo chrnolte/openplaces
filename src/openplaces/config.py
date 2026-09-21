@@ -290,6 +290,45 @@ def set_terms_consent(source: str, accepted: bool) -> None:
     reload_config()
 
 
+def get_keep_personal_columns() -> bool:
+    """Return whether this installation keeps personal columns in curate.
+
+    Personal columns are the ones
+    `openplaces.core.attribute_registry.is_personal_attribute` names: the
+    parties to a deed and a property's owner. A curate recipe's
+    `keep_registered_columns` step drops them by default. An
+    installation used for research may need them (telling a sale within
+    a family from one at arm's length, where the source states no
+    relationship), and records that here. Default False.
+
+    The choice covers this installation's own curated tables only. A
+    delivery withholds personal columns whatever it says, so keeping
+    them can never publish them.
+    """
+    privacy = get_config().get('privacy') or {}
+    return bool(privacy.get('keep_personal_columns', False))
+
+
+def set_keep_personal_columns(keep: bool) -> None:
+    """Record whether this installation keeps personal columns in curate.
+
+    Stored in this user's own config, never in a recipe, for the same
+    reason a terms decision is: a committed recipe would make the choice
+    for everyone who runs it.
+
+    Parameters
+    ----------
+    keep : bool
+        True to keep them in curated tables, False to drop them.
+    """
+    merge_user_config(
+        get_config().user_config_path,
+        'privacy',
+        {'keep_personal_columns': bool(keep)},
+    )
+    reload_config()
+
+
 class DataRootNotSetError(RuntimeError):
     """Raised when no data directory has been configured.
 
@@ -1467,6 +1506,16 @@ def main():
         action='store_true',
         help='Print the User-Agent this installation sends, and exit',
     )
+    parser.add_argument(
+        '--keep-personal-columns',
+        choices=['true', 'false'],
+        default=None,
+        help=(
+            'Keep owner, grantor and grantee columns in this '
+            "installation's curated tables (default false). Deliveries "
+            'withhold them either way.'
+        ),
+    )
     profile_group = parser.add_argument_group(
         'usage profile',
         'Declare the usage context that sources with access conditions '
@@ -1510,6 +1559,9 @@ def main():
             updates['admin_interests'] = [a for a in args.admin_interest if a]
         profile = set_usage_profile(**updates)
         print(yaml.dump({'usage_profile': profile}, sort_keys=False), end='')
+    elif args.keep_personal_columns is not None:
+        set_keep_personal_columns(args.keep_personal_columns == 'true')
+        print(f'keep_personal_columns: {get_keep_personal_columns()}')
     elif args.set_identity is not None:
         print(set_identity(*args.set_identity))
     elif args.user_agent:
