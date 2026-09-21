@@ -104,7 +104,12 @@ dependencies:
   # Optional: scrape (browser-driven scrapers, e.g. wi_retr)
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.scrape]
   # After install, fetch the browser: `playwright install chromium`
+  # Two packages on conda-forge: `playwright` is the browser driver
+  # alone, and the Python bindings the scrapers import are
+  # `playwright-python` (named `playwright` only on PyPI). Listing the
+  # driver alone left `import playwright` failing in a fresh env.
   - playwright>=1.40.0
+  - playwright-python>=1.40.0
 
   # Optional: workflow orchestration (workflow/Snakefile + flow/submit.py)
   # Conda-only, like torch: not listed in pyproject.toml. The library

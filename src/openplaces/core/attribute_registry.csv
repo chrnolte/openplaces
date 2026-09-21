@@ -87,14 +87,17 @@ sale_clerk_instrument,Clerk instrument number of the recorded sale,,string,first
 sale_qualification_code,The source's qualification of the sale (arm's length or a disqualification reason),,categorical,first,,transaction,
 sale_multi_parcel,The source's flag that the sale covered several parcels,,categorical,first,,transaction,
 sale_vacant,Vacant or improved indicator at the sale,,categorical,first,,transaction,
+parcel_link_method,"Which rule linked the sale to its parcel: parcel_id_local (the standardized parcel number, tried first), then address_id_local_city or address_id_local (an exact address key, tried only where the number found nothing); missing where no rule did. The name of a rule, never a score",,categorical,first,,transaction,
+sale_party_relationship,"How the source says seller and buyer are related (e.g. Wisconsin RETR: No relationship, Financial, Shareholder/partner/member, Family, Other); a source field, never derived from names",,categorical,first,,transaction,
 sale_change_code,The source's code for a change to the sale record,,categorical,first,,transaction,
 transaction_id_source,The source's own identifier for the sale record,,string,first,,transaction,
 sale_document_id,"Identifier of the recorded document (deed) behind the sale, spelled per source: a clerk instrument number, else book and page. Rows sharing it are one sale.",,string,first,,transaction,curate
 n_parcels_per_sale,Number of parcels the recorded document covered,,float,first,,transaction,curate
 sale_arms_length_confidence,"Graded confidence that the sale was at arm's length, 0 to 1, from the signals the source supplies; a consumer sets its own cutoff",fraction (0-1),float,first,,transaction,curate
-sale_qualification_group,"The source's qualification of the sale as a group: qualified, qualified_parcel_changed, qualified_multi_parcel, pending, removed, disqualified",,categorical,first,,transaction,curate
+sale_qualification_group,"The source's qualification of the sale as a group: qualified, qualified_parcel_changed, qualified_multi_parcel, pending, removed, disqualified, related_parties (Florida: relatives or affiliated companies), related_parties_family / _business / _financial / _unspecified (Wisconsin: the parties' own statement), not_a_sale (a gift, exchange or other conveyance)",,categorical,first,,transaction,curate
 sale_double_closing_earlier_leg,"1 where a second recorded document for the same parcel at the same price within a month follows this one (the earlier leg of a double closing), else 0; a consumer filters on it",,float,first,,transaction,curate
 sale_record_kind,Whether the record is a recorded deed or an assessor's last-sale field,,categorical,first,,transaction,curate
+sale_matches_deed,"1 where an assessor last-sale row has the same parcel, sale year, sale month and price as a recorded deed in the same admin unit (the deed's echo), 0 where it has none, missing on deed rows; a consumer filters on it",,float,first,,transaction,curate
 sale_price_to_assessed_ratio,Sale price over the assessed total value at the time of sale,,float,first,,transaction,curate
 sale_nominal_price_floor,"The price at or below which this source records a nominal consideration rather than a price (Florida 100, North Carolina 0), read off the data as its largest low-price mass point",USD,float,first,,transaction,curate
 single_family_sales_disclosure_share,"Share of single-family sales in the entity's admin unit with a disclosed price, a value for a consumer to threshold",fraction (0-1),float,first,,transaction,curate

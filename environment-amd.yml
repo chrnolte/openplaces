@@ -70,8 +70,11 @@ dependencies:
   # Excel
   - openpyxl>=3.1.0
 
-  # Scrape (browser-driven scrapers)
+  # Scrape (browser-driven scrapers). On conda-forge `playwright` is
+  # the browser driver alone; the Python bindings are
+  # `playwright-python` (see environment.yml).
   - playwright>=1.40.0
+  - playwright-python>=1.40.0
 
   # Notebook kernel + dev tools
   - jupyter>=1.0.0

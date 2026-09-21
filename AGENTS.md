@@ -32,6 +32,21 @@ repository.
 - `docs/5_contribute/no-personal-data.rst` is the contributor-facing version of
   this section: what counts as a record, how to fabricate a fixture that still
   tests something, and the failure modes a history rewrite hits.
+- **Personal columns in data (not in git) are a per-user choice, and never
+  leave in a delivery.** Owner, grantor and grantee attributes
+  (`core.attribute_registry.is_personal_attribute`, the one definition) are
+  ingested, because sources carry them. A curate recipe's
+  `keep_registered_columns` step drops them from curated tables unless the
+  person running it set `python -m openplaces.config --keep-personal-columns
+  true` in their own config (a research use: telling a sale within a family
+  from one at arm's length where the source states no relationship). No
+  recipe key can switch that on, for the reason a recipe cannot accept terms.
+  `export_delivery` withholds these columns from every file whatever the
+  setting and raises `PersonalColumnError` on a recipe that lists one under
+  `share`. The same step is an allow-list against *unregistered* source
+  headers, which are dropped either way: Wisconsin's RETR is ingested with
+  78 raw columns, among them agent, preparer and tax-bill names that no
+  deny-list would have named.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
 ## Intellectual property: one notice, in one place
@@ -692,6 +707,40 @@ The step sub-modules:
   changes the harmonized spine.
 - `filter.py` — subset rows (`filter_entities`)
 - `discover.py` — discover available data sources for an admin unit
+- `admin_names.py` — `assign_admin_id_from_name`: the admin unit a record
+  only *names*, as an id, matched exactly and uniquely against the units of
+  its county or not at all. It exists because an address key is scoped by
+  `admin4_id`: a source with an empty scope matches no parcel by address,
+  silently (0 of Vilas County WI's keyed returns, 0.759 with the scope
+  ignored). The source's spelling is a recipe-side regex; a no-op where the
+  level does not exist (New England).
+- `link_methods.py` — `record_link_method`: after each `link_by_id` pass of
+  the transaction spine, writes `parcel_link_method`, the name of the first
+  rule that reached the row (`parcel_id_local`, then an exact address key).
+  A fixed label, written once, never a score and never revised (patent
+  shape 4). It re-reads the pass's reference instead of instrumenting
+  `link_by_id`, so a step added between a pass and its label would make the
+  label describe the wrong pass.
+- `last_sales.py` — `append_last_sales`: turn the last-sale fields an
+  assessment roll carries into transaction rows
+  (`sale_record_kind = assessor_last_sale`; rows already on the spine read
+  `deed`), so a state with no recorder's feed still has prices. It is a
+  reshape, not a match: the row keeps the roll row's own `parcel_id_local`.
+  Three things are not what the name suggests. **"Has a last sale" is never
+  "non-null"**: Florida's parcel layer fills every last-sale column on every
+  row and 0 is the placeholder, in the year as well as the price, so a row
+  needs a price and a real date or year. **A roll that records the month
+  only arrives as first-of-month dates** (all 73,253 of Pitt County NC's);
+  the step keeps year and month and writes no day, so a deed and its
+  last-sale echo compare at month precision. **A roll ingested for several
+  years repeats each last sale once per year** (Florida's DOR roll holds 24);
+  the same ids, date and price are one row, while different last sales of
+  one property across years are kept, which is history a single roll year
+  lacks. Property tables are read before parcel tables, and a later source
+  adds a sale only for a `parcel_id_local` no earlier one supplied. Only an
+  allow-list of columns is read, so owner fields cannot enter. A last-sale
+  field is the most recent sale only: these rows support cross-sectional
+  work, not a repeat-sales index.
 
 All steps share a `HarmonizeState` dataclass (spine, references, crosswalks, overlays,
 metadata). Each step receives state and returns the updated state.
@@ -840,6 +889,23 @@ Steps are organized by the nature of the transformation:
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical
   dataset
+- `transactions.py` — steps for the transaction entity, which **grade and
+  flag and never drop**: `derive_document_id` (the deed behind a row, spelled
+  per source; a part that is empty or all zeros names no document, since
+  Florida's roll writes a single space for book and page and that once folded
+  1,333 sales of one county into a single "deed"; scoped by record kind, so a
+  deed and the last-sale row citing its book and page are never aggregated as
+  one sale of two parcels), `count_parcels_per_document`,
+  `aggregate_multi_parcel_sales`, `collapse_double_closings` (compared within
+  one record kind) and `flag_sales_matching_other_kind`
+  (`sale_matches_deed`: exact equality of parcel, year, month and price, no
+  tolerance and no score). `sale_arms_length_confidence` is graded per source
+  in the recipe: Florida from the state's qualification codes (labels and the
+  raw two-digit codes alike, because last-sale rows read from the parcel
+  layer are undecoded), Wisconsin as the lower of two grades, the conveyance
+  type and the relationship the parties themselves state on the RETR form
+  (`sale_party_relationship`; about 20% of transfers are `Family`), through
+  the `minimum` indicator type and `fill_only`.
 
 Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),

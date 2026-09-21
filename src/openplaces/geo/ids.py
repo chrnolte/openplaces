@@ -879,6 +879,85 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     p = _conv_dict(conv_code)
     if 'no_conv' in p:
         return s.where(s.ne(''), pd.NA)
+    if 'simple_clean' in p:
+        # 'simple', after named clean-ups that undo a respelling of the
+        # same number. Named rather than given as a regular expression,
+        # because a conversion code is split on ' & ' and ': ' and an
+        # expression would not survive that.
+        #
+        #   drop_inner_letters   remove a run of letters that sits
+        #                        between digits
+        #   trim_suffix_zeros    drop trailing zeros after a decimal
+        #                        point, and the point if nothing is left
+        #
+        # Juneau County WI is the case for both: its transfer returns of
+        # 2014 to 2016 write a parcel as '29028TNE0867.0100' (county and
+        # district, a 3-letter municipality code, the parcel, a 4-digit
+        # suffix) where the parcel layer, and later returns, write
+        # '290280867.01'. Measured 2026-09-21: 0.246 of those early
+        # returns find their parcel as written, 0.825 cleaned, and the
+        # county overall goes from 0.821 to 0.945. The rule merges 58 of
+        # the layer's 31,304 distinct ids (0.2%). The county's own
+        # server was checked for an old-number field; its OLDPIN is a
+        # third spelling (the parcel's leading zero dropped) that fewer
+        # returns match than PIN does (0.310 against 0.821).
+        #
+        #   trim_zero_pairs      after punctuation is removed, drop
+        #                        trailing '00' pairs, never below 5
+        #                        characters
+        #
+        # Winnebago County WI is the case for the third: Oshkosh and
+        # Neenah parcels carry 11 digits in the parcel layer and the
+        # returns write the first 7 or 9, the rest being '0000' or '00'
+        # (a base parcel; its splits are numbered 0100, 0200). Towns
+        # write 7 digits on both sides. Measured 2026-09-21: the county
+        # goes from 0.530 to 0.843, Oshkosh from 0.298 to 0.960, and the
+        # rule merges none of the layer's 79,934 distinct ids. The
+        # county's own server was checked and carries the same number.
+        flags = set(p['simple_clean'].split())
+        known = {'drop_inner_letters', 'trim_suffix_zeros', 'trim_zero_pairs'}
+        if flags - known:
+            raise ValueError(f'Unknown simple_clean flag(s): {sorted(flags - known)}')
+        if 'drop_inner_letters' in flags:
+            s = s.str.replace(r'(?<=\d)[A-Z]+(?=\d)', '', regex=True)
+        if 'trim_suffix_zeros' in flags:
+            s = s.str.replace(r'(\.\d*?)0+$', r'\1', regex=True)
+            s = s.str.replace(r'\.$', '', regex=True)
+        out = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+        if 'trim_zero_pairs' in flags:
+            # Bounded: no id seen so far carries more than two pairs.
+            for _ in range(4):
+                strip = (out.str.endswith('00') & (out.str.len() >= 7)).fillna(False)
+                out = out.where(~strip, out.str.slice(0, -2))
+        return out.where(out.ne(''), pd.NA)
+    if 'simple_pad_last' in p:
+        # 'simple', after right-padding the id's last segment with zeros
+        # to a stated width. For a county that lengthened that segment
+        # by appending zeros, so that a parent parcel '...-0012' became
+        # '...-001200' and its later splits '...-001201': Burnett,
+        # Washburn and Bayfield WI did, and Wisconsin's transfer returns
+        # of 2014 to 2016 still carry the 4-digit form. Measured
+        # 2026-09-21 on those returns against the 2025 parcel layer:
+        # matched 0.000 as written, and 0.772, 0.868 and 0.861 padded.
+        # Left-padding (the usual reading of a short number) matched
+        # 0.000 to 0.032, which is what identifies the rule as the
+        # counties' own and not a formatting accident. An id already at
+        # full width is unchanged, so one rule serves both sides of a
+        # join. Segments are runs of letters and digits; an id with a
+        # single segment is left alone, since it has no "last" part to
+        # which a suffix convention could apply.
+        width = int(p['simple_pad_last'])
+        parts = s.str.findall(r'[0-9A-Z]+')
+
+        def _pad(segments):
+            if not isinstance(segments, list) or not segments:
+                return pd.NA
+            if len(segments) > 1:
+                segments = [*segments[:-1], segments[-1].ljust(width, '0')]
+            return ''.join(segments)
+
+        out = parts.map(_pad).astype('string')
+        return out.where(out.ne(''), pd.NA)
 
     if 'string_lengths' in p:
         regex = ''.join(

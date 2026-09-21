@@ -188,23 +188,26 @@ def test_ingester_skip_uses_footer_coverage(cache_to_tmp):
     from openplaces.io.ingester import Ingester
 
     recipe = get_recipe_by_id(WI_RECIPE_ID)
-    months = ['202101', '202102']
+    # Months inside the recipe's own range, which starts at 2021-02: the
+    # portal's 2021-01 file is partial and belongs to the older export's
+    # recipe (US-WI_transaction-widor-2020).
+    months = ['202102', '202103']
     for m in months:
         _write_month(get_output_path(recipe, 'US-WI', partition_id=m), m)
     aggregate_partitions(
         recipe, single_file=True, admin_ids='US-WI', partition_ids=months
     )
 
-    ing = Ingester(WI_RECIPE_ID, partition_ids=['202101', '202102', '202103'])
+    ing = Ingester(WI_RECIPE_ID, partition_ids=['202102', '202103', '202104'])
     ing._resolve_admin_ids(False)
     ing._resolve_partition_ids(False)
-    # 202101/202102 are in the footer; only the uncovered 202103 remains.
-    assert ing.partition_ids_to_download == ['202103']
+    # 202102/202103 are in the footer; only the uncovered 202104 remains.
+    assert ing.partition_ids_to_download == ['202104']
 
-    ing2 = Ingester(WI_RECIPE_ID, partition_ids=['202101', '202102', '202103'])
+    ing2 = Ingester(WI_RECIPE_ID, partition_ids=['202102', '202103', '202104'])
     ing2._resolve_admin_ids(True)
     ing2._resolve_partition_ids(True)
-    assert set(ing2.partition_ids_to_download) == {'202101', '202102', '202103'}
+    assert set(ing2.partition_ids_to_download) == {'202102', '202103', '202104'}
 
 
 def _keyed_df(rows: dict[str, str]) -> pd.DataFrame:
