@@ -43,12 +43,61 @@ DEFAULT_ID_COLUMNS = {
     'property': ('property_id_assessor', 'property_id_admin2', 'parcel_id_assessor'),
 }
 
-# A source in which more rows than this share their id has named the
-# wrong column (New Hanover County NC's PIN sits on up to 327 accounts,
-# 17% of rows; its account number on none). The few repeats an account
-# column really has stay far below (Galveston TX 3 of 202,068 rows,
-# Somerville MA 24 of 19,013).
-MAX_REPEATED_ID_SHARE = 0.02
+# The account column is chosen, not tested against a threshold: of the
+# candidates a source carries, the one on which the fewest rows share
+# their number (`choose_id_column`). New Hanover County NC's account
+# number repeats on no row and its PIN on 19,519 of 115,027, so the
+# choice needs no cutoff, and a recipe's `entity_id` overrides it. One
+# bound remains, as a statement about the source rather than a tuning
+# knob: a source whose best column still repeats on most rows issues no
+# account number at all, and its rows are named by their content (the
+# units split off North Carolina's statewide parcel layer, every one of
+# which carries its lot's number).
+NO_ACCOUNT_NUMBER_SHARE = 0.5
+
+# A source holding several roll years (Florida's DOR roll: 24 yearly
+# rolls per county, kept on purpose as a panel for temporal joins)
+# describes every property once per year. The spine takes the latest
+# roll of the unit being built, not the latest row per account, which
+# would revive every account retired since 2002 with its last values.
+VINTAGE_COLUMN = 'tax_year'
+
+
+def select_latest_vintage(
+    rows: pd.DataFrame, column: str = VINTAGE_COLUMN
+) -> tuple[pd.DataFrame, int]:
+    """Keep the rows of the latest roll year, where a source has several.
+
+    Returns the rows kept and the number dropped. A source with one
+    year, or none, passes through untouched.
+    """
+    if column not in rows.columns:
+        return rows, 0
+    year = pd.to_numeric(rows[column], errors='coerce')
+    if year.nunique(dropna=True) <= 1:
+        return rows, 0
+    keep = year.eq(year.max())
+    return rows[keep], int((~keep).sum())
+
+
+def choose_id_column(rows: pd.DataFrame, candidates) -> str | None:
+    """The candidate on which the fewest rows share their number.
+
+    Ties go to the earlier candidate. A candidate that is absent or
+    empty is skipped.
+    """
+    best, best_repeats = None, None
+    for column in candidates:
+        if column not in rows.columns:
+            continue
+        issued = normalize_issued_id(rows[column])
+        if issued.notna().sum() == 0:
+            continue
+        repeats = int(issued.dropna().duplicated(keep=False).sum())
+        repeats += int(issued.isna().sum())
+        if best_repeats is None or repeats < best_repeats:
+            best, best_repeats = column, repeats
+    return best
 
 
 def normalize_issued_id(values: pd.Series) -> pd.Series:
@@ -87,7 +136,7 @@ def mint_ids(
     admin_id: str,
     id_column: str | None,
     label: str,
-    content_if_coarse: bool = False,
+    repeats_by_content: bool = False,
 ) -> tuple[pd.Series, dict]:
     """Ids for one source's rows within one admin unit.
 
@@ -102,10 +151,11 @@ def mint_ids(
         source has none.
     label : str
         The source's label, used only for rows with no issued number.
-    content_if_coarse : bool, optional
-        Name every row by its content instead of raising when the
-        column turns out to name something coarser than the account.
-        For sources whose recipe cannot do better (split units).
+    repeats_by_content : bool, optional
+        Name the rows whose number repeats by their content instead of
+        suffixing them, for units split off a parcel table. Any source
+        whose number repeats on most rows (`NO_ACCOUNT_NUMBER_SHARE`)
+        is treated the same way, with a warning.
 
     Returns
     -------
@@ -113,13 +163,8 @@ def mint_ids(
         One id per row, aligned to *rows*. Unique except across exact
         duplicate rows, which share one.
     report : dict
-        `n_without_number`, `n_repeated`, `n_exact_duplicates`.
-
-    Raises
-    ------
-    ValueError
-        When more than `MAX_REPEATED_ID_SHARE` of the rows share their
-        number: the column names something coarser than the account.
+        `n_without_number`, `n_repeated`, `n_exact_duplicates`, and
+        `n_coarse_numbers` where repeating rows were named by content.
     """
     hashes = _content_hash(rows.drop(columns='source', errors='ignore'))
     issued = (
@@ -142,11 +187,22 @@ def mint_ids(
     distinct_repeats &= ids.where(~exact).duplicated(keep=False)
     copy_of = ids.astype('object') + '|' + hashes.astype('string').astype('object')
     share = distinct_repeats.sum() / max(len(rows), 1)
-    if share > MAX_REPEATED_ID_SHARE and content_if_coarse:
-        # Units split off a parcel table whose source gives a stack's
-        # members no number of their own (North Carolina's statewide
-        # layer repeats the lot's on every one). No recipe can name a
-        # better column, so the rows are named by their content.
+    no_account_number = share > NO_ACCOUNT_NUMBER_SHARE
+    if no_account_number:
+        warnings.warn(
+            f'assign_entity_ids: {distinct_repeats.sum():,d} of {len(rows):,d} '
+            f'{label} rows ({share:.0%}) share their {id_column!r} with a '
+            'different row, so the source issues no account number; those '
+            'rows are named by their content. Name a better column in the '
+            "recipe's `entity_id` if it has one.",
+            stacklevel=2,
+        )
+    if distinct_repeats.any() and (repeats_by_content or no_account_number):
+        # A number on several differing rows does not name one of them:
+        # units split off a parcel table that repeats the lot's number
+        # (North Carolina's statewide layer, on every stack), or a
+        # source with no account number at all. `_2`, `_3` would read
+        # as accounts and let an arbitrary one merge with a roll row.
         # Only the rows whose number repeats: a number carried by one
         # row is still the account, and is what lets that unit merge
         # with its tax roll row (Galveston County TX: 5,265 of 5,577
@@ -161,14 +217,6 @@ def mint_ids(
             'n_exact_duplicates': int(exact.sum()),
             'n_coarse_numbers': int(distinct_repeats.sum()),
         }
-    if share > MAX_REPEATED_ID_SHARE:
-        raise ValueError(
-            f'assign_entity_ids: {distinct_repeats.sum():,d} of {len(rows):,d} '
-            f'{label} rows ({share:.1%}) share their {id_column!r} with a '
-            'different row. That column names something coarser than the '
-            "account (a lot's PIN, not a unit's number); name the account "
-            "column in the recipe's `entity_id`."
-        )
     if distinct_repeats.any():
         # Deterministic: ordered by content, not by position in the file.
         order = (
@@ -245,12 +293,30 @@ def assign_entity_ids(state: HarmonizeState) -> HarmonizeState:
     defaults = DEFAULT_ID_COLUMNS.get(entity_type, ())
 
     spine = state.spine
-    ids = pd.Series(pd.NA, index=spine.index, dtype='string')
     labels = (
         spine['source'].astype('string')
         if 'source' in spine.columns
         else pd.Series('source', index=spine.index, dtype='string')
     )
+    # A source holding several roll years keeps its latest only. The
+    # rows go before any id is minted, so that a panel of yearly rolls
+    # is never mistaken for a column that names the wrong thing.
+    kept = []
+    for label, part in spine.groupby(labels, sort=False):
+        latest, n_dropped = select_latest_vintage(part)
+        kept.append(latest.index)
+        if n_dropped:
+            print(
+                f'  assign_entity_ids: {label}: kept the latest '
+                f'{VINTAGE_COLUMN} ({len(latest):,d} rows), dropped '
+                f'{n_dropped:,d} rows of earlier rolls'
+            )
+    keep_index = kept[0].append(kept[1:]) if kept else spine.index
+    if len(keep_index) != len(spine):
+        spine = spine.loc[spine.index.isin(keep_index)]
+        labels = labels.loc[spine.index]
+
+    ids = pd.Series(pd.NA, index=spine.index, dtype='string')
     for label, part in spine.groupby(labels, sort=False):
         part = part.dropna(axis=1, how='all')
         recipe_id, layer = origins.get(label, (None, None))
@@ -261,7 +327,7 @@ def assign_entity_ids(state: HarmonizeState) -> HarmonizeState:
                 f'which its output for {admin} does not carry.'
             )
         if column is None:
-            column = next((c for c in defaults if c in part.columns), None)
+            column = choose_id_column(part, defaults)
         if column is None:
             warnings.warn(
                 f'assign_entity_ids: {label} carries no issued number for '
@@ -275,13 +341,15 @@ def assign_entity_ids(state: HarmonizeState) -> HarmonizeState:
             # the link table, which reads the split's own pairs.
             part = part.drop(columns=[LOT_LINK_KEY, 'geo_id'], errors='ignore')
         part_ids, report = mint_ids(
-            part, admin, column, label, content_if_coarse=is_units
+            part, admin, column, label, repeats_by_content=is_units
         )
         ids.loc[part.index] = part_ids
-        if state.verbose or report['n_repeated']:
+        n_coarse = report.get('n_coarse_numbers', 0)
+        if state.verbose or report['n_repeated'] or n_coarse:
             print(
                 f'  assign_entity_ids: {label} on {column}: '
                 f'{report["n_repeated"]:,d} rows repeat a number, '
+                f'{n_coarse:,d} named by content for it, '
                 f'{report["n_exact_duplicates"]:,d} exact duplicates, '
                 f'{report["n_without_number"]:,d} without a number'
             )
