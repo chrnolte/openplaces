@@ -7,9 +7,11 @@ import pandas as pd
 import pytest
 
 from openplaces.io.harmonizer.entity_ids import (
+    choose_id_column,
     merge_on_id,
     mint_ids,
     normalize_issued_id,
+    select_latest_vintage,
 )
 
 ADMIN = 'US-XX-ABC'
@@ -67,11 +69,44 @@ def test_exact_duplicate_rows_share_one_id():
     assert report['n_exact_duplicates'] == 1
 
 
-def test_a_column_naming_the_lot_instead_of_the_account_raises():
-    # Ten units on each of ten lots: the lot number repeats everywhere.
+def test_the_account_column_is_the_one_that_repeats_least():
+    # The lot's PIN sits on every unit of a lot; the account number on
+    # one row each. Listed first or not, the PIN is not chosen.
+    rows = pd.DataFrame(
+        {
+            'pin': [f'LOT{i // 10}' for i in range(100)],
+            'account': [f'A{i}' for i in range(100)],
+            'empty': [None] * 100,
+        }
+    )
+    assert choose_id_column(rows, ('empty', 'pin', 'account', 'absent')) == 'account'
+    assert choose_id_column(rows, ('absent',)) is None
+
+
+def test_a_source_with_no_account_number_is_named_by_content_not_refused():
+    # Ten units on each of ten lots and no better column: the number
+    # repeats on every row, so it names no unit.
     rows = _roll([f'LOT{i // 10}' for i in range(100)], unit=range(100))
-    with pytest.raises(ValueError, match='coarser than the'):
-        mint_ids(rows, ADMIN, 'account', 'roll')
+    with pytest.warns(UserWarning, match='issues no account number'):
+        ids, report = mint_ids(rows, ADMIN, 'account', 'roll')
+    assert ids.is_unique
+    assert ids.str.startswith('US-XX-ABC_roll:').all()
+    assert report['n_coarse_numbers'] == 100
+
+
+def test_only_the_latest_roll_year_of_a_panel_is_kept():
+    rows = pd.DataFrame(
+        {
+            'account': ['A1', 'A1', 'A2', 'A3'],
+            'tax_year': [2024, 2025, 2025, 2009],
+        }
+    )
+    latest, n_dropped = select_latest_vintage(rows)
+    # A3 was retired in 2009: it is not revived with its last values.
+    assert latest['account'].tolist() == ['A1', 'A2'] and n_dropped == 2
+    same, none = select_latest_vintage(rows.assign(tax_year=2025))
+    assert len(same) == 4 and none == 0
+    assert select_latest_vintage(rows.drop(columns='tax_year'))[1] == 0
 
 
 def test_split_units_keep_the_numbers_that_do_name_one_unit():
@@ -79,7 +114,7 @@ def test_split_units_keep_the_numbers_that_do_name_one_unit():
     # stack, and gives the units of another their own.
     rows = _roll(['LOT'] * 30 + [f'U{i}' for i in range(30)], unit=range(60))
     ids, report = mint_ids(
-        rows, ADMIN, 'account', 'layer:units', content_if_coarse=True
+        rows, ADMIN, 'account', 'layer:units', repeats_by_content=True
     )
     assert ids.is_unique
     assert ids[30:].tolist() == [f'US-XX-ABC_U{i}' for i in range(30)]
