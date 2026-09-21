@@ -172,6 +172,8 @@ def get_recipe_dict(filepath, *args, **kwargs):
         if 'entity' in layer_spec:
             layer_spec['entity'] = _cast_entity(layer_spec['entity'])
 
+    _add_stacked_units_layer(recipe_dict)
+
     # Validate save_to (if present)
     if 'save_to' in recipe_dict and isinstance(recipe_dict['save_to'], dict):
         data_dir = recipe_dict['save_to'].get('data_dir')
@@ -191,6 +193,54 @@ def get_recipe_dict(filepath, *args, **kwargs):
             )
 
     return recipe_dict
+
+
+#: Marker on the implicit property layer a parcel ingest recipe carries.
+STACKED_UNITS_LAYER_KEY = 'stacked_units_layer'
+
+
+def _add_stacked_units_layer(recipe_dict: dict) -> None:
+    """Give a parcel ingest recipe the property layer its stacked units land in.
+
+    Every parcel ingest table is split at ingest into one row per lot
+    and a property row per stacked ownership record
+    (`io.stacked_units`). The property rows are written as an
+    `additional_layers` entry of the same recipe, so discovery, the
+    property spine, readers and cleanup see them exactly like MassGIS's
+    bundled property table. The entry is added here, at load time,
+    rather than declared in every YAML: it is the default, and a recipe
+    that declares its own property layer, opts out with
+    `stacked_units: false`, or is not an ingest recipe gets none. The
+    ingester never reads this layer from the source file; the marker
+    tells its layer loop to skip it, and the parcel table's own
+    processing writes it.
+    """
+    entity = recipe_dict.get('entity')
+    if (
+        entity is None
+        or str(entity.entity_type) != 'parcel'
+        or recipe_dict.get('stage') != 'ingest'
+        or recipe_dict.get('stacked_units') is False
+    ):
+        return
+    layers = recipe_dict.setdefault('additional_layers', [])
+    for spec in layers:
+        spec_entity = spec.get('entity')
+        if spec_entity is not None and str(spec_entity.entity_type) == 'property':
+            return
+    spec = {
+        'entity': Entity('property', entity.source, entity.version),
+        # The column in which a unit names its lot. The unit's own
+        # `parcel_id_local` stays its own (io.stacked_units), so a join
+        # of this layer onto parcels pairs `lot_id_local` with the
+        # parcel's `parcel_id_local`.
+        'layer_key': 'lot_id_local',
+        STACKED_UNITS_LAYER_KEY: True,
+    }
+    if isinstance(recipe_dict.get('save_to'), dict):
+        # A per-table key: the layer saves where its parcel table saves.
+        spec['save_to'] = dict(recipe_dict['save_to'])
+    layers.append(spec)
 
 
 def coverage_is_complete(recipe_id) -> bool:
@@ -1449,6 +1499,12 @@ def find_additional_layer_recipes(
                     'layer': layer_entity_type,
                     'label': source_id,
                     'layer_key': layer_spec.get('layer_key', 'parcel_id_local'),
+                    # The implicit layer of units split off a parcel
+                    # table: a fallback wherever a tax roll describes
+                    # the same lots (spine.union_spine_sources).
+                    'stacked_units_layer': bool(
+                        layer_spec.get(STACKED_UNITS_LAYER_KEY)
+                    ),
                 }
             )
     return matches

@@ -27,6 +27,7 @@ from openplaces.io.harmonizer import (
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import raise_if_coverage_complete
 
@@ -545,6 +546,17 @@ def union_spine_sources(
     appear in another's), so this is a straightforward concatenation, not a
     priority-merge -- no dedup logic beyond what ``pd.concat`` needs.
 
+    The one exception is a parcel recipe's implicit stacked-units layer
+    (``io.stacked_units``), which describes the same condominium units as
+    the county's tax roll. Its rows are loaded last and labeled
+    ``<source>:units``. Nothing is reconciled here: where the units carry
+    the roll's account numbers, ``assign_entity_ids`` mints the same id
+    for both and merges them into one row, the roll winning each cell;
+    where they do not, both rows stay, each reaches the lot through the
+    property-to-parcel link table, and the reader that sums over a lot
+    lets a roll's rows displace the split's there
+    (``io.curator.aggregation``).
+
     Parameters
     ----------
     sources : list of dict
@@ -564,6 +576,7 @@ def union_spine_sources(
         return state
 
     parts = []
+    unit_parts = []
     loaded_recipe_ids = set()
     for src in resolved:
         recipe_id = src['recipe_id']
@@ -585,8 +598,13 @@ def union_spine_sources(
         if df.empty:
             continue
         df = df.copy()
+        is_units = bool(src.get('stacked_units_layer'))
+        if is_units:
+            # A label that says what the rows are: units split off a
+            # parcel table, which a reader ranks below any roll.
+            label = f'{label}{STACKED_UNITS_LABEL_SUFFIX}'
         df['source'] = label
-        parts.append(df)
+        (unit_parts if is_units else parts).append(df)
         loaded_recipe_ids.add(recipe_id)
         # Which table each label came from, for assign_entity_ids,
         # which reads the id column that table's recipe names.
@@ -596,6 +614,10 @@ def union_spine_sources(
         )
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
+
+    # Last, so that a roll's row wins each cell where both describe a
+    # unit (assign_entity_ids merges rows in load order).
+    parts += unit_parts
 
     if not parts:
         warnings.warn(f'union_spine_sources: no rows loaded for {state.admin_id}.')
@@ -714,6 +736,7 @@ def _expand_auto_discover(
                     'recipe_id': match['recipe_id'],
                     'label': match['label'],
                     'layer': match['layer'],
+                    'stacked_units_layer': match.get('stacked_units_layer', False),
                 }
             )
             existing_ids.add(key)

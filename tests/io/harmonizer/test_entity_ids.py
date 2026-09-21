@@ -74,6 +74,19 @@ def test_a_column_naming_the_lot_instead_of_the_account_raises():
         mint_ids(rows, ADMIN, 'account', 'roll')
 
 
+def test_split_units_keep_the_numbers_that_do_name_one_unit():
+    # A parcel layer that repeats the lot's number on every unit of one
+    # stack, and gives the units of another their own.
+    rows = _roll(['LOT'] * 30 + [f'U{i}' for i in range(30)], unit=range(60))
+    ids, report = mint_ids(
+        rows, ADMIN, 'account', 'layer:units', content_if_coarse=True
+    )
+    assert ids.is_unique
+    assert ids[30:].tolist() == [f'US-XX-ABC_U{i}' for i in range(30)]
+    assert ids[:30].str.startswith('US-XX-ABC_layer:units:').all()
+    assert report['n_coarse_numbers'] == 30
+
+
 def test_a_row_without_a_number_is_named_by_its_content():
     rows = _roll([None, 'A2'], value=[1.0, 2.0])
     ids, report = mint_ids(rows, ADMIN, 'account', 'roll')
