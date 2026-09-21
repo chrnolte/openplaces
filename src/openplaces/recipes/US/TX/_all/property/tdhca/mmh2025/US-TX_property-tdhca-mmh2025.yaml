@@ -21,6 +21,16 @@ entity:
     # uncompressed_file_name below).
   version: mmh2025
 
+# A reference table, not a source of property rows. A title certificate
+# is a property of a kind (a home held as personal property), but these
+# rows carry no parcel key and no coordinates, and an installation
+# address only on certificates issued since about 2000 (58.2% of rows,
+# 51.8% of active ones, none before 2000), so a located subset would be
+# biased toward newer homes. Unioned into US_property-spine-2026 they
+# were 11% of Victoria County's rows and could link to nothing. The
+# table stays ingestible for the calibration in `notes`.
+exclude_from_auto_discover: true
+
 # Name of the (already flat, uncompressed) source file. Deliberately not
 # also declaring compressed_file_name: that combination would make the
 # ingester expect a heap-directory copy produced by unzipping an archive.
@@ -47,9 +57,12 @@ save_to:
 # county, and nothing about who owns the home. Do not add them "for
 # completeness" -- see the no-personal-data section of AGENTS.md.
 #
-# Loc_Addr1/Loc_Addr2 (the installation street address) are also skipped:
-# they are ~99.9% blank in this export, so they would add a residence-level
-# address column with no analytical benefit.
+# Loc_Addr1 (the installation street address) is also skipped. It is
+# filled on 58.2% of rows, by vintage: essentially none of the
+# certificates issued before 2000, 62% of the 2000s, all since 2010
+# (measured 2026-09-20; an earlier note here called it 99.9% blank,
+# which this export does not bear out). Linking on it would select newer
+# homes, so it is left unmapped until an analysis can live with that.
 columns:
   certificate_id_local: CertNum
   county_name: InstallCounty
