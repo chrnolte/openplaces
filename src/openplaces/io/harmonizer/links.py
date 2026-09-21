@@ -56,6 +56,7 @@ from openplaces.io.harmonizer import (
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
 from openplaces.recipe import (
+    STACKED_UNITS_LAYER_KEY,
     get_output_path,
     get_recipe_by_id,
     get_recipe_dependencies,
@@ -1976,6 +1977,9 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                     'key': layer_spec.get('layer_key', 'parcel_id_local'),
                     'aggregation_function': layer_spec.get('aggregation_function'),
                     'supplements': None,
+                    'stacked_units_layer': bool(
+                        layer_spec.get(STACKED_UNITS_LAYER_KEY)
+                    ),
                 }
             )
 
@@ -2488,6 +2492,7 @@ def link_by_id(
     spine_address_key: dict | None = None,
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
+    _unit_lot_pairs: pd.DataFrame | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -2760,13 +2765,36 @@ def link_by_id(
             # punctuation-free fallback key. A supplements_key is the
             # one column relating a supplement to its roll, so no
             # caller key replaces it.
+            unit_lot_pairs = None
             if keyed:
                 match_spine_key = match_ref_key = keyed
+            elif match.get('stacked_units_layer'):
+                # Units split off a parcel table name their lot in the
+                # layer's key and keep their own `parcel_id_local`, so
+                # the pair of columns differs by side. A caller's
+                # fallback key is built from the unit's own id and
+                # cannot name a lot: such a pass skips this layer.
+                if spine_key != DEFAULT_LINK_KEY or ref_key != DEFAULT_LINK_KEY:
+                    continue
+                match_spine_key, match_ref_key = DEFAULT_LINK_KEY, match['key']
             else:
                 match_spine_key = (
                     spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
                 )
                 match_ref_key = ref_key if ref_key != DEFAULT_LINK_KEY else match['key']
+                if (
+                    entity_type == 'property'
+                    and match_spine_key == DEFAULT_LINK_KEY
+                    and match_ref_key == DEFAULT_LINK_KEY
+                ):
+                    # A roll keyed on a unit's own number finds no parcel
+                    # row on a stacked lot, whose row carries the lot's
+                    # key. The split's unit-to-lot pairs carry it there.
+                    from openplaces.io.harmonizer.entity_links import (
+                        load_unit_lot_pairs,
+                    )
+
+                    unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
@@ -2784,6 +2812,7 @@ def link_by_id(
                 fill_only=fill_only,
                 _protect_own_columns=protect_columns,
                 _supplement_of=match['supplements'] if keyed else None,
+                _unit_lot_pairs=unit_lot_pairs,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -2885,6 +2914,26 @@ def link_by_id(
     # Before any mode reads the key: a placeholder shared by thousands of
     # rows is not an identifier, and every mode below would silently treat
     # it as one (see _neutralize_degenerate_keys).
+    if _unit_lot_pairs is not None and len(_unit_lot_pairs):
+        # Move a reference row keyed on a split unit to that unit's
+        # lot, where no spine row carries the unit's own key. One key
+        # holds one lot, so an account the split saw on several lots
+        # goes to the first here; the link table holds all of them and
+        # curate apportions by it. An exact lookup, nothing scored.
+        lot_of_unit = _unit_lot_pairs.drop_duplicates('unit_key').set_index('unit_key')[
+            'lot_key'
+        ]
+        own = ref[ref_key].astype('string')
+        target = own.map(lot_of_unit)
+        move = target.notna() & ~own.isin(set(skey.dropna()))
+        if move.any():
+            ref = ref.copy()
+            ref[ref_key] = own.where(~move, target)
+            if state.verbose:
+                print(
+                    f'  link_by_id: {int(move.sum()):,d} {recipe_id} rows keyed '
+                    'on a stacked unit moved to their lot'
+                )
     ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id, spine_key=skey)
     rkey = ref[ref_key].astype('string')
     spine_entity = state.recipe.get('entity')

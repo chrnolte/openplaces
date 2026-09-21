@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from openplaces.io.stacked_units import relink_units_to_lots, split_stacked_units
+from openplaces.io.stacked_units import split_stacked_units
 
 
 def _table():
@@ -51,7 +51,9 @@ def test_a_stack_becomes_one_parcel_and_its_members_become_properties():
     # The members disagreed on the link key, so the lot key stands in.
     assert lot_a['parcel_id_local'] == 'A'
     assert list(properties.index) == ['r1', 'r2']
-    assert properties['parcel_id_local'].tolist() == ['A', 'A']
+    # A unit keeps its own key and names its lot beside it.
+    assert properties['parcel_id_local'].tolist() == ['A1', 'A2']
+    assert properties['lot_id_local'].tolist() == ['A', 'A']
     assert properties['improvement_value'].tolist() == [90000.0, 80000.0]
     assert 'geometry' not in properties.columns
 
@@ -101,7 +103,8 @@ def test_a_source_lot_id_can_replace_the_geometry_hash():
     table['lot_id'] = ['L1', 'L1', 'L2', 'L3', 'L3', 'L4']
     result = split_stacked_units(table, lot_key='lot_id')
     assert result.n_stacks == 1
-    assert result.properties['parcel_id_local'].tolist() == ['L1', 'L1']
+    assert result.properties['lot_id_local'].tolist() == ['L1', 'L1']
+    assert result.properties['parcel_id_local'].tolist() == ['A1', 'A2']
 
 
 def test_no_stack_means_no_property_table():
@@ -201,49 +204,3 @@ def test_repeated_unit_ids_in_a_stack_are_kept_and_counted():
     assert result.n_lots_with_repeated_unit_id == 1
     assert result.n_rows_with_repeated_unit_id == 2
     assert 'repeat their parcel_id_assessor' in result.summary()
-
-
-def test_a_unit_keeps_the_key_it_arrived_with():
-    properties = split_stacked_units(_table()).properties
-    # The lot's key replaces the link, so the unit's own moves aside.
-    assert properties['parcel_id_local'].tolist() == ['A', 'A']
-    assert properties['property_id_local'].tolist() == ['A1', 'A2']
-
-
-def _units():
-    return split_stacked_units(_table()).properties
-
-
-def test_a_roll_keyed_on_units_is_moved_to_their_lot_and_wins_it():
-    # The county roll knows the two condo units by their own keys, which
-    # no parcel row carries once the lot's row has taken the lot key.
-    roll = pd.DataFrame(
-        {
-            'parcel_id_local': ['A1', 'A2', 'B1'],
-            'living_area_sqft': [800.0, 900.0, 1500.0],
-        }
-    )
-    sources, units, n_moved, n_dropped = relink_units_to_lots([roll], [_units()])
-
-    assert sources[0]['parcel_id_local'].tolist() == ['A', 'A', 'B1']
-    assert sources[0]['property_id_local'].tolist()[:2] == ['A1', 'A2']
-    assert n_moved == 2
-    # The roll describes lot A, so the split's two rows would be summed
-    # a second time; they go.
-    assert n_dropped == 2 and units == []
-    assert roll['parcel_id_local'].tolist() == ['A1', 'A2', 'B1']  # untouched
-
-
-def test_the_split_rows_stay_where_no_roll_reaches():
-    roll = pd.DataFrame({'parcel_id_local': ['B1'], 'living_area_sqft': [1500.0]})
-    _sources, units, n_moved, n_dropped = relink_units_to_lots([roll], [_units()])
-    assert (n_moved, n_dropped) == (0, 0)
-    assert len(units[0]) == 2
-
-
-def test_a_table_that_cannot_double_count_displaces_nothing():
-    # Permits on the lot add rows, never sums, so the units stay.
-    permits = pd.DataFrame({'parcel_id_local': ['A1'], 'use_group': ['Roofing']})
-    sources, units, n_moved, n_dropped = relink_units_to_lots([permits], [_units()])
-    assert sources[0]['parcel_id_local'].tolist() == ['A']
-    assert (n_moved, n_dropped) == (1, 0) and len(units[0]) == 2

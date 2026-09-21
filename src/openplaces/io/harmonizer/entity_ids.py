@@ -33,6 +33,7 @@ import warnings
 import pandas as pd
 
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.stacked_units import LOT_LINK_KEY, STACKED_UNITS_LABEL_SUFFIX
 from openplaces.recipe import get_recipe_by_id
 
 # Tried in order when a recipe names no `entity_id` column. The raw
@@ -86,6 +87,7 @@ def mint_ids(
     admin_id: str,
     id_column: str | None,
     label: str,
+    content_if_coarse: bool = False,
 ) -> tuple[pd.Series, dict]:
     """Ids for one source's rows within one admin unit.
 
@@ -100,6 +102,10 @@ def mint_ids(
         source has none.
     label : str
         The source's label, used only for rows with no issued number.
+    content_if_coarse : bool, optional
+        Name every row by its content instead of raising when the
+        column turns out to name something coarser than the account.
+        For sources whose recipe cannot do better (split units).
 
     Returns
     -------
@@ -136,6 +142,25 @@ def mint_ids(
     distinct_repeats &= ids.where(~exact).duplicated(keep=False)
     copy_of = ids.astype('object') + '|' + hashes.astype('string').astype('object')
     share = distinct_repeats.sum() / max(len(rows), 1)
+    if share > MAX_REPEATED_ID_SHARE and content_if_coarse:
+        # Units split off a parcel table whose source gives a stack's
+        # members no number of their own (North Carolina's statewide
+        # layer repeats the lot's on every one). No recipe can name a
+        # better column, so the rows are named by their content.
+        # Only the rows whose number repeats: a number carried by one
+        # row is still the account, and is what lets that unit merge
+        # with its tax roll row (Galveston County TX: 5,265 of 5,577
+        # unit numbers are roll accounts, and naming every unit by
+        # content kept all of them apart from the roll).
+        named = hashes[distinct_repeats].map('{:016x}'.format).astype('string')
+        ids[distinct_repeats] = f'{admin_id}_{label}:' + named
+        ids = ids.groupby(copy_of, sort=False).transform('first')
+        return ids, {
+            'n_without_number': int(missing.sum()),
+            'n_repeated': 0,
+            'n_exact_duplicates': int(exact.sum()),
+            'n_coarse_numbers': int(distinct_repeats.sum()),
+        }
     if share > MAX_REPEATED_ID_SHARE:
         raise ValueError(
             f'assign_entity_ids: {distinct_repeats.sum():,d} of {len(rows):,d} '
@@ -242,7 +267,16 @@ def assign_entity_ids(state: HarmonizeState) -> HarmonizeState:
                 f'assign_entity_ids: {label} carries no issued number for '
                 f'{admin}; its rows are named by their content.'
             )
-        part_ids, report = mint_ids(part, admin, column, label)
+        is_units = str(label).endswith(STACKED_UNITS_LABEL_SUFFIX)
+        if is_units:
+            # One account drawn on two lots arrives as two rows that
+            # differ in their lot alone: one property, so the lot stays
+            # out of what makes a row distinct. Both lots are kept by
+            # the link table, which reads the split's own pairs.
+            part = part.drop(columns=[LOT_LINK_KEY, 'geo_id'], errors='ignore')
+        part_ids, report = mint_ids(
+            part, admin, column, label, content_if_coarse=is_units
+        )
         ids.loc[part.index] = part_ids
         if state.verbose or report['n_repeated']:
             print(

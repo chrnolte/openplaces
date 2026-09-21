@@ -41,8 +41,10 @@ from openplaces.recipe import (
 
 # The only columns a link table may hold. Rolls carry owner names in
 # some counties; a link table is two ids and the labels below, so it
-# can never carry a person. A test pins this list.
+# can never carry a person. A test pins this list. `share_basis` is
+# added by `apportion_shares`, after the pairs are found.
 LINK_COLUMNS_TAIL = ('link_method', 'link_source', 'share')
+LINK_COLUMNS_WRITTEN = (*LINK_COLUMNS_TAIL, 'share_basis')
 ENTITY_LINK_METADATA_KEY = 'openplaces:entity_link'
 
 
@@ -186,6 +188,243 @@ def build_id_links(
     )
 
 
+STACKED_UNITS_METHOD = 'stacked_units'
+STACKED_UNITS_CROSSWALK_METHOD = 'stacked_units_crosswalk'
+
+
+def stacked_unit_links(
+    links: pd.DataFrame,
+    properties: pd.DataFrame,
+    parcels: pd.DataFrame,
+    pairs: pd.DataFrame,
+    property_key: str,
+    parcel_key: str,
+    property_id: str,
+    parcel_id: str,
+) -> pd.DataFrame:
+    """Add the links that only the ingest-time split knows.
+
+    On a stacked lot the parcel row carries the lot's key and each unit
+    keeps its own, so a unit's key names no parcel row and the key pass
+    finds nothing. The split recorded which unit sits on which lot
+    (`io.stacked_units`, column `lot_id_local`), and two more exact
+    passes use that:
+
+    - `stacked_units`: a property row that names its lot links to the
+      parcel row carrying that lot key.
+    - `stacked_units_crosswalk`: any other property row whose own key
+      is a split unit's key (a tax roll's row for the same unit) links
+      to that unit's lot. A key the split saw on two lots links to both,
+      which is how an account drawn on several lots is held.
+
+    Pairs an earlier pass already found are kept under its method.
+    Exact lookups on keys the sources issued; nothing is scored and no
+    earlier link is removed or replaced.
+
+    Parameters
+    ----------
+    links : pandas.DataFrame
+        Links found by the key pass (`build_id_links`).
+    properties, parcels : pandas.DataFrame
+        The two entity tables, indexed by their ids.
+    pairs : pandas.DataFrame
+        Columns `unit_key` and `lot_key`: every unit-to-lot pair the
+        split recorded for this admin unit.
+    property_key, parcel_key : str
+        The matching-key column on each side.
+    property_id, parcel_id : str
+        Names of the id columns in *links*.
+    """
+    from openplaces.io.stacked_units import LOT_LINK_KEY
+
+    lots = pd.DataFrame(
+        {
+            parcel_id: parcels.index,
+            'lot_key': parcels[parcel_key].astype('string').to_numpy(),
+        }
+    ).dropna(subset=['lot_key'])
+    source = (
+        properties['source'].astype('string').to_numpy()
+        if 'source' in properties.columns
+        else pd.NA
+    )
+    added = []
+    if LOT_LINK_KEY in properties.columns:
+        named = pd.DataFrame(
+            {
+                property_id: properties.index,
+                'lot_key': properties[LOT_LINK_KEY].astype('string').to_numpy(),
+                'link_source': source,
+            }
+        ).dropna(subset=['lot_key'])
+        named = named.merge(lots, on='lot_key')
+        named['link_method'] = STACKED_UNITS_METHOD
+        added.append(named)
+    if len(pairs) and property_key in properties.columns:
+        keyed = pd.DataFrame(
+            {
+                property_id: properties.index,
+                'unit_key': properties[property_key].astype('string').to_numpy(),
+                'link_source': source,
+            }
+        ).dropna(subset=['unit_key'])
+        crossed = keyed.merge(pairs.drop_duplicates(), on='unit_key').merge(
+            lots, on='lot_key'
+        )
+        crossed['link_method'] = STACKED_UNITS_CROSSWALK_METHOD
+        added.append(crossed)
+    if not added:
+        return links
+    columns = list(links.columns)
+    more = pd.concat(added, ignore_index=True)
+    more['share'] = pd.Series(pd.NA, index=more.index, dtype='Float64')
+    more = more.astype({'link_method': 'string', 'link_source': 'string'})
+    out = pd.concat([links, more[columns]], ignore_index=True)
+    out = out.drop_duplicates(subset=[property_id, parcel_id], keep='first')
+    return out.sort_values([property_id, parcel_id], kind='stable').reset_index(
+        drop=True
+    )
+
+
+def apportion_shares(
+    links: pd.DataFrame, coarser: pd.DataFrame, area_column: str = 'area_ha'
+) -> pd.DataFrame:
+    """Divide a finer entity that sits on several coarser ones.
+
+    A property on two lots would have its value summed onto both. Its
+    links get a `share` proportional to each lot's area, and
+    `share_basis` says so; every other link keeps an empty share, read
+    as undivided. Area conserves the total and needs nothing new. It is
+    wrong for improvements, which stand on one lot, and is recorded as
+    the basis so that a better one can replace it (the derived
+    property-to-footprint link). The case is rare: 260 accounts in
+    Galveston County TX.
+    """
+    links = links.copy()
+    links['share_basis'] = pd.Series(pd.NA, index=links.index, dtype='string')
+    if links.empty or area_column not in coarser.columns:
+        return links
+    finer_id, coarser_id = links.columns[0], links.columns[1]
+    several = links[finer_id].duplicated(keep=False)
+    if not several.any():
+        return links
+    area = pd.to_numeric(
+        links.loc[several, coarser_id].map(coarser[area_column]), errors='coerce'
+    )
+    total = area.groupby(links.loc[several, finer_id]).transform('sum')
+    n = several.groupby(links[finer_id]).transform('sum')[several]
+    by_area = area.notna() & total.gt(0)
+    # A lot with no area cannot be weighed: fall back to an equal split
+    # for that property, and say so.
+    whole = by_area.groupby(links.loc[several, finer_id]).transform('all')
+    share = (area / total).where(whole, 1.0 / n)
+    links.loc[several, 'share'] = share.astype('Float64')
+    links.loc[several, 'share_basis'] = pd.Series(
+        ['area' if w else 'equal' for w in whole], index=whole.index, dtype='string'
+    )
+    return links
+
+
+def read_entity_link(path) -> pd.DataFrame | None:
+    """Read a link table if it still describes the files it was built from.
+
+    Returns None when the file is absent, carries no footer, or one of
+    its two inputs has changed since (size and mtime, or the content
+    hash where only the mtime moved): a reader then falls back to what
+    it did before the link existed, and says so.
+    """
+    from openplaces.io.aggregate import read_file_metadata
+    from openplaces.io.cleanup import _resolve_relative
+    from openplaces.io.harmonizer.links import _hash_file
+
+    if path is None or not path.exists():
+        return None
+    raw = read_file_metadata(path).get(ENTITY_LINK_METADATA_KEY)
+    if raw is None:
+        return None
+    try:
+        stored = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    for entry in stored.get('sources') or []:
+        try:
+            source = _resolve_relative(entry.get('path'))
+            if not source.exists():
+                return None
+            stat = source.stat()
+            if stat.st_size != entry.get('size'):
+                return None
+            if round(stat.st_mtime, 3) != entry.get('mtime'):
+                digest = entry.get('sha256')
+                if not digest or _hash_file(source) != digest:
+                    return None
+        except OSError:
+            return None
+    return pd.read_parquet(path)
+
+
+def load_unit_lot_pairs(admin_id) -> pd.DataFrame:
+    """Every unit-to-lot pair the ingest-time split recorded for a unit.
+
+    Read from the implicit stacked-units layer of each parcel recipe
+    covering *admin_id*, not from the property spine: merging an account
+    drawn on two lots into one property row keeps one lot there, and the
+    split's own table keeps both.
+    """
+    from openplaces.io.stacked_units import LOT_LINK_KEY
+    from openplaces.recipe import find_additional_layer_recipes
+
+    frames = []
+    for match in find_additional_layer_recipes('property', admin_id):
+        if not match.get('stacked_units_layer'):
+            continue
+        try:
+            units = get_entities(
+                match['recipe_id'], admin_id, layer=match['layer'], missing='ignore'
+            )
+        except (FileNotFoundError, OSError, KeyError, ValueError):
+            continue
+        if units is None or LOT_LINK_KEY not in units.columns:
+            continue
+        if 'parcel_id_local' not in units.columns:
+            continue
+        frames.append(
+            pd.DataFrame(
+                {
+                    'unit_key': units['parcel_id_local'].astype('string').to_numpy(),
+                    'lot_key': units[LOT_LINK_KEY].astype('string').to_numpy(),
+                }
+            ).dropna()
+        )
+    if not frames:
+        return pd.DataFrame({'unit_key': [], 'lot_key': []}, dtype='string')
+    pairs = pd.concat(frames, ignore_index=True).drop_duplicates()
+    # A unit carrying its lot's own key is already found by the key pass.
+    return pairs[pairs['unit_key'] != pairs['lot_key']]
+
+
+def _add_stacked_unit_links(
+    links, properties, parcels, property_key, parcel_key, property_id, parcel_id, state
+):
+    pairs = load_unit_lot_pairs(state.admin_id)
+    out = stacked_unit_links(
+        links,
+        properties,
+        parcels,
+        pairs,
+        property_key,
+        parcel_key,
+        property_id,
+        parcel_id,
+    )
+    if state.verbose and len(out) != len(links):
+        print(
+            f'  link_entities_by_id: {len(out) - len(links):,d} links from the '
+            f'stacked-units split ({len(pairs):,d} unit-to-lot pairs)'
+        )
+    return out
+
+
 def _input_stamp(recipe_id: str, admin_id) -> dict:
     """Size and mtime of one input's output file, for the link footer."""
     from openplaces.io.cleanup import _relative_posix
@@ -306,6 +545,12 @@ def link_entities_by_id(
             ref_id,
             link_method or spine_key,
         )
+
+    if ref_is_finer and ref_type == 'property' and spine_type == 'parcel':
+        links = _add_stacked_unit_links(
+            links, ref, state.spine, ref_key, spine_key, ref_id, spine_id, state
+        )
+    links = apportion_shares(links, state.spine if ref_is_finer else ref)
 
     fingerprint = {
         'format': 'id-1',

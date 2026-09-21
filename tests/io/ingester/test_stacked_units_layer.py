@@ -39,7 +39,8 @@ def test_a_parcel_ingest_recipe_gets_an_implicit_property_layer():
     spec = recipe['additional_layers'][0]
     assert spec[STACKED_UNITS_LAYER_KEY] is True
     assert str(spec['entity']) == 'property-countygis-2026'
-    assert spec['layer_key'] == 'parcel_id_local'
+    # A unit names its lot here and keeps its own parcel_id_local.
+    assert spec['layer_key'] == 'lot_id_local'
     table = build_table_recipe(recipe, spec)
     assert table['save_to'] == {'data_dir': 'core'}
 
@@ -88,7 +89,10 @@ def test_the_split_writes_the_parcel_table_and_the_property_layer():
         'property-countygis-2026',
     ]
     assert len(saved[0][1]) == 2 and len(saved[1][1]) == 2
-    assert saved[1][1]['parcel_id_local'].nunique() == 1
+    units = saved[1][1]
+    assert units['lot_id_local'].nunique() == 1
+    assert sorted(units['parcel_id_local']) == ['u1', 'u2']
+    assert units['lot_id_local'].iloc[0] == saved[0][1]['parcel_id_local'].iloc[0]
 
 
 def test_a_recipe_with_its_own_index_is_left_alone():

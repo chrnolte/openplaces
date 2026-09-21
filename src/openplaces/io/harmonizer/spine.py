@@ -27,6 +27,7 @@ from openplaces.io.harmonizer import (
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import raise_if_coverage_complete
 
@@ -547,9 +548,14 @@ def union_spine_sources(
 
     The one exception is a parcel recipe's implicit stacked-units layer
     (``io.stacked_units``), which describes the same condominium units as
-    the county's tax roll. Its rows serve as the crosswalk that moves roll
-    rows keyed on a unit to the unit's lot, and they are kept only on lots
-    no roll describes; see ``relink_units_to_lots``.
+    the county's tax roll. Its rows are loaded last and labeled
+    ``<source>:units``. Nothing is reconciled here: where the units carry
+    the roll's account numbers, ``assign_entity_ids`` mints the same id
+    for both and merges them into one row, the roll winning each cell;
+    where they do not, both rows stay, each reaches the lot through the
+    property-to-parcel link table, and the reader that sums over a lot
+    lets a roll's rows displace the split's there
+    (``io.curator.aggregation``).
 
     Parameters
     ----------
@@ -592,8 +598,13 @@ def union_spine_sources(
         if df.empty:
             continue
         df = df.copy()
+        is_units = bool(src.get('stacked_units_layer'))
+        if is_units:
+            # A label that says what the rows are: units split off a
+            # parcel table, which a reader ranks below any roll.
+            label = f'{label}{STACKED_UNITS_LABEL_SUFFIX}'
         df['source'] = label
-        (unit_parts if src.get('stacked_units_layer') else parts).append(df)
+        (unit_parts if is_units else parts).append(df)
         loaded_recipe_ids.add(recipe_id)
         # Which table each label came from, for assign_entity_ids,
         # which reads the id column that table's recipe names.
@@ -604,21 +615,9 @@ def union_spine_sources(
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
 
-    # Units split off a parcel layer are no longer disjoint from the
-    # county's tax roll, which describes the same condominium units:
-    # move roll rows keyed on a unit to that unit's lot, and keep the
-    # split's rows only on lots no roll describes (io.stacked_units).
-    if unit_parts:
-        from openplaces.io.stacked_units import relink_units_to_lots
-
-        parts, unit_parts, n_moved, n_dropped = relink_units_to_lots(parts, unit_parts)
-        if state.verbose and (n_moved or n_dropped):
-            print(
-                f'  stacked units: {n_moved:,d} source rows moved to their '
-                f'lot; {n_dropped:,d} split rows dropped where a roll '
-                f'describes the lot'
-            )
-        parts += unit_parts
+    # Last, so that a roll's row wins each cell where both describe a
+    # unit (assign_entity_ids merges rows in load order).
+    parts += unit_parts
 
     if not parts:
         warnings.warn(f'union_spine_sources: no rows loaded for {state.admin_id}.')

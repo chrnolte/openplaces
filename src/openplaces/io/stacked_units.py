@@ -51,17 +51,23 @@ LOT_KEY = 'lot_key'
 UNIT_KEY = 'unit_key'
 #: The lot column used when a recipe names none.
 DEFAULT_LOT_KEY = 'geo_id'
-#: Column the property rows carry to reach their parcel.
+#: The parcel table's matching key. A property row keeps its own value.
 LINK_KEY = 'parcel_id_local'
-#: Column the property rows keep their own matching key in. A unit with
-#: its own account number carries a `parcel_id_local` no other unit of
-#: the lot shares, and that is the key its county's tax roll joins on.
-#: Overwriting it with the lot's would leave nothing to map a roll row
-#: to the lot (measured on Galveston County TX, 2026-09-20: 5,186 roll
-#: rows lost their parcel in 119 of 184 stacks), so the unit's key moves
-#: here and `io.harmonizer.spine.union_spine_sources` reads the pair as
-#: the crosswalk from a unit to its lot.
-UNIT_LINK_KEY = 'property_id_local'
+#: Column in which a property row names its lot: the `parcel_id_local`
+#: of the lot's parcel row. The unit's own `parcel_id_local` is left
+#: untouched, because where units have account numbers of their own it
+#: is the key their county's tax roll joins on, and overwriting it with
+#: the lot's left nothing to map a roll row to the lot (measured on
+#: Galveston County TX, 2026-09-20: 5,186 roll rows lost their parcel in
+#: 119 of 184 stacks). The pair (own key, lot key) is what
+#: `io.harmonizer.entity_links` turns into property-to-parcel link rows,
+#: for the split's rows and for any other source's row keyed on a unit.
+LOT_LINK_KEY = 'lot_id_local'
+#: Appended to the source label of these rows in a property spine
+#: (`txgio:units`), so that a `source` or `link_source` token says by
+#: itself that the rows were split off a parcel table. A reader summing
+#: over a lot ranks them below any roll describing the same lot.
+STACKED_UNITS_LABEL_SUFFIX = ':units'
 #: Columns that identify a unit within its lot, best first. Only
 #: counted and reported, never used to drop a row.
 UNIT_KEY_CANDIDATES = (
@@ -203,10 +209,12 @@ def split_stacked_units(
     missing on a stack's parcel row even where the members agree: one
     unit's value is not the lot's total, and the total is the property
     layer's to supply. Every member goes, unchanged, to the property
-    table with *link_key* set to the parcel row's value so that the
-    property spine and the curate aggregation reach it, and with the
-    key it arrived with kept in `property_id_local`, which is what maps
-    a tax roll's row for the same unit onto the lot.
+    table, its own keys included, with one column added:
+    `lot_id_local`, the parcel row's *link_key* value. That pair is the
+    ingest-time knowledge of which unit sits on which lot; the
+    property-to-parcel link table is built from it
+    (`io.harmonizer.entity_links`), for these rows and for a tax roll's
+    rows keyed on the same units.
 
     The lot's outline is unioned only when *lot_key* names a source lot
     id. Under the default `geo_id` the group is defined by the geometry
@@ -331,9 +339,7 @@ def split_stacked_units(
         properties = pd.DataFrame(
             members.drop(columns=[c for c in ('geometry',) if c in members.columns])
         )
-        if link_key in properties.columns and UNIT_LINK_KEY not in properties:
-            properties[UNIT_LINK_KEY] = properties[link_key]
-        properties[link_key] = lot[stacked].map(link_of_lot).to_numpy()
+        properties[LOT_LINK_KEY] = lot[stacked].map(link_of_lot).to_numpy()
         parcel_index = parcel_rows.index
         keep_rows = (~stacked) | df.index.isin(parcel_index)
         parcels = df[keep_rows].copy()
@@ -348,7 +354,7 @@ def split_stacked_units(
         unit_key, n_lots_repeated, n_rows_repeated = None, 0, 0
     else:
         unit_key, n_lots_repeated, n_rows_repeated = _count_repeated_unit_ids(
-            properties, link_key, unit_key
+            properties, LOT_LINK_KEY, unit_key
         )
     return SplitResult(
         parcels,
@@ -387,100 +393,3 @@ def _apply_lot_unions(parcels, lot_key: str, unions: dict):
             parcels.loc[mask], handle_duplicates=False
         ).to_numpy()
     return parcels
-
-
-def relink_units_to_lots(
-    sources: list[pd.DataFrame],
-    units: list[pd.DataFrame],
-    link_key: str = LINK_KEY,
-) -> tuple[list[pd.DataFrame], list[pd.DataFrame], int, int]:
-    """Point other property sources at the lots, and let a roll win a lot.
-
-    A county tax roll and the units split off that county's parcel layer
-    describe the same condominium units. Two things go wrong when both
-    are simply concatenated into a property spine. Where each unit has
-    its own key, the roll's rows carry unit keys no parcel row holds any
-    more, because the lot's row took the lot key; and where they share
-    one, both tables land on the lot and every additive column is summed
-    twice in curate.
-
-    The split's own rows are the crosswalk: each holds the key it arrived
-    with (`property_id_local`) beside the lot's (*link_key*). A source
-    row whose *link_key* is a unit's key is moved to that unit's lot, its
-    own key kept in `property_id_local`. Then the split's rows are
-    dropped on every lot that a source able to double-count describes,
-    so a roll wins per lot and the split's rows remain only where no roll
-    reaches. The test is per lot rather than per unit because units that
-    share one key cannot be told apart, and mixing the two tables inside
-    a lot would count those twice.
-
-    This is a lookup on the sources' own keys. Nothing is scored, no
-    link already made is reconsidered or removed, and no key is matched
-    approximately, which keeps it apart from the cascading-match shape in
-    AGENTS.md ("Patent risk", shape 4).
-
-    Parameters
-    ----------
-    sources : list of pandas.DataFrame
-        Every other property source loaded for the admin unit.
-    units : list of pandas.DataFrame
-        The implicit stacked-units layers loaded for it.
-    link_key : str, optional
-        Column naming the lot (default `parcel_id_local`).
-
-    Returns
-    -------
-    tuple
-        The sources, the units that remain, the number of source rows
-        moved to a lot, and the number of unit rows dropped.
-    """
-    crosswalk = [
-        u[[UNIT_LINK_KEY, link_key]]
-        for u in units
-        if UNIT_LINK_KEY in u.columns and link_key in u.columns
-    ]
-    lot_of_unit: dict = {}
-    if crosswalk:
-        pairs = pd.concat(crosswalk).dropna().drop_duplicates()
-        # A unit key naming two lots maps nowhere safely; leave it.
-        pairs = pairs[~pairs[UNIT_LINK_KEY].duplicated(keep=False)]
-        pairs = pairs[pairs[UNIT_LINK_KEY] != pairs[link_key]]
-        lot_of_unit = dict(zip(pairs[UNIT_LINK_KEY], pairs[link_key], strict=True))
-
-    relinked: list[pd.DataFrame] = []
-    described: set = set()
-    n_moved = 0
-    for source in sources:
-        if link_key not in source.columns:
-            relinked.append(source)
-            continue
-        target = source[link_key].map(lot_of_unit) if lot_of_unit else None
-        if target is not None and target.notna().any():
-            moved = target.notna()
-            source = source.copy()
-            source[link_key] = source[link_key].astype(object)
-            if UNIT_LINK_KEY not in source.columns:
-                source[UNIT_LINK_KEY] = None
-            own = moved & source[UNIT_LINK_KEY].isna()
-            source.loc[own, UNIT_LINK_KEY] = source.loc[own, link_key]
-            source.loc[moved, link_key] = target[moved]
-            n_moved += int(moved.sum())
-        # Only a table that carries an additive column can count a lot
-        # twice, so only such a table displaces the split's rows: a
-        # permit table on the same lots adds rows, not sums.
-        additive = [c for c in source.columns if get_agg_func(c) == 'sum']
-        if any(source[c].notna().any() for c in additive):
-            described |= set(source[link_key].dropna())
-        relinked.append(source)
-
-    remaining: list[pd.DataFrame] = []
-    n_dropped = 0
-    for unit in units:
-        if link_key not in unit.columns:
-            remaining.append(unit)
-            continue
-        covered = unit[link_key].isin(described)
-        n_dropped += int(covered.sum())
-        if not covered.all():
-            remaining.append(unit[~covered])
-    return relinked, remaining, n_moved, n_dropped

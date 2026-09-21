@@ -230,7 +230,11 @@ def _add_stacked_units_layer(recipe_dict: dict) -> None:
             return
     spec = {
         'entity': Entity('property', entity.source, entity.version),
-        'layer_key': 'parcel_id_local',
+        # The column in which a unit names its lot. The unit's own
+        # `parcel_id_local` stays its own (io.stacked_units), so a join
+        # of this layer onto parcels pairs `lot_id_local` with the
+        # parcel's `parcel_id_local`.
+        'layer_key': 'lot_id_local',
         STACKED_UNITS_LAYER_KEY: True,
     }
     if isinstance(recipe_dict.get('save_to'), dict):
