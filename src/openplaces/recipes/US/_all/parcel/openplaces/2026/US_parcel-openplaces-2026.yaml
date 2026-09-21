@@ -531,6 +531,21 @@ pipeline:
     peer_group_column: use_group_combined
     footprint_ratio_threshold: 0.25
     city_column: city
+    # Per-area rate where it is reliable, land share of the record's own
+    # value for Condominium records, dense lots, and wherever the rate
+    # would reach the whole recorded value. Scored on a 20% holdout of
+    # recorded land values 2026-09-17: never worse than the rate in any
+    # class tested, Condominium error 0.67 -> 0.23 (NC), no erased
+    # structure values (the rate erased 2.6-3.6%).
+    estimator: hybrid
+    floor_area_columns: [living_area_sqft, gross_floor_area_sqft]
+    # Adding `choose_estimator_by_admin_unit: true` here lets each
+    # county or town lead with whichever estimator its own recorded
+    # land values favor. Measured 2026-09-21 it is the largest single
+    # improvement available (median relative error 0.123 to 0.100 over
+    # MA, NC and TX), but it changes delivered values everywhere, so it
+    # waits on the maintainer's word and a rebuild.
+    # See plans/structure-value-per-area-outliers.md, "Piece 3".
 
   - step: cast_categoricals
 

@@ -24,6 +24,9 @@ _DEFAULT_RESIDENTIAL_CLASSES = [
 ]
 
 _RATE_STATISTICS = ('mean', 'median', 'min', 'max')
+_ESTIMATORS = ('rate', 'land_share', 'hybrid')
+_DEFAULT_DENSITY_BINS = [0.5, 1.0, 1.5, 2.0, 3.0]
+_SQFT_TO_M2 = 0.09290304
 
 
 def _incoming_source(curated, column: str) -> pd.Series:
@@ -137,6 +140,16 @@ def impute_land_value(
     min_group_size: int = 5,
     output_land_value: str = 'land_value_imputed',
     output_improvement_value: str = 'improvement_value_imputed',
+    estimator: str = 'rate',
+    floor_area_columns: list[str] | None = None,
+    density_bins: list[float] | None = None,
+    share_group_tiers: list[list[str]] | None = None,
+    share_classes: list[str] | None = None,
+    share_min_floor_area_ratio: float = 1.0,
+    share_when_rate_reaches: float = 1.0,
+    choose_estimator_by_admin_unit: bool = False,
+    choice_admin_level: int = 3,
+    choice_min_donors: int = 100,
 ) -> CurateState:
     """Estimate a land value for parcels the source data left at 0/NaN.
 
@@ -307,6 +320,113 @@ def impute_land_value(
         Final, coalesced output column names (defaults ``'land_value_imputed'``,
         ``'improvement_value_imputed'``) -- real value passed through, imputed
         estimate only where the real value was missing and eligible.
+    estimator : {'rate', 'land_share', 'hybrid'}, optional
+        How a land value is estimated (default ``'rate'``, everything
+        described above). ``'hybrid'`` keeps the rate and switches a
+        row to the land share where the rate is known to fail: its
+        class is in *share_classes*, its floor-area ratio is at least
+        *share_min_floor_area_ratio*, it has no rate estimate, or the
+        rate estimate reaches *share_when_rate_reaches* of its recorded
+        value.
+
+        ``'land_share'`` learns the donors' share of value that is land,
+        ``land / (land + improvement)``, and multiplies the candidate's
+        improvement value by it, which on a candidate already holds the
+        land (a recorded total equal to it is the same figure, and a
+        larger one takes the recorded-total route above instead). Its
+        provenance tokens carry a ``share_`` prefix, because the rate
+        and the share end in the same two fallback tiers and a bare
+        tier name could not say which estimator priced the row.
+        A share lies below 1, so the estimate never
+        exceeds the recorded value and never erases a structure value,
+        and each record prices only its own value, so the shared-lot
+        split and the total cap do not apply. Its default tiers are
+        class-aware: ``[street, city, land_use]``, ``[city, land_use]``,
+        ``[land_use]``, then ``[city, density bin]`` where
+        *floor_area_columns* supplies a floor area, ``[city,
+        _is_residential]`` and finally ``[_is_residential]``.
+
+        Why not the rate: a per-area rate ignores how much building
+        stands on the lot, and a residential rate learned mostly from
+        low-density lots undershoots dense ones. Measured 2026-09-17 on
+        494,307 recorded Single- and Multi-Family parcels around Boston,
+        the rate estimate's median bias ran from +6% at a floor-area
+        ratio below 0.5 to -55% at 1.5-2 and -88% above 3, which is where
+        condominium parcels sit; a land share matched on city and
+        floor-area ratio had no median bias at any density. On large
+        condominium lots the rate fails the other way and exceeds the
+        whole recorded value (722 NC and 138 TX parcels had their
+        structure value set to 0). The share must be class-aware: TX
+        condominium records carry almost no land (median share 0.007),
+        so an all-class share would erase their structures.
+    floor_area_columns : list of str, optional
+        Parcel floor-area columns in square feet, first non-missing
+        wins (``'land_share'`` and ``'hybrid'``). Divided by lot area
+        they give the
+        floor-area ratio binned by *density_bins*. Omitted or absent
+        columns skip the density tier.
+    density_bins : list of float, optional
+        Floor-area-ratio bin edges for the density tier (default
+        ``[0.5, 1, 1.5, 2, 3]``).
+    share_group_tiers : list of list of str, optional
+        Tiers for the land share, tried before *fallback_group_column*
+        (default: the class-aware list under *estimator*). *group_tiers*
+        stays the rate's.
+    share_classes : list of str, optional
+        ``'hybrid'`` only: land-use classes always estimated by share
+        (default ``['Condominium']``, whose records repeat one lot's
+        area and whose land a per-area rate misprices).
+    share_min_floor_area_ratio : float, optional
+        ``'hybrid'`` only: floor-area ratio from which the share is used
+        (default 1.0). Needs *floor_area_columns*.
+    share_when_rate_reaches : float, optional
+        ``'hybrid'`` only: fraction of the recorded value at which a rate
+        estimate is replaced by the share (default 1.0, the point at
+        which the rate would take the record's whole value and leave no
+        structure). It was 0.9 until 2026-09-21; on a 20% holdout the
+        band between 0.9 and 1.0 was 220 better against 290 worse rows
+        in coastal TX, where no unit prefers the share, and it carried
+        the one regression the earlier build shipped (TX Townhome, 37
+        better against 39 worse, now 31 against 27).
+    choose_estimator_by_admin_unit : bool, optional
+        ``'hybrid'`` only: decide per admin unit which estimator leads,
+        from each unit's own donors (default False). See the note below.
+    choice_admin_level : int, optional
+        Level of the unit that choice is made for (default 3); at or
+        above the level this call processes, the whole chunk is one unit.
+    choice_min_donors : int, optional
+        Donors a unit needs before it may choose the share (default
+        100); below that it keeps the rate.
+
+    Notes
+    -----
+    **Which estimator leads is a property of the assessor, not of the
+    row.** Measured on a 20% holdout 2026-09-21 (median relative error):
+    the per-area rate is far better in coastal TX (0.061 against the
+    share's 0.166, appraisal districts there price land by area) and
+    clearly worse around Boston (0.156 against 0.109). No per-row rule
+    recovers that: applied to every row the share is 1.67 better per
+    worse row in MA, 1.25 in NC and 0.52 in TX. So with
+    *choose_estimator_by_admin_unit* the step scores both estimators on
+    each unit's own recorded land values, splitting the donors in two
+    halves and predicting each half from the other so that no donor is
+    scored against a peer group it belongs to, and the share leads the
+    unit only where it wins there. A unit that keeps the rate still
+    applies the *share_classes*, *share_min_floor_area_ratio* and
+    *share_when_rate_reaches* rules row by row, which is what stops a
+    rate unit erasing a structure value. Scored on the half that did not
+    choose: MA 0.155 to 0.109, NC 0.150 to 0.119, TX 0.059 to 0.058,
+    pooled 0.123 to 0.100, with no erased structure values.
+
+    A per-unit choice, rather than one global rule, is also the pattern
+    :func:`~openplaces.io.curator.reconcilers.select_value_source_by_admin_unit`
+    and
+    :func:`~openplaces.io.curator.reconcilers.adopt_stories_by_floor_area_fit`
+    already use. It is a two-way comparison of medians between two
+    deterministic estimators, with no trained model, no record linking
+    and no neighbor geometry, so it reads on none of the patent shapes
+    AGENTS.md lists for this domain (an agent's reading, not legal
+    advice).
     """
     curated = state.curated
     required = {
@@ -327,11 +447,27 @@ def impute_land_value(
         raise ValueError(
             f'Unknown statistic {statistic!r}; expected one of {_RATE_STATISTICS}.'
         )
+    if estimator not in _ESTIMATORS:
+        raise ValueError(
+            f'Unknown estimator {estimator!r}; expected one of {_ESTIMATORS}.'
+        )
+    use_rate = estimator in ('rate', 'hybrid')
+    use_share = estimator in ('land_share', 'hybrid')
     if residential_classes is None:
         residential_classes = _DEFAULT_RESIDENTIAL_CLASSES
+    if share_classes is None:
+        share_classes = ['Condominium']
     if group_tiers is None:
         group_tiers = [
             [street_column, city_column],
+            [city_column, fallback_group_column],
+        ]
+    if share_group_tiers is None:
+        share_group_tiers = [
+            [street_column, city_column, land_use_column],
+            [city_column, land_use_column],
+            [land_use_column],
+            [city_column, '_density_bin'],
             [city_column, fallback_group_column],
         ]
 
@@ -357,8 +493,13 @@ def impute_land_value(
         peer_median > 0
     )
 
+    # A land share multiplies the record's own value, not its lot area,
+    # so it needs no area to produce an estimate.
     candidate = (
-        land_missing & improvement_ok & has_area & (is_residential | footprint_heavy)
+        land_missing
+        & improvement_ok
+        & (has_area | use_share)
+        & (is_residential | footprint_heavy)
     )
 
     # A donor teaches a per-area rate by division, so a parcel whose
@@ -370,59 +511,149 @@ def impute_land_value(
     # same shape of guard as the degenerate-join-key blanking in
     # io.harmonizer.links -- a value too extreme to be real is dropped
     # before it can teach anything, not after.
-    is_donor = (
+    rate_donor = (
         land_value.notna()
         & (land_value > 0)
         & has_area
         & (parcel_area >= min_donor_area_ha)
     )
-    per_area = (land_value / parcel_area).where(is_donor)
+    per_area = (land_value / parcel_area).where(rate_donor)
+    # A share is bounded in (0, 1), so the ratio blow-up the area guard
+    # exists for cannot happen; a share donor only needs both parts.
+    share_donor = land_value.notna() & (land_value > 0) & improvement_ok
+    land_share = (land_value / (land_value + improvement_value)).where(share_donor)
+
+    far = pd.Series(np.nan, index=curated.index)
+    density_bin = None
+    present_floor_columns = [
+        c for c in (floor_area_columns or []) if c in curated.columns
+    ]
+    if use_share and present_floor_columns:
+        floor_sqft = pd.Series(np.nan, index=curated.index)
+        for col in present_floor_columns:
+            value = pd.to_numeric(curated[col], errors='coerce')
+            floor_sqft = floor_sqft.fillna(value.where(value > 0))
+        far = (floor_sqft * _SQFT_TO_M2) / (parcel_area * 10_000).where(has_area)
+        edges = [0.0, *(density_bins or _DEFAULT_DENSITY_BINS), np.inf]
+        density_bin = pd.cut(far, edges, right=False, labels=False)
 
     def _tier_frame(cols: list[str]) -> pd.DataFrame | None:
         data = {}
         for col in cols:
             if col == '_is_residential':
                 data[col] = is_residential
+            elif col == '_density_bin':
+                if density_bin is None:
+                    return None
+                data[col] = density_bin
             elif col in curated.columns:
                 data[col] = curated[col]
             else:
                 return None
         return pd.DataFrame(data, index=curated.index)
 
-    estimate = pd.Series(np.nan, index=curated.index)
-    tier_used = pd.Series(pd.NA, index=curated.index, dtype=object)
+    def _learn(tiers, is_donor, donor_value, wanted, prefix=''):
+        """Tier-by-tier group statistic, first tier with enough donors.
 
-    for tier_cols in [*group_tiers, [fallback_group_column]]:
-        still_needed = candidate & estimate.isna()
-        if not still_needed.any():
-            break
-        tier_df = _tier_frame(tier_cols)
-        if tier_df is None:
-            continue
-        key_present = tier_df.notna().all(axis=1)
-        donor_mask = is_donor & key_present
-        if not donor_mask.any():
-            continue
-        donor_tier = tier_df.loc[donor_mask].copy()
-        donor_tier['_per_area'] = per_area.loc[donor_mask]
-        grouped = donor_tier.groupby(tier_cols, observed=True)['_per_area']
-        rate = grouped.agg(statistic)
-        rate = rate.where(grouped.size() >= min_group_size).dropna()
-        if rate.empty:
-            continue
-        mapped = tier_df.merge(
-            rate.rename('_estimate').reset_index(), on=tier_cols, how='left'
-        )['_estimate']
-        mapped.index = curated.index
+        *prefix* marks the tokens of an estimator whose tier names
+        another estimator also uses.
+        """
+        estimate = pd.Series(np.nan, index=curated.index)
+        tier_used = pd.Series(pd.NA, index=curated.index, dtype=object)
+        for tier_cols in [*tiers, [fallback_group_column]]:
+            still_needed = wanted & estimate.isna()
+            if not still_needed.any():
+                break
+            tier_df = _tier_frame(tier_cols)
+            if tier_df is None:
+                continue
+            key_present = tier_df.notna().all(axis=1)
+            donor_mask = is_donor & key_present
+            if not donor_mask.any():
+                continue
+            donor_tier = tier_df.loc[donor_mask].copy()
+            donor_tier['_value'] = donor_value.loc[donor_mask]
+            grouped = donor_tier.groupby(tier_cols, observed=True)['_value']
+            rate = grouped.agg(statistic)
+            rate = rate.where(grouped.size() >= min_group_size).dropna()
+            if rate.empty:
+                continue
+            mapped = tier_df.merge(
+                rate.rename('_estimate').reset_index(), on=tier_cols, how='left'
+            )['_estimate']
+            mapped.index = curated.index
 
-        token = (
-            '_'.join(tier_cols)
-            if tier_cols != [fallback_group_column]
-            else tier_cols[0]
+            token = (
+                '_'.join(tier_cols)
+                if tier_cols != [fallback_group_column]
+                else tier_cols[0]
+            )
+            fill = still_needed & key_present & mapped.notna()
+            estimate.loc[fill] = mapped.loc[fill]
+            tier_used.loc[fill] = prefix + token
+        return estimate, tier_used
+
+    def _prefers_share_by_unit() -> pd.Series:
+        """Per row, whether its admin unit's donors favor the land share.
+
+        Each donor is estimated from the *other* half of the unit's
+        donors, so no donor is scored against a peer group it belongs
+        to and neither estimator can recover a row by remembering it.
+        """
+        from openplaces.io.curator.reconcilers import _resolve_admin_group
+
+        fold = pd.Series(
+            (
+                pd.util.hash_pandas_object(curated.index.to_series(), index=False) % 2
+            ).to_numpy()
+            == 1,
+            index=curated.index,
         )
-        fill = still_needed & key_present & mapped.notna()
-        estimate.loc[fill] = mapped.loc[fill]
-        tier_used.loc[fill] = token
+
+        def _out_of_sample(tiers, donors, value):
+            out = pd.Series(np.nan, index=curated.index)
+            for side in (True, False):
+                wanted = donors & (fold != side)
+                if not wanted.any():
+                    continue
+                part, _ = _learn(tiers, donors & (fold == side), value, wanted)
+                out = out.where(~wanted, part)
+            return out
+
+        # A donor's improvement value excludes its land; a candidate's
+        # holds both, which is what makes it a candidate. Fold the land
+        # back in so a donor is scored in the shape a candidate arrives
+        # in, not in one no candidate ever has.
+        folded = improvement_value.add(land_value, fill_value=0)
+        lot = _out_of_sample(group_tiers, rate_donor & has_area, per_area)
+        by_rate_oos = _share_of_lot(curated, lot * parcel_area, folded)
+        by_share_oos = (
+            _out_of_sample(share_group_tiers, share_donor, land_share) * folded
+        )
+        scored = (
+            rate_donor & (land_value > 0) & by_rate_oos.notna() & by_share_oos.notna()
+        )
+        group = _resolve_admin_group(state, curated, choice_admin_level)
+        units = (
+            pd.Series(str(state.admin_id), index=curated.index)
+            if group is None
+            else group.fillna(str(state.admin_id))
+        )
+        err_rate = (by_rate_oos / land_value - 1).abs().where(scored)
+        err_share = (by_share_oos / land_value - 1).abs().where(scored)
+        prefers = (scored.groupby(units).transform('sum') >= choice_min_donors) & (
+            err_share.groupby(units).transform('median')
+            < err_rate.groupby(units).transform('median')
+        )
+        if state.verbose:
+            chosen = sorted(units[prefers].unique())
+            print(
+                f'  impute_land_value: {len(chosen):,} of '
+                f'{units.nunique():,} admin unit(s) lead with the land '
+                f'share ({", ".join(map(str, chosen[:8]))}'
+                f'{", ..." if len(chosen) > 8 else ""}).'
+            )
+        return prefers.fillna(False)
 
     # land_value_imputed/improvement_value_imputed are the parcel's final,
     # best-available land/improvement value: a passthrough of the real value
@@ -458,18 +689,61 @@ def impute_land_value(
         & improvement_value.notna()
         & (total_value > improvement_value)
     )
-    has_estimate = candidate & estimate.notna() & ~has_recorded_land
+    shared = pd.Series(np.nan, index=curated.index)
+    tier_used = pd.Series(pd.NA, index=curated.index, dtype=object)
+    if use_rate:
+        rate, rate_tier = _learn(
+            group_tiers, rate_donor, per_area, candidate & has_area
+        )
+        # rate * area is the value of the LOT, which is not the same
+        # thing as the value of the parcel record when several records
+        # share one lot.
+        lot_value = rate * parcel_area
+        by_rate = _share_of_lot(curated, lot_value, improvement_value)
+        # Conservation: a parcel cannot hold more land value than its
+        # own recorded total. Only bites where a total was recorded.
+        by_rate = by_rate.where(~recorded_total, np.minimum(by_rate, total_value))
+        shared, tier_used = by_rate, rate_tier
+    if use_share:
+        share, share_tier = _learn(
+            share_group_tiers, share_donor, land_share, candidate, prefix='share_'
+        )
+        # The candidate's improvement value already holds its land (that
+        # is what makes it a candidate), and a recorded total equal to it
+        # is the same figure, so the share applies to the improvement
+        # value either way. share < 1 keeps the structure positive.
+        by_share = share * improvement_value
+        if use_rate:
+            # Hybrid: the rate stays wherever it is reliable and the
+            # share takes over where the rate is known to fail. Scored
+            # 2026-09-17 on a 20% holdout of recorded land values (NC
+            # 84,214, TX 91,896, Boston area 31,791): the share cut the
+            # median absolute error on Condominium records from 0.67 to
+            # 0.23 (NC) and 0.43 to 0.20 (TX), removed the rate's -45% to
+            # -96% bias at floor-area ratios of 1.5 and above, and never
+            # erased a structure where the rate erased 2.6-3.6%; but the
+            # rate stayed better on low-density TX Single-Family (0.05
+            # against 0.15), whose appraisal districts price land by
+            # area. The switch was never worse than the rate in any
+            # class and region tested.
+            switch = by_share.notna() & (
+                curated[land_use_column].astype(object).isin(share_classes)
+                | (far >= share_min_floor_area_ratio).fillna(False)
+                | by_rate.isna()
+                | (by_rate >= share_when_rate_reaches * improvement_value).fillna(False)
+            )
+            if choose_estimator_by_admin_unit:
+                switch = switch | (_prefers_share_by_unit() & by_share.notna())
+            shared = by_rate.where(~switch, by_share)
+            tier_used = rate_tier.where(~switch, share_tier)
+        else:
+            shared, tier_used = by_share, share_tier
+
+    has_estimate = candidate & shared.notna() & ~has_recorded_land
 
     land_value_imputed = pd.Series(np.nan, index=curated.index)
     has_real_land = land_value.notna() & (land_value > 0)
     land_value_imputed.loc[has_real_land] = land_value.loc[has_real_land]
-    # rate * area is the value of the LOT, which is not the same thing as
-    # the value of the parcel record when several records share one lot.
-    lot_value = estimate * parcel_area
-    shared = _share_of_lot(curated, lot_value, improvement_value)
-    # Conservation: a parcel cannot hold more land value than its own
-    # recorded total. Only bites where a total was actually recorded.
-    shared = shared.where(~recorded_total, np.minimum(shared, total_value))
     land_value_imputed.loc[has_estimate] = shared.loc[has_estimate]
     land_value_imputed.loc[has_recorded_land] = (
         total_value.loc[has_recorded_land] - improvement_value.loc[has_recorded_land]
