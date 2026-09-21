@@ -420,11 +420,16 @@ values until it is rerun**.
 the admin unit that scopes it: `US-TX-VIC_000123`
 (`io/harmonizer/entity_ids.py`, step `assign_entity_ids` in
 `US_property-spine-2026`). The number comes from the column a source's
-recipe names in `entity_id`, else the first of `property_id_assessor`,
-`property_id_admin2`, `parcel_id_assessor` it carries: the *account*, never
-the lot (New Hanover County NC's PIN sits on up to 327 accounts; a source
-whose ids repeat on more than 2% of rows raises, because it named the wrong
-column). Case is folded and runs of separators become one hyphen, but their
+recipe names in `entity_id`, else whichever of `property_id_assessor`,
+`property_id_admin2`, `parcel_id_assessor` repeats on the fewest rows: the
+*account*, never the lot (New Hanover County NC's account number repeats on
+no row, its PIN on 19,519). Nothing raises: a source whose best column still
+repeats on most rows issues no account number and is named by content, with
+a warning. A source holding several `tax_year` values keeps only its latest
+roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
+county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
+properties), the unit's latest year and not the latest row per account,
+which would revive every account retired since. Case is folded and runs of separators become one hyphen, but their
 positions are kept, because in a map-block-lot number they carry meaning
 (dropping them made 426 Somerville MA accounts collide). Two sources
 publishing the same accounts therefore mint the same ids, and **rows sharing
@@ -581,8 +586,12 @@ that. The pair (unit key, lot key) the split records is read three times:
   so; it is wrong for improvements, which stand on one lot, and stays until
   a property-to-footprint link can replace it.
 - the parcel geospine's property `link_by_id` moves a roll row keyed on a
-  unit to its lot before joining (the first lot, where there are several;
-  one key holds one), and reads the split layer itself by `lot_id_local`.
+  unit to its lot before joining (`_move_units_to_lots`), and reads the
+  split layer itself by `lot_id_local`. An account on several lots becomes
+  one row per lot: its land is divided by lot area, every other additive
+  value goes whole to the largest lot and stays empty on the rest, because
+  a building stands on one lot (`total_value` so overstates the largest
+  lot by the others' land).
 `aggregate_from_entities` sums over the link table when a valid one exists
 and falls back to the key column otherwise: on a lot any roll describes,
 rows whose `link_source` is only `:units` are left out, so a roll and the

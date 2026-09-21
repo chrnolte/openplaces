@@ -2468,6 +2468,88 @@ def _warn_if_link_underperforms(
     )
 
 
+def _move_units_to_lots(
+    ref: pd.DataFrame,
+    ref_key: str,
+    spine_key: pd.Series,
+    pairs: pd.DataFrame,
+    spine: pd.DataFrame,
+    area_column: str = 'area_ha',
+) -> tuple[pd.DataFrame, int, int]:
+    """Re-key reference rows that name a split unit onto the unit's lot.
+
+    On a stacked lot the parcel row carries the lot's key, so a tax roll
+    row keyed on a unit's own number finds no spine row. *pairs* is what
+    the ingest-time split recorded (`unit_key`, `lot_key`), and a row
+    whose key is a unit's, and is on no spine row, takes the lot's.
+
+    An account the split saw on several lots becomes one row per lot.
+    Its land (every additive column whose name says land) is divided by
+    lot area, which is what land is. Every other additive column goes
+    whole to the largest lot and is left empty on the others: a building
+    stands on one lot, and dividing an improvement value by land area
+    would put part of a house on a vacant lot. `total_value` therefore
+    overstates the largest lot by the other lots' share of the land;
+    the property-to-footprint link is what will place improvements
+    properly. Exact lookups on issued keys; nothing is scored.
+
+    Returns the re-keyed frame, the number of rows moved, and how many
+    of them sit on several lots.
+    """
+    own = ref[ref_key].astype('string')
+    known = set(spine_key.dropna())
+    pairs = pairs.drop_duplicates()
+    pairs = pairs[pairs['unit_key'].isin(set(own.dropna()) - known)]
+    if pairs.empty:
+        return ref, 0, 0
+    n_lots = pairs.groupby('unit_key')['lot_key'].transform('size')
+    single = pairs[n_lots == 1].set_index('unit_key')['lot_key']
+    several = pairs[n_lots > 1]
+
+    ref = ref.copy()
+    target = own.map(single)
+    ref[ref_key] = own.where(target.isna(), target)
+    n_moved = int(target.notna().sum())
+    if several.empty:
+        return ref, n_moved, 0
+
+    area = None
+    if area_column in spine.columns:
+        area = (
+            pd.to_numeric(spine[area_column], errors='coerce').groupby(spine_key).sum()
+        )
+    several = several.assign(
+        lot_area=several['lot_key'].map(area) if area is not None else float('nan')
+    )
+    total = several.groupby('unit_key')['lot_area'].transform('sum')
+    size = several.groupby('unit_key')['lot_key'].transform('size')
+    weighable = (
+        several['lot_area'].notna().groupby(several['unit_key']).transform('all')
+    )
+    several['share'] = (several['lot_area'] / total).where(
+        weighable & total.gt(0), 1.0 / size
+    )
+    rank = several.groupby('unit_key')['share'].rank(method='first', ascending=False)
+    several['largest'] = rank.eq(1)
+
+    divided = ref[own.isin(set(several['unit_key']))]
+    expanded = divided.assign(unit_key=own[divided.index]).merge(
+        several[['unit_key', 'lot_key', 'share', 'largest']], on='unit_key'
+    )
+    expanded[ref_key] = expanded['lot_key']
+    for column in divided.columns:
+        if column == ref_key or get_agg_func(resolve_attribute_name(column)) != 'sum':
+            continue
+        values = pd.to_numeric(expanded[column], errors='coerce')
+        if 'land' in column:
+            expanded[column] = values * expanded['share']
+        else:
+            expanded[column] = values.where(expanded['largest'])
+    expanded = expanded.drop(columns=['unit_key', 'lot_key', 'share', 'largest'])
+    ref = pd.concat([ref.drop(index=divided.index), expanded], ignore_index=True)
+    return ref, n_moved + len(divided), len(divided)
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -2915,25 +2997,15 @@ def link_by_id(
     # rows is not an identifier, and every mode below would silently treat
     # it as one (see _neutralize_degenerate_keys).
     if _unit_lot_pairs is not None and len(_unit_lot_pairs):
-        # Move a reference row keyed on a split unit to that unit's
-        # lot, where no spine row carries the unit's own key. One key
-        # holds one lot, so an account the split saw on several lots
-        # goes to the first here; the link table holds all of them and
-        # curate apportions by it. An exact lookup, nothing scored.
-        lot_of_unit = _unit_lot_pairs.drop_duplicates('unit_key').set_index('unit_key')[
-            'lot_key'
-        ]
-        own = ref[ref_key].astype('string')
-        target = own.map(lot_of_unit)
-        move = target.notna() & ~own.isin(set(skey.dropna()))
-        if move.any():
-            ref = ref.copy()
-            ref[ref_key] = own.where(~move, target)
-            if state.verbose:
-                print(
-                    f'  link_by_id: {int(move.sum()):,d} {recipe_id} rows keyed '
-                    'on a stacked unit moved to their lot'
-                )
+        ref, n_moved, n_divided = _move_units_to_lots(
+            ref, ref_key, skey, _unit_lot_pairs, state.spine
+        )
+        if state.verbose and n_moved:
+            print(
+                f'  link_by_id: {n_moved:,d} {recipe_id} rows keyed on a '
+                f'stacked unit moved to their lot ({n_divided:,d} of them '
+                'across several lots)'
+            )
     ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id, spine_key=skey)
     rkey = ref[ref_key].astype('string')
     spine_entity = state.recipe.get('entity')
