@@ -1027,7 +1027,11 @@ def classify_footprint_priority(
 
     1. If any footprint on the parcel has dwelling-point evidence
        (``SourceGeometryType.single_dwelling_point``), those footprints are
-       ``'primary'``; all others on the same parcel are ``'secondary'``.
+       ``'primary'``; all others on the same parcel are ``'secondary'``,
+       except the parcel's largest footprint when it is at least
+       ``dwelling_override_ratio`` times the largest dwelling-evidence
+       footprint and itself holds building-point evidence: it stays
+       ``'primary'`` alongside them (see *thresholds*).
     2. Else if any footprint has single-building-point evidence
        (``SourceGeometryType.single_building_point``, e.g. NSI), those are
        ``'primary'``; all others are ``'secondary'``.
@@ -1058,6 +1062,16 @@ def classify_footprint_priority(
         size above which a no-evidence footprint is always promoted to
         primary alongside its parcel's largest; None keeps only the
         largest-footprint promotion.
+
+        ``dwelling_override_ratio`` (float or None, default None): on a
+        parcel with dwelling-point evidence, keep the largest footprint
+        primary when its area is at least this multiple of the largest
+        dwelling-evidence footprint's. None disables the rule.
+
+        ``dwelling_override_requires_building_point`` (bool, default
+        True): apply that rule only when the largest footprint also
+        holds building-point evidence, i.e. only where the two point
+        sources disagree about which structure is the building.
     """
     from openplaces.core.schema import SourceGeometryType as _SGT
 
@@ -1152,6 +1166,22 @@ def classify_footprint_priority(
 
     thresholds = thresholds or {}
     always_primary_m2 = thresholds.get('fallback_always_primary_m2', 355.0)
+    # An address point that lands on a garage or shed would otherwise
+    # make it the parcel's only primary and demote the house, which
+    # then receives no share of the parcel's improvement value. Tested
+    # 2026-09-17 against roll heated/living floor area on inverted
+    # single-dwelling parcels (the largest footprint secondary, a
+    # smaller one primary): where the largest is at least 3x the
+    # dwelling-point footprint and holds an NSI point, its floor area
+    # matches the roll's better on 68% of NC parcels (n 1,322) and 89%
+    # of TX parcels (n 7,008); at 2x only 58% in NC. Both footprints
+    # stay primary rather than swapping roles, because the smaller one
+    # is the dwelling on the remaining parcels (and can be an
+    # accessory dwelling on any of them); value then splits by area.
+    override_ratio = thresholds.get('dwelling_override_ratio')
+    override_needs_building_point = thresholds.get(
+        'dwelling_override_requires_building_point', True
+    )
     areas_m2 = (
         state.spine['area_ha'] * 10_000
         if 'area_ha' in state.spine.columns
@@ -1165,8 +1195,24 @@ def classify_footprint_priority(
 
         if has_addr:
             # Dwelling evidence wins: dwelling-linked footprints are primary;
-            # everything else on this parcel is secondary.
-            for fp_id in fp_ids - has_addr:
+            # everything else on this parcel is secondary, bar the
+            # size override above.
+            keep = set(has_addr)
+            if override_ratio is not None:
+                fp_areas = areas_m2.reindex(list(fp_ids)).fillna(0.0)
+                largest = fp_areas.idxmax()
+                dwelling_max = fp_areas.reindex(list(has_addr)).max()
+                if (
+                    largest not in has_addr
+                    and dwelling_max > 0
+                    and fp_areas[largest] >= override_ratio * dwelling_max
+                    and (
+                        not override_needs_building_point
+                        or largest in building_point_evidence
+                    )
+                ):
+                    keep.add(largest)
+            for fp_id in fp_ids - keep:
                 role[fp_id] = 'secondary'
         elif has_bldg:
             # NSI evidence: NSI-linked footprints are primary, rest secondary.
