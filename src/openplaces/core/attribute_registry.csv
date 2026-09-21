@@ -111,6 +111,7 @@ parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first
 parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
 property_id_assessor,Raw property/unit identifier as provided by the source,,string,first,,property,
 property_id_admin2,Property/unit identifier unique within its admin-2 unit,,string,first,,property,
+property_id_local,"Standardized, locally cross-comparable matching key of the property/unit itself; parcel_id_local beside it names the lot it sits on",,string,first,,property,
 property_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the property/unit record,,string,first,,property,
 address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,
 address_id_local_city,"Standardized address matching key including city (only where city is available)",,string,first,,,

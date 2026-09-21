@@ -480,14 +480,47 @@ property, not a parcel. After preprocessing, rows are grouped by `lot_key`
 exact duplicates collapse, a group with one row is a lot and passes
 through, and a group with several distinct rows becomes one parcel row
 keeping only the values its members agree on (a varying value is left
-missing, never summed) plus one property row per member, written to an
+missing, never summed, and a column the registry aggregates by `sum` is
+left missing even where they agree, because one unit's floor area is not
+the lot's and curate's `aggregate_from_entities` fills only empty cells)
+plus one property row per member. Rows that repeat a record on another
+polygon are parts of one lot, not units: they merge into one row and
+yield no property rows. Under a source `lot_key` that row takes the union
+of the lot's polygons with `geo_id` recomputed (Wilson County NC draws
+1,060 lot ids as 2 to 7 polygons); under `geo_id` nothing is unioned,
+since two polygons in one group are a collision of the quantized hash
+and a union would invent an outline. A unit id repeated within a lot
+drops nothing and is counted in the ingest log. The property rows go to an
 implicit `additional_layers` entry of the same recipe
 (`property-<source>-<version>`, `layer_key: parcel_id_local`) that the
 recipe loader adds to every parcel ingest recipe without a declared
 property layer. Discovery, the property spine, readers and cleanup see
 that layer like a declared one; the ingester's layer loop skips it
 (`STACKED_UNITS_LAYER_KEY`) because the parcel table's own processing
-wrote it. `stacked_units: false` opts a recipe out. The module docstring
+wrote it. `stacked_units: false` opts a recipe out.
+
+**A property row's `parcel_id_local` names its lot, and its own key moves
+to `property_id_local`.** Where units have their own account numbers, the
+lot's parcel row cannot carry any one of them and takes the lot key, which
+no tax roll knows: measured on Galveston County TX (2026-09-20), 5,186
+roll rows lost their parcel that way in 119 of 184 stacks. So
+`union_spine_sources` no longer treats property sources as disjoint. It
+reads the split's rows as a crosswalk (`relink_units_to_lots`), moves a
+roll row keyed on a unit to that unit's lot, and keeps the split's rows
+only on lots that no table carrying an additive column describes, since
+both tables on one lot would be summed twice in curate (a permit table
+adds rows, not sums, and displaces nothing). Galveston recovers 4,945 of
+the 5,186; the other 260 are accounts drawn on more than one lot, which
+one `parcel_id_local` cannot express and which stay unlinked rather than
+guessed. A lot with a single record yields no property row at all, so
+where no roll exists the property spine holds stacked units only. The
+parcel geospine's property `link_by_id` reads ingest tables directly and
+does not apply the crosswalk: on a stacked lot its `entity_type: parcel`
+pass reduces the split's own rows onto the lot (`_discover_link_sources`
+walks every bundled layer), a roll keyed on units matches nothing there,
+and the roll's rows reach the lot in curate, through
+`aggregate_from_entities`, for the cells still empty. That path is read
+from the code and not yet run on a county. The module docstring
 carries the patent rationale (US9298740B2 claim 1, all-elements rule;
 its other independent claims are still to be read before a public
 release). Data on disk keeps the old row shape until a county is

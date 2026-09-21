@@ -203,8 +203,30 @@ degenerate source column, empty column — is in
   read like MassGIS's bundled property table). The lot is the set of rows
   sharing a `geo_id`; `lot_key: <column>` names a source lot id instead
   (a column present after column mapping). A stack's parcel row keeps
-  only the values its members agree on; exact duplicate rows collapse to
-  one; singletons are untouched; the ingest log prints the counts.
+  only the values its members agree on, and never an additive column
+  (values, floor areas, counts), which the property rows supply as a sum
+  in curate; exact duplicate rows collapse to one; singletons are
+  untouched; the ingest log prints the counts.
+  - **Name a `lot_key` only after measuring three things** on the source,
+    and write them beside it: it is constant within every stack, it is
+    filled (a row without one becomes a lot of its own), and how many of
+    its values are drawn as more than one polygon. Under a source lot id
+    those polygons are unioned into the lot's outline, which the `geo_id`
+    default cannot do.
+  - **Map the unit's own id** where the source has one
+    (`property_id_assessor`, `property_id_admin2`), and name it with
+    `unit_key: <column>` if it sits under another name. It drops nothing;
+    the log counts the rows that repeat it inside a lot. A source that
+    gives units no id of their own (NC OneMap) leaves them identified by
+    row order alone.
+  - Each property row keeps the key it arrived with in
+    `property_id_local`, because `parcel_id_local` on it now names the
+    lot. The property spine reads that pair to move a tax roll's rows for
+    the same units onto the lot, and keeps the split's rows only on lots
+    no roll describes, so nothing is counted twice.
+  - A singleton lot yields no property row: its parcel row is the only
+    record of it until a tax roll supplies one.
+
   `stacked_units: false` opts a table out; a recipe that declares its own
   `property` layer gets no implicit one. See `io/stacked_units.py` for
   the mechanism and its patent rationale.

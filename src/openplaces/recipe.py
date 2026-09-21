@@ -1495,6 +1495,12 @@ def find_additional_layer_recipes(
                     'layer': layer_entity_type,
                     'label': source_id,
                     'layer_key': layer_spec.get('layer_key', 'parcel_id_local'),
+                    # The implicit layer of units split off a parcel
+                    # table: a fallback wherever a tax roll describes
+                    # the same lots (spine.union_spine_sources).
+                    'stacked_units_layer': bool(
+                        layer_spec.get(STACKED_UNITS_LAYER_KEY)
+                    ),
                 }
             )
     return matches

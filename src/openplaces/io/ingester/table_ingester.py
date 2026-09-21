@@ -1509,6 +1509,7 @@ class TableIngester:
             is_enabled,
             lot_key_of,
             split_stacked_units,
+            unit_key_of,
         )
 
         if not is_enabled(self.recipe) or not isinstance(gdf, gpd.GeoDataFrame):
@@ -1523,7 +1524,9 @@ class TableIngester:
                 f'lot_key {lot_key!r} names a column the table does not carry '
                 f'after column mapping for {self.table_name}.'
             )
-        result = split_stacked_units(gdf, lot_key=lot_key)
+        result = split_stacked_units(
+            gdf, lot_key=lot_key, unit_key=unit_key_of(self.recipe)
+        )
         if self.verbose or result.n_stacks:
             print(f'  stacked units{suffix}: {result.summary()}')
         self.timer.mark(f'Split stacked units{suffix}')

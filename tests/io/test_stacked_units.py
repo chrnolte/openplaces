@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from openplaces.io.stacked_units import split_stacked_units
+from openplaces.io.stacked_units import relink_units_to_lots, split_stacked_units
 
 
 def _table():
@@ -114,3 +114,136 @@ def test_no_stack_means_no_property_table():
 def test_a_missing_lot_key_column_raises():
     with pytest.raises(KeyError):
         split_stacked_units(_table(), lot_key='nope')
+
+
+def _parts_table():
+    # One lot id drawn as three adjoining polygons, all carrying the
+    # same record, beside a neighboring lot drawn once.
+    rows = pd.DataFrame(
+        {
+            'lot_id': ['L1', 'L1', 'L1', 'L2'],
+            'geo_id': ['g1', 'g2', 'g3', 'g4'],
+            'parcel_id_local': ['L1', 'L1', 'L1', 'L2'],
+            'land_value': [5000.0, 5000.0, 5000.0, 900.0],
+            'use_group': ['SF', 'SF', 'SF', 'SF'],
+        },
+        index=pd.Index(['p1', 'p2', 'p3', 'p4'], name='parcel_id'),
+    )
+    geoms = [box(0, 0, 1, 1), box(1, 0, 2, 1), box(2, 0, 3, 1), box(5, 5, 6, 6)]
+    return gpd.GeoDataFrame(rows, geometry=geoms, crs='EPSG:4326')
+
+
+def test_a_lot_drawn_as_several_polygons_keeps_its_whole_outline():
+    result = split_stacked_units(_parts_table(), lot_key='lot_id')
+
+    # The parts are one record, not several units, so nothing is a unit.
+    assert result.properties is None
+    assert result.n_multipart_lots == 1 and result.n_parts_merged == 2
+    assert result.n_exact_duplicates == 0
+    parcels = result.parcels
+    assert list(parcels.index) == ['p1', 'p4']
+    lot = parcels.loc['p1']
+    assert lot['geometry'].equals(box(0, 0, 3, 1))
+    # One record, not a stack: its additive value survives untouched.
+    assert lot['land_value'] == 5000.0
+    # geo_id labels the outline the row now carries, not the first part.
+    assert lot['geo_id'] not in ('g1', 'g2', 'g3')
+    assert parcels.loc['p4', 'geo_id'] == 'g4'
+
+
+def test_a_repeated_row_is_a_duplicate_and_another_polygon_is_a_part():
+    table = _parts_table()
+    table.loc['p3', 'geometry'] = box(1, 0, 2, 1)  # now repeats p2 exactly
+    result = split_stacked_units(table, lot_key='lot_id')
+
+    assert result.n_exact_duplicates == 1
+    assert result.n_multipart_lots == 1 and result.n_parts_merged == 1
+    assert result.parcels.loc['p1', 'geometry'].equals(box(0, 0, 2, 1))
+
+
+def test_the_geometry_hash_key_never_unions_what_it_collided_on():
+    # Two polygons far apart that the quantized shape hash put in one
+    # group. Unioning them would invent an outline no source drew.
+    rows = pd.DataFrame(
+        {
+            'geo_id': ['c', 'c'],
+            'parcel_id_local': ['c', 'c'],
+            'use_group': ['SF', 'SF'],
+        },
+        index=pd.Index(['x1', 'x2'], name='parcel_id'),
+    )
+    table = gpd.GeoDataFrame(
+        rows, geometry=[box(0, 0, 1, 1), box(9, 9, 10, 10)], crs='EPSG:4326'
+    )
+    result = split_stacked_units(table)
+
+    assert result.n_multipart_lots == 0 and result.n_parts_merged == 1
+    assert result.parcels.loc['x1', 'geometry'].equals(box(0, 0, 1, 1))
+
+
+def test_repeated_unit_ids_in_a_stack_are_kept_and_counted():
+    # Three accounts on one outline, two of which repeat the lot's id
+    # instead of carrying one of their own.
+    rows = pd.DataFrame(
+        {
+            'geo_id': ['S', 'S', 'S'],
+            'parcel_id_local': ['S', 'S', 'S'],
+            'parcel_id_assessor': ['acct-1', 'acct-1', 'acct-2'],
+            'improvement_value': [100.0, 200.0, 300.0],
+        },
+        index=pd.Index(['u1', 'u2', 'u3'], name='parcel_id'),
+    )
+    table = gpd.GeoDataFrame(rows, geometry=[box(0, 0, 1, 1)] * 3, crs='EPSG:4326')
+    result = split_stacked_units(table)
+
+    assert len(result.properties) == 3
+    assert result.unit_key == 'parcel_id_assessor'
+    assert result.n_lots_with_repeated_unit_id == 1
+    assert result.n_rows_with_repeated_unit_id == 2
+    assert 'repeat their parcel_id_assessor' in result.summary()
+
+
+def test_a_unit_keeps_the_key_it_arrived_with():
+    properties = split_stacked_units(_table()).properties
+    # The lot's key replaces the link, so the unit's own moves aside.
+    assert properties['parcel_id_local'].tolist() == ['A', 'A']
+    assert properties['property_id_local'].tolist() == ['A1', 'A2']
+
+
+def _units():
+    return split_stacked_units(_table()).properties
+
+
+def test_a_roll_keyed_on_units_is_moved_to_their_lot_and_wins_it():
+    # The county roll knows the two condo units by their own keys, which
+    # no parcel row carries once the lot's row has taken the lot key.
+    roll = pd.DataFrame(
+        {
+            'parcel_id_local': ['A1', 'A2', 'B1'],
+            'living_area_sqft': [800.0, 900.0, 1500.0],
+        }
+    )
+    sources, units, n_moved, n_dropped = relink_units_to_lots([roll], [_units()])
+
+    assert sources[0]['parcel_id_local'].tolist() == ['A', 'A', 'B1']
+    assert sources[0]['property_id_local'].tolist()[:2] == ['A1', 'A2']
+    assert n_moved == 2
+    # The roll describes lot A, so the split's two rows would be summed
+    # a second time; they go.
+    assert n_dropped == 2 and units == []
+    assert roll['parcel_id_local'].tolist() == ['A1', 'A2', 'B1']  # untouched
+
+
+def test_the_split_rows_stay_where_no_roll_reaches():
+    roll = pd.DataFrame({'parcel_id_local': ['B1'], 'living_area_sqft': [1500.0]})
+    _sources, units, n_moved, n_dropped = relink_units_to_lots([roll], [_units()])
+    assert (n_moved, n_dropped) == (0, 0)
+    assert len(units[0]) == 2
+
+
+def test_a_table_that_cannot_double_count_displaces_nothing():
+    # Permits on the lot add rows, never sums, so the units stay.
+    permits = pd.DataFrame({'parcel_id_local': ['A1'], 'use_group': ['Roofing']})
+    sources, units, n_moved, n_dropped = relink_units_to_lots([permits], [_units()])
+    assert sources[0]['parcel_id_local'].tolist() == ['A']
+    assert (n_moved, n_dropped) == (1, 0) and len(units[0]) == 2

@@ -545,6 +545,12 @@ def union_spine_sources(
     appear in another's), so this is a straightforward concatenation, not a
     priority-merge -- no dedup logic beyond what ``pd.concat`` needs.
 
+    The one exception is a parcel recipe's implicit stacked-units layer
+    (``io.stacked_units``), which describes the same condominium units as
+    the county's tax roll. Its rows serve as the crosswalk that moves roll
+    rows keyed on a unit to the unit's lot, and they are kept only on lots
+    no roll describes; see ``relink_units_to_lots``.
+
     Parameters
     ----------
     sources : list of dict
@@ -564,6 +570,7 @@ def union_spine_sources(
         return state
 
     parts = []
+    unit_parts = []
     loaded_recipe_ids = set()
     for src in resolved:
         recipe_id = src['recipe_id']
@@ -586,10 +593,26 @@ def union_spine_sources(
             continue
         df = df.copy()
         df['source'] = label
-        parts.append(df)
+        (unit_parts if src.get('stacked_units_layer') else parts).append(df)
         loaded_recipe_ids.add(recipe_id)
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
+
+    # Units split off a parcel layer are no longer disjoint from the
+    # county's tax roll, which describes the same condominium units:
+    # move roll rows keyed on a unit to that unit's lot, and keep the
+    # split's rows only on lots no roll describes (io.stacked_units).
+    if unit_parts:
+        from openplaces.io.stacked_units import relink_units_to_lots
+
+        parts, unit_parts, n_moved, n_dropped = relink_units_to_lots(parts, unit_parts)
+        if state.verbose and (n_moved or n_dropped):
+            print(
+                f'  stacked units: {n_moved:,d} source rows moved to their '
+                f'lot; {n_dropped:,d} split rows dropped where a roll '
+                f'describes the lot'
+            )
+        parts += unit_parts
 
     if not parts:
         warnings.warn(f'union_spine_sources: no rows loaded for {state.admin_id}.')
@@ -708,6 +731,7 @@ def _expand_auto_discover(
                     'recipe_id': match['recipe_id'],
                     'label': match['label'],
                     'layer': match['layer'],
+                    'stacked_units_layer': match.get('stacked_units_layer', False),
                 }
             )
             existing_ids.add(key)
