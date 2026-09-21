@@ -595,6 +595,12 @@ def union_spine_sources(
         df['source'] = label
         (unit_parts if src.get('stacked_units_layer') else parts).append(df)
         loaded_recipe_ids.add(recipe_id)
+        # Which table each label came from, for assign_entity_ids,
+        # which reads the id column that table's recipe names.
+        state.metadata.setdefault('spine_source_origins', {})[label] = (
+            recipe_id,
+            layer,
+        )
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
 

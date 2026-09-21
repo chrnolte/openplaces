@@ -2315,6 +2315,7 @@ def _neutralize_degenerate_keys(
     ref: pd.DataFrame,
     ref_key: str,
     recipe_id: str | None = None,
+    spine_key: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Blank out join-key values that are placeholders, not identifiers.
 
@@ -2332,6 +2333,18 @@ def _neutralize_degenerate_keys(
     parcel simply gains no reference attributes -- the same outcome as a
     parcel the reference never mentioned.
 
+    A key on many reference rows is spared when *spine_key* is given and
+    exactly one spine row carries it. That is a large stack, not a
+    placeholder, and the harm above cannot arise: it came from the
+    product, every one of a key's reference rows summed onto every one of
+    its spine rows (Brazoria's $7.5 billion key sits on 2,443 reference
+    rows **and** 2,443 parcel rows, and is as well formed as any other,
+    so its shape could not have told it apart). With one spine row the
+    sum lands once, where it belongs. Measured 2026-09-20 on New Hanover
+    County NC: 16 roll keys over the cutoff, 116 to 327 accounts each, 15
+    of them on exactly one parcel of 0.6 to 10 ha (parks and condominium
+    complexes), 2,853 roll rows that were being left off their parcel.
+
     Returns *ref* unchanged when nothing is degenerate.
     """
     if ref_key not in ref.columns or ref.empty:
@@ -2342,6 +2355,9 @@ def _neutralize_degenerate_keys(
     counts = key.astype('string').value_counts()
     cutoff = max(DEGENERATE_KEY_MIN_ROWS, DEGENERATE_KEY_MAX_SHARE * len(ref))
     overused = set(counts[counts > cutoff].index)
+    if overused and spine_key is not None:
+        on_spine = spine_key.dropna().astype('string').value_counts()
+        overused = {k for k in overused if on_spine.get(k, 0) != 1}
     if overused:
         bad = bad | key.astype('string').isin(overused)
 
@@ -2869,7 +2885,7 @@ def link_by_id(
     # Before any mode reads the key: a placeholder shared by thousands of
     # rows is not an identifier, and every mode below would silently treat
     # it as one (see _neutralize_degenerate_keys).
-    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id)
+    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id, spine_key=skey)
     rkey = ref[ref_key].astype('string')
     spine_entity = state.recipe.get('entity')
     spine_entity_type = (

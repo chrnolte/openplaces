@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use openplaces in academic work, please cite it as below."
+title: "openplaces: an open-source processing engine for land, building, and property data"
+type: software
+authors:
+  - family-names: Nolte
+    given-names: Christoph
+    affiliation: Boston University
+version: 0.1.0
+date-released: 2026-09-30
+license: Apache-2.0
+repository-code: "https://github.com/chrnolte/openplaces"
+url: "https://docs.openplaces.io"
+keywords:
+  - geospatial
+  - parcels
+  - buildings
+  - property transactions
+  - land value
+  - reproducible research

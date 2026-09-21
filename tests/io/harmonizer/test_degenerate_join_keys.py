@@ -66,6 +66,19 @@ class TestOverusedKeys:
         assert out['parcel_id_local'].isna().sum() == 2_443
         assert out['parcel_id_local'].notna().sum() == 50_000
 
+    def test_a_large_stack_on_exactly_one_spine_row_is_spared(self):
+        """327 accounts on one park's parcel sum onto it once; the harm
+        is the product of many reference rows and many spine rows."""
+        keys = ['park'] * 327 + ['shared'] * 327 + [f'p{i}' for i in range(50_000)]
+        spine = pd.Series(['park', 'shared', 'shared', 'p1', None])
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            out = _neutralize_degenerate_keys(
+                _ref(keys), 'parcel_id_local', spine_key=spine
+            )
+        assert out['parcel_id_local'].eq('park').sum() == 327
+        assert out['parcel_id_local'].eq('shared').sum() == 0
+
     def test_a_genuine_multi_unit_building_is_left_alone(self):
         """Pender's most-shared real key covers 49 rows -- a condominium,
         not a placeholder. The floor exists to keep those joined."""

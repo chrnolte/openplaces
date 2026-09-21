@@ -34,18 +34,26 @@ repository.
   tests something, and the failure modes a history rewrite hits.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
-## Intellectual property: ownership is under review
-- Ownership of this repository's IP — Boston University vs. individual
-  contributors, and how any personal-time contributions are separated from
-  grant-funded or in-scope faculty work — is currently under institutional
-  review (see `DISCLAIMER.md`). Until that's resolved: never add a
-  "Copyright <name>" header to a new file, and never edit
-  copyright/ownership/hosting language in `LICENSE.md`, `README.md`, or
-  `DISCLAIMER.md` without asking the user first, even to "fix" or "simplify"
-  it — a wrong assertion here is a legal problem, not a style one.
-- This includes the repository's hosting arrangement (currently a personal
-  GitHub account, not an institutional one) — don't propose or perform an org
-  transfer, mirror, or similar hosting change unprompted.
+## Intellectual property: one notice, in one place
+- Copyright is held by the Trustees of Boston University and Christoph Nolte
+  (maintainer's decision, 2026-09-20), and the work is licensed under
+  Apache-2.0. `NOTICE` carries the copyright lines and is the single source
+  of truth; `LICENSE.md` is the verbatim licence text and must stay verbatim;
+  `README.md`, `DISCLAIMER.md` section 8, `docs/conf.py` and `CITATION.cff`
+  repeat the holders and have to change together with `NOTICE`.
+- Never add a "Copyright <name>" header to a new file: files carry no
+  per-file notice, except third-party code, which keeps its upstream header
+  (see the next section). Never edit copyright, ownership or hosting language
+  in any of the files above without asking the user first, even to "fix" or
+  "simplify" it: a wrong assertion here is a legal problem, not a style one.
+- Contributions come in under the Developer Certificate of Origin (`DCO.md`,
+  `CONTRIBUTING.md`): every commit by a person carries a `Signed-off-by`
+  line (`git commit -s`). An agent never writes a sign-off for a person and
+  never adds one in its own name; the sign-off is the human committer's
+  statement, in the same way co-authorship is reserved for people.
+- The repository is hosted under a personal GitHub account, not an
+  institutional one. Don't propose or perform an org transfer, mirror, or
+  similar hosting change unprompted.
 
 ## Restricted-licence sources: the terms decide what may be committed
 
@@ -393,6 +401,62 @@ copies an explicit list of parcel-level columns (values, use codes,
 `aggregate_from_entities` (curate, `aggregation.py`). A county whose
 geospine predates that still carries the old wider copy until its next
 geometry rerun, which is why the curate step fills only what is empty.
+
+**Build order, and why it is fixed.** A source that holds parcels and
+properties together is separated at ingest (an `additional_layers` entry
+writes its own property table), so by harmonize every property table exists
+independently of any parcel spine. Per admin unit the order is: every
+ingest; `US_property-spine-2026`; the footprint geospine and spine; the
+parcel geospine, which reads the ingest-level property tables for
+parcel-level values and the property spine for a count; the parcel spine;
+enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
+from the recipes and a test pins it
+(`test_property_parcel_link_is_written_after_both_of_its_sides`); a script
+that calls stages by hand has to follow it, and **a parcel geospine built
+before one of its county's rolls was ingested silently lacks that roll's
+values until it is rerun**.
+
+**A property's id is the account number its assessor issued**, prefixed with
+the admin unit that scopes it: `US-TX-VIC_000123`
+(`io/harmonizer/entity_ids.py`, step `assign_entity_ids` in
+`US_property-spine-2026`). The number comes from the column a source's
+recipe names in `entity_id`, else the first of `property_id_assessor`,
+`property_id_admin2`, `parcel_id_assessor` it carries: the *account*, never
+the lot (New Hanover County NC's PIN sits on up to 327 accounts; a source
+whose ids repeat on more than 2% of rows raises, because it named the wrong
+column). Case is folded and runs of separators become one hyphen, but their
+positions are kept, because in a map-block-lot number they carry meaning
+(dropping them made 426 Somerville MA accounts collide). Two sources
+publishing the same accounts therefore mint the same ids, and **rows sharing
+an id merge into one**, the first-loaded (most specific) source winning each
+cell and `source` becoming `a+b`: Boston's city table and MassGIS's layer are
+364,997 rows and 185,132 properties. The few differing rows under one number
+get `_2`, `_3` ordered by content, and a source with no issued number is
+named `{admin}_{source}:{content hash}`. A spatial entity's id comes from its
+geometry; this is the equivalent for an entity that has none.
+
+**Relationships between entities are link tables** (`geo/link.py`,
+`io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
+entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The
+spatial joins write theirs from an overlay; `link_entities_by_id` writes the
+property-to-parcel table from an exact match on `parcel_id_local`, with
+columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
+(a test pins that a link table holds nothing else, so it can never carry a
+person). It runs in `US_parcel-spine-2026` because that is the first recipe
+in which both sides exist. `link_method` is a fixed label naming the rule
+that found the pair, never a score, and no link is removed once written
+(patent shape 4). A key on more rows than `link_by_id`'s placeholder cutoff
+keeps its pairs under `parcel_id_local_shared_key`, because a link table,
+unlike a sum, need not decide whether it is a placeholder or a large stack:
+a reader that sums values leaves that method out. The footer
+(`openplaces:entity_link`) records both input files, so a reader can tell a
+link that predates a rebuilt spine. The step sits **after** the parcel
+spine's checkpointed step: a restored checkpoint skips every step before
+it and validates against the geospine only, so anything placed earlier
+that reads another recipe's output goes stale unnoticed (the transaction
+`link_by_id` near the top of that recipe has this weakness). Nothing reads the
+table yet; the key column `parcel_id_local` on property rows is still what
+`link_by_id` and `aggregate_from_entities` join on.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 
