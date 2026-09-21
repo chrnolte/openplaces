@@ -21,6 +21,83 @@ from openplaces.recipe import resolve_attribute_name
 from openplaces.table import _agg_func_for, _has_agg_func
 
 
+def _rows_by_link(state, recipe_id, reference, values, functions):
+    """Arrange the reference's values by the link table, when there is one.
+
+    A property reaches its parcel through a key column only where one
+    key can say it. The link table (`io.harmonizer.entity_links`) also
+    holds a unit on a stacked lot, whose key names no parcel row, and an
+    account on several lots. Where a valid link exists for the unit
+    being curated, the rows are grouped by it:
+
+    - links found on a key shared by very many rows on both sides
+      (`*_shared_key`) are left out, because summing over them is the
+      harm that label records;
+    - on a lot that any source other than the ingest-time split
+      describes, the split's own rows (`<source>:units`) are left out,
+      so a tax roll and the units split off the parcel layer are not
+      summed twice. A row both describe is one merged row and stays;
+    - a property on several lots contributes its `share` of every
+      summed column to each.
+
+    Returns None when there is no valid link or it shares no ids with
+    the two tables, and the caller joins on the key column as before.
+    """
+    from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
+    from openplaces.io.harmonizer.entity_links import (
+        SHARED_KEY_SUFFIX,
+        read_entity_link,
+    )
+    from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
+
+    try:
+        owner = get_link_owner_recipe_id(state.recipe)
+        path = get_entity_link_path(recipe_id, owner, state.admin_id)
+        links = read_entity_link(path)
+    except Exception:
+        # No resolvable link for this recipe and unit (a curate recipe
+        # with no geospine, a reference outside ENTITY_LINK_ORDER): the
+        # key join below is the documented behavior.
+        return None
+    if links is None or links.empty:
+        return None
+    finer_id, coarser_id = links.columns[0], links.columns[1]
+    links = links[
+        links[finer_id].isin(reference.index)
+        & links[coarser_id].isin(state.curated.index)
+    ]
+    if links.empty:
+        warnings.warn(
+            f'aggregate_from_entities: the link {path.name} shares no ids with '
+            f'the tables for {state.admin_id}; joining on the key column.',
+            stacklevel=3,
+        )
+        return None
+    links = links[~links['link_method'].str.endswith(SHARED_KEY_SUFFIX, na=False)]
+    tokens = links['link_source'].fillna('').str.split('+')
+    only_units = tokens.map(
+        lambda parts: all(p.endswith(STACKED_UNITS_LABEL_SUFFIX) for p in parts)
+    )
+    described = set(links.loc[~only_units, coarser_id])
+    links = links[~(only_units & links[coarser_id].isin(described))]
+
+    rows = values.loc[links[finer_id]].reset_index(drop=True)
+    share = links['share'].astype('Float64').reset_index(drop=True)
+    for column, function in functions.items():
+        if function == 'sum' and share.notna().any():
+            scaled = pd.to_numeric(rows[column], errors='coerce') * share.astype(
+                'float64'
+            )
+            rows[column] = scaled.where(share.notna(), rows[column])
+    group_key = links[coarser_id].reset_index(drop=True)
+    keys = pd.Series(state.curated.index, index=state.curated.index)
+    if state.verbose:
+        print(
+            f'  aggregate_from_entities: grouped by {path.name} ({len(links):,d} links)'
+        )
+    return rows, group_key, keys
+
+
 @_register('aggregate_from_entities')
 def aggregate_from_entities(
     state: CurateState,
@@ -105,7 +182,8 @@ def aggregate_from_entities(
     )
     if reference is None or len(reference) == 0:
         return state
-    reference = reference.dropna(subset=[reference_key])
+    # Rows without the key stay: the link table may still place them (a
+    # unit that names its lot), and the key join's groupby drops them.
     functions = {}
     for column in present:
         override = spec[column]
@@ -134,12 +212,16 @@ def aggregate_from_entities(
             else series
         )
     values = pd.DataFrame(numeric)
-    grouped = values.groupby(reference[reference_key])
+    linked = _rows_by_link(state, recipe_id, reference, values, functions)
+    if linked is not None:
+        values, group_key, keys = linked
+    else:
+        group_key, keys = reference[reference_key], curated[key]
+    grouped = values.groupby(group_key)
     reduced = grouped.agg(functions)
     # pandas sums an all-missing group to 0; a parcel none of whose
     # properties states a floor area has no floor area, not a zero one.
     reduced = reduced.where(grouped.count() > 0)
-    keys = curated[key]
     written = []
     for column in reduced.columns:
         incoming = keys.map(reduced[column])

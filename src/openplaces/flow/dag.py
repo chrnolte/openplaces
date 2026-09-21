@@ -838,6 +838,22 @@ class RecipeDAG:
         for step in recipe.get('pipeline') or []:
             if not isinstance(step, dict):
                 continue
+            if step.get('step') == 'link_entities_by_id':
+                # An id-based link is named after the recipe that mints
+                # this entity's rows (the geospine under the split), and
+                # sits beside the finer entity's output, which may be
+                # the other recipe's. The step always writes it, empty
+                # where the other entity has no rows.
+                from openplaces.geo.link import get_link_owner_recipe_id
+
+                other_id = step.get('recipe_id')
+                if other_id and self._graph_produces(other_id, node_admin):
+                    paths.append(
+                        get_entity_link_path(
+                            other_id, get_link_owner_recipe_id(recipe), node_admin
+                        )
+                    )
+                continue
             if step.get('step') == 'link_to_reference':
                 if step.get('save_link') is False:
                     continue

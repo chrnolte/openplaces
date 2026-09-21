@@ -197,6 +197,24 @@ pipeline:
           - group
           - height
 
+  # Write the n:m link table between properties and parcels, beside the
+  # property spine's output. A key column on the property row holds one
+  # parcel; the table also holds a property on several lots and several
+  # properties on one. It is written here and not by the property spine
+  # because that spine is built before the parcel geospine (which reads
+  # it), so this is the first recipe in which both sides exist, and a
+  # rerun costs no geometry. One exact pass on the standardized key, the
+  # same pass the geospine's own property join runs: the punctuation-free
+  # fallback keys are shared by hundreds of parcels in some counties,
+  # which an n:m table would turn into hundreds of false links. Changes
+  # nothing on the spine, and nothing reads the table yet.
+  # After the checkpointed step on purpose: a restored checkpoint skips
+  # every step before it, and the checkpoint's validity covers the
+  # geospine only, so a link placed earlier would survive a rebuilt
+  # property spine unrewritten (seen on Victoria County, 2026-09-20).
+  - step: link_entities_by_id
+    recipe_id: US_property-spine-2026
+
   # Classify property_source and, where no property-spine source exists (see
   # the count-only link_by_id in the geospine), estimate a property/unit
   # count from evidence that already implies internal multiplicity

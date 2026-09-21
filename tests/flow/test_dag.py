@@ -100,6 +100,29 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     assert sidecar in inputs
 
 
+def test_property_parcel_link_is_written_after_both_of_its_sides(dag):
+    # The order the entity structure depends on: property spine, then
+    # the parcel geospine (which reads it), then the parcel spine, which
+    # writes the property-to-parcel link because it is the first recipe
+    # in which both sides exist.
+    property_spine = get_output_path('US_property-spine-2026', admin_id=COUNTY)
+    geospine = get_output_path('US_parcel-geospine-2026', admin_id=COUNTY)
+    assert property_spine in dag.input_paths(
+        'harmonize', 'US_parcel-geospine-2026', COUNTY
+    )
+    spine_inputs = dag.input_paths('harmonize', 'US_parcel-spine-2026', COUNTY)
+    assert geospine in spine_inputs
+    assert property_spine in spine_inputs
+
+    link = get_entity_link_path(
+        'US_property-spine-2026', 'US_parcel-geospine-2026', COUNTY
+    )
+    # Beside the finer entity's output, named after the geospine.
+    assert link.parent == property_spine.parent
+    assert link in dag.extra_outputs('harmonize', 'US_parcel-spine-2026', COUNTY)
+    assert link not in dag.extra_outputs('harmonize', 'US_property-spine-2026', COUNTY)
+
+
 def test_retention_classes(dag):
     assert dag.retention('ingest', 'US_building-nsi-2026') == 'until_consumed'
     assert dag.retention('harmonize', 'US_footprint-spine-2026') == 'keep'
