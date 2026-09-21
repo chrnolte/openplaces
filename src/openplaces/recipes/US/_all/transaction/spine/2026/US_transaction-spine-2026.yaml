@@ -106,9 +106,21 @@ pipeline:
   # several parcels can sum their areas when the curate stage folds
   # its rows into one sale; without it the price would sit over one
   # parcel's area, the defect the aggregation exists to remove.
+  # The key every parcel join below uses. A deed for a condo unit
+  # states the unit's number, and since the ingest-time split of
+  # stacked parcel layers that number is on a property row, not on a
+  # parcel row: the lot's parcel row is keyed on the lot. This step
+  # looks the number up in the (unit, lot) pairs the split recorded and
+  # writes the lot to `lot_id_local`; `parcel_link_key` is the lot where
+  # one was found and the record's own number elsewhere. Without it a
+  # re-ingested county silently loses every condo sale.
+  - step: derive_parcel_link_key
+
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
 
@@ -118,11 +130,17 @@ pipeline:
   # parcel, an address can sit on a lot that was split since. The label
   # is a fixed word per rule, written once and never changed; it is not
   # a score, and no pass takes an earlier link back.
+  # A sale that named a unit and reached the parcel through the unit's
+  # lot reads `stacked_units`, the name main's property-to-parcel link
+  # table uses for the same rule.
   - step: record_link_method
     label: parcel_id_local
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     auto_discover: true
     entity_type: parcel
+    via_column: lot_id_local
+    via_label: stacked_units
 
   # MA: no parcel_id_local on the transaction side; join by address instead.
   # Two passes, most specific first -- link_by_id's existing column-priority
@@ -141,15 +159,18 @@ pipeline:
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
     ref_key: parcel_id_local
     fill_only: true
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: parcel_id_local
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     recipe_id: US_parcel-spine-2026
+    via_column: lot_id_local
+    via_label: stacked_units
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes

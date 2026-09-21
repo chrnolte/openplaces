@@ -729,7 +729,18 @@ The step sub-modules:
   A fixed label, written once, never a score and never revised (patent
   shape 4). It re-reads the pass's reference instead of instrumenting
   `link_by_id`, so a step added between a pass and its label would make the
-  label describe the wrong pass.
+  label describe the wrong pass. A sale that reached its parcel through a
+  unit's lot reads `stacked_units` (`via_column`/`via_label`).
+- `parcel_link_keys.py` — `derive_parcel_link_key`: the one column
+  (`parcel_link_key`) every parcel join of the transaction spine uses. A
+  deed for a condo unit states the unit's number, which after the
+  ingest-time split is on a property row, not a parcel row; the step looks
+  it up in the split's own (unit, lot) pairs and joins on the lot
+  (`lot_id_local`), never rewriting the stated number. A unit seen on
+  several lots keeps its own number: picking one would assert which parcel
+  the sale conveyed, which the record does not say.
+  Without the step a re-ingested county loses its condo sales silently
+  (Vilas County WI: 1.1% of returns).
 - `last_sales.py` — `append_last_sales`: turn the last-sale fields an
   assessment roll carries into transaction rows
   (`sale_record_kind = assessor_last_sale`; rows already on the spine read
