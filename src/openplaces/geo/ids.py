@@ -1318,6 +1318,76 @@ PARCEL_ID_ALNUM_KEYS = {
 }
 
 
+def introduced_duplicate_mask(derived, source):
+    """Rows whose derived key merges entities the source told apart.
+
+    A matching key derived by normalizing another may make two rows
+    comparable that the source itself distinguished. Those rows are the
+    ones this returns: every row whose derived value is shared by rows
+    carrying more than one distinct *source* value. A key two rows
+    already shared before the derivation is not flagged, because the
+    duplication is the source's own and normalizing did not cause it.
+
+    Parameters
+    ----------
+    derived : pandas.Series
+        The derived key.
+    source : pandas.Series
+        What the source distinguished, aligned to *derived*: the raw
+        value the key was derived from, normalized only in the ways the
+        derivation is *meant* to merge.
+
+    Returns
+    -------
+    pandas.Series
+        Boolean, True on rows to refuse.
+    """
+    pair = pd.DataFrame({'derived': derived, 'source': source}).dropna()
+    if pair.empty:
+        return pd.Series(False, index=derived.index)
+    per_key = pair.groupby('derived')['source'].nunique()
+    merging = set(per_key[per_key > 1].index)
+    if not merging:
+        return pd.Series(False, index=derived.index)
+    return derived.isin(merging).fillna(False) & derived.notna()
+
+
+def refuse_introduced_duplicates(derived, source, key_name=''):
+    """Blank a derived matching key wherever it merges distinct entities.
+
+    **Introduced duplicates are forbidden in id matching, at any count**
+    (maintainer's decision 2026-09-21). A derived key exists to reach
+    rows a stricter key missed; it has no licence to merge two entities
+    the source kept apart, and a threshold on how many it may merge
+    would only say how much silent merging is tolerable. So every
+    affected row's key is set to missing, which each join already reads
+    as "this row does not match by this key", and the count is reported.
+
+    `compute_parcel_id_local` applies the same rule from the other end,
+    refusing a whole conversion that adds duplicates; this refuses the
+    rows rather than the rule, because one fallback key serves counties
+    where it collapses nothing and counties where it collapses almost
+    everything, and a per-source verdict would lose the first to save
+    the second.
+
+    Returns *derived* unchanged when nothing is introduced.
+    """
+    bad = introduced_duplicate_mask(derived, source)
+    if not bad.any():
+        return derived
+    merged = int(bad.sum())
+    keys = int(derived[bad].nunique())
+    warnings.warn(
+        f'{key_name or "derived key"}: refused on {merged:,d} of '
+        f'{len(derived):,d} rows, where normalizing merged parcels the '
+        f'source told apart ({keys:,d} keys each covering more than one '
+        'distinct source id). Those rows will not match on this key; the '
+        'stricter key still applies to them.',
+        stacklevel=3,
+    )
+    return derived.where(~bad)
+
+
 def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
     """Add ``parcel_id_alnum``, a format-agnostic parcel-id match key.
 
@@ -1334,11 +1404,22 @@ def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
 
     This key throws away exactly the information the two sides disagree
     about -- punctuation and case -- and nothing else, so it is symmetric
-    by construction. It is deliberately *lossier* than
-    ``parcel_id_local``, which is why it is a fallback and never the
-    primary: collapsing ``1-23`` and ``12-3`` onto ``123`` is the risk
-    ``parcel_id_local``'s guard exists to avoid. Use it to catch the rows
-    the standardized key missed, not to replace it.
+    by construction. Where that throws away a real distinction, the key
+    is refused rather than used: collapsing ``1-23`` and ``12-3`` onto
+    ``123`` is the risk ``compute_parcel_id_local``'s conversion ladder
+    exists to avoid, and :func:`refuse_introduced_duplicates` holds this
+    key to the same rule, row by row (**introduced duplicates are
+    forbidden in id matching at any count**, maintainer's decision
+    2026-09-21). Measured on the statewide NC layer: in Pender the
+    standardized key has one distinct value across 54,816 rows while this
+    key has 54,502 and merges nothing, so the guard never fires and the
+    fallback keeps its whole purpose; in Carteret the same source's
+    63,355 distinct ids fall onto 5,000 of these keys, the largest
+    swallowing 335 parcels and $18.1bn of improvement value, and the
+    guard refuses every one of them. Before the guard, only
+    ``fill_only`` on the calling step stood between that and a wrong
+    number, and ``fill_only`` prevents overwriting a good value, not
+    filling an empty one with a summed collision.
 
     The source column is coalesced per row over
     :data:`PARCEL_ID_MATCH_CANDIDATES`, skipping values that carry no
@@ -1352,14 +1433,33 @@ def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
     if not present:
         return df
     out = pd.Series(pd.NA, index=df.index, dtype='string')
+    # What the source told apart, to hold the key against. The raw value
+    # each row's key was derived from, case-folded and trimmed but
+    # otherwise untouched, coalesced in the same order and under the
+    # same mask so the two stay row-aligned: case folding is the part of
+    # this key that is meant to merge, punctuation is not, so the raw
+    # kept here still carries it.
+    #
+    # `parcel_id_local` overrides it where the table has one, because it
+    # is the stricter statement of what this source distinguishes and
+    # the raw alone misses the worse half of the problem. Measured on
+    # the statewide NC layer in Carteret: the coalesce takes its key
+    # from an assessor column that is itself a block code with about
+    # 5,000 distinct values, so the raw and the stripped key agree and
+    # nothing looks merged, while `parcel_id_local` (built from the PIN
+    # column) holds 63,355 distinct parcels, up to 335 of which land on
+    # one fallback key. Against the raw the guard refuses none of that;
+    # against `parcel_id_local` it refuses all of it.
+    raw = pd.Series(pd.NA, index=df.index, dtype='string')
     for column in present:
-        candidate = (
-            df[column]
-            .astype('string')
-            .str.replace(r'[^A-Za-z0-9]', '', regex=True)
-            .str.upper()
-        )
+        source = df[column].astype('string')
+        candidate = source.str.replace(r'[^A-Za-z0-9]', '', regex=True).str.upper()
         usable = candidate.notna() & candidate.ne('') & candidate.str.strip('0').ne('')
         out = out.where(out.notna(), candidate.where(usable))
-    df[key] = out
+        raw = raw.where(raw.notna(), source.str.strip().str.upper().where(usable))
+    identity = raw
+    if 'parcel_id_local' in df.columns:
+        local = df['parcel_id_local'].astype('string').str.strip().str.upper()
+        identity = local.where(local.notna(), raw)
+    df[key] = refuse_introduced_duplicates(out, identity, key)
     return df
