@@ -26,6 +26,11 @@ _DEFAULT_RESIDENTIAL_CLASSES = [
 _RATE_STATISTICS = ('mean', 'median', 'min', 'max')
 _ESTIMATORS = ('rate', 'land_share', 'hybrid')
 _DEFAULT_DENSITY_BINS = [0.5, 1.0, 1.5, 2.0, 3.0]
+#: Built share of a lot: footprint area over lot area. Bin edges chosen
+#: to separate an empty lot from a suburban house from a covered urban
+#: one; the residual signal it carries is monotonic across all five
+#: states measured 2026-09-22.
+_DEFAULT_COVERAGE_BINS = [0.02, 0.05, 0.10, 0.20, 0.40]
 _SQFT_TO_M2 = 0.09290304
 
 
@@ -119,6 +124,63 @@ def _share_of_lot(curated, lot_value, improvement_value) -> pd.Series:
     return result
 
 
+def _fit_exponent(area: np.ndarray, land: np.ndarray, bands: int = 5) -> float | None:
+    """Elasticity of land value to lot area, from quantile medians.
+
+    Fitted on band medians rather than on rows, so one mispriced parcel
+    cannot set the slope, and clipped to [0, 1]: land value that falls
+    as a lot grows, or rises faster than its area, is an artifact of
+    the records rather than a property of a market.
+    """
+    if len(area) < bands * 2:
+        return None
+    try:
+        band = pd.qcut(area, bands, labels=False, duplicates='drop')
+    except ValueError:
+        return None
+    x, y = [], []
+    for k in pd.unique(band[~pd.isna(band)]):
+        keep = band == k
+        a, v = np.median(area[keep]), np.median(land[keep])
+        if a > 0 and v > 0:
+            x.append(np.log(a))
+            y.append(np.log(v))
+    if len(x) < 3:
+        return None
+    slope = np.polyfit(x, y, 1)[0]
+    return float(np.clip(slope, 0.0, 1.0))
+
+
+def _resolve_rate_exponent(
+    rate_exponent, curated, city_column, land_value, parcel_area, rate_donor
+) -> pd.Series:
+    """Per-row exponent for the per-area rate, fixed or fitted per city."""
+    if rate_exponent != 'fitted':
+        return pd.Series(float(rate_exponent), index=curated.index)
+
+    area = parcel_area.where(rate_donor)
+    chunk = _fit_exponent(
+        area[rate_donor].to_numpy(dtype='float64'),
+        land_value[rate_donor].to_numpy(dtype='float64'),
+    )
+    out = pd.Series(np.nan, index=curated.index)
+    if city_column in curated.columns:
+        city = curated[city_column].astype('string')
+        for rows in curated.groupby(city, dropna=False).groups.values():
+            donors = rows.intersection(curated.index[rate_donor])
+            if not len(donors):
+                continue
+            fitted = _fit_exponent(
+                parcel_area.loc[donors].to_numpy(dtype='float64'),
+                land_value.loc[donors].to_numpy(dtype='float64'),
+            )
+            if fitted is not None:
+                out.loc[rows] = fitted
+    # A city too small to fit takes the chunk's, and a chunk too small
+    # to fit keeps the old assumption rather than inventing one.
+    return out.fillna(chunk if chunk is not None else 1.0)
+
+
 @_register('impute_land_value')
 def impute_land_value(
     state: CurateState,
@@ -141,9 +203,12 @@ def impute_land_value(
     output_land_value: str = 'land_value_imputed',
     output_improvement_value: str = 'improvement_value_imputed',
     estimator: str = 'rate',
+    rate_exponent: float | str = 1.0,
     floor_area_columns: list[str] | None = None,
     density_bins: list[float] | None = None,
     share_group_tiers: list[list[str]] | None = None,
+    size_bands: int = 5,
+    coverage_bins: list[float] | None = None,
     share_classes: list[str] | None = None,
     share_min_floor_area_ratio: float = 1.0,
     share_when_rate_reaches: float = 1.0,
@@ -359,6 +424,19 @@ def impute_land_value(
         structure value set to 0). The share must be class-aware: TX
         condominium records carry almost no land (median share 0.007),
         so an all-class share would erase their structures.
+    rate_exponent : float or ``'fitted'``, optional
+        How land value scales with lot area: the rate estimates
+        ``k * area ** rate_exponent`` (default 1.0, strict
+        proportionality, which is what the step has always assumed).
+        ``'fitted'`` measures it per city from that city's own donors,
+        on lot-size band medians so one mispriced parcel cannot set the
+        slope, clipped to [0, 1], falling back to the whole chunk and
+        then to 1.0. Measured inside the estimator's own cohorts over
+        1.92 million donors in six states, the fitted value is 0.18 to
+        0.47 and never approaches 1, and on a holdout it beat the
+        proportional rate in all five states tested. It did **not**
+        beat the land share everywhere (the share still won in NC, FL
+        and WI), so it is a better candidate rather than a replacement.
     floor_area_columns : list of str, optional
         Parcel floor-area columns in square feet, first non-missing
         wins (``'land_share'`` and ``'hybrid'``). Divided by lot area
@@ -368,14 +446,24 @@ def impute_land_value(
     density_bins : list of float, optional
         Floor-area-ratio bin edges for the density tier (default
         ``[0.5, 1, 1.5, 2, 3]``).
+    size_bands : int, optional
+        Quantile bands of lot area, cut inside each city (default 5).
+    coverage_bins : list of float, optional
+        Bin edges for built coverage, footprint area over lot area
+        (default ``[0.02, 0.05, 0.1, 0.2, 0.4]``).
     share_group_tiers : list of list of str, optional
         Tiers for the land share, tried before *fallback_group_column*
         (default: the class-aware list under *estimator*). *group_tiers*
         stays the rate's.
     share_classes : list of str, optional
-        ``'hybrid'`` only: land-use classes always estimated by share
-        (default ``['Condominium']``, whose records repeat one lot's
-        area and whose land a per-area rate misprices).
+        Land-use classes taken off the share and off the donor pool
+        entirely (default ``['Condominium']``). Such a class gets the
+        neighbouring land *rate* over its lot, divided among the
+        records on that lot by :func:`_share_of_lot`, and it never
+        learns from its own class: a condominium's recorded land rate
+        runs from 0.001 to 5.7 times its neighbours' and sorts by
+        county inside one statewide source, so it records a convention
+        rather than a price.
     share_min_floor_area_ratio : float, optional
         ``'hybrid'`` only: floor-area ratio from which the share is used
         (default 1.0). Needs *floor_area_columns*.
@@ -463,11 +551,20 @@ def impute_land_value(
             [city_column, fallback_group_column],
         ]
     if share_group_tiers is None:
+        # `_size_band` and `_coverage_band` replaced `_density_bin`
+        # here on 2026-09-22. The floor-area ratio the density bin needs
+        # is simply absent from two of the five states measured (Florida
+        # and Wisconsin record no floor area at all), and where it does
+        # exist, city + size + coverage predicted a held-out land share
+        # at least as well everywhere but Massachusetts, where it lost by
+        # 0.131 against 0.123. Size alone, which costs nothing the rate
+        # did not already need, carries most of the gain.
         share_group_tiers = [
             [street_column, city_column, land_use_column],
             [city_column, land_use_column],
             [land_use_column],
-            [city_column, '_density_bin'],
+            [city_column, '_size_band', '_coverage_band'],
+            [city_column, '_size_band'],
             [city_column, fallback_group_column],
         ]
 
@@ -517,7 +614,19 @@ def impute_land_value(
         & has_area
         & (parcel_area >= min_donor_area_ha)
     )
-    per_area = (land_value / parcel_area).where(rate_donor)
+    # How land value scales with lot area. The shipped rate assumes
+    # strict proportionality, `land = rate * area`, an exponent of 1.
+    # Measured inside the estimator's own city cohorts on 2026-09-21,
+    # over 1.92 million donors in six states, the elasticity of $/ha to
+    # lot area is -0.42 to -1.06, which puts the exponent at roughly
+    # 0.2 to 0.6 and never near 1. That single wrong assumption
+    # produces both of the rate's failures: a small lot gets too little
+    # land, so its structure value runs high, and a large lot gets too
+    # much, so its structure is erased.
+    exponent = _resolve_rate_exponent(
+        rate_exponent, curated, city_column, land_value, parcel_area, rate_donor
+    )
+    per_area = (land_value / parcel_area.pow(exponent)).where(rate_donor)
     # A share is bounded in (0, 1), so the ratio blow-up the area guard
     # exists for cannot happen; a share donor only needs both parts.
     share_donor = land_value.notna() & (land_value > 0) & improvement_ok
@@ -537,15 +646,55 @@ def impute_land_value(
         edges = [0.0, *(density_bins or _DEFAULT_DENSITY_BINS), np.inf]
         density_bin = pd.cut(far, edges, right=False, labels=False)
 
+    # Lot-size band and built coverage, the two stratifiers the default
+    # share tiers use. Size is cut *inside* the city, so "small" means
+    # small for that place rather than for the country, and it needs
+    # nothing the rate did not already need. Coverage needs only
+    # geometry, which is why it reaches sources carrying no floor area
+    # at all (Florida and Wisconsin: 0% floor area, 76% and 82%
+    # footprint area, measured 2026-09-22).
+    size_band = None
+    coverage_band = None
+    if use_share:
+        ranked = parcel_area.where(has_area)
+        if city_column in curated.columns:
+
+            def _bands(values: pd.Series) -> pd.Series:
+                if values.notna().sum() < size_bands * 2:
+                    return pd.Series(np.nan, index=values.index)
+                return pd.qcut(values, size_bands, labels=False, duplicates='drop')
+
+            size_band = ranked.groupby(
+                curated[city_column].astype('string'), dropna=False
+            ).transform(_bands)
+        elif ranked.notna().sum() >= size_bands * 2:
+            size_band = pd.qcut(ranked, size_bands, labels=False, duplicates='drop')
+        if footprint_area_column in curated.columns:
+            built = pd.to_numeric(curated[footprint_area_column], errors='coerce') / (
+                parcel_area * 10_000
+            ).where(has_area)
+            coverage_band = pd.cut(
+                built,
+                [0.0, *(coverage_bins or _DEFAULT_COVERAGE_BINS), np.inf],
+                right=False,
+                labels=False,
+            )
+
+    _derived = {
+        '_density_bin': density_bin,
+        '_size_band': size_band,
+        '_coverage_band': coverage_band,
+    }
+
     def _tier_frame(cols: list[str]) -> pd.DataFrame | None:
         data = {}
         for col in cols:
             if col == '_is_residential':
                 data[col] = is_residential
-            elif col == '_density_bin':
-                if density_bin is None:
+            elif col in _derived:
+                if _derived[col] is None:
                     return None
-                data[col] = density_bin
+                data[col] = _derived[col]
             elif col in curated.columns:
                 data[col] = curated[col]
             else:
@@ -626,7 +775,7 @@ def impute_land_value(
         # in, not in one no candidate ever has.
         folded = improvement_value.add(land_value, fill_value=0)
         lot = _out_of_sample(group_tiers, rate_donor & has_area, per_area)
-        by_rate_oos = _share_of_lot(curated, lot * parcel_area, folded)
+        by_rate_oos = _share_of_lot(curated, lot * parcel_area.pow(exponent), folded)
         by_share_oos = (
             _out_of_sample(share_group_tiers, share_donor, land_share) * folded
         )
@@ -698,21 +847,67 @@ def impute_land_value(
         # rate * area is the value of the LOT, which is not the same
         # thing as the value of the parcel record when several records
         # share one lot.
-        lot_value = rate * parcel_area
+        lot_value = rate * parcel_area.pow(exponent)
         by_rate = _share_of_lot(curated, lot_value, improvement_value)
         # Conservation: a parcel cannot hold more land value than its
         # own recorded total. Only bites where a total was recorded.
         by_rate = by_rate.where(~recorded_total, np.minimum(by_rate, total_value))
         shared, tier_used = by_rate, rate_tier
     if use_share:
+        # A class named in `share_classes` is one whose recorded land
+        # figure is a bookkeeping convention rather than a price: the
+        # ratio of a condominium's land rate to its neighbours' runs
+        # from 0.001 to 5.7 across ten counties, and it sorts by county
+        # inside one statewide source. So those rows learn from the
+        # residential land around them and **never from their own
+        # class**, which is also why they are excluded from the donor
+        # side of both calls. Before 2026-09-22 the opposite held: the
+        # class-keyed tiers ran first, so 12,784 of Boston's 17,771
+        # condominium estimates came from 79 condominium donors and
+        # reproduced whatever convention the assessor used.
+        in_share_class = curated[land_use_column].astype(object).isin(share_classes)
+        clean_donor = share_donor & ~in_share_class
         share, share_tier = _learn(
-            share_group_tiers, share_donor, land_share, candidate, prefix='share_'
+            share_group_tiers,
+            clean_donor,
+            land_share,
+            candidate & ~in_share_class,
+            prefix='share_',
         )
         # The candidate's improvement value already holds its land (that
         # is what makes it a candidate), and a recorded total equal to it
         # is the same figure, so the share applies to the improvement
         # value either way. share < 1 keeps the structure positive.
         by_share = share * improvement_value
+
+        # **A share is not transferable across densities; a rate is.**
+        # A share says "land is 40% of what this property is worth",
+        # which is a statement about a house on its own lot. Applied to
+        # a unit in a 200-unit building it prices that lot's land at
+        # roughly the number of units times the neighbourhood rate. So
+        # a class routed here takes the neighbouring land *rate* over
+        # its lot, and `_share_of_lot` then divides that one lot value
+        # among the records standing on it, weighted by what each is
+        # worth. The lot keeps the whole estimate however many records
+        # share it, which is the invariant the maintainer set on
+        # 2026-09-22: a building may hold a fraction, the parcel holds
+        # all of it.
+        class_rate, class_tier = _learn(
+            group_tiers,
+            rate_donor & ~in_share_class,
+            per_area,
+            candidate & in_share_class & has_area,
+            prefix='share_class_',
+        )
+        by_class = _share_of_lot(
+            curated, class_rate * parcel_area.pow(exponent), improvement_value
+        )
+        # Land cannot take more than the record's own value, the same
+        # conservation the rate path applies against a recorded total.
+        by_class = np.minimum(by_class, improvement_value)
+        use_class = in_share_class & by_class.notna()
+        by_share = by_share.where(~use_class, by_class)
+        share_tier = share_tier.where(~use_class, class_tier)
         if use_rate:
             # Hybrid: the rate stays wherever it is reliable and the
             # share takes over where the rate is known to fail. Scored
