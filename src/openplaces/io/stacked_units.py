@@ -100,6 +100,7 @@ class SplitResult:
     n_exact_duplicates: int
     n_multipart_lots: int = 0
     n_parts_merged: int = 0
+    n_lots_not_unioned: int = 0
     n_lots_with_repeated_unit_id: int = 0
     n_rows_with_repeated_unit_id: int = 0
     unit_key: str | None = None
@@ -116,6 +117,11 @@ class SplitResult:
             parts.append(
                 f'{self.n_multipart_lots:,} lots drawn as several polygons '
                 f'({self.n_parts_merged:,} repeated rows merged)'
+            )
+        if self.n_lots_not_unioned:
+            parts.append(
+                f'{self.n_lots_not_unioned:,} lot ids left alone, their '
+                f'polygons do not touch'
             )
         elif self.n_parts_merged:
             # Under the geometry hash a second polygon in one group is a
@@ -159,11 +165,64 @@ def _geometry_key(df: pd.DataFrame) -> pd.Series:
     return pd.Series('', index=df.index)
 
 
-def _lot_unions(df, lot: pd.Series, lots) -> dict:
-    """Union each named lot's polygons into the one outline of the lot."""
+def _lot_unions(df, lot: pd.Series, lots) -> tuple[dict, set]:
+    """Union each named lot's polygons, but only where they form one shape.
+
+    A source lot id can name three different things, and one union rule
+    is wrong for two of them. Measured 2026-09-21 over the groups that
+    repeat a record across polygons, by the share of the repeated
+    improvement value whose group unions to a single connected shape:
+
+    - **one lot drawn in pieces** (Haywood NC 0.917, Waller TX 0.933,
+      Vilas WI 0.979, Alamance NC 0.957): the union is exactly right;
+    - **separate parcels under one account**, across a street or an
+      alley (Galveston TX 0.006, gaps of 38 to 124 m): a union would
+      invent an outline the cadastre does not draw;
+    - **an id collision** (Hyde NC 0.000, 397 of 400 groups separated
+      by a median of 28.9 km): the rows are unrelated parcels.
+
+    So the geometry decides, per group, and only adjacency counts.
+    Scattered groups are returned separately so their rows are left
+    alone rather than merged into one.
+
+    **Strictly adjacent, with no distance tolerance, and that is a
+    patent question as much as a data one** (an agent's reading of the
+    claim text, not legal advice). CoreLogic US10248731B1 claim 1, in
+    force to 2037, identifies a "community" of parcels *within a
+    threshold distance* with contiguous boundaries, then builds a
+    border by *enlarging* each boundary, unioning, and *reducing* it
+    back. A proximity tolerance here would supply that recited
+    threshold and let proximity decide membership. Adjacency does not:
+    the group comes from the source's own lot id, and geometry only
+    answers whether a group someone else declared is one shape. The
+    claim's remaining steps (border-intersection points, a reduced
+    neighbor set, and bracketing a missing address number) have no
+    counterpart here at all. **Do not add a tolerance parameter**, not
+    even one defaulting to zero: a knob whose safety depends on nobody
+    turning it is not a safeguard, and this was put to the maintainer
+    on 2026-09-22 rather than decided in code.
+
+    Returns
+    -------
+    tuple of (dict, set)
+        The lot ids that union to one polygon, mapped to that polygon,
+        and the lot ids whose parts do not touch.
+    """
     subset = df.loc[lot.isin(set(lots))]
     grouped = subset.geometry.groupby(lot.loc[subset.index], sort=False)
-    return grouped.agg(lambda s: shapely.union_all(s.to_numpy())).to_dict()
+    unions: dict = {}
+    scattered: set = set()
+    for name, geoms in grouped:
+        merged = shapely.union_all(geoms.to_numpy())
+        # A union that is still one Polygon means the parts touch.
+        # Anything else (MultiPolygon, GeometryCollection, empty) is
+        # more than one shape, including parts meeting at a single
+        # point, which is not a lot drawn in pieces either.
+        if getattr(merged, 'geom_type', '') == 'Polygon' and not merged.is_empty:
+            unions[name] = merged
+        else:
+            scattered.add(name)
+    return unions, scattered
 
 
 def _count_repeated_unit_ids(
@@ -290,13 +349,21 @@ def split_stacked_units(
     # County NC 1,060 lot ids, Vermont 60, Hertford 7). The union is
     # taken before they merge, so no part is dropped silently.
     unions: dict = {}
+    scattered: set = set()
     n_multipart = 0
     if union_parts:
         distinct = geometry_key[keyed].groupby(lot[keyed], sort=False).nunique()
         multipart = distinct.index[distinct > 1]
-        n_multipart = int(len(multipart))
-        if n_multipart:
-            unions = _lot_unions(df, lot, multipart)
+        if len(multipart):
+            unions, scattered = _lot_unions(df, lot, multipart)
+        n_multipart = int(len(unions))
+    if scattered:
+        # A lot id whose polygons do not touch names separate parcels,
+        # so the id stops being a lot key for those rows entirely: they
+        # neither merge into one row carrying whichever piece came
+        # first, nor stack as units on a shared lot. Each keeps its own
+        # outline and its own values, which is what the cadastre drew.
+        keyed = keyed & ~lot.isin(scattered)
     part = keyed & pd.DataFrame({'lot': lot, 'row': row_hash}).duplicated()
     n_parts_merged = int(part.sum())
     if n_parts_merged:
@@ -372,6 +439,7 @@ def split_stacked_units(
         n_exact,
         n_multipart,
         n_parts_merged,
+        len(scattered),
         n_lots_repeated,
         n_rows_repeated,
         unit_key,
