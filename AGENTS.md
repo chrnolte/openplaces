@@ -168,7 +168,7 @@ repository.
 - **Where risk actually concentrates, based on research done so far**:
   the parcel/property-record-linking space has real, active patent
   holders — CoreLogic/Cotality, Black Knight/ICE Mortgage Technology, and
-  First American chief among them — whose claims cluster around three
+  First American chief among them — whose claims cluster around four
   specific technique *shapes*, not the general goal of "link/match
   property records" (which itself isn't patentable, only a particular
   claimed method for doing it is):
@@ -237,7 +237,7 @@ repository.
   `parcel_id_local`/`geo_id` matching is deterministic string/geometry
   fingerprinting with no learned parameters and no neighbor-comparison or
   address-imputation step, which is why it reads as a different mechanism
-  from all three shapes above — that reasoning doesn't automatically carry
+  from all four shapes above — that reasoning doesn't automatically carry
   over to a new ML-based imputation or inference feature, which may
   resemble shape 2 much more closely by design. If ML matching is ever
   added, note that every independent claim of the shape-2 patent
@@ -248,10 +248,40 @@ repository.
 - **Process for a new imputation/inference/matching/valuation feature
   touching parcel, property, or transaction data**: (1) identify the
   specific technique, not just the goal, and check whether it resembles
-  one of the three shapes above or another known patent in this space;
+  one of the four shapes above or another known patent in this space;
   (2) if it does, flag it to the user explicitly before merging — this is
   a judgment call for a human, not something an agent should silently wave
-  through, the same posture as the IP-ownership section above; (3) where
+  through, the same posture as the IP-ownership section above — **but
+  count the differing steps before flagging anything** (maintainer's
+  rule, 2026-09-22). Infringement needs *every* element of a claim; one
+  element absent is enough to be clear of it. The maintainer set four
+  levels, in these words:
+
+  > Three steps different: silent. Two steps: report but don't ask for
+  > permissions. Moving from two to one steps: warn. Removing the last
+  > step: forbidden
+
+  So three or more differing steps is not a close call and saying so
+  only wastes attention; two is reported in passing, not escalated into
+  a blocking question; going from two to one is the point to warn,
+  because one further change would close the gap; and **taking the count
+  to zero is forbidden outright**, not warned about, because every
+  element present is infringement. The floor is the part of the rule
+  that protects anything, so never treat the warn level as the top of
+  the scale.
+  Count against the claim text, not against a paraphrase, and say which
+  steps you counted. **Count against every independent claim, and let
+  the one with the fewest absent steps decide**, because clearing one
+  claim clears nothing on its own: US10606854B2's claim 17 drops the
+  whole score/calibrate/unlink back half that claims 1 and 15 recite, so
+  a change measured only against claim 1 would read as three steps clear
+  while sitting one step from claim 17. For a library, the
+  computer-readable-medium claim is usually the broadest and is the one
+  to count first. Worked example: a strict contiguity gate on a lot
+  union differs from US10248731B1 claim 1 on the community-and-threshold
+  step, the border-intersection step, the neighbor-set step and the
+  address-bracketing step, so it needed no warning at all, and the 2026-09-22
+  stop on it was over-cautious by this rule; (3) where
   more than one technically valid approach exists, prefer the one that is
   most clearly mechanistically different from a known patented approach —
   this is not purely defensive: a genuinely distinct method is also a
