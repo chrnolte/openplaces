@@ -27,9 +27,16 @@ normalizes nothing (every source record survives unchanged as a
 property row), and the grouping is of all rows by the source's own
 geometry or lot id, never of a verification failure. Under the
 all-elements rule a method that practices none of those elements does
-not infringe that claim. Only claim 1 has been read; the patent's other
-independent claims are to be checked before a public release (user
-decision 2026-09-13).
+not infringe that claim. The patent's other two independent claims were
+read from its text on 2026-09-21 (an agent's reading, not legal advice).
+Claim 15, the method claim, recites the same six steps as claim 1.
+Claim 11, the system claim, requires identifying a parcel "that could
+not be verified by mapping data and addressing data", determining
+whether it lies in a wilderness area, grouping it with other parcels if
+so, normalizing the parcel on that grouping and storing the result.
+This step identifies no unverified parcel, asks nothing about
+wilderness and normalizes nothing, so it practices none of claim 11's
+elements either. All 19 claims depend on claims 1, 11 or 15.
 """
 
 from __future__ import annotations

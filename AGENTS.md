@@ -62,10 +62,15 @@ repository.
   in any of the files above without asking the user first, even to "fix" or
   "simplify" it: a wrong assertion here is a legal problem, not a style one.
 - Contributions come in under the Developer Certificate of Origin (`DCO.md`,
-  `CONTRIBUTING.md`): every commit by a person carries a `Signed-off-by`
-  line (`git commit -s`). An agent never writes a sign-off for a person and
-  never adds one in its own name; the sign-off is the human committer's
-  statement, in the same way co-authorship is reserved for people.
+  `CONTRIBUTING.md`): every commit by a contributor other than the
+  maintainer carries a `Signed-off-by` line (`git commit -s`). The
+  maintainer's own commits carry none: the sign-off certifies a
+  contributor's right to submit work to the project, which a copyright
+  holder has no one to certify to. Never suggest that the maintainer add
+  one, and never list a missing sign-off on the maintainer's commits as an
+  open item. An agent never writes a sign-off for a person and never adds
+  one in its own name; the sign-off is the human committer's statement, in
+  the same way co-authorship is reserved for people.
 - The repository is hosted under a personal GitHub account, not an
   institutional one. Don't propose or perform an org transfer, mirror, or
   similar hosting change unprompted.
@@ -169,24 +174,63 @@ repository.
   claimed method for doing it is):
   1. Geometric neighbor/"community" detection (buffer-enlarge, union,
      reduce a group of parcel boundaries) used to impute or validate a
-     *missing address number* by interpolating between neighbors.
+     *missing address number* by interpolating between neighbors
+     (CoreLogic **US10248731B1**, to 2037-03-25; continuation
+     **US11061985B2**, whose claimed purpose is validating or correcting
+     address information; second continuation US20220067117A1, grant
+     status unconfirmed). Claim 1 recites five steps and **two of them
+     are worth knowing before writing any geometry that groups
+     parcels**: the community is parcels *within a threshold distance*
+     with contiguous boundaries, and the border is built by *enlarging*
+     each boundary, unioning, then *reducing* it back. A proximity
+     threshold is therefore a recited element, which is why a distance
+     tolerance is a different proposition from strict adjacency. The
+     back half (border-intersection points, a reduced neighbor set, and
+     bracketing a missing address number) is what the whole claim is
+     for, and `openplaces` does none of it.
   2. A trained machine-learning model used to score match probability
      between two property/record representations (as opposed to a fixed,
      deterministic rule set with no learned parameters).
   3. Detecting records *internally inconsistent* with their own source's
-     mapping/address data, grouping them, and normalizing the group.
+     mapping/address data, grouping them, and normalizing the group
+     (CoreLogic **US9298740B2**; all three independent claims start from
+     a parcel that *failed verification* against mapping or addressing
+     data, which nothing here tests).
   4. A **cascading match that falls through to fuzzy matching**, scores the
      resulting link with a strength indicator, *calibrates that scorer from
      the links it just made*, and then detects and removes an incorrect
-     earlier link (Black Knight US10606854B2, in force to 2038; method and
-     CRM claims, so no hardware recitation saves a library). This is the
-     shape closest to what `openplaces` already does — it normalizes to a
-     comparable form, matches in tiers, and uses `rapidfuzz`. What keeps it
-     clear is the back half: no per-link strength score, nothing that
-     re-tunes a scorer after linking, nothing that unlinks. **Do not add
-     link-confidence scoring that learns from its own past links**, and do
-     not add an unlink-on-reconsideration step, without a specific check
-     against that patent.
+     earlier link (Black Knight US10606854B2, in force to 2038). This is
+     the shape closest to what `openplaces` already does: it normalizes to
+     a comparable form and matches in tiers. **The three independent
+     claims differ, and the narrowest reading is not the safe one** (claims
+     read from the patent text 2026-09-21; an agent's reading, not legal
+     advice). Claim 1 (machine) and claim 15 (method) require the strength
+     indicator and its calibration from the links just made (claim 1 also
+     the removal of an incorrect link). **Claim 17, the computer-readable
+     medium claim and so the one a library is measured against, requires
+     none of that back half** (it appears only in dependent claim 18). Its
+     elements are: an input record with two attributes; a transformation
+     into a comparable form; a first non-fuzzy match on the first
+     attribute; on failure a cascade to a second non-fuzzy match on a
+     second attribute; **on failure of both, a cascade to a fuzzy matching
+     comparison, and a link made on the fuzzy match**. What keeps
+     `openplaces` clear of claim 17 is therefore the *front* half: **no
+     record-linking path falls through from exact key passes to a fuzzy
+     comparison.** `link_by_id`, `link_entities_by_id`, the stacked-units
+     passes, the transaction lane's parcel and address keys and
+     `assign_entity_ids` are exact matches on normalized keys, and a row
+     no exact pass reaches stays unlinked. `rapidfuzz` is used in two
+     places, neither a fall-through of that kind: `reconcile_addresses`
+     compares two address columns *already on one row* to decide whether
+     two sources agree (no record is linked by it), and
+     `io.curator.validation.link_points_to_entities` matches validation
+     points by house number plus fuzzy street name *first* and falls back
+     to distance, the reverse order, for scoring only. **Do not add a fuzzy
+     tier behind exact key passes in any linking step** (parcel, property,
+     transaction, address), do not add link-confidence scoring that learns
+     from its own past links, and do not add an unlink-on-reconsideration
+     step, without a specific check against that patent and the
+     maintainer's decision.
   A new feature that does one of these four things, in this domain,
   deserves a specific check against that sub-area before merging — not a
   general "we checked patents once" assumption. `openplaces`'s existing
@@ -618,9 +662,11 @@ $79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
 roll exists the property spine holds stacked units only (all of Wisconsin:
 Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
 conserved to the dollar). The module docstring
-carries the patent rationale (US9298740B2 claim 1, all-elements rule;
-its other independent claims are still to be read before a public
-release). Data on disk keeps the old row shape until a county is
+carries the patent rationale (US9298740B2, all-elements rule: claims 1
+and 15 recite the same six steps, claim 11 adds a wilderness test, and all
+three start from a parcel that *failed verification* against mapping or
+addressing data, which the split never tests; read from the patent text
+2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
 re-ingested.
 
 Public entrypoint:
