@@ -327,14 +327,179 @@ def select_value_source_by_admin_unit(
     return state
 
 
+@_register('adopt_stories_by_floor_area_fit')
+def adopt_stories_by_floor_area_fit(
+    state: CurateState,
+    output: str = 'n_stories',
+    candidate_column: str = 'n_stories_parcel',
+    floor_area_column: str = 'living_area_sqft_parcel',
+    area_column: str = 'area_m2',
+    group_column: str = 'parcel_id',
+    priority_column: str = 'priority_on_parcel',
+    min_share: float = 0.7,
+    min_rows: int = 100,
+    admin_level: int = 3,
+    max_stories: float = 60,
+    token: str = 'parcel',
+    override_present: bool = False,
+) -> CurateState:
+    """Take a roll's story count where it fits the roll's floor area better.
+
+    A story count reaches a footprint from a modeled source (NSI) unless
+    another is chosen, and around Boston NSI gives a century-old
+    triple-decker one floor, which makes its assessed value per floor
+    area implausible. Assessor rolls often record stories, but not
+    everywhere to the same definition: Harris TX counts a story NSI does
+    not, and Medfield MA uses a code that is not a story count at all. So
+    this step decides per admin unit, not per row, whether the roll's
+    count replaces the incumbent *output*, the same per-unit switching
+    :func:`select_value_source_by_admin_unit` uses for values.
+
+    Test, on rows that are the only non-secondary footprint of their
+    parcel (a roll's count is per property, the tallest of its buildings,
+    so it cannot be told apart among several): where the rounded roll
+    count differs from *output* and the roll records a floor area, which
+    of the two counts brings footprint area x stories closer to that
+    floor area (ratio in log terms). A unit adopts the roll count on all
+    such rows when the roll is closer on at least *min_share* of at least
+    *min_rows* disagreeing rows; otherwise nothing changes. Rows where
+    *output* is missing are filled only in an adopting unit.
+
+    The test is partly self-referential (roll floor area against roll
+    stories), which is why the bar is high. Measured 2026-09-17: the
+    roll is closer on 83.5% of disagreeing rows in the Boston inner core
+    (Boston 87.6%, Arlington 40.9%), 65.4% in the outer rings (Medfield
+    2.0%), 60.2% in eastern NC (Wake 72.0%, Harnett 41.5%; 58.7% against
+    independent permit floor areas) and 42.9% in Harris TX.
+
+    **By default an existing count is never overwritten**, only a
+    missing one is filled (*override_present*). Overwriting was built
+    and measured first, and the Boston rebuild of 2026-09-17 showed why
+    it is not safe on this evidence: in the eight adopting inner-core
+    towns the roll *lowered* 18,404 Boston counts (median 3 to 2) and
+    raised 8,017, and no independent floor area exists in
+    Massachusetts to say which is right - the gate can be satisfied by
+    the roll merely being self-consistent (its floor area is recorded
+    per assessing record, its story count per building). Filling a gap
+    has no such competition: nothing else offers a count for those
+    rows.
+
+    Parameters
+    ----------
+    output : str, optional
+        Canonical story column to update (default ``n_stories``).
+    candidate_column : str, optional
+        Roll story count carried onto the footprint.
+    floor_area_column : str, optional
+        Roll floor area in square feet carried onto the footprint.
+    area_column : str, optional
+        Footprint area in square meters.
+    group_column : str, optional
+        Parcel id grouping footprints for the sole-primary condition.
+    priority_column : str, optional
+        Footprint role on its parcel; ``'secondary'`` rows never count.
+    min_share : float, optional
+        Share of disagreeing rows the roll must win (default 0.7).
+    min_rows : int, optional
+        Disagreeing rows a unit needs before it can adopt (default 100).
+    admin_level : int, optional
+        Level of the unit the decision is made for (default 3); at or
+        above the processing level, the whole chunk is one unit.
+    max_stories : float, optional
+        Largest plausible roll count; larger values and zeros are
+        treated as missing.
+    token : str, optional
+        Provenance token recorded on adopted cells.
+    override_present : bool, optional
+        Replace an existing *output* value in an adopting unit (default
+        False, fill missing counts only). Set it only where an
+        independent floor area, not the roll's own, backs the roll's
+        counts.
+    """
+    import numpy as np
+
+    from openplaces.io.curator.provenance import record_source
+
+    curated = state.curated
+    needed = [candidate_column, floor_area_column, area_column, group_column]
+    missing = [c for c in needed if c not in curated.columns]
+    if missing or output not in curated.columns:
+        if state.verbose:
+            print(
+                f'  adopt_stories_by_floor_area_fit: {missing or [output]} '
+                'missing; skipping.'
+            )
+        return state
+
+    # Half up, not pandas' half-to-even: rolls record half stories, and
+    # banker's rounding sends 1.5 to 2 but 2.5 to 2 as well.
+    roll = np.floor(pd.to_numeric(curated[candidate_column], errors='coerce') + 0.5)
+    roll = roll.where((roll >= 1) & (roll <= max_stories))
+    current = pd.to_numeric(curated[output], errors='coerce')
+    # The incumbent can be a mean over several points (1.33): it only
+    # disagrees with the roll if it rounds to a different count.
+    current_count = np.floor(current + 0.5)
+    floor_m2 = pd.to_numeric(curated[floor_area_column], errors='coerce') * 0.09290304
+    area = pd.to_numeric(curated[area_column], errors='coerce')
+
+    if priority_column in curated.columns:
+        counts = curated[priority_column].astype('string') != 'secondary'
+    else:
+        counts = pd.Series(True, index=curated.index)
+    n_counted = counts.groupby(curated[group_column]).transform('sum')
+    sole = counts & (n_counted == 1) & curated[group_column].notna()
+
+    eligible = sole & roll.notna()
+    testable = eligible & current.notna() & (roll != current_count)
+    testable &= (floor_m2 > 0) & (area > 0) & (current > 0)
+    # Rows outside `testable` can hold zeros; they are masked below, so
+    # their log warnings carry no information.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        fit_roll = np.abs(np.log(floor_m2 / (area * roll)))
+        fit_current = np.abs(np.log(floor_m2 / (area * current)))
+    roll_closer = (fit_roll < fit_current) & testable
+
+    chunk = pd.Series(str(state.admin_id), index=curated.index)
+    group = _resolve_admin_group(state, curated, admin_level)
+    units = chunk if group is None else group.fillna(str(state.admin_id))
+    n_test = testable.groupby(units).transform('sum')
+    n_closer = roll_closer.groupby(units).transform('sum')
+    adopt_unit = (n_test >= min_rows) & (n_closer >= min_share * n_test)
+
+    adopt = (
+        eligible
+        & adopt_unit
+        & (
+            current.isna()
+            if not override_present
+            else (current.isna() | (roll != current_count))
+        )
+    )
+    if adopt.any():
+        curated.loc[adopt, output] = roll[adopt]
+        record_source(curated, output, adopt, token)
+    state.curated = curated
+
+    if state.verbose:
+        tested = units[testable].value_counts()
+        won = units[roll_closer].value_counts().reindex(tested.index).fillna(0)
+        share = (won / tested).round(3).to_dict()
+        print(
+            f'  adopt_stories_by_floor_area_fit: roll closer share by unit '
+            f'{share}; {int(adopt.sum()):,} row(s) adopted.'
+        )
+    return state
+
+
 @_register('suppress_where')
 def suppress_where(
     state: CurateState,
-    column: str,
-    condition_column: str,
+    column: str | list[str],
+    condition_column: str | None = None,
     condition_value: object = True,
+    indicators: list[dict] | None = None,
 ) -> CurateState:
-    """Null *column* wherever *condition_column* equals *condition_value*.
+    """Null *column* where a condition holds.
 
     A generic evidence-validity gate: some upstream determination (e.g. a
     land-use classification) can invalidate an otherwise-present value
@@ -343,35 +508,64 @@ def suppress_where(
     imputation (fills a *missing* value) — this only removes a value that
     should not have been trusted in the first place.
 
+    The condition is *condition_column* equal to *condition_value*, every
+    entry of *indicators* holding, or both together. A nulled cell's
+    provenance sidecar is cleared with it, because a null cell has no
+    source.
+
     Parameters
     ----------
-    column : str
-        Column to null out.
-    condition_column : str
+    column : str or list of str
+        Column(s) to null out. An absent column is skipped.
+    condition_column : str, optional
         Column whose value triggers the suppression.
     condition_value : optional
         Value that triggers suppression (default ``True``, for a boolean
         flag column).
+    indicators : list of dict, optional
+        Predicates in the shared voting vocabulary
+        (:func:`~openplaces.io.curator.indicators.evaluate_indicator`),
+        all of which must hold. They allow a condition over several
+        columns, which the equality test cannot express: a value on a
+        geometry too small to be the building it is valued as, say.
     """
     import numpy as np
 
+    from openplaces.io.curator.indicators import evaluate_indicator
+    from openplaces.io.curator.provenance import source_column
+
+    if condition_column is None and not indicators:
+        raise ValueError('suppress_where needs a condition_column or indicators.')
+
     curated = state.curated
-    if column not in curated.columns or condition_column not in curated.columns:
+    if condition_column is not None and condition_column not in curated.columns:
         return state
 
-    condition = (curated[condition_column].astype(object) == condition_value).fillna(
-        False
-    )
-    mask = condition & curated[column].notna()
-    if mask.any():
-        curated.loc[mask, column] = np.nan
+    condition = pd.Series(True, index=curated.index)
+    if condition_column is not None:
+        condition &= (
+            curated[condition_column].astype(object) == condition_value
+        ).fillna(False)
+    for indicator in indicators or []:
+        condition &= evaluate_indicator(curated, indicator)
+
+    columns = [column] if isinstance(column, str) else list(column)
+    n_suppressed = {}
+    for col in columns:
+        if col not in curated.columns:
+            continue
+        mask = condition & curated[col].notna()
+        if mask.any():
+            curated.loc[mask, col] = np.nan
+            side = source_column(col)
+            if side in curated.columns:
+                curated[side] = curated[side].astype(object)
+                curated.loc[mask, side] = pd.NA
+        n_suppressed[col] = int(mask.sum())
     state.curated = curated
 
     if state.verbose:
-        print(
-            f'  suppress_where: {int(mask.sum()):,} {column!r} value(s) suppressed '
-            f'where {condition_column!r} == {condition_value!r}.'
-        )
+        print(f'  suppress_where: suppressed {n_suppressed}.')
     return state
 
 
