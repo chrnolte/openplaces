@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import pkgutil as _pkgutil
+import re
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -237,6 +238,30 @@ def _save_attribute_checkpoint(recipe, admin_id, spine, chain, verbose=False):
         warnings.warn(f'Could not save attribute checkpoint: {exc}')
 
 
+_SAINT = re.compile(r'\bSAINT\b')
+
+
+def normalize_admin_name(names: pd.Series) -> pd.Series:
+    """Fold an admin unit's name to the form two sources can agree on.
+
+    Case, surrounding space, punctuation and the Saint/St spelling, and
+    nothing else. Two sources naming one county rarely punctuate it the
+    same way: Wisconsin's parcel layer writes `ST CROIX` where the admin
+    spine registers `St. Croix`, and a comparison that folds only case
+    and whitespace calls those different. That is not a cosmetic
+    difference where a name is used as a key, see
+    :func:`restrict_to_admin_by_name`.
+
+    The unit's *type* word is deliberately left in place, because at
+    county level it distinguishes real units (Maryland registers both
+    `Baltimore` and `Baltimore city`). A caller that needs it removed,
+    as a municipality name does, strips it before calling.
+    """
+    text = names.astype('string').str.strip().str.upper()
+    text = text.str.replace(_SAINT, 'ST', regex=True)
+    return text.str.replace(r'[^A-Z0-9]', '', regex=True)
+
+
 def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
     """Fall back to a plain-text admin-name filter for an over-broad source.
 
@@ -269,8 +294,21 @@ def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
     target = get_admin(admin_id, level)
     if target.empty:
         return df
-    target_name = str(target['name'].iloc[0]).strip().casefold()
-    match = df[name_col].astype('string').str.strip().str.casefold() == target_name
+    target_name = normalize_admin_name(pd.Series([target['name'].iloc[0]])).iloc[0]
+    match = normalize_admin_name(df[name_col]) == target_name
+    if not bool(match.any()) and len(df):
+        # Every row dropped is indistinguishable downstream from a
+        # reference that genuinely does not cover this unit: link_by_id
+        # reports 0 matched and the run looks like missing data. It cost
+        # St Croix County WI its whole parcel reference (53,070 rows) on
+        # a single period, found only because one county in 72 linked
+        # nothing.
+        warnings.warn(
+            f'restrict_to_admin_by_name: no row of {recipe_id} names '
+            f'{admin_id} ({target_name!r}); dropping all {len(df):,d} rows. '
+            f'Check the {name_col!r} spelling against the admin spine.',
+            stacklevel=2,
+        )
     return df[match]
 
 

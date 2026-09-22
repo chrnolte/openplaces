@@ -18,9 +18,11 @@ The rule is a lookup in the pairs the split itself recorded (unit key,
 lot key): an exact match on the unit's key, or the row keeps its own
 number. A unit the split saw on several lots is left on its own number,
 not assigned to one of them: that would state which parcel was sold when
-the record does not say. Nothing is compared for
-similarity, nothing is scored, and no later step revisits the choice
-(see the patent-risk section of AGENTS.md, shape 4).
+the record does not say. The lookup is an exact match on the key, never
+a similarity comparison, and no later step revisits the choice (see the
+patent-risk section of AGENTS.md; what keeps a tiered match clear of
+US10606854B2's claim 17 is that no tier falls through to fuzzy
+matching, not the absence of a score).
 """
 
 from __future__ import annotations

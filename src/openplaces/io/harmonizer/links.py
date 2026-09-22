@@ -73,6 +73,13 @@ from openplaces.table import require_unique_index
 # resolves its own key per match; anything else here is a caller override.
 DEFAULT_LINK_KEY = 'parcel_id_local'
 
+# Spine columns whose values are parcel_id_local keys, whatever the
+# column is called. `parcel_link_key` (io/harmonizer/parcel_link_keys.py)
+# holds the same key for every row that does not name a stacked unit, so
+# a guard that recognizes only the literal default name stops guarding a
+# spine that has moved onto it.
+PARCEL_ID_LOCAL_KEYS = (DEFAULT_LINK_KEY, 'parcel_link_key')
+
 # Matching keys an auto-discovered link never copies onto the spine by
 # default (see link_by_id's auto_discover branch).
 _LINK_KEY_COLUMNS = frozenset({DEFAULT_LINK_KEY, *PARCEL_ID_ALNUM_KEYS})
@@ -2437,7 +2444,12 @@ def _columns_as_pairs(
 
 
 def _warn_if_link_underperforms(
-    matched: int, total: int, spine_key: str, recipe_id: str, admin_id
+    matched: int,
+    total: int,
+    spine_key: str,
+    recipe_id: str,
+    admin_id,
+    fill_only: bool = False,
 ) -> None:
     """Flag a `parcel_id_local` join that resolved too few of the spine.
 
@@ -2449,10 +2461,23 @@ def _warn_if_link_underperforms(
     `PARCEL_ID_RELINK_THRESHOLD` and a shortfall is named, with the
     command that re-derives the rule from the data actually in hand.
 
-    Only `parcel_id_local` joins are checked: other keys are not derived
-    by a conversion this repository can re-fit.
+    Only keys carrying a `parcel_id_local` value are checked: others are
+    not derived by a conversion this repository can re-fit. That includes
+    `parcel_link_key`, which *is* that key for all but the rows naming a
+    stacked unit. Checking it is not optional housekeeping: Lake County
+    FL fell from 96.5% to nothing when its bundled conversion stopped
+    fitting, and said so to no one, because the spine had by then moved
+    off the literal column name this guard used to require.
     """
-    if spine_key != DEFAULT_LINK_KEY or not total:
+    if spine_key not in PARCEL_ID_LOCAL_KEYS or not total:
+        return
+    # A `fill_only` pass exists to reach the rows an earlier pass could
+    # not, so matching a minority is its job, not a symptom. The
+    # transaction spine's property link reaches only sales of stacked
+    # units: warning on it fired for 30 Florida counties at once and
+    # buried the passes that genuinely misfit (Pasco's parcel join at
+    # 62.4%, Volusia's at 60.5%).
+    if fill_only:
         return
     achieved = matched / total
     if achieved >= PARCEL_ID_RELINK_THRESHOLD:
@@ -3046,7 +3071,7 @@ def link_by_id(
                 f'rows matched {recipe_id} ({len(pairs)} columns)'
             )
         _warn_if_link_underperforms(
-            matched, len(spine), spine_key, recipe_id, state.admin_id
+            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
         )
     elif mode == 'count':
         count_as = count_as or 'n_transactions'
@@ -3200,13 +3225,21 @@ def link_by_id(
             gsize = grouped.size()
             mapper = gsize.to_dict() if gsize.empty else gsize
             _accumulate_count(state, spine, count_col, skey.map(mapper))
+        # Counted whether or not anyone is watching: this is the mode
+        # auto-discovery uses, so a spine whose only parcel link is an
+        # auto-discovered one is exactly the case that most needs the
+        # guard below. Computing it only under `verbose` is how Holmes
+        # County FL rebuilt at 6.8% matched without a word.
+        matched = int(skey.isin(set(rkey.dropna())).sum())
         if state.verbose:
-            matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
                 f'rows matched {recipe_id} '
                 f'({len(pairs)} columns, {count_col or "no count"})'
             )
+        _warn_if_link_underperforms(
+            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+        )
     else:
         raise ValueError(
             f'link_by_id: unknown mode {mode!r}; expected '

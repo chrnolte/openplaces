@@ -11,11 +11,18 @@ no record of the route; this step writes the record.
 
 The label names a rule, never a strength. It is a fixed word per pass
 (`parcel_id_local`, `address_id_local`), it is written once, on the first
-pass that reaches the row, and no later pass changes or removes it. That
-is deliberate: a per-link score, a scorer tuned on the links it made, or
-a step that takes an earlier link back is the shape of a patented method
-in this domain (see the patent-risk section of AGENTS.md), and an exact
-key tried after another exact key is none of those.
+pass that reaches the row, and no later pass changes or removes it.
+
+That is deliberate, and the reason is narrower than "we add no score".
+US10606854B2's software claim (17) recites no scoring, no calibration
+and no unlinking at all, so the absence of those does not by itself
+distinguish a tiered match from it. What does is that **every tier here
+compares exact keys**: a parcel number, then an address key built from
+normalized components. Nothing falls through to a similarity
+comparison. Do not add a fuzzy tier behind these passes without the
+maintainer's decision (see the patent-risk section of AGENTS.md); the
+labels this step writes would be the natural place to hang one, which
+is exactly why the warning belongs here.
 
 The step runs after the link pass it describes and reads the same
 reference, with the same guard against placeholder keys, so it cannot

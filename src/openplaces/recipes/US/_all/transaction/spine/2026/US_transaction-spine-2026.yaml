@@ -171,6 +171,27 @@ pipeline:
     recipe_id: US_parcel-spine-2026
     via_column: lot_id_local
     via_label: stacked_units
+
+  # A sale of a stacked unit takes its values from the unit, not from
+  # the lot. The lot's parcel row deliberately carries no summed value
+  # (one unit's land value is not the lot's, see io/stacked_units.py),
+  # so a condo sale that correctly reached its lot above finds those
+  # columns empty: measured on Collier County FL, 288,597 of its
+  # 916,076 sales, every one of them with a fully valued property row
+  # sitting unread. Joined on the sale's own `parcel_id_local`, which
+  # is the unit's account number, not on `parcel_link_key`, and 100% of
+  # those sales' keys are in the property spine (Collier and Pinellas).
+  # `fill_only`, so a value the parcel side already supplied wins.
+  # `area_ha` is deliberately not carried: a unit of airspace has no
+  # land area of its own, and the lot's would be a different entity's.
+  - step: link_by_id
+    recipe_id: US_property-spine-2026
+    mode: attributes
+    spine_key: parcel_id_local
+    ref_key: parcel_id_local
+    fill_only: true
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings]
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
