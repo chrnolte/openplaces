@@ -265,6 +265,10 @@ def join_temporal_snapshot(
     restrict_to: dict | None = None,
     match_type_column: str | None = None,
     prefix: str = '',
+    require_panel: bool = False,
+    no_panel_value: str = 'no_panel',
+    single_vintage_value: str = 'single_vintage',
+    mark_unmatched: str | None = None,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
 
@@ -306,9 +310,28 @@ def join_temporal_snapshot(
     match_type_column : str, optional
         Column to write ``'exact'`` / ``'{direction}_fallback'`` into for
         rows this pass matched. Left untouched for rows it does not
-        reach.
+        reach, so a later pass can still claim them.
     prefix : str, optional
         Prepended to each attached column's name (default ``''``).
+    require_panel : bool, optional
+        For a pipeline that runs everywhere: return quietly, rather than
+        raising, where this admin unit has no reference on disk, and
+        where the reference carries only one vintage. Only Florida's DOR
+        roll is a panel today (24 yearly rolls); the other 104 assessor
+        sources are one vintage each, so a nationwide recipe must treat
+        "no panel here" as the ordinary case
+        (`plans/multi-year-tax-rolls-property-panel.md`).
+    no_panel_value, single_vintage_value : str, optional
+        Written into *match_type_column* for every active row when
+        *require_panel* turns the pass off. **A missing value would not
+        say this**: it cannot distinguish a county with no panel from a
+        sale a panel did not match, and the two mean very different
+        things to anyone reading the output.
+    mark_unmatched : str, optional
+        Written into *match_type_column* for active rows this pass left
+        unset. Belongs on the last temporal pass of a recipe, where a
+        row still unmarked genuinely means "the panel was read and did
+        not have this property".
     """
     # Validate the request before reading the reference, so a recipe
     # error is reported as one rather than as a missing data file.
@@ -322,22 +345,84 @@ def join_temporal_snapshot(
     if only_unmatched:
         active_mask &= curated[match_type_column].isna()
     if restrict_to:
+        # A restriction on a column this source does not have selects no
+        # rows, rather than raising: the national pipeline runs this step
+        # over every state, and `sale_vacant` is Florida's word. Reached
+        # before the panel check below, so it has to be survivable on its
+        # own (Wisconsin has neither the column nor a panel).
+        if restrict_to['column'] not in curated.columns:
+            return state
         active_mask &= curated[restrict_to['column']] == restrict_to['equals']
     if not active_mask.any():
         return state
 
     active = curated.loc[active_mask, [join_key, date_column]].copy()
     active[join_key] = _normalized(active[join_key])
-    active[date_column] = pd.to_numeric(active[date_column], errors='coerce')
+    # Both sides to one float dtype: merge_asof refuses keys of
+    # different types, and a sale year with any missing value parses to
+    # float64 while a complete tax_year column parses to int64, so the
+    # join fails on exactly the counties whose sale dates are imperfect.
+    active[date_column] = pd.to_numeric(active[date_column], errors='coerce').astype(
+        'float64'
+    )
 
-    ref = get_entities(recipe_id, admin_id=state.admin_id)
-    ref_columns = [join_key, vintage_column] + [
-        c for c in columns if c != vintage_column
-    ]
+    def _mark_all(value: str) -> CurateState:
+        """Say why this pass did nothing, rather than leaving it blank."""
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active_mask, match_type_column] = value
+            state.curated = curated
+        if state.verbose:
+            print(f'  join_temporal_snapshot ({recipe_id}): {value}')
+        return state
+
+    try:
+        ref = get_entities(recipe_id, admin_id=state.admin_id)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        if not require_panel:
+            raise
+        return _mark_all(no_panel_value)
+    if require_panel and (
+        ref is None
+        or vintage_column not in ref.columns
+        or pd.to_numeric(ref[vintage_column], errors='coerce').nunique() < 2
+    ):
+        # One vintage is a roll, not a panel: joining a sale to the only
+        # year on file would read as a temporal match while telling the
+        # reader nothing the cross-sectional spine did not already say.
+        return _mark_all(single_vintage_value)
+    # Take the columns this roll actually has. One nationwide recipe
+    # names one column list, and a county's roll is free not to carry
+    # every field: Lake County FL has no `land_area_sqft`, and asking
+    # for it failed the whole curate rather than attaching the seven
+    # columns it does have.
+    available = [c for c in columns if c != vintage_column and c in ref.columns]
+    if not available:
+        return _mark_all(no_panel_value) if require_panel else state
+    ref_columns = [join_key, vintage_column] + available
     ref = ref[ref_columns].copy()
+    columns = [c for c in columns if c == vintage_column or c in available]
     ref[join_key] = _normalized(ref[join_key])
-    ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce')
+    ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce').astype(
+        'float64'
+    )
     ref = ref.dropna(subset=[join_key, vintage_column])
+
+    # A sale with no year cannot be placed in time at all, and
+    # merge_asof refuses a null key outright. Set them aside under their
+    # own label: calling them `not_in_panel` would blame the panel for a
+    # gap in the sale record.
+    undated = active[date_column].isna()
+    if undated.any():
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active.index[undated], match_type_column] = 'no_sale_date'
+        active = active[~undated]
+    if active.empty:
+        state.curated = curated
+        return state
 
     if direction == 'exact':
         ref = ref.drop_duplicates(subset=[join_key, vintage_column])
@@ -381,6 +466,16 @@ def join_temporal_snapshot(
             f'{direction}_fallback'
         )
         curated.loc[merged.index[matched & is_exact], match_type_column] = 'exact'
+        if mark_unmatched is not None:
+            # Every row still unset, not only this pass's active ones.
+            # The last pass is usually a restricted one (a bare lot must
+            # not inherit a later vintage's house), so marking only its
+            # own rows leaves exactly the rows it declined to touch
+            # blank: 0.4% of Volusia stayed empty that way, which is the
+            # ambiguity this parameter exists to remove.
+            curated.loc[curated[match_type_column].isna(), match_type_column] = (
+                mark_unmatched
+            )
 
     state.curated = curated
     if state.verbose:

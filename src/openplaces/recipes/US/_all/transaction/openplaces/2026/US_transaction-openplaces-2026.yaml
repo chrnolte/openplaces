@@ -9,9 +9,18 @@
 # a price index each want a different sample, and a row filtered here
 # is a row none of them can reconsider.
 #
-# The Florida single-family panel (US-FL_transaction-openplaces-2026)
-# is the filtered product for one use; this recipe is the evidence
-# every such product can start from.
+# A filtered product for one use (the Florida single-family panel,
+# `US-FL_transaction-openplaces-2026`) lived beside this recipe until
+# 2026-09-22 and was retired by the maintainer: it wrote the same output
+# path as this one, so whichever ran last silently decided what Florida
+# shipped. Its temporal join is here now, guarded by `require_panel`.
+# What went with it was a *sample*, not evidence: sales kept only where
+# a `verified_single_family` vote passed, one dwelling, no multi-parcel
+# deed, 2016 onward. Rebuild that by filtering this recipe's output, or
+# see git history for the vote. Bringing the vote back here would mean
+# adding a third temporal pass (`direction: exact, offset_years: 1,
+# prefix: next_year_`) and keeping it as a graded column, never a
+# filter, for the reason stated above.
 
 description: >-
   Recorded sales as one row per deed, with the parcels each covered
@@ -415,6 +424,58 @@ pipeline:
   # parties to every deed, and Wisconsin's RETR is ingested with all 78
   # of its raw columns, among them the names and addresses of grantor,
   # grantee, their agents, the preparer and the tax-bill recipient. An
+  # The property as it was when it sold, where a multi-year roll exists.
+  # A hedonic model wants the values and structure at the sale date, not
+  # today's, and where a county renumbered its parcels the panel is the
+  # only thing that reaches the older sales at all: six Florida counties
+  # renumbered (Volusia and Pasco in 2017), and 100% of their pre-cutover
+  # sales are in the panel, 98-100% in the roll of their own sale year,
+  # against 0.000 reaching the current parcel layer.
+  #
+  # `require_panel` makes this a no-op wherever there is no panel, which
+  # is nearly everywhere: Florida's DOR roll keeps 24 yearly vintages,
+  # and the other 104 assessor sources in the tree are one vintage each
+  # (plans/multi-year-tax-rolls-property-panel.md). When a national
+  # `US_property-panel-2026` exists it replaces the recipe named here.
+  #
+  # `property_match_type` is written on **every** row, not only matched
+  # ones, because a reader has to be able to tell a value taken from the
+  # sale year from one taken from a neighboring year, from a county with
+  # no panel at all. `tax_year` rides along as the vintage actually used.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    require_panel: true
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: backward
+    prefix: at_sale_
+    match_type_column: property_match_type
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
+              market_value, land_value, n_dwellings, n_buildings]
+
+  # A sale before the roll's first vintage has no earlier year to take;
+  # the nearest later one is the only evidence there is. Restricted to
+  # sales already improved at the time, so a bare lot cannot inherit the
+  # house that was built on it afterwards, and marked as a forward
+  # fallback so the difference is legible. `mark_unmatched` closes the
+  # column: after this pass, an empty value would be indistinguishable
+  # from a county the step skipped.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    require_panel: true
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: forward
+    only_unmatched: true
+    restrict_to: {column: sale_vacant, equals: "Improved property"}
+    prefix: at_sale_
+    match_type_column: property_match_type
+    mark_unmatched: not_in_panel
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
+              market_value, land_value, n_dwellings, n_buildings]
+
   # allow-list, since no list of names to drop could be complete: a
   # column stays if the attribute registry knows it, or if it is named
   # under `keep` (non-personal source columns the registry has no row
@@ -430,6 +491,17 @@ pipeline:
       - _join_id
       - source
       - admin3_id
+      # Which vintage each at-sale value came from, and how it was
+      # reached: exact, a neighboring year, or not at all.
+      - property_match_type
+      - at_sale_tax_year
+      - at_sale_year_built
+      - at_sale_living_area_sqft
+      - at_sale_land_area_sqft
+      - at_sale_market_value
+      - at_sale_land_value
+      - at_sale_n_dwellings
+      - at_sale_n_buildings
       - n_records_per_key
       - parcel_id_alnum
       # Florida SDF

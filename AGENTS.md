@@ -926,6 +926,27 @@ Steps are organized by the nature of the transformation:
   type and the relationship the parties themselves state on the RETR form
   (`sale_party_relationship`; about 20% of transfers are `Family`), through
   the `minimum` indicator type and `fill_only`.
+  `join_temporal_snapshot` is the one as-of join in the repo (the only
+  `pd.merge_asof`), attaching **the property as it was when it sold**: a
+  hedonic model wants the sale-date values, and where a county renumbered
+  its parcels the panel is the only thing that reaches its older sales at
+  all (Pasco and Volusia FL went from 0.03 to 0.998 of pre-2017 sales
+  carrying a land value). `require_panel` makes it a no-op where a county
+  has no roll or **only one vintage**, which is nearly everywhere: Florida's
+  DOR roll keeps 24 yearly vintages and the other 104 assessor sources are
+  one each. One vintage is deliberately not a panel, since joining a sale to
+  the only year on file reads as a temporal match while adding nothing the
+  cross-sectional spine did not have. Its `match_type_column` is written on
+  **every** row, not only matched ones (`exact`, `backward_fallback`,
+  `forward_fallback`, `not_in_panel`, `single_vintage`, `no_panel`,
+  `no_sale_date`): a missing value cannot separate "no panel in this county"
+  from "the panel does not know this sale", and the two mean different
+  things to anyone modeling with it. It tolerates what varies between
+  counties rather than failing the curate, since one nationwide recipe names
+  one column list and one restriction: a column the roll lacks is skipped
+  (Lake FL has no `land_area_sqft`), a `restrict_to` on an absent column
+  selects nothing (`sale_vacant` is Florida's word), and a sale with no year
+  is set aside as `no_sale_date` because `merge_asof` refuses null keys.
 
 Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),

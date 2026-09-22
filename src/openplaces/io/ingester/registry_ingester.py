@@ -422,6 +422,28 @@ class RegistryIngester:
                     stacklevel=2,
                 )
 
+        # Two rows identical in everything but `_join_id` are one
+        # document the crawler read twice, and carry no information
+        # between them. They used to be saved anyway, which blocked the
+        # roll-up much later and far from the cause: Medford's 2025-12
+        # crawl held 18 such pairs, and `aggregate_partitions` refused
+        # the whole town's merge after 263 minutes of crawling, because
+        # openplaces' reader drops `_join_id` and so sees plain
+        # duplicates. Dropped here, where the cause is visible; the
+        # diagnostic CSV above still records every (book, page) repeat,
+        # including the ones that differ in substance and are a
+        # genuinely different document sharing a page.
+        subset = [c for c in df.columns if c != '_join_id']
+        if subset and len(df) > 0:
+            repeated = df.duplicated(subset=subset, keep='first')
+            if repeated.any():
+                warnings.warn(
+                    f'{int(repeated.sum())} row(s) in {partition_id} repeat '
+                    'another row exactly; keeping one of each.',
+                    stacklevel=2,
+                )
+                df = df[~repeated]
+
         # Stamp the scrape time into the parquet footer so _is_done can tell
         # whether the partition's month was already over when it was scraped
         # (i.e. whether the file holds the complete month).
