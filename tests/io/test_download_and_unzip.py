@@ -12,8 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from openplaces import io as op_io
-from openplaces.io import _needs_7z, download, unzip
+import openplaces.io.fetch as op_io  # download looks requests up here
+from openplaces.io import archives, unzip
+from openplaces.io.archives import _needs_7z
+from openplaces.io.fetch import download
 
 
 class _FakeResponse:
@@ -168,7 +170,7 @@ def test_uppercase_tar_bz2_is_extracted(tmp_path):
 def test_a_non_zip_archive_no_longer_reports_not_a_zip_file(tmp_path, monkeypatch):
     # With 7z absent the message says the archive cannot be extracted,
     # rather than the misleading 'File is not a zip file'.
-    monkeypatch.setattr(op_io, '_find_7z', lambda: None)
+    monkeypatch.setattr(archives, '_find_7z', lambda: None)
     path = tmp_path / 'parcels.rar'
     path.write_bytes(b'Rar!\x1a\x07\x00' + b'\x00' * 32)
 

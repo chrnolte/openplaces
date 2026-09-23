@@ -8,7 +8,7 @@ index function is parameterized by country rather than hardcoded to the US.
 import pandas as pd
 import pytest
 
-import openplaces.io.admin as admin
+import openplaces.io.admin.ids as admin  # the index builders look names up here
 from openplaces.io.admin import clean_geographic_name, generate_admin_ids
 
 # clean_geographic_name

@@ -393,10 +393,10 @@ pytest -k "test_name"                 # single test by name
 Layer 0  core
 Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__, io/consent, geo/address
-Layer 4  io/readers, io/access, table
+Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
+Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -406,7 +406,7 @@ Layer 12 flow/* (scripts, dag, run_stage, submit)
 ```
 Higher-numbered layers may only import from lower-numbered layers.
 
-Two placements are worth knowing. `table` holds the registry-driven row
+Four placements are worth knowing. `table` holds the registry-driven row
 helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
 functions); they sit below `geo/` because `geo/crosswalk` and `geo/ids`
 call them, and keeping them in `io/aggregate`/`io/transform` created a
@@ -414,6 +414,20 @@ module-level import cycle. `io/aggregate` and `io/transform` re-export
 them, so the older import paths still work. `geo/address` is listed
 separately because it depends on nothing above `recipe`, which is what
 lets `table` use `strip_unit_suffix` without reintroducing that cycle.
+`io/steps` holds the step-registry decorator and the lazy loader that
+harmonize, enrich and curate each carried a copy of until 2026-09-22; it
+imports nothing from openplaces, so it sits below all three, and each
+stage keeps its own `_STEP_REGISTRY` dict (tests monkeypatch those by
+name). `io/__init__` is a facade: everything it exports is defined in
+one of the six modules beside it, and the facade only re-exports, so a
+helper that several stages share lives in one of those modules, never in
+a stage folder, because the layer-3 facade cannot import from layer 6.
+**A module in `io/` must not share a name with a facade export**:
+`from openplaces.io import download` yields the *function*, which is
+why the module that defines it is `io/fetch`. A test that binds a
+module object and patches a name on it patches the module the function
+under test lives in, not the facade or a package file; a patch on those
+never reaches a function looking names up in its own globals.
 
 ## Architecture overview
 
@@ -1093,7 +1107,7 @@ exactly one place need not be registered -- `share: delivery: admin_ids:` still
 takes an inline list. `region_admin_id` is the unit a region rolls up to
 (`US-TX`); blank means callers derive it, which is what delivery does.
 
-### Delivery bundles (`io/delivery.py`)
+### Delivery bundles (`io/delivery/`, with `terms.py` and `redaction.py` beside the package file)
 
 `export_delivery` pools a curation recipe's per-process-unit files into a
 region-wide, shareable set of four files sharing one index: the canonical
@@ -1135,7 +1149,7 @@ may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
 walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
 walk never saw Edgecombe's parcels feeding the NC bundle).
-`io.redaction.withhold` then removes that source's values from both read
+`io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
 named after an attribute its recipe maps (or with its entity suffix), or whose
@@ -1299,7 +1313,7 @@ recording a requirement states a fact about the source rather than
 deciding anything for the user. Restrictions on the redistribution/fee
 axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
 `redistribution_restricted`, `resale_restricted` and
-`io/bundle_terms.py` cover those -- and
+`io/delivery/terms.py` cover those -- and
 a blanket ban on automated access is expressed by having no
 `download_url` at all, not by a requirement.
 

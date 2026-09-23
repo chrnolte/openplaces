@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date as _date
 
-from openplaces.io.avenu_selectors import (
+from openplaces.io.scrapers.avenu_selectors import (
     CRITERIA_DATE_SEARCH,
     DATE_FROM,
     DATE_TO,

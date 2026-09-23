@@ -14,12 +14,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-import openplaces.io.bundle_terms as bundle_terms_module
 import openplaces.io.delivery as delivery_module
+import openplaces.io.delivery.terms as bundle_terms_module
 from openplaces.core.schema import UsageRequirement
-from openplaces.io.bundle_terms import restricted_inputs
 from openplaces.io.delivery import RestrictedInputError, export_delivery
-from openplaces.io.redaction import WITHHELD, find_restricted, withhold
+from openplaces.io.delivery.redaction import WITHHELD, find_restricted, withhold
+from openplaces.io.delivery.terms import restricted_inputs
 from tests.io.test_delivery import _county, _recipe
 
 

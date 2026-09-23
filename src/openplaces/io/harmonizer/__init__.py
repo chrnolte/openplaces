@@ -8,11 +8,9 @@ parameters, making the process composable and entity-type-agnostic.
 from __future__ import annotations
 
 import json
-import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from importlib import import_module as _import_module
 from pathlib import Path
 
 import geopandas as gpd
@@ -35,6 +33,7 @@ from openplaces.io.cleanup import (
     receipt_justifies_skip,
 )
 from openplaces.io.readers import get_admin, get_admin_ids
+from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import get_output_path, get_recipe_by_id, saves_geometry
 from openplaces.table import require_unique_index
 from openplaces.timing import get_timer
@@ -417,45 +416,11 @@ _STEP_REGISTRY: dict[str, Callable] = {}
 #: annotate -- changing them never requires geometry rework.
 _STEP_PHASES: dict[str, str] = {}
 
-
-def _register(*names: str, phase: str = 'attributes'):
-    """Decorator: register a step function under one or more names.
-
-    Parameters
-    ----------
-    phase : str
-        ``'geometry'`` for steps that mutate spine rows/geometry or run
-        spatial joins (fingerprinted, geospine-hosted); ``'attributes'``
-        (default) for steps that only read or annotate.
-    """
-    if phase not in ('geometry', 'attributes'):
-        raise ValueError(f"phase must be 'geometry' or 'attributes', got {phase!r}")
-
-    def decorator(fn: Callable) -> Callable:
-        for name in names:
-            _STEP_REGISTRY[name] = fn
-            _STEP_PHASES[name] = phase
-        return fn
-
-    return decorator
-
-
-_steps_loaded = False
-
-
-def _load_steps() -> None:
-    """Import this stage's step submodules so their @_register runs.
-
-    Deferred until a step is first dispatched so that merely importing the
-    harmonizer package does not pull every step module.
-    """
-    global _steps_loaded
-    if _steps_loaded:
-        return
-    for _m in _pkgutil.iter_modules(__path__):
-        if not _m.ispkg:
-            _import_module(f'{__name__}.{_m.name}')
-    _steps_loaded = True
+# ``@_register('name', phase='geometry')`` fills both dicts; the step
+# submodules are imported by ``_load_steps`` when a step is first
+# dispatched (see ``io.steps``).
+_register = make_register(_STEP_REGISTRY, _STEP_PHASES)
+_load_steps = make_loader(__name__, __path__)
 
 
 def _missing_link_sidecars(recipe, admin_id) -> list[Path]:
