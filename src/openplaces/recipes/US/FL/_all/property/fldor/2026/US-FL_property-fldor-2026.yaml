@@ -188,6 +188,23 @@ columns:
   parcel_id_admin2_2: MP_ID
   parcel_id_admin2: STATE_PAR_ID
 
+transformations:
+  # Florida's NAL states a just (market) value and a land value and no
+  # improvement value; the improvement is the difference, which is how
+  # the state's own documentation defines it. Arithmetic on two figures
+  # the assessor stated, not an estimate, so it is not marked imputed,
+  # on the same footing as apportioning a recorded total.
+  #
+  # It matters most where a county's parcel layer omits condominium
+  # units: Miami-Dade's sales reach their property row and carried a
+  # land value on 96.6% of rows but an improvement value on none,
+  # because the roll is the only source for those units and the roll
+  # never named the column.
+  - type: binary
+    operation: subtract
+    inputs: [market_value, land_value]
+    output: improvement_value
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - roll_type
