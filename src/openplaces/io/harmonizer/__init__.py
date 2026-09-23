@@ -344,6 +344,36 @@ def _record_source(df, column: str, mask, token: str) -> None:
     df.loc[mask, side] = token
 
 
+def _record_sources(df, column: str, tokens, mask=None) -> None:
+    """Set ``{column}_source`` from a per-row *tokens* series.
+
+    The row-varying counterpart of :func:`_record_source`, and the
+    harmonize-stage peer of
+    :func:`openplaces.io.curator.provenance.record_sources` (same
+    layering reason as above: this package may not import from
+    ``io.curator``).
+
+    It exists so a join can say where a value **originally** came from
+    rather than which table it was read out of. Stamping one token per
+    step names the immediate hop, so a value taken from a parcel spine
+    reads `spine` and the county source that actually supplied it is
+    lost: useless to `io.redaction.withhold`, which withholds a
+    restricted source's values per cell by matching that name. Carrying
+    the reference's own sidecar through the join keeps the original.
+
+    A row whose token is missing is left untouched, so a reference with
+    partial provenance never blanks what an earlier step recorded.
+    """
+    side = f'{column}{_PROVENANCE_SUFFIX}'
+    _ensure_object_source_column(df, side)
+    tokens = pd.Series(tokens, index=df.index).astype(object)
+    write = tokens.notna()
+    if mask is not None:
+        write &= pd.Series(mask, index=df.index).fillna(False).astype(bool)
+    if write.any():
+        df.loc[write, side] = tokens[write]
+
+
 def _rename_right_index(
     gdf: pd.DataFrame,
     right_index_name: str | None,

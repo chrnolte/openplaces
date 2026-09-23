@@ -116,6 +116,16 @@ pipeline:
   # re-ingested county silently loses every condo sale.
   - step: derive_parcel_link_key
 
+  # `track_provenance` writes a `{col}_source` naming the county source
+  # that supplied each value. Not bookkeeping: `io.redaction.withhold`
+  # withholds a restricted source's values **per cell** by reading those
+  # sidecars, and a canonical column delivered without one can only be
+  # withheld by the coarser scope rules, or not at all. Attached values
+  # here come from auto-discovered county parcel recipes, which is
+  # exactly where a restricted county enters this lane, so the sidecars
+  # are what make a delivery of it safe (main verified the mechanism on
+  # Edgecombe NC: 30,260 cells reading `withheld` in the public bundle,
+  # the same county fully valued in the team twin).
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
@@ -123,6 +133,8 @@ pipeline:
     ref_key: parcel_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
 
   # Which rule linked a row, recorded after each pass below. The parcel
   # number is tried first and an exact address key only where it found
@@ -164,6 +176,8 @@ pipeline:
     fill_only: true
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: parcel_id_local
     spine_key: parcel_link_key
@@ -190,8 +204,16 @@ pipeline:
     spine_key: parcel_id_local
     ref_key: parcel_id_local
     fill_only: true
-    columns: [use_group, use_subgroup, land_value, improvement_value,
-              year_built, n_dwellings]
+    # `use_group_code` rides along because a roll states the use as a
+    # code and nothing on the property side produces the decoded
+    # `use_group`: Miami-Dade's condominium sales reach their property
+    # row and carried no use label at all until this was added. The
+    # column holds the decoded text, the ingester having applied the
+    # DOR crosswalk sidecar beside the property recipe.
+    columns: [use_group, use_subgroup, use_group_code, land_value,
+              improvement_value, year_built, n_dwellings]
+    track_provenance: [use_group, use_subgroup, use_group_code, land_value,
+                       improvement_value, year_built, n_dwellings]
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
@@ -199,6 +221,8 @@ pipeline:
     ref_key: address_id_local_city
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: address_id_local_city
     spine_key: address_id_local_city
@@ -210,6 +234,8 @@ pipeline:
     ref_key: address_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: address_id_local
     spine_key: address_id_local

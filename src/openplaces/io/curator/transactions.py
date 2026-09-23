@@ -85,11 +85,12 @@ def derive_sale_period(
 @_register('flag_sales_matching_other_kind')
 def flag_sales_matching_other_kind(
     state: CurateState,
-    key_column: str,
+    key_column: str | list[str],
     kind_column: str = 'sale_record_kind',
     flagged_kind: str = 'assessor_last_sale',
     reference_kind: str = 'deed',
     output: str = 'sale_matches_deed',
+    fill_only: bool = False,
 ) -> CurateState:
     """Flag an assessor last-sale row that a recorded deed also reports.
 
@@ -108,8 +109,19 @@ def flag_sales_matching_other_kind(
 
     Parameters
     ----------
-    key_column : str
-        Column identifying the parcel both rows name.
+    key_column : str or list of str
+        Column, or columns, identifying the thing both rows name. A
+        list is a composite key and every part must be present on a
+        row for it to be compared. Which columns depends on the state:
+        a parcel id where both sides carry one, and book and page where
+        neither does. Massachusetts is the second case, its registry
+        deeds having no `parcel_id_local` at all, so the flag was
+        missing on every MA row until a second pass keyed on the
+        document instead.
+    fill_only : bool, optional
+        Only write rows the output column has not already decided, so a
+        later pass on a different key fills what the first could not
+        reach without overruling it.
     kind_column : str, optional
         Column holding the record kind (default `sale_record_kind`).
     flagged_kind, reference_kind : str, optional
@@ -120,14 +132,17 @@ def flag_sales_matching_other_kind(
         lacking any of the four values.
     """
     curated = state.curated
-    needed = [key_column, kind_column, 'sale_year', 'sale_month', 'price']
+    keys = [key_column] if isinstance(key_column, str) else list(key_column)
+    needed = [*keys, kind_column, 'sale_year', 'sale_month', 'price']
     if any(c not in curated.columns for c in needed):
-        # No comparison is possible (Massachusetts rows carry no parcel
-        # key); the column is still written, so every unit has it.
-        curated[output] = float('nan')
+        # No comparison is possible on this key; the column is still
+        # written, so every unit has it, and a later pass on another key
+        # may still fill it.
+        if output not in curated.columns:
+            curated[output] = float('nan')
         state.curated = curated
         return state
-    values = curated[[key_column, 'sale_year', 'sale_month', 'price']]
+    values = curated[[*keys, 'sale_year', 'sale_month', 'price']]
     complete = values.notna().all(axis=1)
     # Column-wise concatenation: a missing part makes the key missing.
     text = values.astype('string')
@@ -138,6 +153,8 @@ def flag_sales_matching_other_kind(
     flag = pd.Series(float('nan'), index=curated.index, dtype='float64')
     target = (curated[kind_column] == flagged_kind) & complete
     flag.loc[target] = key.loc[target].isin(reference).astype('float64')
+    if fill_only and output in curated.columns:
+        flag = pd.to_numeric(curated[output], errors='coerce').fillna(flag)
     curated[output] = flag
     state.curated = curated
     if state.verbose:

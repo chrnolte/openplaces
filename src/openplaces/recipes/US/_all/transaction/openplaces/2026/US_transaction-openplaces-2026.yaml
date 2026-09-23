@@ -367,6 +367,20 @@ pipeline:
   - step: flag_sales_matching_other_kind
     key_column: parcel_id_local
 
+  # Where neither kind carries a parcel id, the document itself is the
+  # thing both rows name. Massachusetts is that case: its registry
+  # deeds have no `parcel_id_local` at all, so the pass above leaves
+  # every MA row unflagged and a consumer cannot tell a MassGIS
+  # last-sale row from the registry deed it repeats. Book and page are
+  # on both kinds, and `derive_document_id` above already treats a
+  # blank or all-zero part as naming no document, so a placeholder
+  # cannot fold a county's sales together here either.
+  # `fill_only`, so this reaches only what the parcel key could not and
+  # never overrules it.
+  - step: flag_sales_matching_other_kind
+    key_column: [book, page]
+    fill_only: true
+
   # A recorder's nominal consideration is not a price, and which value
   # it uses is the recorder's choice: Florida stamps 100 dollars on a
   # non-market transfer, North Carolina and Wisconsin record 0. The

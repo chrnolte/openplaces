@@ -47,6 +47,7 @@ from openplaces.io import to_parquet
 from openplaces.io.aggregate import _agg_func_for, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
+    _PROVENANCE_SUFFIX,
     _STEP_PHASES,
     HarmonizeState,
     _register,
@@ -2179,15 +2180,22 @@ def _write_prioritized(
         rather than every joined attribute, to avoid a provenance-sidecar
         column explosion.
     """
-    from openplaces.io.harmonizer import _record_source
+    from openplaces.io.harmonizer import _record_source, _record_sources
+
+    def _mark(mask) -> None:
+        """Record provenance, per row where the caller supplied it."""
+        if isinstance(provenance_token, pd.Series):
+            _record_sources(spine, name, provenance_token, mask)
+        else:
+            _record_source(spine, name, mask, provenance_token)
 
     if name not in spine.columns:
         spine[name] = new_vals
-        if provenance_token:
-            _record_source(spine, name, new_vals.notna(), provenance_token)
+        if provenance_token is not None:
+            _mark(new_vals.notna())
         return
 
-    before = spine[name].copy() if provenance_token else None
+    before = spine[name].copy() if provenance_token is not None else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
     existing, incoming = _align_for_combine(spine[name], new_vals)
     if coverage >= majority_coverage:
@@ -2195,10 +2203,10 @@ def _write_prioritized(
     else:
         spine[name] = existing.combine_first(incoming)
 
-    if provenance_token:
+    if provenance_token is not None:
         after = spine[name]
         changed = after.notna() & (before.isna() | (before != after))
-        _record_source(spine, name, changed, provenance_token)
+        _mark(changed)
 
 
 #: Columns *ref_address_key* needs on the reference: keyword name of
@@ -2441,6 +2449,32 @@ def _columns_as_pairs(
     if isinstance(columns, dict):
         return list(columns.items())
     return [(c, c) for c in columns]
+
+
+def _upstream_tokens(ref_indexed, column: str, skey: pd.Series, token: str | None):
+    """Per-row provenance for a joined column, original source preferred.
+
+    A reference that records where its own values came from is asked
+    first: its `{column}_source` is carried through the join so the
+    spine keeps the name of the source that *originally* supplied the
+    value, not the name of the table it was read out of. Where the
+    reference has no sidecar, or none for a given row, the recipe's own
+    token stands in.
+
+    This is what makes the sidecar usable by
+    :func:`openplaces.io.redaction.withhold`, which withholds a
+    restricted source's values cell by cell by matching that name. A
+    value taken from a parcel spine used to read `spine`, hiding the
+    county source that supplied it, so a restricted county reaching a
+    sale through the spine could not be withheld per cell.
+    """
+    if token is None:
+        return None
+    sidecar = f'{column}{_PROVENANCE_SUFFIX}'
+    if sidecar not in ref_indexed.columns:
+        return token
+    upstream = skey.map(ref_indexed[sidecar])
+    return upstream.where(upstream.notna(), token)
 
 
 def _warn_if_link_underperforms(
@@ -3062,7 +3096,11 @@ def link_by_id(
                 skey.map(mapper),
                 # A lossy key must only fill what a precise one left.
                 majority_coverage=float('inf') if fill_only else 0.5,
-                provenance_token=token if out_name in provenance_cols else None,
+                provenance_token=(
+                    _upstream_tokens(ref_unique, col, skey, token)
+                    if out_name in provenance_cols
+                    else None
+                ),
             )
         matched = int(skey.isin(set(rkey.dropna())).sum())
         if state.verbose:
@@ -3213,6 +3251,14 @@ def link_by_id(
                 new_vals,
                 # A lossy key must only fill what a precise one left.
                 majority_coverage=float('inf') if fill_only else 0.5,
+                # The recipe's own name, not an upstream sidecar, unlike
+                # the 'attributes' branch. Two reasons, and they agree:
+                # this is the auto-discovered path, so `recipe_id` is
+                # already the county source that supplied the value and
+                # there is nothing more original to reach; and a value
+                # here may be an aggregate over several reference rows,
+                # which can disagree about their own provenance, so one
+                # token per spine row would be a guess.
                 provenance_token=token if out_name in provenance_cols else None,
             )
         # count_as=False asks for the attributes alone: a spine receiving
