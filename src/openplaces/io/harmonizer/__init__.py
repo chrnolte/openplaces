@@ -227,13 +227,18 @@ def _read_checkpoint(path, chain):
             spine = pd.read_parquet(path)
     except Exception:
         return None
-    handoff = {}
+    # The handoff key is written on every save, as {} when there is
+    # nothing to hand off. A footer without it predates the handoff
+    # (before 2026-09-22) and is stale: restoring it would skip
+    # resolve_spine and lose a parcel spine's index name, which is the
+    # bug the handoff fixes. The full pipeline re-saves it in this format.
     raw = meta.get(HARMONIZE_METADATA_KEY.encode())
-    if raw is not None:
-        try:
-            handoff = _json.loads(raw)
-        except Exception:
-            handoff = {}
+    if raw is None:
+        return None
+    try:
+        handoff = _json.loads(raw)
+    except Exception:
+        return None
     return spine, handoff
 
 
@@ -273,8 +278,9 @@ def _write_checkpoint(path, spine, chain, handoff=None):
     table = pq.read_table(path)
     meta = dict(table.schema.metadata or {})
     meta[b'openplaces:checkpoint'] = _json.dumps(chain).encode()
-    if handoff:
-        meta[HARMONIZE_METADATA_KEY.encode()] = _json.dumps(handoff).encode()
+    # Always present, so a reader can tell "nothing to hand off" from a
+    # checkpoint written before the handoff existed (see _read_checkpoint).
+    meta[HARMONIZE_METADATA_KEY.encode()] = _json.dumps(handoff or {}).encode()
     pq.write_table(table.replace_schema_metadata(meta), path)
 
 

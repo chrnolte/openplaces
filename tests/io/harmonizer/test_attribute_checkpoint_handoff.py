@@ -90,6 +90,24 @@ def test_a_checkpoint_without_a_handoff_reads_back_empty(tmp_path):
     assert state.metadata == {}
 
 
+def test_a_checkpoint_from_before_the_handoff_is_refused(tmp_path):
+    """A footer with the chain but no handoff key is the pre-2026-09-22
+    format. Restoring it would skip resolve_spine and lose the index name,
+    so it is treated as stale and the full pipeline runs."""
+    import json
+
+    import pyarrow.parquet as pq
+
+    path = tmp_path / 'checkpoint.parquet'
+    _spine().to_parquet(path)
+    table = pq.read_table(path)
+    meta = dict(table.schema.metadata or {})
+    meta[b'openplaces:checkpoint'] = json.dumps(CHAIN).encode()
+    pq.write_table(table.replace_schema_metadata(meta), path)
+
+    assert _read_checkpoint(path, CHAIN) is None
+
+
 def test_a_stale_chain_is_refused(tmp_path):
     path = tmp_path / 'checkpoint.parquet'
     _write_checkpoint(path, _spine(), CHAIN, {'spine_index_name': 'parcel_id'})
