@@ -4,7 +4,7 @@ The three group-vocabulary columns each cast one vote; ties break to
 group_parcel when it voted for a tied value, else to the earliest listed
 column. The winner is coarsened through the class map and fills only rows the
 rule-based classifier left null. Disagreements are summarized in
-land_use_class_conflict (grouped format, see _summarize_conflicts) and their
+land_use_class_conflict (grouped format, see table.summarize_conflicts) and their
 most frequent combinations are saved to the reports directory.
 """
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
+from openplaces.table import summarize_conflicts
 
 
 def _source_token(col: str, default: str | None = None) -> str:
@@ -633,49 +634,6 @@ def null_out_of_range(
     return state
 
 
-def _summarize_conflicts(
-    present: list[tuple[str, pd.Series]],
-    index: pd.Index,
-) -> pd.Series:
-    """Summarize disagreeing evidence values per row as a compact string.
-
-    *present* is a list of (label, values) pairs, each values Series aligned
-    to *index*. Returns an object Series that is missing except where at
-    least two present values disagree; there, sources are grouped by unique
-    value — groups ordered by first-appearing label, labels within a group
-    joined with '/' — e.g. 'nsi/parcel: Single Family | fema: Manufactured
-    Home', so agreements and disagreements are both visible at a glance.
-    """
-    from itertools import combinations
-
-    conflict = pd.Series(pd.NA, index=index, dtype=object)
-    if len(present) < 2:
-        return conflict
-
-    differ = pd.Series(False, index=index)
-    for (_, class_a), (_, class_b) in combinations(present, 2):
-        both = class_a.notna() & class_b.notna()
-        differ = differ | (both & class_a.ne(class_b))
-    if not differ.any():
-        return conflict
-
-    labels = [label for label, _ in present]
-    stacked = pd.concat(
-        {label: values.astype(object) for label, values in present}, axis=1
-    )
-
-    def _row_summary(row) -> str:
-        groups: dict[str, list[str]] = {}
-        for label in labels:
-            value = row[label]
-            if pd.notna(value):
-                groups.setdefault(str(value), []).append(label)
-        return ' | '.join(f'{"/".join(who)}: {value}' for value, who in groups.items())
-
-    conflict.loc[differ] = stacked.loc[differ].apply(_row_summary, axis=1)
-    return conflict
-
-
 @_register('resolve_occupancy')
 def resolve_occupancy(
     state: CurateState,
@@ -803,7 +761,7 @@ def resolve_occupancy(
         for ev in evidence
         if ev['column'] in curated.columns
     ]
-    conflict = _summarize_conflicts(present, curated.index)
+    conflict = summarize_conflicts(present, curated.index)
 
     review_col = config.get('review_column', 'occupancy_type_review')
     curated['occupancy_type'] = pd.Categorical(base)
@@ -919,7 +877,7 @@ def reconcile_land_use(
         None,
     )
 
-    conflict = _summarize_conflicts(present, curated.index)
+    conflict = summarize_conflicts(present, curated.index)
     curated[conflict_column] = pd.Categorical(conflict)
 
     # Each column votes for its own value at equal weight -- an

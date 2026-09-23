@@ -3,7 +3,7 @@
 occupancy_type is NSI-first (parcel fills gaps); reviewed parcel keywords override
 the base; occupancy_type_conflict is a categorical summary with sources grouped
 by unique value ('label1/label2: class | label3: class', see
-_summarize_conflicts); occupancy_type_review flags a small nonzero
+table.summarize_conflicts); occupancy_type_review flags a small nonzero
 improvement-value share. Value- and dwelling-based class assignment is covered
 by test_resolve_by_vote. All terminology comes from the recipe config.
 """

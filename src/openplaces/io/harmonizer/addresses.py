@@ -15,8 +15,6 @@ own cheap, error-prone street key by hand.
 
 from __future__ import annotations
 
-from itertools import combinations
-
 import pandas as pd
 
 from openplaces.core.attribute_registry import (
@@ -24,6 +22,7 @@ from openplaces.core.attribute_registry import (
 )
 from openplaces.core.provenance import mark_imputed
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.table import summarize_conflicts
 
 
 def _ensure_object_column(curated: pd.DataFrame, column: str) -> None:
@@ -54,45 +53,6 @@ def _record_source(curated: pd.DataFrame, column: str, mask, token: str) -> None
     side = f'{column}{_SOURCE_SUFFIX}'
     _ensure_object_column(curated, side)
     curated.loc[mask, side] = token
-
-
-def _summarize_conflicts(
-    present: list[tuple[str, pd.Series]],
-    index: pd.Index,
-) -> pd.Series:
-    """Summarize disagreeing evidence values per row as a compact string.
-
-    Deliberate duplicate of ``openplaces.io.curator.reconcilers``'s private
-    helper of the same name (also used by ``resolve_occupancy``/
-    ``reconcile_land_use`` there, so it can't just move) -- same reasoning as
-    :func:`_record_source` above: no cross-layer import available.
-    """
-    conflict = pd.Series(pd.NA, index=index, dtype=object)
-    if len(present) < 2:
-        return conflict
-
-    differ = pd.Series(False, index=index)
-    for (_, class_a), (_, class_b) in combinations(present, 2):
-        both = class_a.notna() & class_b.notna()
-        differ = differ | (both & class_a.ne(class_b))
-    if not differ.any():
-        return conflict
-
-    labels = [label for label, _ in present]
-    stacked = pd.concat(
-        {label: values.astype(object) for label, values in present}, axis=1
-    )
-
-    def _row_summary(row) -> str:
-        groups: dict[str, list[str]] = {}
-        for label in labels:
-            value = row[label]
-            if pd.notna(value):
-                groups.setdefault(str(value), []).append(label)
-        return ' | '.join(f'{"/".join(who)}: {value}' for value, who in groups.items())
-
-    conflict.loc[differ] = stacked.loc[differ].apply(_row_summary, axis=1)
-    return conflict
 
 
 def reconcile_addresses_df(
@@ -408,7 +368,7 @@ def reconcile_addresses_df(
         )
         for name, frame in frames.items()
     ]
-    conflict = _summarize_conflicts(compare, curated.index).where(disagreeing)
+    conflict = summarize_conflicts(compare, curated.index).where(disagreeing)
     curated[conflict_column] = conflict
 
     # Format over unique component tuples, then assign and record provenance.
@@ -571,7 +531,7 @@ def reconcile_postal_code(
         winner.loc[take] = c
 
     spine[output_column] = result
-    spine[conflict_column] = _summarize_conflicts(
+    spine[conflict_column] = summarize_conflicts(
         [(c, zips[c]) for c in available], spine.index
     )
     for token in winner.dropna().unique():

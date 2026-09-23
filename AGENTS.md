@@ -404,11 +404,17 @@ Layer 10 viz/*
 Layer 11 api.py
 Layer 12 flow/* (scripts, dag, run_stage, submit)
 ```
-Higher-numbered layers may only import from lower-numbered layers.
+Higher-numbered layers may only import from lower-numbered layers. One
+documented exception: the `show_random_entity` convenience method on
+`Ingester`, `Harmonizer` and `Curator` imports `viz.maps` (layer 10)
+inside the method body, so the module-level graph stays acyclic and a
+run without matplotlib never pays for it. Do not add a second one.
 
 Four placements are worth knowing. `table` holds the registry-driven row
 helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
-functions); they sit below `geo/` because `geo/crosswalk` and `geo/ids`
+functions) and `summarize_conflicts`, the per-row disagreement summary
+both the harmonize and curate stages write into `{col}_conflict`
+columns; they sit below `geo/` because `geo/crosswalk` and `geo/ids`
 call them, and keeping them in `io/aggregate`/`io/transform` created a
 module-level import cycle. `io/aggregate` and `io/transform` re-export
 them, so the older import paths still work. `geo/address` is listed
