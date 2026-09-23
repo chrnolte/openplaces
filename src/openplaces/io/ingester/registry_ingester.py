@@ -37,6 +37,12 @@ from openplaces.recipe import (
 )
 from openplaces.timing import Timer
 
+# The application this ingester knows how to drive, as a crosswalk's
+# `platform` column spells it. Registries of one state need not share
+# one: Massachusetts has 21 districts on at least three platforms, and
+# only this one exposes the recorded-date search the crawler uses.
+DRIVABLE_PLATFORM = 'avenu_i2'
+
 
 def _month_partitions(year: int) -> list[tuple[str, str]]:
     """Return (date_from, date_to) string pairs for each month of year."""
@@ -190,6 +196,23 @@ class RegistryIngester:
                     continue
                 town_name = entry['town_name']
                 base_url = entry['base_url']
+                # A state's registries need not all run one application.
+                # Massachusetts publishes 21 districts, of which 11 are
+                # on masslandrecords and the rest on their own sites,
+                # some ALIS, some unexamined. Skipping by name beats
+                # crawling into a 404 for a minute and reporting it as
+                # an empty search menu, which is how Brookline read
+                # until 2026-09-22.
+                platform = entry.get('platform', DRIVABLE_PLATFORM)
+                if platform != DRIVABLE_PLATFORM:
+                    warnings.warn(
+                        f'{town_name} ({admin4_id}) is served by '
+                        f'{base_url}, which runs {platform!r}; this '
+                        f'ingester drives {DRIVABLE_PLATFORM!r} only. '
+                        'Skipping.',
+                        stacklevel=2,
+                    )
+                    continue
                 if self.verbose:
                     print(f'Crawling {town_name} ({admin4_id}) via {base_url}')
 
@@ -565,19 +588,29 @@ class RegistryIngester:
     def _load_crosswalk(
         csv_path: Path, admin_id: str, level: int = 4
     ) -> dict[str, dict]:
-        """Return mapping of town admin id → {'base_url', 'town_name'}.
+        """Return mapping of town admin id → registry entry.
+
+        The entry carries `base_url`, `town_name` and `platform`, the
+        last naming the application the registry runs so that the
+        caller can skip one this ingester cannot drive.
 
         Towns are read at *level*, the recipe's `process_by` admin level:
         since the 2026-08 re-mint a Massachusetts town is a level-3 unit
         and the state has no level 4, so the fixed level-4 lookup this
         method used to make raised for every run.
+
+        A crosswalk with no `platform` column is read as all-drivable,
+        which is what it meant before the column existed.
         """
         import csv
 
-        raw: dict[str, str] = {}
+        raw: dict[str, dict[str, str]] = {}
         with open(csv_path, newline='', encoding='utf-8') as f:
             for row in csv.DictReader(f):
-                raw[row['town_name']] = row['base_url']
+                raw[row['town_name']] = {
+                    'base_url': row['base_url'],
+                    'platform': (row.get('platform') or DRIVABLE_PLATFORM),
+                }
 
         admin4_df = get_admin(admin_id, level=level)
         crosswalk: dict[str, dict] = {}
@@ -591,5 +624,5 @@ class RegistryIngester:
                 if name.lower().endswith(' town'):
                     name = name[:-5]
             if name in raw:
-                crosswalk[idx] = {'base_url': raw[name], 'town_name': name}
+                crosswalk[idx] = {**raw[name], 'town_name': name}
         return crosswalk
