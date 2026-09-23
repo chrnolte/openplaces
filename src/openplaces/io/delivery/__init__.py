@@ -34,9 +34,13 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import parquet_columns, read_parquet, to_parquet
-from openplaces.io.bundle_terms import bundle_terms, format_notice, restricted_inputs
+from openplaces.io.delivery.redaction import find_restricted, merge_counts, withhold
+from openplaces.io.delivery.terms import (
+    bundle_terms,
+    format_notice,
+    restricted_inputs,
+)
 from openplaces.io.readers import get_admin
-from openplaces.io.redaction import find_restricted, merge_counts, withhold
 from openplaces.recipe import (
     get_output_path,
     get_process_admin_level,

@@ -531,6 +531,34 @@ pipeline:
     peer_group_column: use_group_combined
     footprint_ratio_threshold: 0.25
     city_column: city
+    # Per-area rate where it is reliable, land share of the record's own
+    # value for Condominium records, dense lots, and wherever the rate
+    # would reach the whole recorded value. Scored on a 20% holdout of
+    # recorded land values 2026-09-17: never worse than the rate in any
+    # class tested, Condominium error 0.67 -> 0.23 (NC), no erased
+    # structure values (the rate erased 2.6-3.6%).
+    estimator: hybrid
+    floor_area_columns: [living_area_sqft, gross_floor_area_sqft]
+    # How land value scales with lot area, measured per city from that
+    # city's own donors rather than assumed. A plain rate assumes an
+    # exponent of 1, land strictly proportional to area; the fitted
+    # value is 0.18 to 0.47 across six states and never approaches 1,
+    # and that one wrong assumption produced both of the rate's
+    # failures, too little land on a small lot (the high structure
+    # value tail) and too much on a large one (an erased structure).
+    # Scored 2026-09-22 on a 20% holdout of recorded land values,
+    # median relative error against the plain rate: MA 0.156 -> 0.052,
+    # NC 0.152 -> 0.047, TX 0.062 -> 0.045, FL 0.097 -> 0.033,
+    # WI 0.438 -> 0.312. Turned on by the maintainer the same day.
+    rate_exponent: fitted
+    # `choose_estimator_by_admin_unit: true` would let each county lead
+    # with whichever estimator its own donors favor. **Deliberately not
+    # set.** Measured beside the line above it is weaker in every state
+    # and worse than the plain rate in Texas (0.062 to 0.085, 10,600
+    # rows better against 11,836 worse); it improves on the fitted
+    # exponent alone only in Florida. Correcting the functional form
+    # does the work the per-unit choice was reaching for.
+    # See plans/structure-value-per-area-outliers.md, "Layers 1 and 2".
 
   - step: cast_categoricals
 

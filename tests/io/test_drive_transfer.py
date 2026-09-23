@@ -11,8 +11,8 @@ import subprocess
 import pandas as pd
 import pytest
 
-from openplaces import io as op_io
 from openplaces.io import DriveTransferError, share, to_drive
+from openplaces.io import transfer as op_io  # share looks to_drive up here
 
 
 class _Completed:

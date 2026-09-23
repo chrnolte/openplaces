@@ -62,10 +62,15 @@ repository.
   in any of the files above without asking the user first, even to "fix" or
   "simplify" it: a wrong assertion here is a legal problem, not a style one.
 - Contributions come in under the Developer Certificate of Origin (`DCO.md`,
-  `CONTRIBUTING.md`): every commit by a person carries a `Signed-off-by`
-  line (`git commit -s`). An agent never writes a sign-off for a person and
-  never adds one in its own name; the sign-off is the human committer's
-  statement, in the same way co-authorship is reserved for people.
+  `CONTRIBUTING.md`): every commit by a contributor other than the
+  maintainer carries a `Signed-off-by` line (`git commit -s`). The
+  maintainer's own commits carry none: the sign-off certifies a
+  contributor's right to submit work to the project, which a copyright
+  holder has no one to certify to. Never suggest that the maintainer add
+  one, and never list a missing sign-off on the maintainer's commits as an
+  open item. An agent never writes a sign-off for a person and never adds
+  one in its own name; the sign-off is the human committer's statement, in
+  the same way co-authorship is reserved for people.
 - The repository is hosted under a personal GitHub account, not an
   institutional one. Don't propose or perform an org transfer, mirror, or
   similar hosting change unprompted.
@@ -163,37 +168,76 @@ repository.
 - **Where risk actually concentrates, based on research done so far**:
   the parcel/property-record-linking space has real, active patent
   holders — CoreLogic/Cotality, Black Knight/ICE Mortgage Technology, and
-  First American chief among them — whose claims cluster around three
+  First American chief among them — whose claims cluster around four
   specific technique *shapes*, not the general goal of "link/match
   property records" (which itself isn't patentable, only a particular
   claimed method for doing it is):
   1. Geometric neighbor/"community" detection (buffer-enlarge, union,
      reduce a group of parcel boundaries) used to impute or validate a
-     *missing address number* by interpolating between neighbors.
+     *missing address number* by interpolating between neighbors
+     (CoreLogic **US10248731B1**, to 2037-03-25; continuation
+     **US11061985B2**, whose claimed purpose is validating or correcting
+     address information; second continuation US20220067117A1, grant
+     status unconfirmed). Claim 1 recites five steps and **two of them
+     are worth knowing before writing any geometry that groups
+     parcels**: the community is parcels *within a threshold distance*
+     with contiguous boundaries, and the border is built by *enlarging*
+     each boundary, unioning, then *reducing* it back. A proximity
+     threshold is therefore a recited element, which is why a distance
+     tolerance is a different proposition from strict adjacency. The
+     back half (border-intersection points, a reduced neighbor set, and
+     bracketing a missing address number) is what the whole claim is
+     for, and `openplaces` does none of it.
   2. A trained machine-learning model used to score match probability
      between two property/record representations (as opposed to a fixed,
      deterministic rule set with no learned parameters).
   3. Detecting records *internally inconsistent* with their own source's
-     mapping/address data, grouping them, and normalizing the group.
+     mapping/address data, grouping them, and normalizing the group
+     (CoreLogic **US9298740B2**; all three independent claims start from
+     a parcel that *failed verification* against mapping or addressing
+     data, which nothing here tests).
   4. A **cascading match that falls through to fuzzy matching**, scores the
      resulting link with a strength indicator, *calibrates that scorer from
      the links it just made*, and then detects and removes an incorrect
-     earlier link (Black Knight US10606854B2, in force to 2038; method and
-     CRM claims, so no hardware recitation saves a library). This is the
-     shape closest to what `openplaces` already does — it normalizes to a
-     comparable form, matches in tiers, and uses `rapidfuzz`. What keeps it
-     clear is the back half: no per-link strength score, nothing that
-     re-tunes a scorer after linking, nothing that unlinks. **Do not add
-     link-confidence scoring that learns from its own past links**, and do
-     not add an unlink-on-reconsideration step, without a specific check
-     against that patent.
+     earlier link (Black Knight US10606854B2, in force to 2038). This is
+     the shape closest to what `openplaces` already does: it normalizes to
+     a comparable form and matches in tiers. **The three independent
+     claims differ, and the narrowest reading is not the safe one** (claims
+     read from the patent text 2026-09-21; an agent's reading, not legal
+     advice). Claim 1 (machine) and claim 15 (method) require the strength
+     indicator and its calibration from the links just made (claim 1 also
+     the removal of an incorrect link). **Claim 17, the computer-readable
+     medium claim and so the one a library is measured against, requires
+     none of that back half** (it appears only in dependent claim 18). Its
+     elements are: an input record with two attributes; a transformation
+     into a comparable form; a first non-fuzzy match on the first
+     attribute; on failure a cascade to a second non-fuzzy match on a
+     second attribute; **on failure of both, a cascade to a fuzzy matching
+     comparison, and a link made on the fuzzy match**. What keeps
+     `openplaces` clear of claim 17 is therefore the *front* half: **no
+     record-linking path falls through from exact key passes to a fuzzy
+     comparison.** `link_by_id`, `link_entities_by_id`, the stacked-units
+     passes, the transaction lane's parcel and address keys and
+     `assign_entity_ids` are exact matches on normalized keys, and a row
+     no exact pass reaches stays unlinked. `rapidfuzz` is used in two
+     places, neither a fall-through of that kind: `reconcile_addresses`
+     compares two address columns *already on one row* to decide whether
+     two sources agree (no record is linked by it), and
+     `io.curator.validation.link_points_to_entities` matches validation
+     points by house number plus fuzzy street name *first* and falls back
+     to distance, the reverse order, for scoring only. **Do not add a fuzzy
+     tier behind exact key passes in any linking step** (parcel, property,
+     transaction, address), do not add link-confidence scoring that learns
+     from its own past links, and do not add an unlink-on-reconsideration
+     step, without a specific check against that patent and the
+     maintainer's decision.
   A new feature that does one of these four things, in this domain,
   deserves a specific check against that sub-area before merging — not a
   general "we checked patents once" assumption. `openplaces`'s existing
   `parcel_id_local`/`geo_id` matching is deterministic string/geometry
   fingerprinting with no learned parameters and no neighbor-comparison or
   address-imputation step, which is why it reads as a different mechanism
-  from all three shapes above — that reasoning doesn't automatically carry
+  from all four shapes above — that reasoning doesn't automatically carry
   over to a new ML-based imputation or inference feature, which may
   resemble shape 2 much more closely by design. If ML matching is ever
   added, note that every independent claim of the shape-2 patent
@@ -204,10 +248,40 @@ repository.
 - **Process for a new imputation/inference/matching/valuation feature
   touching parcel, property, or transaction data**: (1) identify the
   specific technique, not just the goal, and check whether it resembles
-  one of the three shapes above or another known patent in this space;
+  one of the four shapes above or another known patent in this space;
   (2) if it does, flag it to the user explicitly before merging — this is
   a judgment call for a human, not something an agent should silently wave
-  through, the same posture as the IP-ownership section above; (3) where
+  through, the same posture as the IP-ownership section above — **but
+  count the differing steps before flagging anything** (maintainer's
+  rule, 2026-09-22). Infringement needs *every* element of a claim; one
+  element absent is enough to be clear of it. The maintainer set four
+  levels, in these words:
+
+  > Three steps different: silent. Two steps: report but don't ask for
+  > permissions. Moving from two to one steps: warn. Removing the last
+  > step: forbidden
+
+  So three or more differing steps is not a close call and saying so
+  only wastes attention; two is reported in passing, not escalated into
+  a blocking question; going from two to one is the point to warn,
+  because one further change would close the gap; and **taking the count
+  to zero is forbidden outright**, not warned about, because every
+  element present is infringement. The floor is the part of the rule
+  that protects anything, so never treat the warn level as the top of
+  the scale.
+  Count against the claim text, not against a paraphrase, and say which
+  steps you counted. **Count against every independent claim, and let
+  the one with the fewest absent steps decide**, because clearing one
+  claim clears nothing on its own: US10606854B2's claim 17 drops the
+  whole score/calibrate/unlink back half that claims 1 and 15 recite, so
+  a change measured only against claim 1 would read as three steps clear
+  while sitting one step from claim 17. For a library, the
+  computer-readable-medium claim is usually the broadest and is the one
+  to count first. Worked example: a strict contiguity gate on a lot
+  union differs from US10248731B1 claim 1 on the community-and-threshold
+  step, the border-intersection step, the neighbor-set step and the
+  address-bracketing step, so it needed no warning at all, and the 2026-09-22
+  stop on it was over-cautious by this rule; (3) where
   more than one technically valid approach exists, prefer the one that is
   most clearly mechanistically different from a known patented approach —
   this is not purely defensive: a genuinely distinct method is also a
@@ -319,10 +393,10 @@ pytest -k "test_name"                 # single test by name
 Layer 0  core
 Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__, io/consent, geo/address
-Layer 4  io/readers, io/access, table
+Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
+Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -332,7 +406,7 @@ Layer 12 flow/* (scripts, dag, run_stage, submit)
 ```
 Higher-numbered layers may only import from lower-numbered layers.
 
-Two placements are worth knowing. `table` holds the registry-driven row
+Four placements are worth knowing. `table` holds the registry-driven row
 helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
 functions); they sit below `geo/` because `geo/crosswalk` and `geo/ids`
 call them, and keeping them in `io/aggregate`/`io/transform` created a
@@ -340,6 +414,20 @@ module-level import cycle. `io/aggregate` and `io/transform` re-export
 them, so the older import paths still work. `geo/address` is listed
 separately because it depends on nothing above `recipe`, which is what
 lets `table` use `strip_unit_suffix` without reintroducing that cycle.
+`io/steps` holds the step-registry decorator and the lazy loader that
+harmonize, enrich and curate each carried a copy of until 2026-09-22; it
+imports nothing from openplaces, so it sits below all three, and each
+stage keeps its own `_STEP_REGISTRY` dict (tests monkeypatch those by
+name). `io/__init__` is a facade: everything it exports is defined in
+one of the six modules beside it, and the facade only re-exports, so a
+helper that several stages share lives in one of those modules, never in
+a stage folder, because the layer-3 facade cannot import from layer 6.
+**A module in `io/` must not share a name with a facade export**:
+`from openplaces.io import download` yields the *function*, which is
+why the module that defines it is `io/fetch`. A test that binds a
+module object and patches a name on it patches the module the function
+under test lives in, not the facade or a package file; a patch on those
+never reaches a function looking names up in its own globals.
 
 ## Architecture overview
 
@@ -618,9 +706,11 @@ $79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
 roll exists the property spine holds stacked units only (all of Wisconsin:
 Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
 conserved to the dollar). The module docstring
-carries the patent rationale (US9298740B2 claim 1, all-elements rule;
-its other independent claims are still to be read before a public
-release). Data on disk keeps the old row shape until a county is
+carries the patent rationale (US9298740B2, all-elements rule: claims 1
+and 15 recite the same six steps, claim 11 adds a wilderness test, and all
+three start from a parcel that *failed verification* against mapping or
+addressing data, which the split never tests; read from the patent text
+2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
 re-ingested.
 
 Public entrypoint:
@@ -1049,7 +1139,7 @@ exactly one place need not be registered -- `share: delivery: admin_ids:` still
 takes an inline list. `region_admin_id` is the unit a region rolls up to
 (`US-TX`); blank means callers derive it, which is what delivery does.
 
-### Delivery bundles (`io/delivery.py`)
+### Delivery bundles (`io/delivery/`, with `terms.py` and `redaction.py` beside the package file)
 
 `export_delivery` pools a curation recipe's per-process-unit files into a
 region-wide, shareable set of four files sharing one index: the canonical
@@ -1091,7 +1181,7 @@ may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
 walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
 walk never saw Edgecombe's parcels feeding the NC bundle).
-`io.redaction.withhold` then removes that source's values from both read
+`io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
 named after an attribute its recipe maps (or with its entity suffix), or whose
@@ -1255,7 +1345,7 @@ recording a requirement states a fact about the source rather than
 deciding anything for the user. Restrictions on the redistribution/fee
 axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
 `redistribution_restricted`, `resale_restricted` and
-`io/bundle_terms.py` cover those -- and
+`io/delivery/terms.py` cover those -- and
 a blanket ban on automated access is expressed by having no
 `download_url` at all, not by a requirement.
 

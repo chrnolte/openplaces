@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from openplaces.core.schema import AdminId
-from openplaces.io import admin as admin_module
+from openplaces.io.admin import spine as admin_module
 
 WAKE_STALE = 'US-NC-WA'
 WAKE_TOWN = 'US-NC-WA-CA'
