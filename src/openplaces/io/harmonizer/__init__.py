@@ -182,23 +182,43 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
 
 
 def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):
-    """Return the checkpointed spine when *chain* still validates, else None."""
+    """Return ``(spine, handoff)`` when *chain* still validates, else None.
+
+    *handoff* is the pipeline metadata the skipped steps would have put in
+    ``state.metadata`` (see :func:`_handoff_metadata`); the caller applies
+    it with :func:`_apply_handoff_metadata`. A checkpoint written before
+    the handoff was stored yields an empty dict.
+    """
+    path = _attribute_checkpoint_path(recipe, admin_id)
+    if not path.exists():
+        return None
+    loaded = _read_checkpoint(path, chain)
+    if loaded is None:
+        if verbose and path.exists():
+            print('  Checkpoint stale; running the full pipeline.')
+        return None
+    spine, handoff = loaded
+    if verbose:
+        print(
+            f'  Checkpoint: restored {len(spine):,d} rows after step '
+            f'{len(chain["steps"])}; earlier steps skipped.'
+        )
+    return spine, handoff
+
+
+def _read_checkpoint(path, chain):
+    """Read a checkpoint parquet; None when unreadable or *chain* differs."""
     import json as _json
 
     import geopandas as gpd
     import pyarrow.parquet as pq
 
-    path = _attribute_checkpoint_path(recipe, admin_id)
-    if not path.exists():
-        return None
     try:
         meta = pq.read_schema(path).metadata or {}
         stored = _json.loads(meta[b'openplaces:checkpoint'])
     except Exception:
         return None
     if stored != chain:
-        if verbose:
-            print('  Checkpoint stale; running the full pipeline.')
         return None
     try:
         try:
@@ -207,34 +227,90 @@ def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):
             spine = pd.read_parquet(path)
     except Exception:
         return None
-    if verbose:
-        print(
-            f'  Checkpoint: restored {len(spine):,d} rows after step '
-            f'{len(chain["steps"])}; earlier steps skipped.'
-        )
-    return spine
+    handoff = {}
+    raw = meta.get(HARMONIZE_METADATA_KEY.encode())
+    if raw is not None:
+        try:
+            handoff = _json.loads(raw)
+        except Exception:
+            handoff = {}
+    return spine, handoff
 
 
-def _save_attribute_checkpoint(recipe, admin_id, spine, chain, verbose=False):
-    """Persist *spine* plus its validity *chain* in the parquet footer."""
+def _save_attribute_checkpoint(
+    recipe, admin_id, spine, chain, handoff=None, verbose=False
+):
+    """Persist *spine*, its validity *chain* and the *handoff* metadata.
+
+    The checkpoint restores the frame after step N and skips every step
+    before it, including ``resolve_spine``, which renames a parcel spine's
+    index to a working name and records the original in
+    ``state.metadata['spine_index_name']`` for the save step to restore.
+    Until 2026-09-22 the checkpoint carried only the frame, so a restored
+    parcel spine shipped under the working name with no ``parcel_id``
+    column and curate refused it. The metadata rides in the footer under
+    the same key the output parquet uses, in the same shape.
+    """
+    path = _attribute_checkpoint_path(recipe, admin_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _write_checkpoint(path, spine, chain, handoff)
+        if verbose:
+            print(f'  Checkpoint saved: {path.name}')
+    except Exception as exc:
+        warnings.warn(f'Could not save attribute checkpoint: {exc}')
+
+
+def _write_checkpoint(path, spine, chain, handoff=None):
+    """Write *spine* to *path* with *chain* and *handoff* in the footer."""
     import json as _json
 
     import pyarrow.parquet as pq
 
     from openplaces.io import to_parquet
 
-    path = _attribute_checkpoint_path(recipe, admin_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        to_parquet(coerce_mixed_object_columns(spine.copy()), path)
-        table = pq.read_table(path)
-        meta = dict(table.schema.metadata or {})
-        meta[b'openplaces:checkpoint'] = _json.dumps(chain).encode()
-        pq.write_table(table.replace_schema_metadata(meta), path)
-        if verbose:
-            print(f'  Checkpoint saved: {path.name}')
-    except Exception as exc:
-        warnings.warn(f'Could not save attribute checkpoint: {exc}')
+    to_parquet(coerce_mixed_object_columns(spine.copy()), path)
+    table = pq.read_table(path)
+    meta = dict(table.schema.metadata or {})
+    meta[b'openplaces:checkpoint'] = _json.dumps(chain).encode()
+    if handoff:
+        meta[HARMONIZE_METADATA_KEY.encode()] = _json.dumps(handoff).encode()
+    pq.write_table(table.replace_schema_metadata(meta), path)
+
+
+def _handoff_metadata(state) -> dict:
+    """The JSON-able pipeline metadata a later stage has to be given back.
+
+    ``spine_index_name`` is what the save step renames the index to;
+    ``spine_source_recipe_ids`` and ``spine_keep_columns`` are what
+    ``link_by_id(auto_discover=True)`` needs to keep per-geometry
+    keep_columns from being pooled. Written to the output parquet's footer
+    for the attribute-only successor recipe (see ``load_geospine``) and to
+    the checkpoint's footer for a resumed run of the same recipe.
+    """
+    handoff = {}
+    if state.metadata.get('spine_index_name') is not None:
+        handoff['spine_index_name'] = state.metadata['spine_index_name']
+    for key in ('spine_source_recipe_ids', 'spine_keep_columns'):
+        if state.metadata.get(key):
+            handoff[key] = sorted(state.metadata[key])
+    return handoff
+
+
+def _apply_handoff_metadata(state, handoff: dict) -> None:
+    """Put a stored handoff back into ``state.metadata``.
+
+    Mirrors ``load._restore_handoff_metadata``, which reads the same shape
+    from a geospine output's footer; kept separate so ``load`` need not
+    import this package's root at module import time.
+    """
+    if not handoff:
+        return
+    if handoff.get('spine_index_name') is not None:
+        state.metadata['spine_index_name'] = handoff['spine_index_name']
+    for key in ('spine_source_recipe_ids', 'spine_keep_columns'):
+        if handoff.get(key):
+            state.metadata[key] = set(handoff[key])
 
 
 def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
@@ -652,7 +728,10 @@ class Harmonizer:
                 self.recipe, admin_id, chain, verbose=self.verbose
             )
             if restored is not None:
-                state.spine = restored
+                state.spine, handoff = restored
+                # The skipped steps set this metadata; without it the save
+                # step below cannot restore a parcel spine's index name.
+                _apply_handoff_metadata(state, handoff)
                 resume_from = checkpoint_index + 1
 
         recipe_id = self.recipe.get('recipe_id', 'recipe')
@@ -697,7 +776,12 @@ class Harmonizer:
                 spine_checked = True
             if step_index == checkpoint_index and resume_from == 0:
                 _save_attribute_checkpoint(
-                    self.recipe, admin_id, state.spine, chain, verbose=self.verbose
+                    self.recipe,
+                    admin_id,
+                    state.spine,
+                    chain,
+                    handoff=_handoff_metadata(state),
+                    verbose=self.verbose,
                 )
 
         if state.spine is None:
@@ -722,12 +806,7 @@ class Harmonizer:
         # needs (see load_geospine): in-memory state.metadata does not
         # survive the geometry/attribute recipe split, so the small,
         # JSON-able keys ride in the attribute parquet's footer.
-        handoff = {}
-        if state.metadata.get('spine_index_name') is not None:
-            handoff['spine_index_name'] = state.metadata['spine_index_name']
-        for key in ('spine_source_recipe_ids', 'spine_keep_columns'):
-            if state.metadata.get(key):
-                handoff[key] = sorted(state.metadata[key])
+        handoff = _handoff_metadata(state)
         file_metadata = (
             {HARMONIZE_METADATA_KEY: json.dumps(handoff)} if handoff else None
         )
