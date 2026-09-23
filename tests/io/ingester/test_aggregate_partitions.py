@@ -70,6 +70,123 @@ def test_partition_aggregation_migrates_legacy_transaction_price(tmp_path):
     assert result.loc[0, 'price'] == 1250.0
 
 
+def test_streamed_aggregate_writes_rows_and_footer(tmp_path, capsys):
+    """A first write of several partitions streams, keeping rows and coverage.
+
+    Miami-Dade's 22 yearly vintages are 19.1 million rows, and holding
+    them in one frame is what the low-memory kills were; this path
+    writes one input at a time and must still produce the same file.
+
+    The "streamed" marker is asserted on purpose: the caller falls back
+    to the in-memory path when it cannot fix a schema, so a regression
+    there would keep every assertion below passing while quietly
+    restoring the memory ceiling this exists to remove.
+    """
+    final = tmp_path / 'all.parquet'
+    inputs = [
+        (m, _write_month(tmp_path / f'{m}.parquet', m))
+        for m in ('202101', '202102', '202103')
+    ]
+    _aggregate_to_file(
+        final,
+        inputs,
+        how='union',
+        reset_index=True,
+        keep_original=True,
+        verbose=True,
+        file_metadata={
+            'openplaces:partitions': json.dumps(['202101', '202102', '202103'])
+        },
+    )
+
+    assert 'streamed' in capsys.readouterr().out
+    result = read_parquet(final)
+    assert len(result) == 9
+    assert read_partition_coverage(final) == {'202101', '202102', '202103'}
+    assert not list(tmp_path.glob('*.building'))
+
+
+def test_streamed_aggregate_unions_columns_across_vintages(tmp_path):
+    """A column one vintage lacks is null there, not a lost column.
+
+    This is the Florida case exactly: `improvement_value` was derived by
+    a recipe change, so a re-ingested vintage carries it and an older
+    file need not.
+    """
+    final = tmp_path / 'all.parquet'
+    old = tmp_path / 'old.parquet'
+    new = tmp_path / 'new.parquet'
+    save_parquet(pd.DataFrame({'a': [1, 2]}), old)
+    save_parquet(pd.DataFrame({'a': [3], 'improvement_value': [500]}), new)
+
+    _aggregate_to_file(
+        final,
+        [('2024', old), ('2025', new)],
+        how='union',
+        reset_index=True,
+        keep_original=True,
+    )
+
+    result = read_parquet(final)
+    assert len(result) == 3
+    assert 'improvement_value' in result.columns
+    assert result['improvement_value'].notna().sum() == 1
+    assert set(result['a']) == {1, 2, 3}
+
+
+def test_streamed_aggregate_widens_a_column_empty_in_the_first_vintage(tmp_path):
+    """An all-empty column in the earliest input does not fix the type.
+
+    Miami-Dade's 2002 vintage has columns that are entirely empty, which
+    reach arrow as type `null`. Fixing the writer's schema from the
+    first input made every later vintage try to cast `large_string`
+    down to `null`, which arrow refuses, so the real merge died where
+    the tests passed. The schema has to be the widest of the inputs.
+    """
+    final = tmp_path / 'all.parquet'
+    empty = tmp_path / 'y2002.parquet'
+    typed = tmp_path / 'y2003.parquet'
+    save_parquet(pd.DataFrame({'a': [1, 2], 'note': [None, None]}), empty)
+    save_parquet(pd.DataFrame({'a': [3], 'note': ['sold']}), typed)
+
+    _aggregate_to_file(
+        final,
+        [('2002', empty), ('2003', typed)],
+        how='union',
+        reset_index=True,
+        keep_original=True,
+    )
+
+    result = read_parquet(final)
+    assert len(result) == 3
+    assert set(result['a']) == {1, 2, 3}
+    assert result['note'].dropna().tolist() == ['sold']
+
+
+def test_streamed_aggregate_refuses_duplicates_and_leaves_no_output(tmp_path):
+    """Duplicate rows across inputs raise, and write no partial file.
+
+    The check is by row hash rather than by holding the rows, so it must
+    still refuse the merge outright: a half-written aggregate that looks
+    finished is worse than no aggregate.
+    """
+    final = tmp_path / 'all.parquet'
+    a = _write_month(tmp_path / 'a.parquet', '202101')
+    b = _write_month(tmp_path / 'b.parquet', '202101')
+
+    with pytest.raises(ValueError, match='duplicate row'):
+        _aggregate_to_file(
+            final,
+            [('202101', a), ('202101b', b)],
+            how='union',
+            reset_index=True,
+            keep_original=True,
+        )
+
+    assert not final.exists()
+    assert not list(tmp_path.glob('*.building'))
+
+
 def test_read_coverage_missing_or_unmarked(tmp_path):
     """Empty set for a missing file or a file without the coverage key."""
     assert read_partition_coverage(tmp_path / 'nope.parquet') == set()
