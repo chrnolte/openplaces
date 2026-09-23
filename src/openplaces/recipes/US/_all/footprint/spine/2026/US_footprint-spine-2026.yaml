@@ -52,6 +52,13 @@ pipeline:
 
   - step: classify_footprint_priority
     entity_type: parcel
+    thresholds:
+      # Keep a parcel's largest footprint primary when an address point
+      # sits on a structure a third its size or smaller and an NSI point
+      # sits on the large one. Measured against roll floor area
+      # 2026-09-17: the large footprint is the dwelling on 68% (NC) and
+      # 89% (TX) of such parcels; see classify_footprint_priority.
+      dwelling_override_ratio: 3.0
 
   # Attribution only: aggregate source columns into suffixed evidence columns.
   # checkpoint: the spine after this step is persisted; a rerun whose
