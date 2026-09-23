@@ -324,6 +324,10 @@ pipeline:
     allow_missing: true
     columns:
       building_style: building_style_parcel
+      # The roll's story count and floor area, read only by
+      # adopt_stories_by_floor_area_fit below.
+      n_stories: n_stories_parcel
+      living_area_sqft: living_area_sqft_parcel
 
   # Apportion curated parcel values to footprints:
   # - improvement_value is split by footprint overlap-area share (residential splitting
@@ -448,6 +452,21 @@ pipeline:
 
   # Infer: derive new features from the reconciled evidence.
   - step: derive_metrics
+
+  # A consolidated condo-cluster footprint smaller than any building is
+  # not the building its summed unit values describe: where the cluster's
+  # "unit" parcels are slivers (median 5 m2), the geospine falls back to
+  # their union, and every unit's improvement value lands on it. Measured
+  # 2026-09-20 on the shipped bundles: 68 TX and 5 NC such footprints,
+  # up to $1.0bn per m2. The value is unknown at this geometry, so it is
+  # withdrawn rather than shipped; the geometry fix (a minimum unit area
+  # in the cluster detection) belongs to the next geospine rerun. After
+  # derive_metrics, which computes both area_m2 and the ratio.
+  - step: suppress_where
+    column: [structure_value, structure_value_per_area]
+    indicators:
+      - {type: keyword, column: geometry_source, pattern: '^condo_cluster\.'}
+      - {type: numeric_below, column: area_m2, max: 20}
 
   # Derivation layer: the named precursors the occupancy vote scores against.
   # Values only, no thresholds -- every cutoff lives in the decisions below,
@@ -648,6 +667,10 @@ pipeline:
   - step: reconcile_values
     priority:
       n_stories: [n_stories_brails, n_stories_building_nsi, n_stories_building_cheer]
+      # The roll's story count is not a lane here: rolls define stories
+      # differently (Harris TX counts one NSI does not; Medfield MA's
+      # code is not a count), so it is adopted per admin unit by the
+      # next step, only where it fits the roll's floor area better.
       # Roof shape: our own per-image classification first, then CHEER's
       # statewide run of the same classifier. Both are BRAILS outputs, so
       # this is a coverage cascade, not a quality ranking -- whichever
@@ -682,6 +705,17 @@ pipeline:
       # foundation, but national.
       construction_type: [construction_type_building_cheer,
                           construction_type_building_nsi]
+
+  # Fill a missing story count from the roll, per county or town, and
+  # only where the roll's counts fit the roll's own floor area better
+  # on at least 70% of the sole-primary footprints where the two
+  # disagree. Present counts are kept: overwriting them was measured on
+  # Boston 2026-09-17 and mostly lowered counts (Boston 18,404 down,
+  # 8,017 up) with no independent floor area to arbitrate. Runs before
+  # the occupancy votes, which read n_stories.
+  - step: adopt_stories_by_floor_area_fit
+    min_share: 0.7
+    min_rows: 100
 
   # Estimate manufactured home probability using morphology/assessor keywords for voting.
   - step: classify_manufactured_homes
