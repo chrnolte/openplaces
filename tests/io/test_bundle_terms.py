@@ -10,7 +10,7 @@ as unchecked rather than quietly omitted.
 import pandas as pd
 import pytest
 
-from openplaces.io.bundle_terms import bundle_terms, format_notice
+from openplaces.io.delivery.terms import bundle_terms, format_notice
 
 RECIPE = 'US_footprint-openplaces-2026'
 
@@ -243,7 +243,7 @@ def _fabricated_source_terms(monkeypatch, **overrides):
     No committed recipe records a no-resale clause yet, so the contract
     is pinned on a made-up source rather than on a real county.
     """
-    import openplaces.io.bundle_terms as module
+    import openplaces.io.delivery.terms as module
 
     entry = {
         'source_id': 'examplepa',
@@ -298,7 +298,7 @@ def test_a_restricted_source_replaces_that_sentence_with_a_pointer():
 
 
 def test_the_notice_names_the_recipe_roots(terms):
-    from openplaces.io.bundle_terms import format_notice
+    from openplaces.io.delivery.terms import format_notice
     from openplaces.path import BUNDLED_RECIPES_DIR
 
     text = format_notice(RECIPE, terms)
@@ -314,7 +314,7 @@ def _fake_recipes(monkeypatch, recipes, edges):
     """Stand up a small recipe graph for the source walk."""
     from types import SimpleNamespace
 
-    import openplaces.io.bundle_terms as module
+    import openplaces.io.delivery.terms as module
 
     def get_recipe_by_id(recipe_id):
         return recipes[recipe_id]
@@ -353,7 +353,7 @@ def _restricted_recipe(recipe_id, entity_type, columns):
 
 
 def test_a_source_linked_for_named_columns_reaches_only_those(monkeypatch):
-    from openplaces.io.bundle_terms import restricted_inputs
+    from openplaces.io.delivery.terms import restricted_inputs
 
     vendor = _restricted_recipe(
         'US_property-closedvendor-2026',
@@ -388,7 +388,7 @@ def test_a_source_linked_for_named_columns_reaches_only_those(monkeypatch):
 
 
 def test_a_source_read_as_a_layer_reaches_everything_it_maps(monkeypatch):
-    from openplaces.io.bundle_terms import restricted_inputs
+    from openplaces.io.delivery.terms import restricted_inputs
 
     roll = _restricted_recipe(
         'US-NC-XX_parcel-closedvendor-2026',

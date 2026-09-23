@@ -39,7 +39,7 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
-from openplaces.io.access import read_access_table
+from openplaces.io.ingester.access import read_access_table
 from openplaces.io.readers import get_admin
 from openplaces.io.transform import (
     add_unique_suffix,

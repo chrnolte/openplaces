@@ -25,9 +25,9 @@ from openplaces.io.aggregate import (
     read_file_metadata,
     read_partition_coverage,
 )
-from openplaces.io.avenu_adapter import AvenuAdapter
-from openplaces.io.avenu_selectors import TRANSACTION_DOC_TYPES
 from openplaces.io.readers import get_admin
+from openplaces.io.scrapers.avenu_adapter import AvenuAdapter
+from openplaces.io.scrapers.avenu_selectors import TRANSACTION_DOC_TYPES
 from openplaces.io.transform import apply_transformations
 from openplaces.path import recipe_path
 from openplaces.recipe import (

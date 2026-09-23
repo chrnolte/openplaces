@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from openplaces.core.constants import ACCESS_EXTENSIONS
-from openplaces.io import access
+from openplaces.io.ingester import access
 from openplaces.io.ingester.table_ingester import TableIngester
 
 
@@ -115,7 +115,7 @@ import sys
 
 import jpype
 
-from openplaces.io import access
+from openplaces.io.ingester import access
 
 access._start_jvm()
 jclass = jpype.JClass

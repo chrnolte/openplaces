@@ -27,8 +27,8 @@ import urllib.request
 
 import pandas as pd
 
-from openplaces.io import admin_wikidata as wd
 from openplaces.io import request_headers
+from openplaces.io.admin import wikidata as wd
 from openplaces.recipe import recipe_path
 
 SPARQL = 'https://query.wikidata.org/sparql'
