@@ -151,6 +151,17 @@ pipeline:
       # the park and standalone manufactured-home patterns (the latter a
       # strict superset of the former) from both claiming the same parcel
       # and being separated by rule order rather than by evidence.
+      #
+      # The Multi-Family row sits after Condominium, Townhome, the
+      # manufactured-home rows and Vacant, so a label naming one of
+      # those keeps it (CONDO - TWO FAMILY is a Condominium), and
+      # before the non-residential rows, so an apartment building an
+      # assessor taxes as commercial (COMMERCIAL | MULTI FAMILY
+      # DWELLING) reads Multi-Family. Its lookahead refuses mixed-use
+      # labels (MIXED, STORE, RETAIL, OFFICE) outright, so a store with
+      # flats above keeps its non-residential class. "Family" alone
+      # never matches: only a count (two, 3, four) or MULTI qualifies
+      # it, so single family and MULTIPLE HOUSES stay out.
       - output: keyword_class
         type: ruleset_class
         column: use_group_combined
@@ -159,12 +170,14 @@ pipeline:
       # The structure description read through the same rules, but only
       # where the land use named no class (where_null): the two are
       # readings of one assessor record, and letting both fire would
-      # reach a decision's min_score from a single field. Sampson County
-      # NC is the case that needs it: a land-segment use_group that
-      # matches nothing, and a style column naming its manufactured
-      # homes. building_style stays out of use_group_combined (see the
-      # parcel spine's derive_use_classes) so cohort statistics keyed on
-      # it do not fragment on style text.
+      # reach a decision's min_score from a single field. It follows
+      # that a style never overrides a land use that names a class: a
+      # Boston three family whose style reads Row Middle stays
+      # Multi-Family, not Townhome. Sampson County NC is the measured
+      # gain: style names manufactured homes on 183 parcels whose land
+      # use names no class (2026-09-13). building_style stays out of
+      # use_group_combined (see the parcel spine's derive_use_classes)
+      # so cohort statistics keyed on it do not fragment on style text.
       - output: style_class
         type: ruleset_class
         column: building_style
@@ -311,7 +324,8 @@ pipeline:
       # dwellings on ONE footprint, regardless of how many parcels it spans)
       # is deliberately excluded here: that pattern is a vertically-stacked
       # condo/multi-family building on a single parcel, not a townhome --
-      # see Condominium below and the vote-based Multi-Family default.
+      # see Condominium above, and the Multi-Family decision below and
+      # its reconcile_land_use default.
       - class: Townhome
         min_score: 4
         indicators:
@@ -334,6 +348,56 @@ pipeline:
             value: land_value
             total: [land_value, improvement_value]
             min_ratio: 0.01
+
+      # Multi-Family where the assessor's own land use says so: a unit
+      # count or building type (two/three family, duplex, decker,
+      # apartments). HAZUS counts a duplex or two-family as
+      # Multi-Family (RES3A/RES3B), and this vocabulary has no
+      # separate duplex class. The land use alone suffices, as it does
+      # for the non-residential keyword classes below: NSI and FEMA
+      # model occupancy while the roll records it, and without this
+      # decision reconcile_land_use lets the two of them outvote it.
+      #
+      # The structure description counts only with an independent
+      # Multi Family reading from the assessor cohort (group_parcel) or
+      # FEMA. The ruleset has no Single-Family row, so a land use
+      # saying single family leaves keyword_class empty and where_null
+      # cannot silence the style there: Seminole County FL carries
+      # MULTI FAMILY < 10 UNITS styles on parcels its DOR code calls
+      # single family. The corroboration keeps such a style from
+      # asserting the class on its own. (Such a row was measured and
+      # not added: it would also silence the Row Middle and Townhouse
+      # styles that correctly mark single-family attached homes.)
+      #
+      # Score 1 loses to Condominium, Townhome and Vacant wherever
+      # their own evidence reaches 2 or more, and ties only with the
+      # min_score-1 classes below, which it precedes. Parcels this
+      # decision does not claim still reach Multi-Family through the
+      # reconcile_land_use default. Plain Multi-Family, never a height
+      # band: the footprint occupancy vote bands its own class by
+      # n_stories and does not read this one. Measured 2026-09-13 in
+      # memory on nine counties: classes moved on 0.02% to 0.41% of
+      # parcels in seven, 2.39% in Boston (two- and three-family row
+      # houses leaving Townhome) and 4.14% in Wilson NC (apartments
+      # its roll files as COMMERCIAL or RESIDENTIAL Multi Family
+      # Dwelling, previously Commercial or Single-Family).
+      - class: Multi-Family
+        min_score: 1
+        indicators:
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Multi-Family}
+              - type: all_of
+                indicators:
+                  - {type: equals, column: style_class, value: Multi-Family}
+                  - type: any_of
+                    indicators:
+                      - type: in_set
+                        column: group_parcel
+                        values: [Multi Family]
+                      - type: in_set
+                        column: group_footprint_fema
+                        values: [Multi Family]
 
       # Vacant land based on negligible building area, low improvement value, or keyword evidence.
       - class: Vacant
