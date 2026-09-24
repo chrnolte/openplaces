@@ -41,10 +41,25 @@
 # pinned to this vintage; the district's data page links the next
 # export under a new dated name.
 #
+# VALUES. Unlike the Victoria and Jefferson rolls, this one maps land
+# and improvement values, because TxGIO's Cameron rows carry a market
+# total and nothing else: LAND_VALUE and IMP_VALUE are 0 on all 185,038
+# parcels (measured 2026-09-23 on the curated parcels), so every Cameron
+# structure value shipped from NSI. The PACS value block is
+# land_hstd_val, land_non_hstd_val, imprv_hstd_val, imprv_non_hstd_val,
+# ag_use_val, ag_market, timber_use, timber_market, then appraised_val
+# (layout positions 1796-1930), and market_value equals land_hstd +
+# land_non_hstd + imprv_hstd + imprv_non_hstd + ag_market +
+# timber_market on 503 of 503 real-property rows sampled from the head
+# and middle of File #2 (the file's tail is personal-property and
+# mineral accounts, whose value sits in fields not read here). The
+# components are the owner's share like market_value (one repeated
+# prop_id in the sample: 33.33 and 66.67), so they are scaled back the
+# same way. appraised_val minus ten_percent_cap is assessed_val; neither
+# is read.
+#
 # NOT MAPPED. Owner name and mailing address (py_owner_name and the
-# py_addr block) are never read; nothing downstream needs them. Land
-# and improvement values are not mapped for the reason given in the
-# Victoria recipe; market_value is the total.
+# py_addr block) are never read; nothing downstream needs them.
 
 description: >-
   Cameron County, TX certified appraisal roll (PACS 8.0.33 export): state
@@ -96,7 +111,17 @@ fixed_width:
   - [legal_acreage, 16]
   - [abs_subdv_cd, 10]
   - [hood_cd, 10]
-  - [filler, 220]
+  - [filler, 100]
+  # The value block (layout 8.0.34 positions 1796-1915, 15 wide each,
+  # the same in 8.0.33): what market_value is the sum of.
+  - [land_hstd_val, 15]
+  - [land_non_hstd_val, 15]
+  - [imprv_hstd_val, 15]
+  - [imprv_non_hstd_val, 15]
+  - [ag_use_val, 15]
+  - [ag_market, 15]
+  - [timber_use, 15]
+  - [timber_market, 15]
   - [appraised_val, 15]
   - [filler, 801]
   - [imprv_state_cd, 10]
@@ -137,6 +162,56 @@ transformations:
       total_value).round()
     inputs: [total_value, ownership_pct]
     output: total_value
+  # Land and improvement on the market basis market_value is the sum
+  # of (see VALUES in the header): land is the homestead and
+  # non-homestead land plus agricultural and timber land at market,
+  # improvement the homestead and non-homestead improvement. Each
+  # component is the owner's share like market_value, so both sums are
+  # scaled back to the whole property the same way.
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: land_non_hstd_val
+    output: land_non_hstd_val
+  - type: unary
+    operation: to_numeric
+    input: ag_market
+    output: ag_market
+  - type: unary
+    operation: to_numeric
+    input: timber_market
+    output: timber_market
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, land_non_hstd_val, ag_market, timber_market]
+    output: land_value
+  - type: expression
+    expression: >-
+      (land_value * 100 / ownership_pct).where(ownership_pct > 0,
+      land_value).round()
+    inputs: [land_value, ownership_pct]
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: imprv_non_hstd_val
+    output: imprv_non_hstd_val
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value, imprv_non_hstd_val]
+    output: improvement_value
+  - type: expression
+    expression: >-
+      (improvement_value * 100 / ownership_pct).where(ownership_pct > 0,
+      improvement_value).round()
+    inputs: [improvement_value, ownership_pct]
+    output: improvement_value
   # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
   # bare form.
   - type: string
@@ -148,8 +223,17 @@ transformations:
 
 drop_columns:
   - ownership_pct
+  - land_non_hstd_val
+  - imprv_non_hstd_val
+  - ag_use_val
+  - ag_market
+  - timber_use
+  - timber_market
+  - appraised_val
 
 columns:
+  land_value: land_hstd_val
+  improvement_value: imprv_hstd_val
   tax_neighborhood_code: hood_cd
   parcel_id_admin2_2: geo_id
   use_group_code: land_state_cd
