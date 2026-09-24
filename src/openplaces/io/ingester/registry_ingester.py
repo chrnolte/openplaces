@@ -37,6 +37,34 @@ from openplaces.recipe import (
 )
 from openplaces.timing import Timer
 
+# The application this ingester knows how to drive, as a crosswalk's
+# `platform` column spells it. Registries of one state need not share
+# one: Massachusetts has 21 districts on at least three platforms, and
+# only this one exposes the recorded-date search the crawler uses.
+DRIVABLE_PLATFORM = 'avenu_i2'
+
+# The adapter that drives each registry application, keyed by the
+# `platform` a town's crosswalk row names. Massachusetts alone spreads
+# its 21 districts over at least three of these, so the platform is
+# data about the registry rather than a property of the state.
+ADAPTERS = {
+    DRIVABLE_PLATFORM: AvenuAdapter,
+}
+
+# Platforms an adapter exists for that still cannot be crawled by date,
+# with the reason, so the skip says why rather than "no adapter". ALIS
+# indexes recorded land by name and by instrument number: no screen it
+# offers takes a date range on its own (every one read on 2026-09-23),
+# so enumerating a town's deeds would mean iterating names rather than
+# days. `AlisAdapter` drives what ALIS does support, a lookup.
+NOT_CRAWLABLE = {
+    'alis': (
+        'ALIS indexes by name and instrument number, not by date, so a '
+        'date-range crawl is not possible; openplaces.io.scrapers.'
+        'alis_adapter.AlisAdapter looks a name or an instrument up'
+    ),
+}
+
 
 def _month_partitions(year: int) -> list[tuple[str, str]]:
     """Return (date_from, date_to) string pairs for each month of year."""
@@ -190,12 +218,37 @@ class RegistryIngester:
                     continue
                 town_name = entry['town_name']
                 base_url = entry['base_url']
+                # A state's registries need not all run one application.
+                # Massachusetts publishes 21 districts: 11 on
+                # masslandrecords (`avenu_i2`), three on ALIS, and the
+                # rest on sites whose search application has not been
+                # examined. Skipping an undrivable one by name beats
+                # crawling into a 404 for a minute and reporting it as
+                # an empty search menu, which is how Brookline read
+                # until 2026-09-22.
+                platform = entry.get('platform', DRIVABLE_PLATFORM)
+                adapter_class = ADAPTERS.get(platform)
+                if adapter_class is None:
+                    reason = NOT_CRAWLABLE.get(
+                        platform,
+                        f'this ingester crawls {sorted(ADAPTERS)}',
+                    )
+                    warnings.warn(
+                        f'{town_name} ({admin4_id}) is served by '
+                        f'{base_url}, which runs {platform!r}: {reason}. '
+                        'Skipping.',
+                        stacklevel=2,
+                    )
+                    continue
                 if self.verbose:
-                    print(f'Crawling {town_name} ({admin4_id}) via {base_url}')
+                    print(
+                        f'Crawling {town_name} ({admin4_id}) via {base_url} '
+                        f'({platform})'
+                    )
 
                 page_count = 0
                 context = await browser.new_context()
-                adapter = AvenuAdapter(base_url, context)
+                adapter = adapter_class(base_url, context)
                 await adapter.start_session()
 
                 for doc_type in TRANSACTION_DOC_TYPES:
@@ -225,7 +278,7 @@ class RegistryIngester:
                         if page_count >= self.session_refresh_pages:
                             await context.close()
                             context = await browser.new_context()
-                            adapter = AvenuAdapter(base_url, context)
+                            adapter = adapter_class(base_url, context)
                             await adapter.start_session()
                             page_count = 0
 
@@ -422,6 +475,28 @@ class RegistryIngester:
                     stacklevel=2,
                 )
 
+        # Two rows identical in everything but `_join_id` are one
+        # document the crawler read twice, and carry no information
+        # between them. They used to be saved anyway, which blocked the
+        # roll-up much later and far from the cause: Medford's 2025-12
+        # crawl held 18 such pairs, and `aggregate_partitions` refused
+        # the whole town's merge after 263 minutes of crawling, because
+        # openplaces' reader drops `_join_id` and so sees plain
+        # duplicates. Dropped here, where the cause is visible; the
+        # diagnostic CSV above still records every (book, page) repeat,
+        # including the ones that differ in substance and are a
+        # genuinely different document sharing a page.
+        subset = [c for c in df.columns if c != '_join_id']
+        if subset and len(df) > 0:
+            repeated = df.duplicated(subset=subset, keep='first')
+            if repeated.any():
+                warnings.warn(
+                    f'{int(repeated.sum())} row(s) in {partition_id} repeat '
+                    'another row exactly; keeping one of each.',
+                    stacklevel=2,
+                )
+                df = df[~repeated]
+
         # Stamp the scrape time into the parquet footer so _is_done can tell
         # whether the partition's month was already over when it was scraped
         # (i.e. whether the file holds the complete month).
@@ -543,19 +618,29 @@ class RegistryIngester:
     def _load_crosswalk(
         csv_path: Path, admin_id: str, level: int = 4
     ) -> dict[str, dict]:
-        """Return mapping of town admin id → {'base_url', 'town_name'}.
+        """Return mapping of town admin id → registry entry.
+
+        The entry carries `base_url`, `town_name` and `platform`, the
+        last naming the application the registry runs so that the
+        caller can skip one this ingester cannot drive.
 
         Towns are read at *level*, the recipe's `process_by` admin level:
         since the 2026-08 re-mint a Massachusetts town is a level-3 unit
         and the state has no level 4, so the fixed level-4 lookup this
         method used to make raised for every run.
+
+        A crosswalk with no `platform` column is read as all-drivable,
+        which is what it meant before the column existed.
         """
         import csv
 
-        raw: dict[str, str] = {}
+        raw: dict[str, dict[str, str]] = {}
         with open(csv_path, newline='', encoding='utf-8') as f:
             for row in csv.DictReader(f):
-                raw[row['town_name']] = row['base_url']
+                raw[row['town_name']] = {
+                    'base_url': row['base_url'],
+                    'platform': (row.get('platform') or DRIVABLE_PLATFORM),
+                }
 
         admin4_df = get_admin(admin_id, level=level)
         crosswalk: dict[str, dict] = {}
@@ -569,5 +654,5 @@ class RegistryIngester:
                 if name.lower().endswith(' town'):
                     name = name[:-5]
             if name in raw:
-                crosswalk[idx] = {'base_url': raw[name], 'town_name': name}
+                crosswalk[idx] = {**raw[name], 'town_name': name}
         return crosswalk

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+import warnings
 
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.readers import get_entities
-from openplaces.table import aggregate_rows
+from openplaces.table import add_unique_suffix, aggregate_rows
 
 _NON_ALNUM = re.compile(r'[^0-9A-Za-z]')
 
@@ -85,11 +86,12 @@ def derive_sale_period(
 @_register('flag_sales_matching_other_kind')
 def flag_sales_matching_other_kind(
     state: CurateState,
-    key_column: str,
+    key_column: str | list[str],
     kind_column: str = 'sale_record_kind',
     flagged_kind: str = 'assessor_last_sale',
     reference_kind: str = 'deed',
     output: str = 'sale_matches_deed',
+    fill_only: bool = False,
 ) -> CurateState:
     """Flag an assessor last-sale row that a recorded deed also reports.
 
@@ -108,8 +110,19 @@ def flag_sales_matching_other_kind(
 
     Parameters
     ----------
-    key_column : str
-        Column identifying the parcel both rows name.
+    key_column : str or list of str
+        Column, or columns, identifying the thing both rows name. A
+        list is a composite key and every part must be present on a
+        row for it to be compared. Which columns depends on the state:
+        a parcel id where both sides carry one, and book and page where
+        neither does. Massachusetts is the second case, its registry
+        deeds having no `parcel_id_local` at all, so the flag was
+        missing on every MA row until a second pass keyed on the
+        document instead.
+    fill_only : bool, optional
+        Only write rows the output column has not already decided, so a
+        later pass on a different key fills what the first could not
+        reach without overruling it.
     kind_column : str, optional
         Column holding the record kind (default `sale_record_kind`).
     flagged_kind, reference_kind : str, optional
@@ -120,14 +133,17 @@ def flag_sales_matching_other_kind(
         lacking any of the four values.
     """
     curated = state.curated
-    needed = [key_column, kind_column, 'sale_year', 'sale_month', 'price']
+    keys = [key_column] if isinstance(key_column, str) else list(key_column)
+    needed = [*keys, kind_column, 'sale_year', 'sale_month', 'price']
     if any(c not in curated.columns for c in needed):
-        # No comparison is possible (Massachusetts rows carry no parcel
-        # key); the column is still written, so every unit has it.
-        curated[output] = float('nan')
+        # No comparison is possible on this key; the column is still
+        # written, so every unit has it, and a later pass on another key
+        # may still fill it.
+        if output not in curated.columns:
+            curated[output] = float('nan')
         state.curated = curated
         return state
-    values = curated[[key_column, 'sale_year', 'sale_month', 'price']]
+    values = curated[[*keys, 'sale_year', 'sale_month', 'price']]
     complete = values.notna().all(axis=1)
     # Column-wise concatenation: a missing part makes the key missing.
     text = values.astype('string')
@@ -138,6 +154,8 @@ def flag_sales_matching_other_kind(
     flag = pd.Series(float('nan'), index=curated.index, dtype='float64')
     target = (curated[kind_column] == flagged_kind) & complete
     flag.loc[target] = key.loc[target].isin(reference).astype('float64')
+    if fill_only and output in curated.columns:
+        flag = pd.to_numeric(curated[output], errors='coerce').fillna(flag)
     curated[output] = flag
     state.curated = curated
     if state.verbose:
@@ -265,6 +283,10 @@ def join_temporal_snapshot(
     restrict_to: dict | None = None,
     match_type_column: str | None = None,
     prefix: str = '',
+    require_panel: bool = False,
+    no_panel_value: str = 'no_panel',
+    single_vintage_value: str = 'single_vintage',
+    mark_unmatched: str | None = None,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
 
@@ -306,9 +328,28 @@ def join_temporal_snapshot(
     match_type_column : str, optional
         Column to write ``'exact'`` / ``'{direction}_fallback'`` into for
         rows this pass matched. Left untouched for rows it does not
-        reach.
+        reach, so a later pass can still claim them.
     prefix : str, optional
         Prepended to each attached column's name (default ``''``).
+    require_panel : bool, optional
+        For a pipeline that runs everywhere: return quietly, rather than
+        raising, where this admin unit has no reference on disk, and
+        where the reference carries only one vintage. Only Florida's DOR
+        roll is a panel today (24 yearly rolls); the other 104 assessor
+        sources are one vintage each, so a nationwide recipe must treat
+        "no panel here" as the ordinary case
+        (`plans/multi-year-tax-rolls-property-panel.md`).
+    no_panel_value, single_vintage_value : str, optional
+        Written into *match_type_column* for every active row when
+        *require_panel* turns the pass off. **A missing value would not
+        say this**: it cannot distinguish a county with no panel from a
+        sale a panel did not match, and the two mean very different
+        things to anyone reading the output.
+    mark_unmatched : str, optional
+        Written into *match_type_column* for active rows this pass left
+        unset. Belongs on the last temporal pass of a recipe, where a
+        row still unmarked genuinely means "the panel was read and did
+        not have this property".
     """
     # Validate the request before reading the reference, so a recipe
     # error is reported as one rather than as a missing data file.
@@ -322,22 +363,84 @@ def join_temporal_snapshot(
     if only_unmatched:
         active_mask &= curated[match_type_column].isna()
     if restrict_to:
+        # A restriction on a column this source does not have selects no
+        # rows, rather than raising: the national pipeline runs this step
+        # over every state, and `sale_vacant` is Florida's word. Reached
+        # before the panel check below, so it has to be survivable on its
+        # own (Wisconsin has neither the column nor a panel).
+        if restrict_to['column'] not in curated.columns:
+            return state
         active_mask &= curated[restrict_to['column']] == restrict_to['equals']
     if not active_mask.any():
         return state
 
     active = curated.loc[active_mask, [join_key, date_column]].copy()
     active[join_key] = _normalized(active[join_key])
-    active[date_column] = pd.to_numeric(active[date_column], errors='coerce')
+    # Both sides to one float dtype: merge_asof refuses keys of
+    # different types, and a sale year with any missing value parses to
+    # float64 while a complete tax_year column parses to int64, so the
+    # join fails on exactly the counties whose sale dates are imperfect.
+    active[date_column] = pd.to_numeric(active[date_column], errors='coerce').astype(
+        'float64'
+    )
 
-    ref = get_entities(recipe_id, admin_id=state.admin_id)
-    ref_columns = [join_key, vintage_column] + [
-        c for c in columns if c != vintage_column
-    ]
+    def _mark_all(value: str) -> CurateState:
+        """Say why this pass did nothing, rather than leaving it blank."""
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active_mask, match_type_column] = value
+            state.curated = curated
+        if state.verbose:
+            print(f'  join_temporal_snapshot ({recipe_id}): {value}')
+        return state
+
+    try:
+        ref = get_entities(recipe_id, admin_id=state.admin_id)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        if not require_panel:
+            raise
+        return _mark_all(no_panel_value)
+    if require_panel and (
+        ref is None
+        or vintage_column not in ref.columns
+        or pd.to_numeric(ref[vintage_column], errors='coerce').nunique() < 2
+    ):
+        # One vintage is a roll, not a panel: joining a sale to the only
+        # year on file would read as a temporal match while telling the
+        # reader nothing the cross-sectional spine did not already say.
+        return _mark_all(single_vintage_value)
+    # Take the columns this roll actually has. One nationwide recipe
+    # names one column list, and a county's roll is free not to carry
+    # every field: Lake County FL has no `land_area_sqft`, and asking
+    # for it failed the whole curate rather than attaching the seven
+    # columns it does have.
+    available = [c for c in columns if c != vintage_column and c in ref.columns]
+    if not available:
+        return _mark_all(no_panel_value) if require_panel else state
+    ref_columns = [join_key, vintage_column] + available
     ref = ref[ref_columns].copy()
+    columns = [c for c in columns if c == vintage_column or c in available]
     ref[join_key] = _normalized(ref[join_key])
-    ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce')
+    ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce').astype(
+        'float64'
+    )
     ref = ref.dropna(subset=[join_key, vintage_column])
+
+    # A sale with no year cannot be placed in time at all, and
+    # merge_asof refuses a null key outright. Set them aside under their
+    # own label: calling them `not_in_panel` would blame the panel for a
+    # gap in the sale record.
+    undated = active[date_column].isna()
+    if undated.any():
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active.index[undated], match_type_column] = 'no_sale_date'
+        active = active[~undated]
+    if active.empty:
+        state.curated = curated
+        return state
 
     if direction == 'exact':
         ref = ref.drop_duplicates(subset=[join_key, vintage_column])
@@ -381,6 +484,16 @@ def join_temporal_snapshot(
             f'{direction}_fallback'
         )
         curated.loc[merged.index[matched & is_exact], match_type_column] = 'exact'
+        if mark_unmatched is not None:
+            # Every row still unset, not only this pass's active ones.
+            # The last pass is usually a restricted one (a bare lot must
+            # not inherit a later vintage's house), so marking only its
+            # own rows leaves exactly the rows it declined to touch
+            # blank: 0.4% of Volusia stayed empty that way, which is the
+            # ambiguity this parameter exists to remove.
+            curated.loc[curated[match_type_column].isna(), match_type_column] = (
+                mark_unmatched
+            )
 
     state.curated = curated
     if state.verbose:
@@ -574,5 +687,123 @@ def aggregate_multi_parcel_sales(
         print(
             f'  aggregate_multi_parcel_sales: {int(shared.sum()):,} rows on '
             f'{len(aggregated):,} multi-parcel documents became one row each'
+        )
+    return state
+
+
+# What names a sale, in the order a reader would reach for. The
+# document is the thing a registry issues and a person can look up;
+# everything after it is there to fingerprint a sale the source named
+# no document for, and is deliberately a *small, stable* set rather
+# than the whole row: a hash over every column would change whenever a
+# roll is re-ingested or a value corrected.
+TRANSACTION_ID_COLUMNS = (
+    'sale_document_id',
+    'sale_record_kind',
+    'parcel_id_local',
+    'parcel_id_assessor',
+    'sale_year',
+    'sale_month',
+    'price',
+)
+
+
+@_register('assign_transaction_ids')
+def assign_transaction_ids(
+    state: CurateState,
+    document_column: str = 'sale_document_id',
+    label: str = 'sale',
+) -> CurateState:
+    """Index the curated sales by a stable id, scoped to the admin unit.
+
+    A transaction had no id at all: the curated output carried an
+    unnamed RangeIndex, so every county numbered its rows 0, 1, 2. That
+    is invisible per county and destructive when counties are pooled -
+    `export_delivery` de-duplicates on the index, because a footprint on
+    a county line really is one entity curated twice, and pooling
+    Wisconsin's 72 counties therefore kept 291,024 of 2,751,753 sales.
+    A delivered sale also has to be referenceable by whoever reads it.
+
+    The id is the recorded document, scoped by the admin unit that
+    issued it (`US-FL-MD_<document>`), because document numbers repeat
+    between counties. Measured 2026-09-23, a document identifies a sale
+    wherever the source names one: unique on 100% of Dane County WI and
+    Alachua County FL rows, and on 94.8% of Miami-Dade's, whose other
+    5.2% name no document at all (Florida's roll writes a blank book
+    and page, which `derive_document_id` correctly reads as naming
+    nothing). Those rows are named by a fingerprint of the columns
+    above, the same fallback `assign_entity_ids` uses for a property
+    whose assessor issued no account number.
+
+    Runs after `aggregate_multi_parcel_sales`, so a deed covering
+    several parcels is already one row and gets one id.
+
+    Parameters
+    ----------
+    state : CurateState
+        Curation state; `state.curated` is re-indexed in place.
+    document_column : str, optional
+        Column holding the recorded document's identifier.
+    label : str, optional
+        Name used for rows the source gave no document, appearing in
+        their id as `{admin}_{label}:{fingerprint}`.
+    """
+    from openplaces.io.harmonizer.entity_ids import mint_ids
+
+    curated = state.curated
+    if curated is None or curated.empty:
+        return state
+
+    identifying = [c for c in TRANSACTION_ID_COLUMNS if c in curated.columns]
+    if document_column not in curated.columns:
+        # Without a document there is nothing to name a sale by except
+        # its content; say so rather than minting silently from a
+        # fingerprint alone.
+        warnings.warn(
+            f'assign_transaction_ids: no {document_column!r} column, so '
+            'every sale is named by its content fingerprint. Run '
+            'derive_document_id first if the source carries a document '
+            'reference.',
+            stacklevel=2,
+        )
+
+    # Mint on a positionally-clean frame. `mint_ids` assigns through a
+    # boolean mask (`ids[missing] = ...`), which is label-based, and the
+    # frame reaching here can carry a duplicate index:
+    # `aggregate_multi_parcel_sales` indexes its aggregated rows by the
+    # representative row's label, so a label appearing twice misaligns
+    # that assignment and raises "Must have equal len keys and value
+    # when setting with an iterable" (Polk County FL, 2026-09-24).
+    # Resetting costs nothing, since the index is about to be replaced.
+    ids, report = mint_ids(
+        curated[identifying].reset_index(drop=True),
+        admin_id=str(state.admin_id),
+        id_column=document_column if document_column in curated.columns else None,
+        label=label,
+        caller='assign_transaction_ids',
+        advice=(
+            'A sale is named by the document it was recorded under, so a '
+            'repeated document usually means derive_document_id found no '
+            'usable reference rather than that a better column exists.'
+        ),
+    )
+    # Every surviving row gets its own id. `mint_ids` deliberately gives
+    # one id to rows that are exact duplicates, which is right for a
+    # property (two sources describing one account) and wrong here: a
+    # row reaching this step already survived `dedup_transactions`, so
+    # it is a row the recipe means to keep, and an index that merged
+    # two of them would have the delivery's de-duplication drop one
+    # silently. Osceola County FL minted 789,903 ids for 793,283 sales
+    # before this suffix (2026-09-24); those 3,380 are sales the source
+    # states identically and distinguishes by nothing this step reads.
+    ids = add_unique_suffix(pd.Series(ids.to_numpy(), dtype='string'))
+    curated = curated.copy()
+    curated.index = pd.Index(ids.to_numpy(), name='transaction_id')
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  assign_transaction_ids: {len(curated):,} sales, '
+            f'{curated.index.nunique():,} ids '
+            f'({report.get("n_without_number", 0):,} named by content)'
         )
     return state

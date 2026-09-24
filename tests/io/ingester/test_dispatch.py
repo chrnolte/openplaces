@@ -152,3 +152,73 @@ def test_registry_ingester_rejects_year_month_under_years():
 
     with pytest.raises(ValueError, match='use partition_ids'):
         ingester._date_partitions()
+
+
+def test_crosswalk_carries_platform_and_defaults_to_drivable(tmp_path, monkeypatch):
+    """A crosswalk without a platform column reads as all-drivable.
+
+    The column was added once Massachusetts turned out to spread its 21
+    registries over at least three applications; a crosswalk written
+    before that must keep working.
+    """
+    import pandas as pd
+
+    csv_path = tmp_path / 'towns.csv'
+    csv_path.write_text(
+        'town_name,base_url,platform\n'
+        'Alpha,https://example.invalid/Alpha/,avenu_i2\n'
+        'Beta,https://beta.invalid/ALIS/WW400R.HTM,alis\n'
+        'Gamma,https://example.invalid/Gamma/,\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setattr(
+        registry_module,
+        'get_admin',
+        lambda *a, **k: pd.DataFrame(
+            {'name': ['Alpha', 'Beta', 'Gamma'], 'type': ['town'] * 3},
+            index=['US-XX-ALP', 'US-XX-BET', 'US-XX-GAM'],
+        ),
+    )
+
+    cw = registry_module.RegistryIngester._load_crosswalk(csv_path, 'US-XX', level=3)
+
+    assert cw['US-XX-ALP']['platform'] == registry_module.DRIVABLE_PLATFORM
+    assert cw['US-XX-BET']['platform'] == 'alis'
+    # An empty cell means "not stated", which is the pre-column meaning.
+    assert cw['US-XX-GAM']['platform'] == registry_module.DRIVABLE_PLATFORM
+
+
+def test_every_massachusetts_town_names_a_reachable_registry():
+    """No town may point at a URL that 404s, which is how Brookline read.
+
+    The shipped crosswalk pointed all 352 towns at masslandrecords with
+    slugs that were never checked; ten districts are on their own sites
+    and three more are spelled differently there. This pins the two
+    facts that fix catches: every row states a platform, and only the
+    drivable one uses a masslandrecords URL.
+    """
+    import csv as _csv
+
+    from openplaces.path import recipe_path
+
+    recipe = get_recipe_by_id('US-MA_transaction-masslandrecords-v1')
+    path = recipe_path(
+        recipe['admin_id'], recipe['entity'], filename='town_to_registry.csv'
+    )
+    rows = list(_csv.DictReader(path.open(encoding='utf-8')))
+    assert rows, 'crosswalk is empty'
+    assert 'platform' in rows[0], 'crosswalk states no platform'
+
+    for r in rows:
+        assert r['platform'], f'{r["town_name"]} states no platform'
+        on_mlr = 'masslandrecords.com' in r['base_url']
+        if on_mlr:
+            assert r['platform'] == registry_module.DRIVABLE_PLATFORM, (
+                f'{r["town_name"]} claims masslandrecords but platform '
+                f'{r["platform"]!r}'
+            )
+        # The Berkshire districts are the ones we had spelled wrong.
+        assert 'Berkshire' not in r['base_url'], (
+            f'{r["town_name"]} uses the invented Berkshire* slug, '
+            'which 404s; the site spells it BerkMiddle/North/South'
+        )

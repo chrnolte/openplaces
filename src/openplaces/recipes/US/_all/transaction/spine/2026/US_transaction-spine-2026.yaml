@@ -106,11 +106,35 @@ pipeline:
   # several parcels can sum their areas when the curate stage folds
   # its rows into one sale; without it the price would sit over one
   # parcel's area, the defect the aggregation exists to remove.
+  # The key every parcel join below uses. A deed for a condo unit
+  # states the unit's number, and since the ingest-time split of
+  # stacked parcel layers that number is on a property row, not on a
+  # parcel row: the lot's parcel row is keyed on the lot. This step
+  # looks the number up in the (unit, lot) pairs the split recorded and
+  # writes the lot to `lot_id_local`; `parcel_link_key` is the lot where
+  # one was found and the record's own number elsewhere. Without it a
+  # re-ingested county silently loses every condo sale.
+  - step: derive_parcel_link_key
+
+  # `track_provenance` writes a `{col}_source` naming the county source
+  # that supplied each value. Not bookkeeping: `io.redaction.withhold`
+  # withholds a restricted source's values **per cell** by reading those
+  # sidecars, and a canonical column delivered without one can only be
+  # withheld by the coarser scope rules, or not at all. Attached values
+  # here come from auto-discovered county parcel recipes, which is
+  # exactly where a restricted county enters this lane, so the sidecars
+  # are what make a delivery of it safe (main verified the mechanism on
+  # Edgecombe NC: 30,260 cells reading `withheld` in the public bundle,
+  # the same county fully valued in the team twin).
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
 
   # Which rule linked a row, recorded after each pass below. The parcel
   # number is tried first and an exact address key only where it found
@@ -118,11 +142,17 @@ pipeline:
   # parcel, an address can sit on a lot that was split since. The label
   # is a fixed word per rule, written once and never changed; it is not
   # a score, and no pass takes an earlier link back.
+  # A sale that named a unit and reached the parcel through the unit's
+  # lot reads `stacked_units`, the name main's property-to-parcel link
+  # table uses for the same rule.
   - step: record_link_method
     label: parcel_id_local
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     auto_discover: true
     entity_type: parcel
+    via_column: lot_id_local
+    via_label: stacked_units
 
   # MA: no parcel_id_local on the transaction side; join by address instead.
   # Two passes, most specific first -- link_by_id's existing column-priority
@@ -141,15 +171,49 @@ pipeline:
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
     ref_key: parcel_id_local
     fill_only: true
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: parcel_id_local
-    spine_key: parcel_id_local
+    spine_key: parcel_link_key
+    ref_key: parcel_id_local
     recipe_id: US_parcel-spine-2026
+    via_column: lot_id_local
+    via_label: stacked_units
+
+  # A sale of a stacked unit takes its values from the unit, not from
+  # the lot. The lot's parcel row deliberately carries no summed value
+  # (one unit's land value is not the lot's, see io/stacked_units.py),
+  # so a condo sale that correctly reached its lot above finds those
+  # columns empty: measured on Collier County FL, 288,597 of its
+  # 916,076 sales, every one of them with a fully valued property row
+  # sitting unread. Joined on the sale's own `parcel_id_local`, which
+  # is the unit's account number, not on `parcel_link_key`, and 100% of
+  # those sales' keys are in the property spine (Collier and Pinellas).
+  # `fill_only`, so a value the parcel side already supplied wins.
+  # `area_ha` is deliberately not carried: a unit of airspace has no
+  # land area of its own, and the lot's would be a different entity's.
+  - step: link_by_id
+    recipe_id: US_property-spine-2026
+    mode: attributes
+    spine_key: parcel_id_local
+    ref_key: parcel_id_local
+    fill_only: true
+    # `use_group_code` rides along because a roll states the use as a
+    # code and nothing on the property side produces the decoded
+    # `use_group`: Miami-Dade's condominium sales reach their property
+    # row and carried no use label at all until this was added. The
+    # column holds the decoded text, the ingester having applied the
+    # DOR crosswalk sidecar beside the property recipe.
+    columns: [use_group, use_subgroup, use_group_code, land_value,
+              improvement_value, year_built, n_dwellings]
+    track_provenance: [use_group, use_subgroup, use_group_code, land_value,
+                       improvement_value, year_built, n_dwellings]
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
@@ -157,6 +221,8 @@ pipeline:
     ref_key: address_id_local_city
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: address_id_local_city
     spine_key: address_id_local_city
@@ -168,6 +234,8 @@ pipeline:
     ref_key: address_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+    track_provenance: [use_group, use_subgroup, land_value,
+                       improvement_value, year_built, n_dwellings, area_ha]
   - step: record_link_method
     label: address_id_local
     spine_key: address_id_local

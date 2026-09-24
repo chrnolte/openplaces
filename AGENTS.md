@@ -840,7 +840,18 @@ The step sub-modules:
   A fixed label, written once, never a score and never revised (patent
   shape 4). It re-reads the pass's reference instead of instrumenting
   `link_by_id`, so a step added between a pass and its label would make the
-  label describe the wrong pass.
+  label describe the wrong pass. A sale that reached its parcel through a
+  unit's lot reads `stacked_units` (`via_column`/`via_label`).
+- `parcel_link_keys.py` — `derive_parcel_link_key`: the one column
+  (`parcel_link_key`) every parcel join of the transaction spine uses. A
+  deed for a condo unit states the unit's number, which after the
+  ingest-time split is on a property row, not a parcel row; the step looks
+  it up in the split's own (unit, lot) pairs and joins on the lot
+  (`lot_id_local`), never rewriting the stated number. A unit seen on
+  several lots keeps its own number: picking one would assert which parcel
+  the sale conveyed, which the record does not say.
+  Without the step a re-ingested county loses its condo sales silently
+  (Vilas County WI: 1.1% of returns).
 - `last_sales.py` — `append_last_sales`: turn the last-sale fields an
   assessment roll carries into transaction rows
   (`sale_record_kind = assessor_last_sale`; rows already on the spine read
@@ -1036,6 +1047,27 @@ Steps are organized by the nature of the transformation:
   type and the relationship the parties themselves state on the RETR form
   (`sale_party_relationship`; about 20% of transfers are `Family`), through
   the `minimum` indicator type and `fill_only`.
+  `join_temporal_snapshot` is the one as-of join in the repo (the only
+  `pd.merge_asof`), attaching **the property as it was when it sold**: a
+  hedonic model wants the sale-date values, and where a county renumbered
+  its parcels the panel is the only thing that reaches its older sales at
+  all (Pasco and Volusia FL went from 0.03 to 0.998 of pre-2017 sales
+  carrying a land value). `require_panel` makes it a no-op where a county
+  has no roll or **only one vintage**, which is nearly everywhere: Florida's
+  DOR roll keeps 24 yearly vintages and the other 104 assessor sources are
+  one each. One vintage is deliberately not a panel, since joining a sale to
+  the only year on file reads as a temporal match while adding nothing the
+  cross-sectional spine did not have. Its `match_type_column` is written on
+  **every** row, not only matched ones (`exact`, `backward_fallback`,
+  `forward_fallback`, `not_in_panel`, `single_vintage`, `no_panel`,
+  `no_sale_date`): a missing value cannot separate "no panel in this county"
+  from "the panel does not know this sale", and the two mean different
+  things to anyone modeling with it. It tolerates what varies between
+  counties rather than failing the curate, since one nationwide recipe names
+  one column list and one restriction: a column the roll lacks is skipped
+  (Lake FL has no `land_area_sqft`), a `restrict_to` on an absent column
+  selects nothing (`sale_vacant` is Florida's word), and a sale with no year
+  is set aside as `no_sale_date` because `merge_asof` refuses null keys.
 
 Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),
@@ -1150,6 +1182,18 @@ the curated schema holds far more technically-canonical columns than belong in a
 compact delivery. Each canonical column's `{col}_source` sidecar is appended
 automatically and written into *both* the canonical and the evidence file, so
 either reads on its own.
+
+**Four files, unless the entity is not a place.** The point file is built from
+`long` and `lat`, which `_share_spec` therefore requires in `share: columns:`,
+so a geometry-less entity could not be delivered at all until
+`share: geometry: false`. A recipe declaring it ships the canonical table and
+its evidence supplement only, and `delivery_paths` omits the `point` and `geo`
+keys -- that dict is also the orchestrator's output declaration, so a delivery
+job then waits on nothing that is never written. It is opt-in and defaults to
+the four-file behavior. The transaction curation recipe is the case it exists
+for: a sale is an event whose location belongs to the parcel it names (carried
+as `parcel_id_local`, so a consumer joins geometry itself), and a deed covering
+several parcels has no single point to put it on.
 
 A `share: delivery:` block names the regions: `admin_level` (a bundle's own
 level) plus either `admin_ids` (one grouping, listed inline) or `regions` (a

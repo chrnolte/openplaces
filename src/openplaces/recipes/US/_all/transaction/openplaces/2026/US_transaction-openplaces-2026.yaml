@@ -9,9 +9,18 @@
 # a price index each want a different sample, and a row filtered here
 # is a row none of them can reconsider.
 #
-# The Florida single-family panel (US-FL_transaction-openplaces-2026)
-# is the filtered product for one use; this recipe is the evidence
-# every such product can start from.
+# A filtered product for one use (the Florida single-family panel,
+# `US-FL_transaction-openplaces-2026`) lived beside this recipe until
+# 2026-09-22 and was retired by the maintainer: it wrote the same output
+# path as this one, so whichever ran last silently decided what Florida
+# shipped. Its temporal join is here now, guarded by `require_panel`.
+# What went with it was a *sample*, not evidence: sales kept only where
+# a `verified_single_family` vote passed, one dwelling, no multi-parcel
+# deed, 2016 onward. Rebuild that by filtering this recipe's output, or
+# see git history for the vote. Bringing the vote back here would mean
+# adding a third temporal pass (`direction: exact, offset_years: 1,
+# prefix: next_year_`) and keeping it as a graded column, never a
+# filter, for the reason stated above.
 
 description: >-
   Recorded sales as one row per deed, with the parcels each covered
@@ -358,6 +367,20 @@ pipeline:
   - step: flag_sales_matching_other_kind
     key_column: parcel_id_local
 
+  # Where neither kind carries a parcel id, the document itself is the
+  # thing both rows name. Massachusetts is that case: its registry
+  # deeds have no `parcel_id_local` at all, so the pass above leaves
+  # every MA row unflagged and a consumer cannot tell a MassGIS
+  # last-sale row from the registry deed it repeats. Book and page are
+  # on both kinds, and `derive_document_id` above already treats a
+  # blank or all-zero part as naming no document, so a placeholder
+  # cannot fold a county's sales together here either.
+  # `fill_only`, so this reaches only what the parcel key could not and
+  # never overrules it.
+  - step: flag_sales_matching_other_kind
+    key_column: [book, page]
+    fill_only: true
+
   # A recorder's nominal consideration is not a price, and which value
   # it uses is the recorder's choice: Florida stamps 100 dollars on a
   # non-market transfer, North Carolina and Wisconsin record 0. The
@@ -400,6 +423,7 @@ pipeline:
   # each column; the price was never wrong, the denominator was.
   - step: aggregate_multi_parcel_sales
 
+
   # Price over the assessed value of everything the deed conveyed, so
   # it comes after the aggregation: a multi-parcel deed's price over
   # one parcel's assessed value was the defect the aggregation removes,
@@ -415,6 +439,77 @@ pipeline:
   # parties to every deed, and Wisconsin's RETR is ingested with all 78
   # of its raw columns, among them the names and addresses of grantor,
   # grantee, their agents, the preparer and the tax-bill recipient. An
+  # The property as it was when it sold, where a multi-year roll exists.
+  # A hedonic model wants the values and structure at the sale date, not
+  # today's, and where a county renumbered its parcels the panel is the
+  # only thing that reaches the older sales at all: six Florida counties
+  # renumbered (Volusia and Pasco in 2017), and 100% of their pre-cutover
+  # sales are in the panel, 98-100% in the roll of their own sale year,
+  # against 0.000 reaching the current parcel layer.
+  #
+  # `require_panel` makes this a no-op wherever there is no panel, which
+  # is nearly everywhere: Florida's DOR roll keeps 24 yearly vintages,
+  # and the other 104 assessor sources in the tree are one vintage each
+  # (plans/multi-year-tax-rolls-property-panel.md). When a national
+  # `US_property-panel-2026` exists it replaces the recipe named here.
+  #
+  # `property_match_type` is written on **every** row, not only matched
+  # ones, because a reader has to be able to tell a value taken from the
+  # sale year from one taken from a neighboring year, from a county with
+  # no panel at all. `tax_year` rides along as the vintage actually used.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    require_panel: true
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: backward
+    prefix: at_sale_
+    match_type_column: property_match_type
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
+              market_value, land_value, n_dwellings, n_buildings]
+
+  # A sale before the roll's first vintage has no earlier year to take;
+  # the nearest later one is the only evidence there is. Restricted to
+  # sales already improved at the time, so a bare lot cannot inherit the
+  # house that was built on it afterwards, and marked as a forward
+  # fallback so the difference is legible. `mark_unmatched` closes the
+  # column: after this pass, an empty value would be indistinguishable
+  # from a county the step skipped.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    require_panel: true
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: forward
+    only_unmatched: true
+    restrict_to: {column: sale_vacant, equals: "Improved property"}
+    prefix: at_sale_
+    match_type_column: property_match_type
+    mark_unmatched: not_in_panel
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
+              market_value, land_value, n_dwellings, n_buildings]
+
+  # Give each sale an id, last, once the row and its values are final.
+  # Until 2026-09-23 a transaction had none: the curated output carried
+  # an unnamed RangeIndex, so every county numbered its rows 0, 1, 2.
+  # Harmless per county, destructive when pooled, because
+  # `export_delivery` de-duplicates on the index (a footprint on a
+  # county line is one entity curated twice) and so kept 291,024 of
+  # Wisconsin's 2,751,753 sales. A delivered sale also has to be
+  # referenceable by whoever reads it.
+  #
+  # **Placed after the temporal joins deliberately.** Minting it before
+  # them replaced the RangeIndex with labels that repeat where two
+  # sales are stated identically, and `join_temporal_snapshot` assigns
+  # through `.loc[matched_index, column]`, which needs unique labels:
+  # Osceola and Polk died with "Must have equal len keys and value when
+  # setting with an iterable". The id is unique by construction now,
+  # but a step that reads positions should not run against an index
+  # that carries meaning.
+  - step: assign_transaction_ids
+
   # allow-list, since no list of names to drop could be complete: a
   # column stays if the attribute registry knows it, or if it is named
   # under `keep` (non-personal source columns the registry has no row
@@ -430,6 +525,17 @@ pipeline:
       - _join_id
       - source
       - admin3_id
+      # Which vintage each at-sale value came from, and how it was
+      # reached: exact, a neighboring year, or not at all.
+      - property_match_type
+      - at_sale_tax_year
+      - at_sale_year_built
+      - at_sale_living_area_sqft
+      - at_sale_land_area_sqft
+      - at_sale_market_value
+      - at_sale_land_value
+      - at_sale_n_dwellings
+      - at_sale_n_buildings
       - n_records_per_key
       - parcel_id_alnum
       # Florida SDF
@@ -449,3 +555,73 @@ pipeline:
   - step: cast_categoricals
 
   - step: order_columns
+
+# What a delivery of this recipe carries, and to whom.
+#
+# `geometry: false`: a transaction is an event, not a place. Its
+# location belongs to the parcel it names (`parcel_id_local`, which the
+# canonical table carries so a consumer can join geometry itself), and
+# a deed covering several parcels has no single point at all. So the
+# bundle is the canonical table and its evidence supplement, with no
+# point or boundary file, rather than a centroid invented to fill one.
+#
+# The column list is every state's, not each state's: a column one
+# state lacks is written empty rather than dropped, so both bundles
+# share a schema. Wisconsin has no multi-year roll and so no
+# `at_sale_*` values (`property_match_type` says `single_vintage`
+# there); Florida's `use_group` is empty until the DOR code gets a
+# crosswalk, which is why `use_group_code` ships beside it.
+#
+# Deliberately absent: `grantor` and `grantee`. They are in the curated
+# table on an installation that chose to keep them, and
+# `export_delivery` refuses a recipe that names a personal attribute
+# here, but the list should not have to be corrected by that check.
+share:
+  columns:
+    # What was sold, and where it can be joined
+    - parcel_id_local
+    - parcel_id_assessor
+    - admin3_id
+    - sale_document_id
+    # The sale itself
+    - sale_year
+    - sale_month
+    - price
+    - sale_record_kind
+    # Graded, never filtered: the hub grades and the consumer sets the
+    # cutoff (see this recipe's header).
+    - sale_arms_length_confidence
+    - sale_qualification_group
+    - n_parcels_per_sale
+    - sale_matches_deed
+    - sale_double_closing_earlier_leg
+    - sale_nominal_price_floor
+    - sale_price_to_assessed_ratio
+    - single_family_sales_disclosure_share
+    # The property, as the current layer describes it
+    - use_group
+    - use_group_code
+    - use_subgroup
+    - land_value
+    - improvement_value
+    - year_built
+    - n_dwellings
+    # The property as it was when it sold, and how that was reached
+    - property_match_type
+    - at_sale_tax_year
+    - at_sale_year_built
+    - at_sale_living_area_sqft
+    - at_sale_land_area_sqft
+    - at_sale_market_value
+    - at_sale_land_value
+    - at_sale_n_dwellings
+    - at_sale_n_buildings
+    # Which rule reached the parcel, so a weak link is visible rather
+    # than implied by an empty value column
+    - parcel_link_method
+  geometry: false
+  delivery:
+    admin_level: 2
+    regions:
+      - wisconsin-statewide
+      - florida-statewide

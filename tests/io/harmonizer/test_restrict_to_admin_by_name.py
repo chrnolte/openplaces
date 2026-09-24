@@ -1,82 +1,71 @@
-"""Tests for `restrict_to_admin_by_name`, the plain-text admin-name fallback.
+"""Restricting an over-broad source to one admin unit by its name.
 
-`get_entities` cannot restrict a source to a finer admin unit than it was
-saved at when the source has no matching admin-id column of its own (e.g. a
-statewide transaction table with only a free-text county name column) -- it
-returns the whole unfiltered table instead. This would otherwise duplicate
-the whole table into every child admin unit's output, or pool every admin
-unit's counts/aggregates together (the WI widor transaction table: no
-`admin3_id`, only a `admin3_name` "County" column, real bug found by
-re-ingesting Dane county and seeing the full 2.3M-row statewide table come
-back instead of ~156k rows).
+Every name here is fabricated.
 """
 
 import pandas as pd
+import pytest
 
-import openplaces.io.harmonizer as harmonizer_module
-from openplaces.core.schema import AdminId
+from openplaces.io import harmonizer as hz
 
 
-def test_filters_by_name_when_source_is_coarser(monkeypatch):
-    df = pd.DataFrame({'admin3_name': ['Dane', 'Oconto', 'Dane'], 'price': [1, 2, 3]})
+class _Admin(str):
+    """An admin id whose level is its part count, like AdminId."""
+
+    def get_level(self):
+        return len(self.split('-'))
+
+
+@pytest.fixture
+def _spine(monkeypatch):
+    def fake_get_admin(admin_id, level):
+        return pd.DataFrame({'name': ['St. Quillby']})
+
+    monkeypatch.setattr(hz, 'get_admin', fake_get_admin)
     monkeypatch.setattr(
-        harmonizer_module,
-        'get_recipe_by_id',
-        lambda recipe_id: {'admin_id': AdminId('US-WI')},  # state-level source
+        hz, 'get_recipe_by_id', lambda rid: {'admin_id': _Admin('XX-YY')}
     )
+    monkeypatch.setattr(hz, 'AdminId', _Admin)
+
+
+def _frame(names):
+    return pd.DataFrame({'admin3_name': names, 'v': range(len(names))})
+
+
+def test_a_source_punctuating_the_name_differently_still_matches(_spine):
+    # The source drops the period and spells Saint out; the spine does
+    # neither. Every row belongs to the unit and must be kept.
+    df = _frame(
+        ['ST CROIX'.replace('CROIX', 'QUILLBY'), 'Saint Quillby', 'st. quillby']
+    )
+    kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+    assert len(kept) == 3
+
+
+def test_another_units_rows_are_still_dropped(_spine):
+    df = _frame(['St. Quillby', 'Marlowe', 'St. Quillby'])
+    kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+    assert kept['v'].tolist() == [0, 2]
+
+
+def test_a_type_word_is_not_folded_away(_spine):
+    # 'Quillby city' is a different unit from 'St. Quillby'; keeping the
+    # type word is what tells them apart (Maryland's Baltimore pair).
+    df = _frame(['Quillby city', 'St. Quillby'])
+    kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+    assert kept['v'].tolist() == [1]
+
+
+def test_dropping_every_row_warns_instead_of_looking_like_no_coverage(_spine):
+    df = _frame(['Marlowe', 'Marlowe'])
+    with pytest.warns(UserWarning, match='no row of'):
+        kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+    assert len(kept) == 0
+
+
+def test_a_source_already_scoped_to_the_unit_is_left_alone(monkeypatch, _spine):
     monkeypatch.setattr(
-        harmonizer_module,
-        'get_admin',
-        lambda admin_id, level: pd.DataFrame({'name': ['Dane']}),
+        hz, 'get_recipe_by_id', lambda rid: {'admin_id': _Admin('XX-YY-ZZ')}
     )
-
-    result = harmonizer_module.restrict_to_admin_by_name(
-        df, 'US-WI_transaction-widor-2026', AdminId('US-WI-DA')
-    )
-
-    assert result['admin3_name'].tolist() == ['Dane', 'Dane']
-
-
-def test_no_op_when_source_already_scoped_at_or_finer(monkeypatch):
-    df = pd.DataFrame({'admin3_name': ['New Hanover'], 'price': [1]})
-    monkeypatch.setattr(
-        harmonizer_module,
-        'get_recipe_by_id',
-        lambda recipe_id: {'admin_id': AdminId('US-NC-NH')},  # already county-scoped
-    )
-
-    result = harmonizer_module.restrict_to_admin_by_name(
-        df, 'US-NC-NH_transaction-nhcgov-2026', AdminId('US-NC-NH')
-    )
-
-    assert len(result) == 1
-
-
-def test_no_op_when_name_column_absent():
-    df = pd.DataFrame({'price': [1, 2]})
-
-    result = harmonizer_module.restrict_to_admin_by_name(
-        df, 'US-WI_transaction-widor-2026', AdminId('US-WI-DA')
-    )
-
-    assert len(result) == 2
-
-
-def test_case_and_whitespace_insensitive_match(monkeypatch):
-    df = pd.DataFrame({'admin3_name': [' DANE ', 'Oconto']})
-    monkeypatch.setattr(
-        harmonizer_module,
-        'get_recipe_by_id',
-        lambda recipe_id: {'admin_id': AdminId('US-WI')},
-    )
-    monkeypatch.setattr(
-        harmonizer_module,
-        'get_admin',
-        lambda admin_id, level: pd.DataFrame({'name': ['Dane']}),
-    )
-
-    result = harmonizer_module.restrict_to_admin_by_name(
-        df, 'US-WI_transaction-widor-2026', AdminId('US-WI-DA')
-    )
-
-    assert len(result) == 1
+    df = _frame(['Marlowe', 'anything'])
+    assert len(hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))) == 2
