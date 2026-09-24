@@ -767,8 +767,16 @@ def assign_transaction_ids(
             stacklevel=2,
         )
 
+    # Mint on a positionally-clean frame. `mint_ids` assigns through a
+    # boolean mask (`ids[missing] = ...`), which is label-based, and the
+    # frame reaching here can carry a duplicate index:
+    # `aggregate_multi_parcel_sales` indexes its aggregated rows by the
+    # representative row's label, so a label appearing twice misaligns
+    # that assignment and raises "Must have equal len keys and value
+    # when setting with an iterable" (Polk County FL, 2026-09-24).
+    # Resetting costs nothing, since the index is about to be replaced.
     ids, report = mint_ids(
-        curated[identifying],
+        curated[identifying].reset_index(drop=True),
         admin_id=str(state.admin_id),
         id_column=document_column if document_column in curated.columns else None,
         label=label,

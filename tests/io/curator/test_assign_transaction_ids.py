@@ -93,6 +93,29 @@ def test_two_sales_of_one_document_on_different_parcels_stay_apart():
     assert state.curated.index.nunique() == 3
 
 
+def test_a_duplicate_index_does_not_break_the_minting():
+    """Polk County FL, 2026-09-24: 1 of 139 counties failed on this.
+
+    `aggregate_multi_parcel_sales` indexes its aggregated rows by the
+    representative row's label, so a label can appear twice.
+    `mint_ids` assigns the content-named ids through a boolean mask,
+    which is label-based, and a repeated label misaligned it with
+    "Must have equal len keys and value when setting with an
+    iterable" - a failure that only shows on a county with both a
+    repeated label and a sale naming no document.
+    """
+    frame = _sales()
+    frame.loc[1, 'sale_document_id'] = None
+    frame.index = pd.Index(['a', 'a', 'b'])
+
+    state = assign_transaction_ids(_state(frame))
+
+    assert state.curated.index.name == 'transaction_id'
+    assert state.curated.index.nunique() == 3
+    # Row order is untouched: the ids line up with the rows they name.
+    assert list(state.curated['parcel_id_local']) == ['p1', 'p2', 'p3']
+
+
 def test_an_empty_table_is_left_alone():
     """A county with no sales must not raise on its way through."""
     state = _state(pd.DataFrame(columns=['sale_document_id']))
