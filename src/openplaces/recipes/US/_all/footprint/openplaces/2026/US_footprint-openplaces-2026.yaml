@@ -31,7 +31,7 @@ save_to:
   # optimized for external sharing and direct GIS client consumption.
   combined: true
 
-# Region-wide delivery bundle (io/delivery.py: export_delivery). Names the
+# Region-wide delivery bundle (io/delivery/: export_delivery). Names the
 # canonical attributes the shared file carries; every other curated column
 # ships in the `_evidence` supplement, so the bundle still holds the complete
 # curated schema. Deliberately far shorter than the full set of canonical

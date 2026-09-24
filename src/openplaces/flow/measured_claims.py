@@ -46,10 +46,12 @@ class Claim:
 def find_claims(root: Path) -> list[Claim]:
     """Every claim under *root*, in file order."""
     found = []
-    own = Path(__file__).resolve()
     for path in sorted(root.rglob('*.py')):
-        if path.resolve() == own:
-            continue  # this module documents the form; it is not a claim
+        # This module documents the form; it is not a claim. Matched by
+        # name, not by identity, so a run from one checkout over another
+        # checkout's tree skips that tree's copy too.
+        if path.name == 'measured_claims.py' and path.parent.name == 'flow':
+            continue
         try:
             text = path.read_text(encoding='utf8')
         except OSError:

@@ -120,11 +120,11 @@ def generate_admin_ids(
     depends on row order and a later sibling can be left with an
     unrecognizable code that an earlier one did not need. The successor
     solves the whole sibling group as an assignment problem instead, which
-    is order-independent, and keeps one code width per parent. Measured on
-    the 2026 spine, it cuts codes carrying no signal from the name from
-    48.8% to 11.5% of US counties. Kept for reference and for reproducing
-    identifiers generated before the switch; do not wire it into new
-    recipes.
+    is order-independent, and keeps one code width per parent.
+    Measured 2026-08-22 on US: codes carrying no signal fall from 48.8%
+    to 11.5% of counties under the successor. Kept for reference and for
+    reproducing identifiers generated before the switch; do not wire it
+    into new recipes.
     """
 
     admin = df.copy()
@@ -293,7 +293,8 @@ def generate_admin_ids(
                 still_unassigned[[name_col, '_name_clean', '_name_words']].head(),
             )
 
-    # Strategy 5: Any two letters — try all pairwise combinations from the cleaned name
+    # Strategy 5: any two letters, trying every pairwise combination
+    # from the cleaned name
     if verbose:
         print('Strategy 5: Any two letters...')
     mask = admin[new_admin_id_col].isna()
@@ -489,7 +490,8 @@ def generate_admin_ids(
     if verbose:
         print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
-    # Strategy 9: Sequential fallback — X01, X02, … with letter disambiguator if needed
+    # Strategy 9: sequential fallback (X01, X02, ...) with a letter
+    # disambiguator if needed
     if verbose:
         print('Strategy 9: Sequential fallback (X01, X02, ...)...')
     mask = admin[new_admin_id_col].isna()
