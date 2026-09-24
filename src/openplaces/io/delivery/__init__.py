@@ -33,7 +33,12 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
-from openplaces.io import parquet_columns, read_parquet, to_parquet
+from openplaces.io import (
+    coerce_mixed_object_columns,
+    parquet_columns,
+    read_parquet,
+    to_parquet,
+)
 from openplaces.io.delivery.redaction import find_restricted, merge_counts, withhold
 from openplaces.io.delivery.terms import (
     bundle_terms,
@@ -356,7 +361,9 @@ def share_is_spatial(recipe) -> bool:
     Parameters
     ----------
     recipe : str or dict
-        Recipe ID or loaded recipe dictionary.
+        Recipe ID or loaded recipe dictionary. Pass the dict where one
+        is already in hand: `delivery_paths` and `_share_spec` both ask,
+        and re-loading by id on each call re-reads the recipe tree.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -941,6 +948,26 @@ def export_delivery(
         pooled = pd.concat(frames)
     frames.clear()
 
+    # The de-duplication below trusts the index to identify an entity:
+    # a footprint on a county line really is curated by both neighbours
+    # and the two copies share an Open Location Code. An unnamed
+    # integer index is never an entity id, and trusting one is silently
+    # destructive rather than loud - the first Wisconsin transaction
+    # bundle wrote 291,024 of 2,751,753 sales and reported success,
+    # because each of the 72 counties numbered its rows 0, 1, 2 and the
+    # pooled frame therefore collided with itself completely.
+    if pooled.index.name is None or isinstance(pooled.index, pd.RangeIndex):
+        raise ValueError(
+            f'{recipe.get("recipe_id", recipe)!r} pooled '
+            f'{len(pooled):,} rows under an index named '
+            f'{pooled.index.name!r} of type '
+            f'{type(pooled.index).__name__}, which does not identify an '
+            'entity. A delivery de-duplicates on the index, so this '
+            'would drop every row whose position repeats in another '
+            'unit. Give the curated output an entity id first '
+            '(io.harmonizer.entity_ids.mint_ids).'
+        )
+
     coverage_columns = [c for c in canonical_columns if c != admin_id_column]
     pooled, n_dropped = _deduplicate(pooled, coverage_columns, admin_id_column)
     # Sort by entity id so all four files share one row order, not
@@ -1028,6 +1055,15 @@ def export_delivery(
     evidence, withheld_second = withhold(evidence, restricted, unit_column)
     _refuse_restricted_cells(evidence, restricted, unit_column)
     evidence = evidence.drop(columns=unit_column)
+    # Counties disagree about a column's type more often than a single
+    # county's file does, and pooling is where that surfaces: Florida's
+    # `tax_neighborhood_code` is a string in some counties and a number
+    # in others, and the concatenated object column stopped the whole
+    # export with "Could not convert '500' with type str: tried to
+    # convert to double" after the canonical file had already been
+    # written. The canonical columns are registry-typed and so agree;
+    # the evidence file takes whatever a source carried.
+    evidence = coerce_mixed_object_columns(evidence)
     to_parquet(evidence, staged['evidence'])
 
     terms = bundle_terms(recipe, geometry_source)

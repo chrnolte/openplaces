@@ -423,15 +423,6 @@ pipeline:
   # each column; the price was never wrong, the denominator was.
   - step: aggregate_multi_parcel_sales
 
-  # Give each sale an id, immediately after the aggregation that fixes
-  # what one row is. Until 2026-09-23 a transaction had none: the
-  # curated output carried an unnamed RangeIndex, so every county
-  # numbered its rows 0, 1, 2. Harmless per county, destructive when
-  # pooled, because `export_delivery` de-duplicates on the index (a
-  # footprint on a county line is one entity curated twice) and so kept
-  # 291,024 of Wisconsin's 2,751,753 sales. A delivered sale also has
-  # to be referenceable by whoever reads it.
-  - step: assign_transaction_ids
 
   # Price over the assessed value of everything the deed conveyed, so
   # it comes after the aggregation: a multi-parcel deed's price over
@@ -499,6 +490,25 @@ pipeline:
     mark_unmatched: not_in_panel
     columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
               market_value, land_value, n_dwellings, n_buildings]
+
+  # Give each sale an id, last, once the row and its values are final.
+  # Until 2026-09-23 a transaction had none: the curated output carried
+  # an unnamed RangeIndex, so every county numbered its rows 0, 1, 2.
+  # Harmless per county, destructive when pooled, because
+  # `export_delivery` de-duplicates on the index (a footprint on a
+  # county line is one entity curated twice) and so kept 291,024 of
+  # Wisconsin's 2,751,753 sales. A delivered sale also has to be
+  # referenceable by whoever reads it.
+  #
+  # **Placed after the temporal joins deliberately.** Minting it before
+  # them replaced the RangeIndex with labels that repeat where two
+  # sales are stated identically, and `join_temporal_snapshot` assigns
+  # through `.loc[matched_index, column]`, which needs unique labels:
+  # Osceola and Polk died with "Must have equal len keys and value when
+  # setting with an iterable". The id is unique by construction now,
+  # but a step that reads positions should not run against an index
+  # that carries meaning.
+  - step: assign_transaction_ids
 
   # allow-list, since no list of names to drop could be complete: a
   # column stays if the attribute registry knows it, or if it is named

@@ -116,6 +116,26 @@ def test_a_duplicate_index_does_not_break_the_minting():
     assert list(state.curated['parcel_id_local']) == ['p1', 'p2', 'p3']
 
 
+def test_two_indistinguishable_sales_still_get_an_id_each():
+    """Osceola County FL, 2026-09-24: 789,903 ids for 793,283 sales.
+
+    `mint_ids` gives exact duplicates one id, which is right for a
+    property described by two sources and wrong for a sale: a row
+    reaching this step already survived `dedup_transactions`, so it is
+    one the recipe means to keep, and a shared index label would have
+    the delivery's de-duplication drop it silently.
+    """
+    frame = _sales()
+    # Two rows the source states identically and distinguishes by
+    # nothing this step reads.
+    frame.loc[1] = frame.loc[0]
+
+    state = assign_transaction_ids(_state(frame))
+
+    assert len(state.curated) == 3
+    assert state.curated.index.nunique() == 3
+
+
 def test_an_empty_table_is_left_alone():
     """A county with no sales must not raise on its way through."""
     state = _state(pd.DataFrame(columns=['sale_document_id']))

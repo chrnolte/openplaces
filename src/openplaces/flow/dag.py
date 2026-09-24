@@ -825,8 +825,17 @@ class RecipeDAG:
             # bundle -- so omitting it made `rule all` demand a file no
             # rule declared, and every delivery run died at planning with
             # "Missing input files for rule all".
+            # A non-spatial bundle (`share: geometry: false`) writes no
+            # point or boundary file and `delivery_paths` omits those
+            # keys, so the roles are filtered rather than indexed: this
+            # is called for every node at planning time, and a KeyError
+            # here kills the whole plan rather than one job.
             bundle = self._delivery_paths(recipe_id, admin_id, region)
-            return [bundle[role] for role in ('point', 'geo', 'evidence', 'terms')]
+            return [
+                bundle[role]
+                for role in ('point', 'geo', 'evidence', 'terms')
+                if role in bundle
+            ]
         if stage == 'validate':
             # What each notebook writes depends on the data it finds (a
             # reference without rows writes nothing), so only the

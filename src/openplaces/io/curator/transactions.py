@@ -9,7 +9,7 @@ import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.readers import get_entities
-from openplaces.table import aggregate_rows
+from openplaces.table import add_unique_suffix, aggregate_rows
 
 _NON_ALNUM = re.compile(r'[^0-9A-Za-z]')
 
@@ -787,6 +787,16 @@ def assign_transaction_ids(
             'usable reference rather than that a better column exists.'
         ),
     )
+    # Every surviving row gets its own id. `mint_ids` deliberately gives
+    # one id to rows that are exact duplicates, which is right for a
+    # property (two sources describing one account) and wrong here: a
+    # row reaching this step already survived `dedup_transactions`, so
+    # it is a row the recipe means to keep, and an index that merged
+    # two of them would have the delivery's de-duplication drop one
+    # silently. Osceola County FL minted 789,903 ids for 793,283 sales
+    # before this suffix (2026-09-24); those 3,380 are sales the source
+    # states identically and distinguishes by nothing this step reads.
+    ids = add_unique_suffix(pd.Series(ids.to_numpy(), dtype='string'))
     curated = curated.copy()
     curated.index = pd.Index(ids.to_numpy(), name='transaction_id')
     state.curated = curated
