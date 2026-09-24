@@ -12,7 +12,7 @@ behind it is in the `LIVE_TYPES` docstring.
 
 import pytest
 
-from openplaces.io import admin_wikidata as wd
+from openplaces.io.admin import wikidata as wd
 
 QUERIES = {
     'country_children': lambda: wd.country_children_query('NL'),

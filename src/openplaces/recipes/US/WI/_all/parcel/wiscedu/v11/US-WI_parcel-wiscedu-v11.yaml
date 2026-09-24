@@ -85,13 +85,49 @@ columns_to_categorical:
 # Expose the raw assessor-original parcel id under the canonical name
 # parcel_id_assessor (a copy of parcel_id_admin3 -- PARCELID), so it is the
 # raw key parcel_id_local derives from (consistent across parcel recipes).
-# TAXPARCELID (parcel_id_tax) is empty statewide in the V11 dataset (verified
-# across Dane, Oconto, and Vilas counties), so it cannot be the source here.
+# TAXPARCELID (parcel_id_tax) is empty in Dane, Oconto and Vilas, which is
+# why PARCELID is the default source. It is NOT empty statewide, as this
+# comment used to say: measured 2026-09-21 it is filled on 0.97 to 1.00 of
+# rows in US-WI-BY, -CO, -CR, -EC, -FO and -IA, among others. In Bayfield
+# and Columbia it, not PARCELID, is the number Wisconsin's transfer returns
+# use; those two take it as their source through the `source` column of
+# US_parcel_id-overrides.csv. Eau Claire uses it outside its city, by the
+# scoped rule under `transformations`.
 transformations:
   - type: string
     operation: concat
     inputs: [parcel_id_admin3]
     output: parcel_id_assessor
+
+  # Eau Claire County has two assessors, and transfer returns name a
+  # parcel by whichever one assesses it: the City of Eau Claire's own
+  # 6-digit number (a letter may follow) for city parcels, the county's
+  # 19-digit TAXPARCELID everywhere else. This layer stores the city
+  # number in PARCELID behind the prefix 221 (45.8% of the county's
+  # rows, and no other prefix occurs); version 4 stored it bare, which
+  # the pattern also accepts. So `parcel_id_assessor` is the city number
+  # where PARCELID has that shape and TAXPARCELID otherwise. Measured
+  # 2026-09-21 on 40,930 returns of 2014 to 2026: 0.938 find their
+  # parcel (0.924 for 2014 to 2016), against 0.000 on PARCELID and 0.408
+  # on TAXPARCELID alone. The county's own server
+  # (gis.eauclairecounty.gov, Tax_Parcel) was checked and adds nothing:
+  # it holds the 28,275 parcels outside the city, with the same 19-digit
+  # number.
+  - type: string
+    operation: extract_named
+    input: parcel_id_admin3
+    args:
+      pattern: '^(?:221)?(\d{6}[A-Za-z]?)$'
+    output: _city_parcel_number
+    admin_ids: [US-WI-EC]
+  - type: aggregate
+    operation: coalesce
+    inputs: [_city_parcel_number, parcel_id_tax]
+    output: parcel_id_assessor
+    admin_ids: [US-WI-EC]
+
+drop_columns:
+  - _city_parcel_number
 
 # Standardized matching key from the tax parcel number, per county (auto
 # conversion; processed per admin3). Connects to WI RETR sales transactions.

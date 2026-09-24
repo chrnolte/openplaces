@@ -7,8 +7,8 @@ raise (not warn) and name the leftover path with a clickable file link.
 
 import pytest
 
-import openplaces.io as opio
-from openplaces.io import DataDeletionError, _deletion_interrupted_error
+import openplaces.io.deletion as opio  # delete_data looks its retry pause up here
+from openplaces.io.deletion import DataDeletionError, _deletion_interrupted_error
 
 
 @pytest.fixture(autouse=True)

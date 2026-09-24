@@ -263,18 +263,55 @@ def _derive_value_map(state: CurateState, spec: dict) -> pd.Series | None:
     confidence from 0 to 1). The mapping lives in the recipe, since it
     is a statement about that source; a value the mapping does not name
     takes ``default``, or stays missing.
+
+    ``column`` may be a list, for a grade that depends on more than one
+    source field (Wisconsin's RETR: whether the conveyance was a sale,
+    and how the parties say they are related). The mapping is then keyed
+    on the values joined by ``|``, and a row missing any of them has no
+    key and stays missing: half an answer is not graded.
     """
     curated = state.curated
     column = spec['column']
+    mapping = spec['mapping']
+    if isinstance(column, list):
+        if any(c not in curated.columns for c in column):
+            return None
+        parts = [curated[c].astype('string') for c in column]
+        joined = parts[0]
+        for part in parts[1:]:
+            joined = joined + '|' + part
+        values = joined.astype(object).where(joined.notna())
+        mapped = values.map(mapping)
+        default = spec.get('default')
+        if default is not None:
+            known = values.isin(list(mapping)) | values.isna()
+            mapped = mapped.where(known, default)
+        return mapped
     if column not in curated.columns:
         return None
-    mapping = spec['mapping']
     values = curated[column].astype(object)
     mapped = values.map(mapping)
     default = spec.get('default')
     if default is not None:
         mapped = mapped.where(values.isin(list(mapping)), default)
     return mapped
+
+
+def _derive_minimum(state: CurateState, spec: dict) -> pd.Series | None:
+    """Row-wise minimum of several graded ``columns``.
+
+    For a grade that holds only if every component does: a transfer is
+    at arm's length only if it is a sale *and* the parties are
+    unrelated, so its confidence is the lower of the two grades. A row
+    missing any component stays missing, because half an answer is not a
+    grade. Skipped when any column is absent.
+    """
+    curated = state.curated
+    columns = spec['columns']
+    if any(c not in curated.columns for c in columns):
+        return None
+    values = curated[columns].apply(pd.to_numeric, errors='coerce')
+    return values.min(axis=1).where(values.notna().all(axis=1))
 
 
 def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
@@ -398,6 +435,7 @@ def _derive_nominal_floor(state: CurateState, spec: dict) -> pd.Series | None:
 _INDICATOR_DERIVATIONS = {
     'ruleset_class': _derive_ruleset_class,
     'value_map': _derive_value_map,
+    'minimum': _derive_minimum,
     'group_share': _derive_group_share,
     'nominal_floor': _derive_nominal_floor,
     'pooled_vote': _derive_pooled_vote,
@@ -435,6 +473,12 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       indicator: a source's vocabulary graded into a value a consumer can
       threshold (a sale's arm's-length confidence from the source's
       qualification labels).
+      ``column`` may be a list: the mapping is then keyed on the values
+      joined by ``|``, a row missing any of them stays missing, and
+      ``default`` applies only to a complete key the mapping lacks.
+    - ``minimum``: the row-wise minimum of several graded ``columns``,
+      missing where any is; for a grade that holds only if each of its
+      components does.
     - ``group_share``: the share of the row's ``group_column`` cohort (the
       whole table when omitted, which is the admin unit being curated)
       whose ``column`` meets ``predicate`` (``positive``, ``notnull``, or
@@ -475,6 +519,9 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
         Ordered specs, each ``{output, type, ...}`` with the type-specific keys
         above. A spec whose input columns are absent is skipped, leaving the
         output column unwritten so downstream indicators simply cast no vote.
+        A spec with ``fill_only: true`` writes only where ``output`` is
+        still missing, so that several sources, each grading its own
+        vocabulary, can contribute to one source-neutral column.
     """
     curated = state.curated
     written = []
@@ -488,6 +535,11 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
         derived = _INDICATOR_DERIVATIONS[kind](state, spec)
         if derived is None:
             continue
+        if spec.get('fill_only') and spec['output'] in curated.columns:
+            # A second source's contribution to one output: a unit
+            # holding both kinds of record keeps what the first wrote.
+            existing = curated[spec['output']]
+            derived = existing.where(existing.notna(), derived)
         curated[spec['output']] = derived
         written.append(spec['output'])
 

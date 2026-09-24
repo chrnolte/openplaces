@@ -8,7 +8,7 @@ ambiguous match is reported, never resolved by picking one.
 import pandas as pd
 import pytest
 
-from openplaces.io.admin_wikidata import (
+from openplaces.io.admin.wikidata import (
     FUZZY_CUTOFF,
     MATCH_AMBIGUOUS,
     MATCH_FUZZY,

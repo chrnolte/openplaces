@@ -127,6 +127,79 @@ def test_the_first_key_present_on_both_sides_is_used(properties):
     assert state.curated['year_built'].tolist() == [1965]
 
 
+def test_a_link_table_replaces_the_key_join(monkeypatch):
+    # Lot A: two roll rows keyed on its units, plus the split's own
+    # unit rows describing the same units (ids that did not converge).
+    # Lots C and D: one account on both, three quarters on C by area.
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['A1', 'A2', 'A1', 'A2', 'CD'],
+            'living_area_sqft': [800.0, 900.0, 810.0, 910.0, 4000.0],
+            'year_built': [1990, 1985, 1991, 1986, 1970],
+        },
+        index=pd.Index(['r1', 'r2', 'u1', 'u2', 'r4'], name='property_id'),
+    )
+    links = pd.DataFrame(
+        {
+            'property_id': ['r1', 'r2', 'u1', 'u2', 'r4', 'r4'],
+            'parcel_id': ['pa', 'pa', 'pa', 'pa', 'pc', 'pd'],
+            'link_method': ['stacked_units_crosswalk'] * 2
+            + ['stacked_units'] * 2
+            + ['stacked_units_crosswalk'] * 2,
+            'link_source': [
+                'roll',
+                'roll',
+                'layer:units',
+                'layer:units',
+                'roll',
+                'roll',
+            ],
+            'share': pd.array([None, None, None, None, 0.75, 0.25], dtype='Float64'),
+            'share_basis': [None, None, None, None, 'area', 'area'],
+        }
+    )
+    from pathlib import Path
+
+    from openplaces.geo import link as geo_link
+    from openplaces.io.harmonizer import entity_links
+
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+    monkeypatch.setattr(geo_link, 'get_link_owner_recipe_id', lambda recipe: 'owner')
+    monkeypatch.setattr(
+        geo_link, 'get_entity_link_path', lambda a, b, admin_id=None: Path('link')
+    )
+    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: links)
+
+    curated = pd.DataFrame(
+        {'parcel_id_local': ['A', 'C', 'D']},
+        index=pd.Index(['pa', 'pc', 'pd'], name='parcel_id'),
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'US_property-spine-2026',
+        columns={'living_area_sqft': 'sum', 'year_built': 'min'},
+    )
+    out = state.curated
+    # The roll's two rows, not also the split's two: 1,700, not 3,420.
+    assert out.loc['pa', 'living_area_sqft'] == 1700.0
+    assert out.loc['pa', 'year_built'] == 1985
+    # One account on two lots is divided, and its total is conserved.
+    assert out.loc['pc', 'living_area_sqft'] == 3000.0
+    assert out.loc['pd', 'living_area_sqft'] == 1000.0
+    assert out.loc['pd', 'year_built'] == 1970
+
+
 def test_no_shared_key_skips_with_a_warning(properties):
     curated = pd.DataFrame({'parcel_id_admin2': ['p1']})
     with pytest.warns(UserWarning, match='no key'):
@@ -134,3 +207,80 @@ def test_no_shared_key_skips_with_a_warning(properties):
             _state(curated), 'r', columns={'year_built': 'min'}
         )
     assert 'year_built' not in state.curated.columns
+
+
+@pytest.fixture
+def valued_units(monkeypatch):
+    # Lot L1: two units, one of them valued. Lot L2: two units, both
+    # recorded as zero. Lot L3: two units stating nothing. Lot L4: one
+    # valued unit on a lot that already states its own figure.
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L1', 'L2', 'L2', 'L3', 'L3', 'L4'],
+            'improvement_value': [150000.0, 0.0, 0.0, 0.0, None, None, 90000.0],
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+
+
+def test_recover_writes_a_recorded_positive_sum_onto_an_empty_or_zero_lot(
+    valued_units,
+):
+    curated = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L2', 'L3', 'L4', 'L5'],
+            'improvement_value': [0.0, 0.0, None, 250000.0, 0.0],
+        }
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'r',
+        columns={'improvement_value': 'sum'},
+        recover=['improvement_value'],
+    )
+    out = state.curated['improvement_value']
+    # L1: a unit records the figure, so the lot's zero is replaced.
+    assert out[0] == 150000.0
+    # L2 and L3: no unit records a positive value; the lot stays exactly
+    # as it was (a zero stays a zero, a blank stays blank). Writing here
+    # would be the imputation the maintainer declined.
+    assert out[1] == 0.0
+    assert pd.isna(out[2])
+    # L4: a lot that states its own positive figure keeps it.
+    assert out[3] == 250000.0
+    # L5: no property row at all.
+    assert out[4] == 0.0
+
+
+def test_recover_on_an_absent_column_writes_only_positive_sums(valued_units):
+    curated = pd.DataFrame({'parcel_id_local': ['L1', 'L2', 'L3']})
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'r',
+        columns={'improvement_value': 'sum'},
+        recover=['improvement_value'],
+    )
+    out = state.curated['improvement_value']
+    assert out[0] == 150000.0
+    assert pd.isna(out[1]) and pd.isna(out[2])
+
+
+def test_fill_only_alone_would_have_left_the_zero(valued_units):
+    # The contrast the recover rule exists for: fill_only fills blanks
+    # only, so a present zero on L1 survives it.
+    curated = pd.DataFrame({'parcel_id_local': ['L1'], 'improvement_value': [0.0]})
+    state = aggregation.aggregate_from_entities(
+        _state(curated), 'r', columns={'improvement_value': 'sum'}
+    )
+    assert state.curated['improvement_value'].tolist() == [0.0]

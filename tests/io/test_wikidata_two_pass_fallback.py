@@ -16,7 +16,7 @@ import http.client
 import pandas as pd
 import pytest
 
-from openplaces.io import admin_wikidata as wd
+from openplaces.io.admin import wikidata as wd
 from openplaces.io.scrapers import wikidata_admin_scraper as scraper
 
 ADMIN_CLASS = 'Q56061'

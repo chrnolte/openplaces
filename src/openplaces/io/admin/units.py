@@ -56,7 +56,7 @@ def parent_of(admin_id: str) -> str:
     Parameters
     ----------
     admin_id : str
-        Administrative identifier, e.g. 'US-MA-MI'.
+        Administrative identifier, e.g. 'US-NC-CUR'.
 
     Returns
     -------
@@ -65,8 +65,8 @@ def parent_of(admin_id: str) -> str:
 
     Examples
     --------
-    >>> parent_of('US-MA-MI')
-    'US-MA'
+    >>> parent_of('US-NC-CUR')
+    'US-NC'
     >>> parent_of('US')
     ''
     """

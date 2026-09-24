@@ -10,7 +10,7 @@ CSVs.
 import pandas as pd
 import pytest
 
-from openplaces.io.admin_units import (
+from openplaces.io.admin.units import (
     UNIT_COLUMNS,
     build_units,
     load_level,

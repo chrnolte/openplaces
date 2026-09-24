@@ -49,28 +49,6 @@ pipeline:
   # to rerun the geospine rather than silently recomputing geometry here.
   - step: load_geospine
 
-  # Attach per-parcel transaction diagnostics from every auto-discovered
-  # transaction source scoped to this admin unit: a count, and the most
-  # recent sale's price/date. Renaming price/recorded_date on the way in
-  # (rather than a follow-up rename_columns) lets _write_prioritized's
-  # gap-fill apply directly against last_sale_price/last_sale_date already
-  # populated from a parcel source's own fields (FL, MA, NC) instead of
-  # blindly overwriting them; states with no native last-sale fields (WI)
-  # get these filled entirely from the transaction join. ref_sort_by sorts
-  # descending by recorded_date first, since raw transaction tables are not
-  # stored in chronological order and the registry's 'first' aggregation for
-  # last_sale_price/last_sale_date otherwise picks an arbitrary sale.
-  - step: link_by_id
-    auto_discover: true
-    entity_type: transaction
-    mode: aggregate
-    columns:
-      price: last_sale_price
-      recorded_date: last_sale_date
-    count_as: n_transactions
-    ref_sort_by: recorded_date
-    ref_sort_ascending: false
-
   # Preserve the assessor's raw address/city under their own names before
   # reconcile_addresses's output (same bare names, by default) would
   # otherwise overwrite them in place.
@@ -196,6 +174,51 @@ pipeline:
           - occupancy_type
           - group
           - height
+
+  # Write the n:m link table between properties and parcels, beside the
+  # property spine's output. A key column on the property row holds one
+  # parcel; the table also holds a property on several lots and several
+  # properties on one. It is written here and not by the property spine
+  # because that spine is built before the parcel geospine (which reads
+  # it), so this is the first recipe in which both sides exist, and a
+  # rerun costs no geometry. One exact pass on the standardized key, the
+  # same pass the geospine's own property join runs: the punctuation-free
+  # fallback keys are shared by hundreds of parcels in some counties,
+  # which an n:m table would turn into hundreds of false links. Changes
+  # nothing on the spine, and nothing reads the table yet.
+  # After the checkpointed step on purpose: a restored checkpoint skips
+  # every step before it, and the checkpoint's validity covers the
+  # geospine only, so a link placed earlier would survive a rebuilt
+  # property spine unrewritten (seen on Victoria County, 2026-09-20).
+  - step: link_entities_by_id
+    recipe_id: US_property-spine-2026
+
+  # Attach per-parcel transaction diagnostics from every auto-discovered
+  # transaction source scoped to this admin unit: a count, and the most
+  # recent sale's price/date. Renaming price/recorded_date on the way in
+  # (rather than a follow-up rename_columns) lets _write_prioritized's
+  # gap-fill apply directly against last_sale_price/last_sale_date already
+  # populated from a parcel source's own fields (FL, MA, NC) instead of
+  # blindly overwriting them; states with no native last-sale fields (WI)
+  # get these filled entirely from the transaction join. ref_sort_by sorts
+  # descending by recorded_date first, since raw transaction tables are not
+  # stored in chronological order and the registry's 'first' aggregation for
+  # last_sale_price/last_sale_date otherwise picks an arbitrary sale.
+  # After the checkpointed step for the same reason as the link table
+  # above: it reads another recipe's output, and placed before the
+  # checkpoint it survived a rebuilt transaction spine unrewritten on
+  # every attribute rerun (until 2026-09-23 it was the first step after
+  # load_geospine). Nothing between here and there reads its columns.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: transaction
+    mode: aggregate
+    columns:
+      price: last_sale_price
+      recorded_date: last_sale_date
+    count_as: n_transactions
+    ref_sort_by: recorded_date
+    ref_sort_ascending: false
 
   # Classify property_source and, where no property-spine source exists (see
   # the count-only link_by_id in the geospine), estimate a property/unit

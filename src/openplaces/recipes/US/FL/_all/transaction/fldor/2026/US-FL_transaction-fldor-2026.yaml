@@ -105,6 +105,41 @@ columns:
   parcel_id_admin2_2: MP_ID
   parcel_id_admin2: STATE_PAR_ID
 
+# A year's county file can repeat one record verbatim (2 rows in Union
+# County, 2 in Bay, found 2026-09-20). The roll-up into `_all.parquet`
+# refuses a batch with full-row duplicates, reading them as a processing
+# bug, and the year files it then leaves behind fail every later ingest
+# of this recipe, whatever county it names. Every mapped column but
+# one is listed, so only a record repeated in all of them is dropped;
+# the same document in two year files differs in `tax_year` and is left
+# to the curate stage's dedup. `use_group_code` is left out on purpose:
+# Bay County's 2025 file lists one sale (same sale id, book, page and
+# price) under two DOR use codes that decode to the same label, and the
+# decoding runs after this step, so the pair only becomes identical
+# once it is too late to drop it.
+drop_duplicates:
+  - parcel_id_assessor
+  - tax_year
+  - tax_use_subgroup
+  - value_group
+  - tax_neighborhood_code
+  - tax_market_area
+  - census_block_id
+  - transaction_id_source
+  - sale_change_code
+  - sale_vacant
+  - sale_book
+  - sale_page
+  - sale_clerk_instrument
+  - sale_qualification_code
+  - sale_year
+  - sale_month
+  - price
+  - sale_multi_parcel
+  - submission_id
+  - parcel_id_admin2_2
+  - parcel_id_admin2
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - tax_use_subgroup

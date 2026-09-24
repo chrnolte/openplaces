@@ -8,11 +8,9 @@ writes entity-keyed evidence tables beside the selected spine output.
 from __future__ import annotations
 
 import json
-import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from importlib import import_module as _import_module
 
 import pandas as pd
 
@@ -20,6 +18,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids, get_entities
+from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
     find_entity_recipe_id,
     get_output_path,
@@ -70,40 +69,18 @@ class EnrichState:
     reprocess: bool = False
 
 
+#: Maps step name strings (as used in recipe ``pipeline`` sections) to the
+#: callable that implements that step. Filled by ``@_register``; the step
+#: submodules are imported by ``_load_steps`` when a step is first
+#: dispatched, subpackages skipped so the heavy ``detectors`` stay out of
+#: the import (see ``io.steps``).
 _STEP_REGISTRY: dict[str, Callable] = {}
+_register = make_register(_STEP_REGISTRY)
+_load_steps = make_loader(__name__, __path__)
 
 # Footer-coverage sentinel: the evidence file covers all admin units.
 # Defined in io.aggregate so lower-layer lifecycle checks share it.
 _COVERAGE_ALL = COVERAGE_ALL
-
-
-def _register(*names: str):
-    """Decorator: register an enrich step under one or more names."""
-
-    def decorator(fn: Callable) -> Callable:
-        for name in names:
-            _STEP_REGISTRY[name] = fn
-        return fn
-
-    return decorator
-
-
-_steps_loaded = False
-
-
-def _load_steps() -> None:
-    """Import this stage's step submodules so their @_register runs.
-
-    Deferred until a step is first dispatched; the ``ispkg`` skip keeps the
-    heavy ``detectors`` subpackage out of the import.
-    """
-    global _steps_loaded
-    if _steps_loaded:
-        return
-    for _m in _pkgutil.iter_modules(__path__):
-        if not _m.ispkg:
-            _import_module(f'{__name__}.{_m.name}')
-    _steps_loaded = True
 
 
 def _recipe_entity_type(recipe: dict) -> str:

@@ -31,15 +31,120 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     ----------
     key_columns : list of str
         Columns whose combination identifies one recorded document. The
-        first occurrence of a repeated combination is kept.
+        first occurrence of a repeated combination is kept. A column the
+        table lacks reads as missing on every row: the key is written
+        once for every source, and a clerk instrument number exists in
+        Florida and nowhere else.
     """
     curated = state.curated
-    key = curated[key_columns].astype('string').fillna('NA').agg('|'.join, axis=1)
+    key = (
+        curated.reindex(columns=key_columns)
+        .astype('string')
+        .fillna('NA')
+        .agg('|'.join, axis=1)
+    )
     mask = ~key.duplicated(keep='first')
     n_dropped = int((~mask).sum())
     state.curated = curated.loc[mask].copy()
     if state.verbose:
         print(f'  dedup_transactions: dropped {n_dropped:,} duplicate rows')
+    return state
+
+
+@_register('derive_sale_period')
+def derive_sale_period(
+    state: CurateState, date_column: str = 'recorded_date'
+) -> CurateState:
+    """Fill `sale_year` and `sale_month` from a date where they are missing.
+
+    Sources state when a sale happened in one of two ways: a date (a
+    recorder's table) or a year and month (Florida's roll, and any roll
+    that records the month only). Every later step compares sales by
+    year and month, so both spellings are brought to that form here. A
+    year or month the source stated itself is never overwritten.
+
+    Parameters
+    ----------
+    date_column : str, optional
+        Column holding the date (default `recorded_date`).
+    """
+    curated = state.curated
+    if date_column not in curated.columns:
+        return state
+    date = pd.to_datetime(curated[date_column], errors='coerce')
+    for column, part in (('sale_year', date.dt.year), ('sale_month', date.dt.month)):
+        derived = part.astype('float64')
+        if column in curated.columns:
+            stated = pd.to_numeric(curated[column], errors='coerce')
+            derived = stated.fillna(derived)
+        curated[column] = derived
+    state.curated = curated
+    return state
+
+
+@_register('flag_sales_matching_other_kind')
+def flag_sales_matching_other_kind(
+    state: CurateState,
+    key_column: str,
+    kind_column: str = 'sale_record_kind',
+    flagged_kind: str = 'assessor_last_sale',
+    reference_kind: str = 'deed',
+    output: str = 'sale_matches_deed',
+) -> CurateState:
+    """Flag an assessor last-sale row that a recorded deed also reports.
+
+    A county with a recorder's table and a roll reports its most recent
+    sales twice, once as a deed and once as the roll's last-sale field.
+    Both rows are kept, since nothing is filtered here; this flag is what
+    lets a consumer keep the deed and drop its echo.
+
+    The test is exact equality of four values: *key_column*, `sale_year`,
+    `sale_month` and `price`. Month, not day, because a roll often
+    records the month only (every last-sale date of Pitt County NC falls
+    on the first of a month, and the matching deed follows within 30
+    days). Nothing is fuzzy, scored or tuned, and no row is removed or
+    relinked. Measured on Pitt County NC, 2026-09-20: 89.9% of
+    last-sale rows whose parcel has any recorded deed match one this way.
+
+    Parameters
+    ----------
+    key_column : str
+        Column identifying the parcel both rows name.
+    kind_column : str, optional
+        Column holding the record kind (default `sale_record_kind`).
+    flagged_kind, reference_kind : str, optional
+        The kind that receives the flag and the kind it is compared to.
+    output : str, optional
+        Column written: 1 on a *flagged_kind* row with a match, 0 on one
+        without, missing on every other row and on a *flagged_kind* row
+        lacking any of the four values.
+    """
+    curated = state.curated
+    needed = [key_column, kind_column, 'sale_year', 'sale_month', 'price']
+    if any(c not in curated.columns for c in needed):
+        # No comparison is possible (Massachusetts rows carry no parcel
+        # key); the column is still written, so every unit has it.
+        curated[output] = float('nan')
+        state.curated = curated
+        return state
+    values = curated[[key_column, 'sale_year', 'sale_month', 'price']]
+    complete = values.notna().all(axis=1)
+    # Column-wise concatenation: a missing part makes the key missing.
+    text = values.astype('string')
+    key = text.iloc[:, 0]
+    for column in text.columns[1:]:
+        key = key + '|' + text[column]
+    reference = set(key[curated[kind_column] == reference_kind].dropna())
+    flag = pd.Series(float('nan'), index=curated.index, dtype='float64')
+    target = (curated[kind_column] == flagged_kind) & complete
+    flag.loc[target] = key.loc[target].isin(reference).astype('float64')
+    curated[output] = flag
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  flag_sales_matching_other_kind: {int((flag == 1).sum()):,} of '
+            f'{int(target.sum()):,} {flagged_kind} rows match a {reference_kind}'
+        )
     return state
 
 
@@ -50,6 +155,7 @@ def collapse_double_closings(
     max_gap_months: int = 1,
     keep: str = 'last',
     output: str | None = None,
+    within: list[str] | None = None,
 ) -> CurateState:
     """Drop, or flag, the earlier leg of a double closing.
 
@@ -81,22 +187,37 @@ def collapse_double_closings(
         is a judgment a consumer may want to make with its own gap and
         price tolerance, so the canonical entity carries the flag and a
         filtered product drops the row.
+    within : list of str, optional
+        Columns a pair must also share, e.g. `[sale_record_kind]`. A
+        deed and the assessor's last-sale record of that same deed sit
+        on one parcel at one price in one month, and the assessor row
+        often has no book and page, which reads as "a different
+        document": without this every such pair would be flagged as a
+        double closing. Columns the table lacks are ignored.
     """
     if keep != 'last':
         raise NotImplementedError("collapse_double_closings only supports keep='last'.")
     curated = state.curated
     if key_column not in curated.columns:
+        # Nothing to compare by (Massachusetts rows carry no assessor
+        # parcel id). The flag is still written, as missing, so that
+        # every unit's table has the column and 0 keeps meaning "was
+        # checked and is not an earlier leg".
+        if output is not None:
+            curated[output] = float('nan')
+            state.curated = curated
         return state
 
-    df = curated[
-        [key_column, 'sale_year', 'sale_month', 'price', 'sale_book', 'sale_page']
-    ]
+    keys = [key_column, *[c for c in within or [] if c in curated.columns]]
+    df = curated.reindex(
+        columns=[*keys, 'sale_year', 'sale_month', 'price', 'sale_book', 'sale_page']
+    )
     period = pd.to_numeric(df['sale_year'], errors='coerce') * 12 + pd.to_numeric(
         df['sale_month'], errors='coerce'
     )
-    df = df.assign(_period=period).sort_values([key_column, '_period'])
+    df = df.assign(_period=period).sort_values([*keys, '_period'])
 
-    grouped = df.groupby(key_column)
+    grouped = df.groupby(keys)
     prev_period = grouped['_period'].shift(1)
     prev_price = grouped['price'].shift(1)
     prev_book = grouped['sale_book'].shift(1)
@@ -276,6 +397,8 @@ def derive_document_id(
     candidates: list,
     output: str = 'sale_document_id',
     separator: str = '/',
+    scope_column: str | None = None,
+    unscoped_value: str | None = None,
 ) -> CurateState:
     """Name the recorded document (deed) behind each sale row.
 
@@ -301,6 +424,17 @@ def derive_document_id(
         candidate is complete.
     separator : str, optional
         Joins a multi-column candidate.
+    scope_column : str, optional
+        Column whose value is prefixed to the identifier (`value:id`),
+        so that rows of different scopes never share one. With
+        `sale_record_kind`, a deed and the assessor's last-sale record
+        citing that deed's book and page stay two rows: counted or
+        aggregated together they would read as one sale of two parcels.
+        Assessor rows of one deed still share an identifier with each
+        other, which is what lets a multi-parcel last sale be counted.
+    unscoped_value : str, optional
+        The *scope_column* value left unprefixed (`deed`), so identifiers
+        already published for it do not change.
     """
     curated = state.curated
     document = pd.Series(pd.NA, index=curated.index, dtype='string')
@@ -308,15 +442,27 @@ def derive_document_id(
         columns = [group] if isinstance(group, str) else list(group)
         if any(c not in curated.columns for c in columns):
             continue
-        parts = [
-            _normalized(curated[c]).astype('string').where(curated[c].notna())
-            for c in columns
-        ]
+        parts = []
+        for c in columns:
+            part = _normalized(curated[c]).astype('string')
+            # A part that is empty or all zeros is a placeholder, not an
+            # identifier. Glades County FL's roll writes a single space
+            # for book and page on every row, which named one document
+            # ('/') for all 1,333 of its last sales and folded them into
+            # a single "deed".
+            placeholder = part.str.fullmatch('0*').fillna(True)
+            parts.append(part.where(curated[c].notna() & ~placeholder))
         complete = pd.concat(parts, axis=1).notna().all(axis=1)
         joined = parts[0]
         for part in parts[1:]:
             joined = joined + separator + part
         document = document.where(document.notna() | ~complete, joined)
+    if scope_column is not None and scope_column in curated.columns:
+        scope = curated[scope_column].astype('string')
+        scoped = document.notna() & scope.notna()
+        if unscoped_value is not None:
+            scoped &= (scope != unscoped_value).fillna(False)
+        document = document.where(~scoped, scope + ':' + document)
     curated[output] = document
     state.curated = curated
     if state.verbose:

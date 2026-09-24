@@ -35,7 +35,7 @@
 
 description: >-
   Newton County, TX certified appraisal roll (PACS 8.0.34 export): state land-use
-  codes, legal acreage and market value keyed by property.
+  codes, legal acreage, land, improvement and market value keyed by property.
 
 admin_id: US-TX-NEW
 
@@ -83,7 +83,17 @@ fixed_width:
   - [legal_acreage, 16]
   - [abs_subdv_cd, 10]
   - [hood_cd, 10]
-  - [filler, 220]
+  - [filler, 100]
+  # The value block (layout positions 1796-1915, 15 wide each): what
+  # market_value is the sum of. See VALUES below.
+  - [land_hstd_val, 15]
+  - [land_non_hstd_val, 15]
+  - [imprv_hstd_val, 15]
+  - [imprv_non_hstd_val, 15]
+  - [ag_use_val, 15]
+  - [ag_market, 15]
+  - [timber_use, 15]
+  - [timber_market, 15]
   - [appraised_val, 15]
   - [filler, 801]
   - [imprv_state_cd, 10]
@@ -104,6 +114,46 @@ transformations:
     expression: "land_area_ac / 10000"
     inputs: [land_area_ac]
     output: land_area_ac
+  # VALUES. Land is the homestead and non-homestead land plus
+  # agricultural and timber land at market, improvement the homestead
+  # and non-homestead improvement: market_value equals that sum on 515
+  # of 515 rows sampled from the file's head and middle (2026-09-23;
+  # 44 of them with timber or agricultural land). Mapped because 2,034
+  # of Newton's parcels carry a market total and no land in TxGIO and
+  # the roll has the figure. prop_id is unique, so no ownership scaling
+  # (contrast the Cameron recipe).
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: land_non_hstd_val
+    output: land_non_hstd_val
+  - type: unary
+    operation: to_numeric
+    input: ag_market
+    output: ag_market
+  - type: unary
+    operation: to_numeric
+    input: timber_market
+    output: timber_market
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, land_non_hstd_val, ag_market, timber_market]
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: imprv_non_hstd_val
+    output: imprv_non_hstd_val
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value, imprv_non_hstd_val]
+    output: improvement_value
   # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
   # bare form.
   - type: string
@@ -113,7 +163,18 @@ transformations:
       chars: "0"
     output: parcel_id_assessor
 
+drop_columns:
+  - land_non_hstd_val
+  - imprv_non_hstd_val
+  - ag_use_val
+  - ag_market
+  - timber_use
+  - timber_market
+  - appraised_val
+
 columns:
+  land_value: land_hstd_val
+  improvement_value: imprv_hstd_val
   tax_neighborhood_code: hood_cd
   parcel_id_admin2_2: geo_id
   use_group_code: land_state_cd

@@ -68,6 +68,15 @@ pipeline:
     supplements_only: true
     count_as: false
 
+  # Index the spine by stable property ids, `{admin3}_{account number}`,
+  # and merge the rows of different sources that carry the same one (a
+  # state's republication of a roll beside the county's own table). The
+  # account number is the column a source's recipe names in `entity_id`,
+  # else the first raw assessor id column it carries. After the
+  # supplements join above, which picks a roll's rows by their single
+  # `source` label; a merged row carries several, joined by `+`.
+  - step: assign_entity_ids
+
   # Standardize each unit's own address independently -- the whole point of
   # this spine: "21 Sample Ave #2" and "19 Sample Ave #1" are two distinct,
   # correct addresses on the same land parcel, not a collapse candidate.

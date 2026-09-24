@@ -1,0 +1,298 @@
+# Recipe: Wisconsin Real Estate Transfer Return (RETR) transactions,
+# 2014-01 to 2020-12, from the Department of Revenue's older monthly
+# export.
+#
+# RETR has been published in two formats, and each has its own recipe:
+#
+#   this recipe                     `{YYYYMM}CSV.zip` holding
+#                                   `{YYYYMM}CSV.csv`: 89 CamelCase
+#                                   columns, numeric codes, Windows-1252
+#   US-WI_transaction-widor-2026    `RETRHistoricalReport{YYYYMM}.csv`:
+#                                   78 columns, spaced headers, labels,
+#                                   UTF-8, published from 2021-01-12
+#
+# They describe the same documents. For 2023-06, which both exports
+# cover, 20,371 of 20,373 rows pair on document number, and every
+# mapping below was measured on those pairs (2026-09-21). This recipe
+# stops at 2021-01 because the newer export is the better record from
+# 2021-02 on (decimal acres, a price kept apart from the estimated
+# value, 26 conveyance types where this one has 5 codes), and what
+# this export has that the newer one lacks (weatherization and energy
+# fields, a financing code the newer one spells out as flags, lot
+# dimensions) is nothing a sale record here uses.
+#
+# No download_url: the files were obtained from the Department of
+# Revenue over several years and are placed by hand into this recipe's
+# external-file folder, one `{YYYYMM}CSV.zip` a month holding
+# `{YYYYMM}CSV.csv`; all 85 months are held. A month with no file is
+# skipped with a warning. Match file names without regard to case when
+# placing them: the department spelled five months of 2017
+# `201706csv.zip` (lower case), and a case-sensitive filter reported
+# them missing on 2026-09-21.
+#
+# Two details of the export that do not count as a format change, since
+# no mapped column is involved: the header spells one column
+# `VolumneJacket` until 2017-09 and `VolumeJacket` after, and 9 months
+# carry a trailing column with an empty name.
+#
+# Four traps, each measured:
+#
+# - DATES drop their leading zero: `MDDYYYY`, 7 digits for January to
+#   September and 8 for October to December. Zero-padded to 8 and read
+#   as MMDDYYYY they equal the newer export's dates on 1.000 of paired
+#   rows. They are rebuilt below as YYYY-MM-DD text before parsing,
+#   because `to_datetime` takes no format and would read the digits as
+#   something else.
+# - PARCEL NUMBERS carry the literal prefix `PRCL` on every row of
+#   every month. With it removed they equal the newer export's `Parcel
+#   Number` on 0.997 of paired rows.
+# - `TotalRealEstateValue` IS NOT ALWAYS A PRICE. It equals the newer
+#   export's `Sale Price` on 0.996 of sales, and its `Estimated Value`
+#   on 0.946 of everything else (gifts, exchanges, deeds in satisfaction
+#   of a land contract). So it is mapped to `estimated_value`, and
+#   `price` takes it only where the transfer type is a sale and is 0
+#   elsewhere, which is what the newer export writes for a non-sale.
+# - ACRES are whole numbers here (the newer export has two decimals),
+#   so a lot under half an acre reads 0.
+#
+# The coded columns are decoded to the newer export's own labels, read
+# off the paired rows (each code's rows fall on one label at 0.94 or
+# more, except where the newer export has finer labels than this one
+# has codes: property type and use keep the main label). Relationship
+# codes 3 and 5 both pair with 'Shareholder/partner/member'.
+#
+# `sale_party_relationship` is the reason a Wisconsin sale can be graded
+# at all: RETR asks the parties how they are related, and 'Family' is one
+# answer. It is a source field, so no names are compared to get it.
+#
+# NOT MAPPED: the parties' and the tax-bill recipient's mailing
+# addresses (five columns each; `concat` has no way to skip an empty
+# part), the agent and preparer names, section/township/range, the
+# financing code, weatherization fields, and the jacket and image
+# references. Add them when something needs them.
+
+description: >-
+  Wisconsin Real Estate Transfer Return (RETR) transactions for 2014 to
+  2020, from the Department of Revenue's older monthly CSV export.
+
+admin_id: US-WI
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: widor
+    portal_url: "https://www.revenue.wi.gov/Pages/RETr/Home.aspx"
+  version: "2020"
+
+# Through 2021-01, not 2020-12: the newer export begins on 2021-01-12
+# and lacks the month's first six business days (12,418 of 19,455
+# documents; the 7,039 it lacks are all recorded 01-04 to 01-11). From
+# 2021-02 on, the 50 months held in both exports agree to within 17
+# documents a month, so nothing is lost by reading the newer one there.
+download_by:
+  partition: year_month
+  first: 201401
+  last: 202101
+
+compressed_file_name: "{year_month}CSV.zip"
+uncompressed_file_name: "{year_month}CSV.csv"
+
+# 101 of the 130 monthly files are Windows-1252 and the rest plain
+# ASCII, which reads the same either way.
+encoding: cp1252
+
+# Codes, dates and document numbers are all digits; read as numbers
+# they lose leading zeros and mix types within a column.
+csv_dtype: str
+
+columns:
+  instrument_number: DocumentNumber
+  admin3_name: CountyName
+  city: TVCname
+  recorded_date_raw: DateRecorded
+  conveyance_date_raw: DateConveyed
+  doc_type: ConveyanceCode
+  conveyance_type: TransferType
+  sale_party_relationship: GrantorGranteeRelationship
+  property_type: PropertyType
+  property_use_type: PredominateUse
+  parcel_id_raw: ParcelIdentification
+  n_units: MultiFamilyUnits
+  address: PropertyAddress
+  land_area_ac: TotalAcres
+  grantor_last_name: GrantorLastName
+  grantor_first_name: GrantorFirstName
+  grantee_last_name: GranteeLastName
+  grantee_first_name: GranteeFirstName
+  estimated_value: TotalRealEstateValue
+  transfer_fee: TransferFee
+
+# The export repeats a few records verbatim (13 rows in the 79 months
+# first ingested, 2026-09-21), and the roll-up into `_all.parquet`
+# refuses a batch holding full-row duplicates. A row equal on the document, the parcel, both
+# dates, the value, the conveyance and both parties is that repeat; a
+# document covering several parcels differs in its parcel and is kept.
+drop_duplicates:
+  - instrument_number
+  - parcel_id_raw
+  - recorded_date_raw
+  - conveyance_date_raw
+  - estimated_value
+  - conveyance_type
+  - grantor_last_name
+  - grantor_first_name
+  - grantee_last_name
+  - grantee_first_name
+
+transformations:
+  # Dates: MDDYYYY -> MMDDYYYY -> 'YYYY-MM-DD' -> datetime.
+  - {type: string, operation: zfill, input: recorded_date_raw,
+     args: {width: 8}, output: recorded_date_raw}
+  - {type: string, operation: substring, input: recorded_date_raw,
+     args: {start: 4, end: 8}, output: _rec_year}
+  - {type: string, operation: substring, input: recorded_date_raw,
+     args: {start: 0, end: 2}, output: _rec_month}
+  - {type: string, operation: substring, input: recorded_date_raw,
+     args: {start: 2, end: 4}, output: _rec_day}
+  - {type: string, operation: concat,
+     inputs: [_rec_year, _rec_month, _rec_day], args: {sep: "-"},
+     output: recorded_date}
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+
+  - {type: string, operation: zfill, input: conveyance_date_raw,
+     args: {width: 8}, output: conveyance_date_raw}
+  - {type: string, operation: substring, input: conveyance_date_raw,
+     args: {start: 4, end: 8}, output: _con_year}
+  - {type: string, operation: substring, input: conveyance_date_raw,
+     args: {start: 0, end: 2}, output: _con_month}
+  - {type: string, operation: substring, input: conveyance_date_raw,
+     args: {start: 2, end: 4}, output: _con_day}
+  - {type: string, operation: concat,
+     inputs: [_con_year, _con_month, _con_day], args: {sep: "-"},
+     output: conveyance_date}
+  - {type: unary, operation: to_datetime, input: conveyance_date,
+     output: conveyance_date}
+
+  # Parcel number without its 'PRCL' prefix, under the two names the
+  # newer recipe uses (parcel_id_local is built from the second).
+  - {type: string, operation: substring, input: parcel_id_raw,
+     args: {start: 4}, output: parcel_id_tax}
+  - {type: string, operation: concat, inputs: [parcel_id_tax],
+     output: parcel_id_assessor}
+
+  # The value is a price only on a sale (transfer type 1); see the
+  # header. Computed before the code is decoded to its label.
+  # Values are currency text ('$185,000.00 ', trailing space included).
+  - {type: unary, operation: parse_currency, input: estimated_value,
+     output: estimated_value}
+  - {type: unary, operation: to_numeric, input: conveyance_type,
+     output: _transfer_code}
+  - type: expression
+    expression: "estimated_value * (_transfer_code == 1)"
+    inputs: [estimated_value, _transfer_code]
+    output: price
+  - {type: unary, operation: parse_currency, input: transfer_fee,
+     output: transfer_fee}
+  - {type: unary, operation: to_numeric, input: land_area_ac,
+     output: land_area_ac}
+
+  # Codes to the newer export's labels.
+  - type: remap
+    input: doc_type
+    output: doc_type
+    mapping:
+      "1": Warranty deed
+      "2": Land contract
+      "3": Quit claim deed
+      "4": Other
+  - type: remap
+    input: conveyance_type
+    output: conveyance_type
+    mapping:
+      "1": Sale
+      "2": Gift
+      "3": Exchange
+      "4": Deed in satisfaction of land contract
+      "5": Other
+  - type: remap
+    input: sale_party_relationship
+    output: sale_party_relationship
+    mapping:
+      "1": No relationship
+      "2": Financial
+      "3": Shareholder/partner/member
+      "4": Family
+      "5": Shareholder/partner/member
+      "6": Other
+  - type: remap
+    input: property_type
+    output: property_type
+    mapping:
+      "1": Land only
+      "2": Land and buildings/improvements
+      "3": Condominium
+  - type: remap
+    input: property_use_type
+    output: property_use_type
+    mapping:
+      "1": Single family (Class 1)
+      "2": Commercial (Class 2)
+      "3": Manufacturing (Class 3)
+      "4": Agricultural (Class 4)
+      "5": Other (Class 7)
+
+  # One name column per party, as the newer export has.
+  - {type: string, operation: concat,
+     inputs: [grantor_last_name, grantor_first_name], args: {sep: " "},
+     output: grantor}
+  - {type: string, operation: concat,
+     inputs: [grantee_last_name, grantee_first_name], args: {sep: " "},
+     output: grantee}
+
+  # Per-row county id from the county name, as the newer recipe does
+  # it, but from this export's own crosswalk: it writes the names in
+  # capitals ('FOND DU LAC') where the newer one writes 'Fond du Lac'.
+  # Both crosswalks are built from the admin spine by county name. Two
+  # junk county values ('0' and a village's name) match nothing and
+  # leave those rows without a county id.
+  - output: admin3_id
+    type: remap_file
+    input: admin3_name
+    crosswalk_id: US-WI_transaction-widor-2020_county-remap
+
+drop_columns:
+  - recorded_date_raw
+  - conveyance_date_raw
+  - parcel_id_raw
+  - grantor_last_name
+  - grantor_first_name
+  - grantee_last_name
+  - grantee_first_name
+  - _rec_year
+  - _rec_month
+  - _rec_day
+  - _con_year
+  - _con_month
+  - _con_day
+  - _transfer_code
+
+columns_to_categorical:
+  - doc_type
+  - conveyance_type
+  - sale_party_relationship
+  - property_type
+  - property_use_type
+
+# Same key, same per-county conversion rows as the newer recipe
+# (US_transaction_id-overrides.csv, kind: tax).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
+  admin_id_column: admin3_id
+
+save_to:
+  data_dir: cache
+
+aggregate_by:
+  single_file: true

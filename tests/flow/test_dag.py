@@ -62,9 +62,17 @@ def test_nodes_cover_the_worked_example(dag):
         'US-NC_parcel-nconemap-2025',
     ):
         assert by_id[recipe_id].stage == 'ingest', recipe_id
-    # Enrichment evidence + its image ingest
+    # Enrichment evidence. Its image recipe is configuration only: the
+    # imagery is fetched in memory during enrichment and never written,
+    # so there is no job for it and nothing for a job to wait on.
     assert by_id['US_footprint_built-n-stories-brails-2026'].stage == 'enrich'
-    assert by_id['image-googlestreetview-2026'].stage == 'ingest'
+    assert 'image-googlestreetview-2026' not in by_id
+    assert not any(
+        'image-googlestreetview' in str(p)
+        for p in dag.input_paths(
+            'enrich', 'US_footprint_built-n-stories-brails-2026', COUNTY
+        )
+    )
 
 
 def test_output_path_matches_recipe_layer(dag):
@@ -98,6 +106,29 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     )
     assert spine_path in inputs
     assert sidecar in inputs
+
+
+def test_property_parcel_link_is_written_after_both_of_its_sides(dag):
+    # The order the entity structure depends on: property spine, then
+    # the parcel geospine (which reads it), then the parcel spine, which
+    # writes the property-to-parcel link because it is the first recipe
+    # in which both sides exist.
+    property_spine = get_output_path('US_property-spine-2026', admin_id=COUNTY)
+    geospine = get_output_path('US_parcel-geospine-2026', admin_id=COUNTY)
+    assert property_spine in dag.input_paths(
+        'harmonize', 'US_parcel-geospine-2026', COUNTY
+    )
+    spine_inputs = dag.input_paths('harmonize', 'US_parcel-spine-2026', COUNTY)
+    assert geospine in spine_inputs
+    assert property_spine in spine_inputs
+
+    link = get_entity_link_path(
+        'US_property-spine-2026', 'US_parcel-geospine-2026', COUNTY
+    )
+    # Beside the finer entity's output, named after the geospine.
+    assert link.parent == property_spine.parent
+    assert link in dag.extra_outputs('harmonize', 'US_parcel-spine-2026', COUNTY)
+    assert link not in dag.extra_outputs('harmonize', 'US_property-spine-2026', COUNTY)
 
 
 def test_retention_classes(dag):
@@ -269,10 +300,11 @@ def test_excluding_image_enrich_recipe_prunes_its_image_ingest_too():
     )
     ids = {n.recipe_id for n in excluded.nodes()}
     assert 'US_footprint_built-n-stories-brails-2026' not in ids
-    assert 'image-googlestreetview-2026' not in ids
-    # The unrelated satellite-dependent enrich recipe is unaffected
+    # The unrelated satellite-dependent enrich recipe is unaffected.
+    # Neither image recipe is a job (see test_nodes_cover_the_worked_example).
     assert 'US_footprint_built-roof-shape-brails-2026' in ids
-    assert 'image-googlesatellite-z20' in ids
+    assert 'image-googlestreetview-2026' not in ids
+    assert 'image-googlesatellite-z20' not in ids
 
 
 def test_to_mermaid_defaults_to_horizontal(dag):

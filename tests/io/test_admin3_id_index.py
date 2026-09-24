@@ -11,7 +11,7 @@ index. Every unit below is fabricated.
 import pandas as pd
 import pytest
 
-from openplaces.io import admin
+from openplaces.io.admin import ids as admin
 
 
 def _spine(rows):

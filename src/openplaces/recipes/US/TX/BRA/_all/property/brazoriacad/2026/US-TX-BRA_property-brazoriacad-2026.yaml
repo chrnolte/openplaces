@@ -35,11 +35,21 @@
 # resolving; read the new id off the folder listing (pCloud's
 # showpublink call on the same code).
 #
+# VALUES. Land and improvement are mapped from the PACS value block
+# (land_hstd_val, land_non_hstd_val, imprv_hstd_val,
+# imprv_non_hstd_val, ag_use_val, ag_market, timber_use,
+# timber_market, then appraised_val; layout positions 1796-1930),
+# because 1,796 of Brazoria's parcels carry a market total and no land
+# in TxGIO (measured 2026-09-23) and the roll has the figure.
+# market_value equals land_hstd + land_non_hstd + imprv_hstd +
+# imprv_non_hstd + ag_market + timber_market on 296 of 309 real-property
+# rows sampled from the file's middle (eight with agricultural land);
+# the file's head is personal-property accounts, whose value sits in
+# fields not read here, as do the 13 exceptions.
+#
 # NOT MAPPED. Owner name and mailing address are never read; nothing
 # downstream needs them. The ZIP also carries an AGENT_OWNER member
-# that this recipe never reads. Land and improvement values are not
-# mapped for the reason given in the Victoria recipe; market_value is
-# the total.
+# that this recipe never reads.
 
 description: >-
   Brazoria County, TX certified appraisal roll (PACS 8.0.34 export): state
@@ -91,7 +101,17 @@ fixed_width:
   - [legal_acreage, 16]
   - [abs_subdv_cd, 10]
   - [hood_cd, 10]
-  - [filler, 220]
+  - [filler, 100]
+  # The value block (layout 8.0.34 positions 1796-1915, 15 wide each):
+  # what market_value is the sum of. See VALUES in the header.
+  - [land_hstd_val, 15]
+  - [land_non_hstd_val, 15]
+  - [imprv_hstd_val, 15]
+  - [imprv_non_hstd_val, 15]
+  - [ag_use_val, 15]
+  - [ag_market, 15]
+  - [timber_use, 15]
+  - [timber_market, 15]
   - [appraised_val, 15]
   - [filler, 801]
   - [imprv_state_cd, 10]
@@ -112,6 +132,43 @@ transformations:
     expression: "land_area_ac / 10000"
     inputs: [land_area_ac]
     output: land_area_ac
+  # Land and improvement on the market basis market_value is the sum
+  # of: land is the homestead and non-homestead land plus agricultural
+  # and timber land at market, improvement the homestead and
+  # non-homestead improvement. prop_id is unique here, so no ownership
+  # scaling (contrast the Cameron recipe).
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: land_non_hstd_val
+    output: land_non_hstd_val
+  - type: unary
+    operation: to_numeric
+    input: ag_market
+    output: ag_market
+  - type: unary
+    operation: to_numeric
+    input: timber_market
+    output: timber_market
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, land_non_hstd_val, ag_market, timber_market]
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: imprv_non_hstd_val
+    output: imprv_non_hstd_val
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value, imprv_non_hstd_val]
+    output: improvement_value
   # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
   # bare form.
   - type: string
@@ -121,7 +178,18 @@ transformations:
       chars: "0"
     output: parcel_id_assessor
 
+drop_columns:
+  - land_non_hstd_val
+  - imprv_non_hstd_val
+  - ag_use_val
+  - ag_market
+  - timber_use
+  - timber_market
+  - appraised_val
+
 columns:
+  land_value: land_hstd_val
+  improvement_value: imprv_hstd_val
   tax_neighborhood_code: hood_cd
   parcel_id_admin2_2: geo_id
   use_group_code: land_state_cd

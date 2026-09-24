@@ -152,7 +152,7 @@ class AdminId:
         ----------
         *levels : str
             Administrative level strings (e.g., 'US', 'MA'). A single
-            argument may also be a string with separators ('US-MA-MI'),
+            argument may also be a string with separators ('US-NC-CUR'),
             a sequence of level strings, another AdminId, or None or the
             empty string for the global id.
 
@@ -202,13 +202,13 @@ class AdminId:
     def __str__(self) -> str:
         """Return string representation
 
-        (e.g., 'US-MA-MI-001' or '' for global)"""
+        (e.g., 'US-NC-CUR' or '' for global)"""
         return STRING_SEPARATOR_WITHIN_IDS.join(self.levels)
 
     def to_prefix(self) -> str:
         """Return prefix string with separator
 
-        (e.g., 'US-MA-MI-001_' or '' for global)"""
+        (e.g., 'US-NC-CUR_' or '' for global)"""
         admin_id_str = str(self)
         return admin_id_str + STRING_SEPARATOR_BETWEEN_IDS if admin_id_str else ''
 
@@ -573,9 +573,9 @@ class UsageRequirement:
 def _admin_ids_related(interest: str, admin_id: str) -> bool:
     """True when one admin id is the other, an ancestor, or a descendant.
 
-    A declared interest in 'US-MA' covers a 'US-MA-MI' recipe (the county
-    sits inside the interest), and an interest in 'US-MA-MI' covers a
-    'US-MA' recipe (the statewide file is how that county is obtained).
+    A declared interest in 'US-NC' covers a 'US-NC-CUR' recipe (the county
+    sits inside the interest), and an interest in 'US-NC-CUR' covers a
+    'US-NC' recipe (the statewide file is how that county is obtained).
     """
     a = str(interest).split('-')
     b = str(admin_id).split('-')

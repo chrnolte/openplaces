@@ -276,7 +276,7 @@ def fetch(
         recipe's `source.portal_url` unless overridden via
         `scraper_options.portal_url`).
     admin_id_to_download : str, optional
-        The current admin unit (e.g. `'US-MA-MI'`), used to resolve
+        The current admin unit (e.g. `'US-NC-CUR'`), used to resolve
         `{admin1}`/`{admin2}`/... and `{admin_key}` placeholders in
         `file_path`.
     file_path : str

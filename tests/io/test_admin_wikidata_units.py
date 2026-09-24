@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from openplaces.io import admin_wikidata as wd
+from openplaces.io.admin import wikidata as wd
 
 COUNTY = 'Q269218'
 PROVINCE = 'Q70252'

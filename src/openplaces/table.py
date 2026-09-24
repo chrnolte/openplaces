@@ -15,6 +15,7 @@ former homes re-export them, so existing import paths keep working.
 """
 
 import warnings
+from itertools import combinations
 
 import geopandas as gpd
 import pandas as pd
@@ -22,6 +23,52 @@ import pandas as pd
 from openplaces.core.attribute_registry import get_agg_func
 from openplaces.geo.address import strip_unit_suffix
 from openplaces.recipe import resolve_attribute_name
+
+
+def summarize_conflicts(
+    present: list[tuple[str, pd.Series]],
+    index: pd.Index,
+) -> pd.Series:
+    """Summarize disagreeing evidence values per row as a compact string.
+
+    *present* is a list of (label, values) pairs, each values Series
+    aligned to *index*. Returns an object Series that is missing except
+    where at least two present values disagree; there, sources are
+    grouped by unique value (groups ordered by first-appearing label,
+    labels within a group joined with '/'), e.g. 'nsi/parcel: Single
+    Family | fema: Manufactured Home', so agreements and disagreements
+    are both visible at a glance.
+
+    Shared by the harmonize stage (address reconciliation) and the curate
+    stage (occupancy and land-use reconciliation); it lives here because
+    neither stage may import the other.
+    """
+    conflict = pd.Series(pd.NA, index=index, dtype=object)
+    if len(present) < 2:
+        return conflict
+
+    differ = pd.Series(False, index=index)
+    for (_, class_a), (_, class_b) in combinations(present, 2):
+        both = class_a.notna() & class_b.notna()
+        differ = differ | (both & class_a.ne(class_b))
+    if not differ.any():
+        return conflict
+
+    labels = [label for label, _ in present]
+    stacked = pd.concat(
+        {label: values.astype(object) for label, values in present}, axis=1
+    )
+
+    def _row_summary(row) -> str:
+        groups: dict[str, list[str]] = {}
+        for label in labels:
+            value = row[label]
+            if pd.notna(value):
+                groups.setdefault(str(value), []).append(label)
+        return ' | '.join(f'{"/".join(who)}: {value}' for value, who in groups.items())
+
+    conflict.loc[differ] = stacked.loc[differ].apply(_row_summary, axis=1)
+    return conflict
 
 
 def add_unique_suffix(s):

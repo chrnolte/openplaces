@@ -27,6 +27,7 @@ from openplaces.io.harmonizer import (
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import raise_if_coverage_complete
 
@@ -530,6 +531,58 @@ def resolve_spine(
     return state
 
 
+def _admin_specificity(recipe_id: str) -> int:
+    """How finely a recipe's own admin scope is drawn (US 1, US-NC 2, ...)."""
+    from openplaces.recipe import get_recipe_by_id
+
+    try:
+        admin_id = str(get_recipe_by_id(recipe_id).get('admin_id') or '')
+    except Exception:
+        return 0
+    return len(admin_id.split('-')) if admin_id else 0
+
+
+def _most_specific_units(unit_parts: list, state) -> list:
+    """Keep the split's units from the most admin-specific parcel source.
+
+    Two parcel sources covering one county each yield their own
+    stacked-units layer, and the two describe the same units. Where both
+    number their accounts alike, `assign_entity_ids` merges them into one
+    row and nothing here needs to choose (every Texas county measured:
+    a county roll and the statewide layer agree on the account number).
+    Where they do not, the rows stay separate *and* the units of the
+    source that lost geometry resolution carry a `lot_id_local` from
+    their own key space, which names no parcel row: measured on Hertford
+    County NC, 2026-09-21, 728 unit rows carrying $151.9M of improvement
+    value reached no parcel, beside 638 rows of the county's own layer
+    describing the same properties (451 of 538 address keys shared).
+
+    So the more specific source's units win the county outright, the way
+    every other source preference in the pipeline resolves. The cost is
+    a unit the statewide layer sees and the county layer does not; the
+    alternative, keeping only units whose lot is on the parcel spine,
+    cannot run here, because the property spine is built before the
+    parcel geospine that mints those rows.
+    """
+    if len(unit_parts) < 2:
+        return [df for _, _, df in unit_parts]
+    best = max(specificity for specificity, _, _ in unit_parts)
+    kept = [(label, df) for specificity, label, df in unit_parts if specificity == best]
+    dropped = [
+        (label, len(df)) for specificity, label, df in unit_parts if specificity != best
+    ]
+    # Always reported, verbose or not: dropping a source's rows is a
+    # decision a reader of the log should not have to ask about.
+    if dropped:
+        names = ', '.join(f'{label} ({rows:,d} rows)' for label, rows in dropped)
+        print(
+            f'  union_spine_sources: kept the units of '
+            f'{", ".join(label for label, _ in kept)} and dropped {names}: '
+            'a less specific parcel source describing the same units'
+        )
+    return [df for _, df in kept]
+
+
 @_register('union_spine_sources', phase='geometry')
 def union_spine_sources(
     state: HarmonizeState,
@@ -544,6 +597,17 @@ def union_spine_sources(
     admin scope instead (a sale recorded in one state's feed can't also
     appear in another's), so this is a straightforward concatenation, not a
     priority-merge -- no dedup logic beyond what ``pd.concat`` needs.
+
+    The one exception is a parcel recipe's implicit stacked-units layer
+    (``io.stacked_units``), which describes the same condominium units as
+    the county's tax roll. Its rows are loaded last and labeled
+    ``<source>:units``. Nothing is reconciled here: where the units carry
+    the roll's account numbers, ``assign_entity_ids`` mints the same id
+    for both and merges them into one row, the roll winning each cell;
+    where they do not, both rows stay, each reaches the lot through the
+    property-to-parcel link table, and the reader that sums over a lot
+    lets a roll's rows displace the split's there
+    (``io.curator.aggregation``).
 
     Parameters
     ----------
@@ -564,6 +628,7 @@ def union_spine_sources(
         return state
 
     parts = []
+    unit_parts = []
     loaded_recipe_ids = set()
     for src in resolved:
         recipe_id = src['recipe_id']
@@ -585,11 +650,29 @@ def union_spine_sources(
         if df.empty:
             continue
         df = df.copy()
+        is_units = bool(src.get('stacked_units_layer'))
+        if is_units:
+            # A label that says what the rows are: units split off a
+            # parcel table, which a reader ranks below any roll.
+            label = f'{label}{STACKED_UNITS_LABEL_SUFFIX}'
         df['source'] = label
-        parts.append(df)
+        if is_units:
+            unit_parts.append((_admin_specificity(recipe_id), label, df))
+        else:
+            parts.append(df)
         loaded_recipe_ids.add(recipe_id)
+        # Which table each label came from, for assign_entity_ids,
+        # which reads the id column that table's recipe names.
+        state.metadata.setdefault('spine_source_origins', {})[label] = (
+            recipe_id,
+            layer,
+        )
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
+
+    # Last, so that a roll's row wins each cell where both describe a
+    # unit (assign_entity_ids merges rows in load order).
+    parts += _most_specific_units(unit_parts, state)
 
     if not parts:
         warnings.warn(f'union_spine_sources: no rows loaded for {state.admin_id}.')
@@ -708,6 +791,7 @@ def _expand_auto_discover(
                     'recipe_id': match['recipe_id'],
                     'label': match['label'],
                     'layer': match['layer'],
+                    'stacked_units_layer': match.get('stacked_units_layer', False),
                 }
             )
             existing_ids.add(key)

@@ -56,6 +56,7 @@ from openplaces.io.harmonizer import (
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
 from openplaces.recipe import (
+    STACKED_UNITS_LAYER_KEY,
     get_output_path,
     get_recipe_by_id,
     get_recipe_dependencies,
@@ -1976,6 +1977,9 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                     'key': layer_spec.get('layer_key', 'parcel_id_local'),
                     'aggregation_function': layer_spec.get('aggregation_function'),
                     'supplements': None,
+                    'stacked_units_layer': bool(
+                        layer_spec.get(STACKED_UNITS_LAYER_KEY)
+                    ),
                 }
             )
 
@@ -2315,6 +2319,7 @@ def _neutralize_degenerate_keys(
     ref: pd.DataFrame,
     ref_key: str,
     recipe_id: str | None = None,
+    spine_key: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Blank out join-key values that are placeholders, not identifiers.
 
@@ -2332,6 +2337,18 @@ def _neutralize_degenerate_keys(
     parcel simply gains no reference attributes -- the same outcome as a
     parcel the reference never mentioned.
 
+    A key on many reference rows is spared when *spine_key* is given and
+    exactly one spine row carries it. That is a large stack, not a
+    placeholder, and the harm above cannot arise: it came from the
+    product, every one of a key's reference rows summed onto every one of
+    its spine rows (Brazoria's $7.5 billion key sits on 2,443 reference
+    rows **and** 2,443 parcel rows, and is as well formed as any other,
+    so its shape could not have told it apart). With one spine row the
+    sum lands once, where it belongs. Measured 2026-09-20 on New Hanover
+    County NC: 16 roll keys over the cutoff, 116 to 327 accounts each, 15
+    of them on exactly one parcel of 0.6 to 10 ha (parks and condominium
+    complexes), 2,853 roll rows that were being left off their parcel.
+
     Returns *ref* unchanged when nothing is degenerate.
     """
     if ref_key not in ref.columns or ref.empty:
@@ -2342,6 +2359,9 @@ def _neutralize_degenerate_keys(
     counts = key.astype('string').value_counts()
     cutoff = max(DEGENERATE_KEY_MIN_ROWS, DEGENERATE_KEY_MAX_SHARE * len(ref))
     overused = set(counts[counts > cutoff].index)
+    if overused and spine_key is not None:
+        on_spine = spine_key.dropna().astype('string').value_counts()
+        overused = {k for k in overused if on_spine.get(k, 0) != 1}
     if overused:
         bad = bad | key.astype('string').isin(overused)
 
@@ -2448,6 +2468,88 @@ def _warn_if_link_underperforms(
     )
 
 
+def _move_units_to_lots(
+    ref: pd.DataFrame,
+    ref_key: str,
+    spine_key: pd.Series,
+    pairs: pd.DataFrame,
+    spine: pd.DataFrame,
+    area_column: str = 'area_ha',
+) -> tuple[pd.DataFrame, int, int]:
+    """Re-key reference rows that name a split unit onto the unit's lot.
+
+    On a stacked lot the parcel row carries the lot's key, so a tax roll
+    row keyed on a unit's own number finds no spine row. *pairs* is what
+    the ingest-time split recorded (`unit_key`, `lot_key`), and a row
+    whose key is a unit's, and is on no spine row, takes the lot's.
+
+    An account the split saw on several lots becomes one row per lot.
+    Its land (every additive column whose name says land) is divided by
+    lot area, which is what land is. Every other additive column goes
+    whole to the largest lot and is left empty on the others: a building
+    stands on one lot, and dividing an improvement value by land area
+    would put part of a house on a vacant lot. `total_value` therefore
+    overstates the largest lot by the other lots' share of the land;
+    the property-to-footprint link is what will place improvements
+    properly. Exact lookups on issued keys; nothing is scored.
+
+    Returns the re-keyed frame, the number of rows moved, and how many
+    of them sit on several lots.
+    """
+    own = ref[ref_key].astype('string')
+    known = set(spine_key.dropna())
+    pairs = pairs.drop_duplicates()
+    pairs = pairs[pairs['unit_key'].isin(set(own.dropna()) - known)]
+    if pairs.empty:
+        return ref, 0, 0
+    n_lots = pairs.groupby('unit_key')['lot_key'].transform('size')
+    single = pairs[n_lots == 1].set_index('unit_key')['lot_key']
+    several = pairs[n_lots > 1]
+
+    ref = ref.copy()
+    target = own.map(single)
+    ref[ref_key] = own.where(target.isna(), target)
+    n_moved = int(target.notna().sum())
+    if several.empty:
+        return ref, n_moved, 0
+
+    area = None
+    if area_column in spine.columns:
+        area = (
+            pd.to_numeric(spine[area_column], errors='coerce').groupby(spine_key).sum()
+        )
+    several = several.assign(
+        lot_area=several['lot_key'].map(area) if area is not None else float('nan')
+    )
+    total = several.groupby('unit_key')['lot_area'].transform('sum')
+    size = several.groupby('unit_key')['lot_key'].transform('size')
+    weighable = (
+        several['lot_area'].notna().groupby(several['unit_key']).transform('all')
+    )
+    several['share'] = (several['lot_area'] / total).where(
+        weighable & total.gt(0), 1.0 / size
+    )
+    rank = several.groupby('unit_key')['share'].rank(method='first', ascending=False)
+    several['largest'] = rank.eq(1)
+
+    divided = ref[own.isin(set(several['unit_key']))]
+    expanded = divided.assign(unit_key=own[divided.index]).merge(
+        several[['unit_key', 'lot_key', 'share', 'largest']], on='unit_key'
+    )
+    expanded[ref_key] = expanded['lot_key']
+    for column in divided.columns:
+        if column == ref_key or get_agg_func(resolve_attribute_name(column)) != 'sum':
+            continue
+        values = pd.to_numeric(expanded[column], errors='coerce')
+        if 'land' in column:
+            expanded[column] = values * expanded['share']
+        else:
+            expanded[column] = values.where(expanded['largest'])
+    expanded = expanded.drop(columns=['unit_key', 'lot_key', 'share', 'largest'])
+    ref = pd.concat([ref.drop(index=divided.index), expanded], ignore_index=True)
+    return ref, n_moved + len(divided), len(divided)
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -2472,6 +2574,7 @@ def link_by_id(
     spine_address_key: dict | None = None,
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
+    _unit_lot_pairs: pd.DataFrame | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -2744,13 +2847,36 @@ def link_by_id(
             # punctuation-free fallback key. A supplements_key is the
             # one column relating a supplement to its roll, so no
             # caller key replaces it.
+            unit_lot_pairs = None
             if keyed:
                 match_spine_key = match_ref_key = keyed
+            elif match.get('stacked_units_layer'):
+                # Units split off a parcel table name their lot in the
+                # layer's key and keep their own `parcel_id_local`, so
+                # the pair of columns differs by side. A caller's
+                # fallback key is built from the unit's own id and
+                # cannot name a lot: such a pass skips this layer.
+                if spine_key != DEFAULT_LINK_KEY or ref_key != DEFAULT_LINK_KEY:
+                    continue
+                match_spine_key, match_ref_key = DEFAULT_LINK_KEY, match['key']
             else:
                 match_spine_key = (
                     spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
                 )
                 match_ref_key = ref_key if ref_key != DEFAULT_LINK_KEY else match['key']
+                if (
+                    entity_type == 'property'
+                    and match_spine_key == DEFAULT_LINK_KEY
+                    and match_ref_key == DEFAULT_LINK_KEY
+                ):
+                    # A roll keyed on a unit's own number finds no parcel
+                    # row on a stacked lot, whose row carries the lot's
+                    # key. The split's unit-to-lot pairs carry it there.
+                    from openplaces.io.harmonizer.entity_links import (
+                        load_unit_lot_pairs,
+                    )
+
+                    unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
@@ -2768,6 +2894,7 @@ def link_by_id(
                 fill_only=fill_only,
                 _protect_own_columns=protect_columns,
                 _supplement_of=match['supplements'] if keyed else None,
+                _unit_lot_pairs=unit_lot_pairs,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -2869,7 +2996,17 @@ def link_by_id(
     # Before any mode reads the key: a placeholder shared by thousands of
     # rows is not an identifier, and every mode below would silently treat
     # it as one (see _neutralize_degenerate_keys).
-    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id)
+    if _unit_lot_pairs is not None and len(_unit_lot_pairs):
+        ref, n_moved, n_divided = _move_units_to_lots(
+            ref, ref_key, skey, _unit_lot_pairs, state.spine
+        )
+        if state.verbose and n_moved:
+            print(
+                f'  link_by_id: {n_moved:,d} {recipe_id} rows keyed on a '
+                f'stacked unit moved to their lot ({n_divided:,d} of them '
+                'across several lots)'
+            )
+    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id, spine_key=skey)
     rkey = ref[ref_key].astype('string')
     spine_entity = state.recipe.get('entity')
     spine_entity_type = (

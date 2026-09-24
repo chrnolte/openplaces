@@ -48,7 +48,8 @@ carries a `Signed-off-by` line, by which you certify the
 [Developer Certificate of Origin](DCO.md): in short, that you wrote the
 contribution or otherwise have the right to submit it under the project's
 licence. You keep the copyright in your contribution. No paperwork is
-involved.
+involved. The maintainer's own commits are not signed off: the certificate
+is a contributor's statement to the project.
 
 ```bash
 git commit -s -m "Add a parcel recipe for Example County"

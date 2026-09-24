@@ -32,6 +32,21 @@ repository.
 - `docs/5_contribute/no-personal-data.rst` is the contributor-facing version of
   this section: what counts as a record, how to fabricate a fixture that still
   tests something, and the failure modes a history rewrite hits.
+- **Personal columns in data (not in git) are a per-user choice, and never
+  leave in a delivery.** Owner, grantor and grantee attributes
+  (`core.attribute_registry.is_personal_attribute`, the one definition) are
+  ingested, because sources carry them. A curate recipe's
+  `keep_registered_columns` step drops them from curated tables unless the
+  person running it set `python -m openplaces.config --keep-personal-columns
+  true` in their own config (a research use: telling a sale within a family
+  from one at arm's length where the source states no relationship). No
+  recipe key can switch that on, for the reason a recipe cannot accept terms.
+  `export_delivery` withholds these columns from every file whatever the
+  setting and raises `PersonalColumnError` on a recipe that lists one under
+  `share`. The same step is an allow-list against *unregistered* source
+  headers, which are dropped either way: Wisconsin's RETR is ingested with
+  78 raw columns, among them agent, preparer and tax-bill names that no
+  deny-list would have named.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
 ## Intellectual property: one notice, in one place
@@ -47,10 +62,15 @@ repository.
   in any of the files above without asking the user first, even to "fix" or
   "simplify" it: a wrong assertion here is a legal problem, not a style one.
 - Contributions come in under the Developer Certificate of Origin (`DCO.md`,
-  `CONTRIBUTING.md`): every commit by a person carries a `Signed-off-by`
-  line (`git commit -s`). An agent never writes a sign-off for a person and
-  never adds one in its own name; the sign-off is the human committer's
-  statement, in the same way co-authorship is reserved for people.
+  `CONTRIBUTING.md`): every commit by a contributor other than the
+  maintainer carries a `Signed-off-by` line (`git commit -s`). The
+  maintainer's own commits carry none: the sign-off certifies a
+  contributor's right to submit work to the project, which a copyright
+  holder has no one to certify to. Never suggest that the maintainer add
+  one, and never list a missing sign-off on the maintainer's commits as an
+  open item. An agent never writes a sign-off for a person and never adds
+  one in its own name; the sign-off is the human committer's statement, in
+  the same way co-authorship is reserved for people.
 - The repository is hosted under a personal GitHub account, not an
   institutional one. Don't propose or perform an org transfer, mirror, or
   similar hosting change unprompted.
@@ -148,37 +168,76 @@ repository.
 - **Where risk actually concentrates, based on research done so far**:
   the parcel/property-record-linking space has real, active patent
   holders — CoreLogic/Cotality, Black Knight/ICE Mortgage Technology, and
-  First American chief among them — whose claims cluster around three
+  First American chief among them — whose claims cluster around four
   specific technique *shapes*, not the general goal of "link/match
   property records" (which itself isn't patentable, only a particular
   claimed method for doing it is):
   1. Geometric neighbor/"community" detection (buffer-enlarge, union,
      reduce a group of parcel boundaries) used to impute or validate a
-     *missing address number* by interpolating between neighbors.
+     *missing address number* by interpolating between neighbors
+     (CoreLogic **US10248731B1**, to 2037-03-25; continuation
+     **US11061985B2**, whose claimed purpose is validating or correcting
+     address information; second continuation US20220067117A1, grant
+     status unconfirmed). Claim 1 recites five steps and **two of them
+     are worth knowing before writing any geometry that groups
+     parcels**: the community is parcels *within a threshold distance*
+     with contiguous boundaries, and the border is built by *enlarging*
+     each boundary, unioning, then *reducing* it back. A proximity
+     threshold is therefore a recited element, which is why a distance
+     tolerance is a different proposition from strict adjacency. The
+     back half (border-intersection points, a reduced neighbor set, and
+     bracketing a missing address number) is what the whole claim is
+     for, and `openplaces` does none of it.
   2. A trained machine-learning model used to score match probability
      between two property/record representations (as opposed to a fixed,
      deterministic rule set with no learned parameters).
   3. Detecting records *internally inconsistent* with their own source's
-     mapping/address data, grouping them, and normalizing the group.
+     mapping/address data, grouping them, and normalizing the group
+     (CoreLogic **US9298740B2**; all three independent claims start from
+     a parcel that *failed verification* against mapping or addressing
+     data, which nothing here tests).
   4. A **cascading match that falls through to fuzzy matching**, scores the
      resulting link with a strength indicator, *calibrates that scorer from
      the links it just made*, and then detects and removes an incorrect
-     earlier link (Black Knight US10606854B2, in force to 2038; method and
-     CRM claims, so no hardware recitation saves a library). This is the
-     shape closest to what `openplaces` already does — it normalizes to a
-     comparable form, matches in tiers, and uses `rapidfuzz`. What keeps it
-     clear is the back half: no per-link strength score, nothing that
-     re-tunes a scorer after linking, nothing that unlinks. **Do not add
-     link-confidence scoring that learns from its own past links**, and do
-     not add an unlink-on-reconsideration step, without a specific check
-     against that patent.
+     earlier link (Black Knight US10606854B2, in force to 2038). This is
+     the shape closest to what `openplaces` already does: it normalizes to
+     a comparable form and matches in tiers. **The three independent
+     claims differ, and the narrowest reading is not the safe one** (claims
+     read from the patent text 2026-09-21; an agent's reading, not legal
+     advice). Claim 1 (machine) and claim 15 (method) require the strength
+     indicator and its calibration from the links just made (claim 1 also
+     the removal of an incorrect link). **Claim 17, the computer-readable
+     medium claim and so the one a library is measured against, requires
+     none of that back half** (it appears only in dependent claim 18). Its
+     elements are: an input record with two attributes; a transformation
+     into a comparable form; a first non-fuzzy match on the first
+     attribute; on failure a cascade to a second non-fuzzy match on a
+     second attribute; **on failure of both, a cascade to a fuzzy matching
+     comparison, and a link made on the fuzzy match**. What keeps
+     `openplaces` clear of claim 17 is therefore the *front* half: **no
+     record-linking path falls through from exact key passes to a fuzzy
+     comparison.** `link_by_id`, `link_entities_by_id`, the stacked-units
+     passes, the transaction lane's parcel and address keys and
+     `assign_entity_ids` are exact matches on normalized keys, and a row
+     no exact pass reaches stays unlinked. `rapidfuzz` is used in two
+     places, neither a fall-through of that kind: `reconcile_addresses`
+     compares two address columns *already on one row* to decide whether
+     two sources agree (no record is linked by it), and
+     `io.curator.validation.link_points_to_entities` matches validation
+     points by house number plus fuzzy street name *first* and falls back
+     to distance, the reverse order, for scoring only. **Do not add a fuzzy
+     tier behind exact key passes in any linking step** (parcel, property,
+     transaction, address), do not add link-confidence scoring that learns
+     from its own past links, and do not add an unlink-on-reconsideration
+     step, without a specific check against that patent and the
+     maintainer's decision.
   A new feature that does one of these four things, in this domain,
   deserves a specific check against that sub-area before merging — not a
   general "we checked patents once" assumption. `openplaces`'s existing
   `parcel_id_local`/`geo_id` matching is deterministic string/geometry
   fingerprinting with no learned parameters and no neighbor-comparison or
   address-imputation step, which is why it reads as a different mechanism
-  from all three shapes above — that reasoning doesn't automatically carry
+  from all four shapes above — that reasoning doesn't automatically carry
   over to a new ML-based imputation or inference feature, which may
   resemble shape 2 much more closely by design. If ML matching is ever
   added, note that every independent claim of the shape-2 patent
@@ -189,10 +248,40 @@ repository.
 - **Process for a new imputation/inference/matching/valuation feature
   touching parcel, property, or transaction data**: (1) identify the
   specific technique, not just the goal, and check whether it resembles
-  one of the three shapes above or another known patent in this space;
+  one of the four shapes above or another known patent in this space;
   (2) if it does, flag it to the user explicitly before merging — this is
   a judgment call for a human, not something an agent should silently wave
-  through, the same posture as the IP-ownership section above; (3) where
+  through, the same posture as the IP-ownership section above — **but
+  count the differing steps before flagging anything** (maintainer's
+  rule, 2026-09-22). Infringement needs *every* element of a claim; one
+  element absent is enough to be clear of it. The maintainer set four
+  levels, in these words:
+
+  > Three steps different: silent. Two steps: report but don't ask for
+  > permissions. Moving from two to one steps: warn. Removing the last
+  > step: forbidden
+
+  So three or more differing steps is not a close call and saying so
+  only wastes attention; two is reported in passing, not escalated into
+  a blocking question; going from two to one is the point to warn,
+  because one further change would close the gap; and **taking the count
+  to zero is forbidden outright**, not warned about, because every
+  element present is infringement. The floor is the part of the rule
+  that protects anything, so never treat the warn level as the top of
+  the scale.
+  Count against the claim text, not against a paraphrase, and say which
+  steps you counted. **Count against every independent claim, and let
+  the one with the fewest absent steps decide**, because clearing one
+  claim clears nothing on its own: US10606854B2's claim 17 drops the
+  whole score/calibrate/unlink back half that claims 1 and 15 recite, so
+  a change measured only against claim 1 would read as three steps clear
+  while sitting one step from claim 17. For a library, the
+  computer-readable-medium claim is usually the broadest and is the one
+  to count first. Worked example: a strict contiguity gate on a lot
+  union differs from US10248731B1 claim 1 on the community-and-threshold
+  step, the border-intersection step, the neighbor-set step and the
+  address-bracketing step, so it needed no warning at all, and the 2026-09-22
+  stop on it was over-cautious by this rule; (3) where
   more than one technically valid approach exists, prefer the one that is
   most clearly mechanistically different from a known patented approach —
   this is not purely defensive: a genuinely distinct method is also a
@@ -234,6 +323,19 @@ repository.
 - Standardize on American English spelling ('meter', 'center', 'reproject') throughout all comments and docstrings.
 - Retain deep technical/algorithmic rationale and historical context in comments and docstrings to help developers understand why decisions were made.
 - Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
+- **Quote a statistic that can move; do not avoid it** (maintainer's
+  rule, 2026-09-22). A number is the evidence for a method, so a
+  docstring states it in one form, on one line, so that it can be found,
+  dated and flagged when the data it was measured on is rebuilt:
+  `Measured <YYYY-MM-DD> on <scope>: <claim>`, where the scope is an
+  admin id, a region id or another single token (`US`, `CO`,
+  `cheer-coastal-tx`, `admin-gadm-4.1`). `python -m
+  openplaces.flow.measured_claims` lists every claim in the tree and
+  reports `stale` where the scope's curated output or delivered bundle
+  is newer than the claim's date, `current` where it is not, and
+  `no build` where the scope resolves to nothing on this machine. A
+  stale number is documentation debt to re-measure, never a reason to
+  delete the number.
 
 ## Directory structure
 Write all plans to ``<repository_root>/plans/``. Never write a plan outside the
@@ -304,10 +406,10 @@ pytest -k "test_name"                 # single test by name
 Layer 0  core
 Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__, io/consent, geo/address
-Layer 4  io/readers, io/access, table
+Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
+Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/admin_migration, io/delivery, io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -315,16 +417,36 @@ Layer 10 viz/*
 Layer 11 api.py
 Layer 12 flow/* (scripts, dag, run_stage, submit)
 ```
-Higher-numbered layers may only import from lower-numbered layers.
+Higher-numbered layers may only import from lower-numbered layers. One
+documented exception: the `show_random_entity` convenience method on
+`Ingester`, `Harmonizer` and `Curator` imports `viz.maps` (layer 10)
+inside the method body, so the module-level graph stays acyclic and a
+run without matplotlib never pays for it. Do not add a second one.
 
-Two placements are worth knowing. `table` holds the registry-driven row
+Four placements are worth knowing. `table` holds the registry-driven row
 helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
-functions); they sit below `geo/` because `geo/crosswalk` and `geo/ids`
+functions) and `summarize_conflicts`, the per-row disagreement summary
+both the harmonize and curate stages write into `{col}_conflict`
+columns; they sit below `geo/` because `geo/crosswalk` and `geo/ids`
 call them, and keeping them in `io/aggregate`/`io/transform` created a
 module-level import cycle. `io/aggregate` and `io/transform` re-export
 them, so the older import paths still work. `geo/address` is listed
 separately because it depends on nothing above `recipe`, which is what
 lets `table` use `strip_unit_suffix` without reintroducing that cycle.
+`io/steps` holds the step-registry decorator and the lazy loader that
+harmonize, enrich and curate each carried a copy of until 2026-09-22; it
+imports nothing from openplaces, so it sits below all three, and each
+stage keeps its own `_STEP_REGISTRY` dict (tests monkeypatch those by
+name). `io/__init__` is a facade: everything it exports is defined in
+one of the six modules beside it, and the facade only re-exports, so a
+helper that several stages share lives in one of those modules, never in
+a stage folder, because the layer-3 facade cannot import from layer 6.
+**A module in `io/` must not share a name with a facade export**:
+`from openplaces.io import download` yields the *function*, which is
+why the module that defines it is `io/fetch`. A test that binds a
+module object and patches a name on it patches the module the function
+under test lives in, not the facade or a package file; a patch on those
+never reaches a function looking names up in its own globals.
 
 ## Architecture overview
 
@@ -334,7 +456,7 @@ lets `table` use `strip_unit_suffix` without reintroducing that cycle.
 
 Four key identifiers form the naming system used throughout the codebase:
 
-- **`AdminId`** — hierarchical geographic identifier, e.g. `AdminId('US', 'MA', 'MI')`. Level 0 = global, 1 = country, 2 = state/region, 3 = county/district, 4 = municipality/town. String form uses `-` separator: `'US-MA-MI'`.
+- **`AdminId`** — hierarchical geographic identifier, e.g. `AdminId('US', 'NC', 'CUR')`. Level 0 = global, 1 = country, 2 = state/region, 3 = county/district (a town in New England, where the county is skipped: Somerville is `US-MA-SOM`), 4 = municipality/town. String form uses `-` separator: `'US-NC-CUR'`.
 - **`Entity`** — a data entity defined by `entity_type` + `source` + `version`, e.g. `Entity('parcel', 'massgis', '2025')`. String form: `'parcel-massgis-2025'`. Valid entity types are in `ENTITY_TYPES` (parcel, building, footprint, property, transaction, admin, ...).
 - **`DataSet`** — a non-entity dataset defined by `Theme` + `source` + `version`, e.g. `DataSet('land-elevation', 'usgs', '3dep')`. Themes are hierarchical, separated by `-`, with the top level constrained to `TOP_LEVEL_THEMES` (land, landcover, water, built, people, risk, ...).
 - **`Source`** — a data source with download URL(s), portal URL, DOI, etc.
@@ -401,6 +523,69 @@ copies an explicit list of parcel-level columns (values, use codes,
 `aggregate_from_entities` (curate, `aggregation.py`). A county whose
 geospine predates that still carries the old wider copy until its next
 geometry rerun, which is why the curate step fills only what is empty.
+
+**Build order, and why it is fixed.** A source that holds parcels and
+properties together is separated at ingest (an `additional_layers` entry
+writes its own property table), so by harmonize every property table exists
+independently of any parcel spine. Per admin unit the order is: every
+ingest; `US_property-spine-2026`; the footprint geospine and spine; the
+parcel geospine, which reads the ingest-level property tables for
+parcel-level values and the property spine for a count; the parcel spine;
+enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
+from the recipes and a test pins it
+(`test_property_parcel_link_is_written_after_both_of_its_sides`); a script
+that calls stages by hand has to follow it, and **a parcel geospine built
+before one of its county's rolls was ingested silently lacks that roll's
+values until it is rerun**.
+
+**A property's id is the account number its assessor issued**, prefixed with
+the admin unit that scopes it: `US-TX-VIC_000123`
+(`io/harmonizer/entity_ids.py`, step `assign_entity_ids` in
+`US_property-spine-2026`). The number comes from the column a source's
+recipe names in `entity_id`, else whichever of `property_id_assessor`,
+`property_id_admin2`, `parcel_id_assessor` repeats on the fewest rows: the
+*account*, never the lot (New Hanover County NC's account number repeats on
+no row, its PIN on 19,519). Nothing raises: a source whose best column still
+repeats on most rows issues no account number and is named by content, with
+a warning. A source holding several `tax_year` values keeps only its latest
+roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
+county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
+properties), the unit's latest year and not the latest row per account,
+which would revive every account retired since. Case is folded and runs of separators become one hyphen, but their
+positions are kept, because in a map-block-lot number they carry meaning
+(dropping them made 426 Somerville MA accounts collide). Two sources
+publishing the same accounts therefore mint the same ids, and **rows sharing
+an id merge into one**, the first-loaded (most specific) source winning each
+cell and `source` becoming `a+b`: Boston's city table and MassGIS's layer are
+364,997 rows and 185,132 properties. The few differing rows under one number
+get `_2`, `_3` ordered by content, and a source with no issued number is
+named `{admin}_{source}:{content hash}`. A spatial entity's id comes from its
+geometry; this is the equivalent for an entity that has none.
+
+**Relationships between entities are link tables** (`geo/link.py`,
+`io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
+entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The
+spatial joins write theirs from an overlay; `link_entities_by_id` writes the
+property-to-parcel table from an exact match on `parcel_id_local`, with
+columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
+(a test pins that a link table holds nothing else, so it can never carry a
+person). It runs in `US_parcel-spine-2026` because that is the first recipe
+in which both sides exist. `link_method` is a fixed label naming the rule
+that found the pair, never a score, and no link is removed once written
+(patent shape 4). A key on more rows than `link_by_id`'s placeholder cutoff
+keeps its pairs under `parcel_id_local_shared_key`, because a link table,
+unlike a sum, need not decide whether it is a placeholder or a large stack:
+a reader that sums values leaves that method out. The footer
+(`openplaces:entity_link`) records both input files, so a reader can tell a
+link that predates a rebuilt spine. The step sits **after** the parcel
+spine's checkpointed step: a restored checkpoint skips every step before
+it and validates against the geospine only, so anything placed earlier
+that reads another recipe's output goes stale unnoticed (the transaction
+`link_by_id` sat near the top of that recipe with this weakness until
+2026-09-23; it now follows the link table, and
+`tests/recipe/test_parcel_spine_step_order.py` pins both). Curate's
+`aggregate_from_entities` reads the table; see the stacked-units paragraph
+under Stage 1 for the passes the ingest-time split adds.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 
@@ -478,6 +663,76 @@ Key recipe functions (`recipe.py`):
 `TableIngester` handles reading, transforming, and saving one table from an
 already-resolved source file. It applies column mappings, type casts, spatial filtering,
 and the attribute registry type checks.
+
+**Every parcel table is split into lots and properties at ingest**
+(`io/stacked_units.py`). Sixteen parcel sources stack several ownership
+records on one lot polygon (Florida's statewide layer alone carries 1.13
+million condo-unit rows on shared outlines), and a stacked row is a
+property, not a parcel. After preprocessing, rows are grouped by `lot_key`
+(default `geo_id`, the geometry hash; a recipe may name a source lot id):
+exact duplicates collapse, a group with one row is a lot and passes
+through, and a group with several distinct rows becomes one parcel row
+keeping only the values its members agree on (a varying value is left
+missing, never summed, and a column the registry aggregates by `sum` is
+left missing even where they agree, because one unit's floor area is not
+the lot's and curate's `aggregate_from_entities` fills only empty cells)
+plus one property row per member. Rows that repeat a record on another
+polygon are parts of one lot, not units: they merge into one row and
+yield no property rows. Under a source `lot_key` that row takes the union
+of the lot's polygons with `geo_id` recomputed (Wilson County NC draws
+1,060 lot ids as 2 to 7 polygons); under `geo_id` nothing is unioned,
+since two polygons in one group are a collision of the quantized hash
+and a union would invent an outline. A unit id repeated within a lot
+drops nothing and is counted in the ingest log. The property rows go to an
+implicit `additional_layers` entry of the same recipe
+(`property-<source>-<version>`, `layer_key: parcel_id_local`) that the
+recipe loader adds to every parcel ingest recipe without a declared
+property layer. Discovery, the property spine, readers and cleanup see
+that layer like a declared one; the ingester's layer loop skips it
+(`STACKED_UNITS_LAYER_KEY`) because the parcel table's own processing
+wrote it. `stacked_units: false` opts a recipe out.
+
+**A unit keeps its own keys and names its lot in `lot_id_local`.** Where
+units have their own account numbers, the lot's parcel row cannot carry any
+one of them and takes the lot key, which no tax roll knows (Galveston County
+TX: 5,186 roll rows in 119 of 184 stacks). Nothing is rewritten to bridge
+that. The pair (unit key, lot key) the split records is read three times:
+- `assign_entity_ids` labels the split's rows `<source>:units`, loads them
+  last, and merges a unit with its roll row where both carry the account
+  number (Galveston: 5,205 merged, 440 units the roll does not know). Units
+  whose number repeats inside the layer are named by content, the rest keep
+  it, so a layer that numbers some stacks and not others still converges.
+- `link_entities_by_id` adds two exact passes to the key pass:
+  `stacked_units` (a unit links to the lot it names) and
+  `stacked_units_crosswalk` (a roll row keyed on a unit links to that
+  unit's lot, to every lot where the split saw the key on several). A
+  property on several lots gets a `share` by lot area, `share_basis` saying
+  so; it is wrong for improvements, which stand on one lot, and stays until
+  a property-to-footprint link can replace it.
+- the parcel geospine's property `link_by_id` moves a roll row keyed on a
+  unit to its lot before joining (`_move_units_to_lots`), and reads the
+  split layer itself by `lot_id_local`. An account on several lots becomes
+  one row per lot: its land is divided by lot area, every other additive
+  value goes whole to the largest lot and stays empty on the rest, because
+  a building stands on one lot (`total_value` so overstates the largest
+  lot by the others' land).
+`aggregate_from_entities` sums over the link table when a valid one exists
+and falls back to the key column otherwise: on a lot any roll describes,
+rows whose `link_source` is only `:units` are left out, so a roll and the
+units split off the parcel layer are never summed together; shares scale
+summed columns; `*_shared_key` links are skipped. Measured on Galveston,
+rebuilt end to end 2026-09-21: curated parcel `total_value` $151.4bn to
+$79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
+173,697. A lot with a single record yields no property row, so where no
+roll exists the property spine holds stacked units only (all of Wisconsin:
+Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
+conserved to the dollar). The module docstring
+carries the patent rationale (US9298740B2, all-elements rule: claims 1
+and 15 recite the same six steps, claim 11 adds a wilderness test, and all
+three start from a parcel that *failed verification* against mapping or
+addressing data, which the split never tests; read from the patent text
+2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
+re-ingested.
 
 Public entrypoint:
 
@@ -572,6 +827,40 @@ The step sub-modules:
   changes the harmonized spine.
 - `filter.py` — subset rows (`filter_entities`)
 - `discover.py` — discover available data sources for an admin unit
+- `admin_names.py` — `assign_admin_id_from_name`: the admin unit a record
+  only *names*, as an id, matched exactly and uniquely against the units of
+  its county or not at all. It exists because an address key is scoped by
+  `admin4_id`: a source with an empty scope matches no parcel by address,
+  silently (0 of Vilas County WI's keyed returns, 0.759 with the scope
+  ignored). The source's spelling is a recipe-side regex; a no-op where the
+  level does not exist (New England).
+- `link_methods.py` — `record_link_method`: after each `link_by_id` pass of
+  the transaction spine, writes `parcel_link_method`, the name of the first
+  rule that reached the row (`parcel_id_local`, then an exact address key).
+  A fixed label, written once, never a score and never revised (patent
+  shape 4). It re-reads the pass's reference instead of instrumenting
+  `link_by_id`, so a step added between a pass and its label would make the
+  label describe the wrong pass.
+- `last_sales.py` — `append_last_sales`: turn the last-sale fields an
+  assessment roll carries into transaction rows
+  (`sale_record_kind = assessor_last_sale`; rows already on the spine read
+  `deed`), so a state with no recorder's feed still has prices. It is a
+  reshape, not a match: the row keeps the roll row's own `parcel_id_local`.
+  Three things are not what the name suggests. **"Has a last sale" is never
+  "non-null"**: Florida's parcel layer fills every last-sale column on every
+  row and 0 is the placeholder, in the year as well as the price, so a row
+  needs a price and a real date or year. **A roll that records the month
+  only arrives as first-of-month dates** (all 73,253 of Pitt County NC's);
+  the step keeps year and month and writes no day, so a deed and its
+  last-sale echo compare at month precision. **A roll ingested for several
+  years repeats each last sale once per year** (Florida's DOR roll holds 24);
+  the same ids, date and price are one row, while different last sales of
+  one property across years are kept, which is history a single roll year
+  lacks. Property tables are read before parcel tables, and a later source
+  adds a sale only for a `parcel_id_local` no earlier one supplied. Only an
+  allow-list of columns is read, so owner fields cannot enter. A last-sale
+  field is the most recent sale only: these rows support cross-sectional
+  work, not a repeat-sales index.
 
 All steps share a `HarmonizeState` dataclass (spine, references, crosswalks, overlays,
 metadata). Each step receives state and returns the updated state.
@@ -685,7 +974,17 @@ Steps are organized by the nature of the transformation:
   coverage exactly (63.9% `year_built` and floor area, the PACS segment
   sum now named `gross_floor_area_sqft`), so a county
   whose geospine predates the change loses nothing. An all-missing group
-  reduces to missing, not to pandas' zero sum.
+  reduces to missing, not to pandas' zero sum. A column named under
+  `recover` (the parcel recipe names `improvement_value`) is the one
+  departure from fill-only: a stacked lot keeps only what its units
+  agree on, so its improvement is missing or zero while the units
+  record it, and the units' positive sum replaces that. Nothing is
+  written where no unit records a positive figure: a lot the roll does
+  not value stays as it is, because estimating it would be an
+  imputation step, which openplaces does not do for structure values
+  (maintainer, 2026-09-22). Measured 2026-09-22 on cheer-eastern-nc:
+  179 of 503 such lots hold a recorded figure ($44.1M); on
+  cheer-coastal-tx 447 of 15,555 ($64.8M).
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
@@ -720,6 +1019,23 @@ Steps are organized by the nature of the transformation:
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical
   dataset
+- `transactions.py` — steps for the transaction entity, which **grade and
+  flag and never drop**: `derive_document_id` (the deed behind a row, spelled
+  per source; a part that is empty or all zeros names no document, since
+  Florida's roll writes a single space for book and page and that once folded
+  1,333 sales of one county into a single "deed"; scoped by record kind, so a
+  deed and the last-sale row citing its book and page are never aggregated as
+  one sale of two parcels), `count_parcels_per_document`,
+  `aggregate_multi_parcel_sales`, `collapse_double_closings` (compared within
+  one record kind) and `flag_sales_matching_other_kind`
+  (`sale_matches_deed`: exact equality of parcel, year, month and price, no
+  tolerance and no score). `sale_arms_length_confidence` is graded per source
+  in the recipe: Florida from the state's qualification codes (labels and the
+  raw two-digit codes alike, because last-sale rows read from the parcel
+  layer are undecoded), Wisconsin as the lower of two grades, the conveyance
+  type and the relationship the parties themselves state on the RETR form
+  (`sale_party_relationship`; about 20% of transfers are `Family`), through
+  the `minimum` indicator type and `fill_only`.
 
 Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),
@@ -822,7 +1138,7 @@ exactly one place need not be registered -- `share: delivery: admin_ids:` still
 takes an inline list. `region_admin_id` is the unit a region rolls up to
 (`US-TX`); blank means callers derive it, which is what delivery does.
 
-### Delivery bundles (`io/delivery.py`)
+### Delivery bundles (`io/delivery/`, with `terms.py` and `redaction.py` beside the package file)
 
 `export_delivery` pools a curation recipe's per-process-unit files into a
 region-wide, shareable set of four files sharing one index: the canonical
@@ -864,7 +1180,7 @@ may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
 walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
 walk never saw Edgecombe's parcels feeding the NC bundle).
-`io.redaction.withhold` then removes that source's values from both read
+`io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
 named after an attribute its recipe maps (or with its entity suffix), or whose
@@ -922,6 +1238,12 @@ single node when there is exactly one, and raises when there are several).
 (`ingest < harmonize < enrich < curate`) and drive `find_entity_recipe_id`, so a
 fifth would ripple into recipe resolution for nothing. It is a node kind this
 graph derives, the way `extra_outputs` derives link sidecars from `save_link`.
+An image recipe is the opposite case: it is configuration only (its imagery
+is fetched in memory during enrichment and never written), so
+`dag.writes_nothing` keeps it out of the graph's jobs and out of every
+enrich job's inputs, while `exclude_recipe_ids` still prunes it through the
+`image_recipe` edge. Until 2026-09-23 it got an ingest job whose output no
+run could produce.
 
 Scope decides whether each runs: an unscoped run builds and ships every declared
 region, a run naming a region (or covering every member of it) ships that one,
@@ -1028,7 +1350,7 @@ recording a requirement states a fact about the source rather than
 deciding anything for the user. Restrictions on the redistribution/fee
 axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
 `redistribution_restricted`, `resale_restricted` and
-`io/bundle_terms.py` cover those -- and
+`io/delivery/terms.py` cover those -- and
 a blanket ban on automated access is expressed by having no
 `download_url` at all, not by a requirement.
 

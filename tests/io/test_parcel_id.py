@@ -25,6 +25,57 @@ def test_simple_keeps_alphanumeric_uppercase():
     assert pd.isna(out.iloc[2])
 
 
+def test_simple_pad_last_joins_a_lengthened_last_segment():
+    # A county that lengthened its last segment by appending zeros: the
+    # old 4-digit form and the new 6-digit form of one parcel meet, a
+    # later split of it stays distinct, and left-padding is not applied.
+    s = pd.Series(
+        [
+            '04-012-2-38-16-05-1 02-000-0012',
+            '04-012-2-38-16-05-1 02-000-001200',
+            '04-012-2-38-16-05-1 02-000-001201',
+            '04012',
+            None,
+        ]
+    )
+    out = convert_parcel_id(s, conv_code='simple_pad_last: 6')
+    assert out.iloc[0] == out.iloc[1] == '040122381605102000001200'
+    assert out.iloc[2] != out.iloc[1]
+    # A single-segment id has no last part to pad.
+    assert out.iloc[3] == '04012'
+    assert pd.isna(out.iloc[4])
+
+
+def test_simple_clean_undoes_three_respellings():
+    # Fabricated numbers in the formats the three rules were found on.
+    s = pd.Series(['29098TZZ0412.0100', '290980412.01', '290980412', None])
+    out = convert_parcel_id(
+        s, conv_code='simple_clean: drop_inner_letters trim_suffix_zeros'
+    )
+    assert out.iloc[0] == out.iloc[1] == '29098041201'
+    # A number with no decimal suffix keeps its own trailing zeros.
+    assert (
+        convert_parcel_id(
+            pd.Series(['290980400']), conv_code='simple_clean: trim_suffix_zeros'
+        ).iloc[0]
+        == '290980400'
+    )
+    assert out.iloc[2] == '290980412'
+    assert pd.isna(out.iloc[3])
+
+    pairs = convert_parcel_id(
+        pd.Series(['912-3456', '91234560000', '91234560100', '912-345600']),
+        conv_code='simple_clean: trim_zero_pairs',
+    )
+    assert pairs.iloc[0] == pairs.iloc[1] == '9123456'
+    # A split of that parcel stays distinct, and nothing drops under 5.
+    assert pairs.iloc[2] == '912345601'
+    assert pairs.iloc[3] == '9123456'
+
+    with pytest.raises(ValueError):
+        convert_parcel_id(s, conv_code='simple_clean: no_such_flag')
+
+
 def test_pipe_replaces_separators_instead_of_deleting():
     s = pd.Series(['00015 002 000', '00015-002-000', None])
     out = convert_parcel_id(s, conv_code='pipe')

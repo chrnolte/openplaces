@@ -8,17 +8,16 @@ steps before saving a canonical entity dataset.
 
 from __future__ import annotations
 
-import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from importlib import import_module as _import_module
 
 import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
+from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -45,37 +44,13 @@ class CurateState:
     save_statistics: bool = False
 
 
+#: Maps step name strings (as used in recipe ``pipeline`` sections) to the
+#: callable that implements that step. Filled by ``@_register``; the step
+#: submodules are imported by ``_load_steps`` when a step is first
+#: dispatched (see ``io.steps``).
 _STEP_REGISTRY: dict[str, Callable] = {}
-
-
-def _register(*names: str):
-    """Register a curation step under one or more recipe names."""
-
-    def decorator(fn: Callable) -> Callable:
-        for name in names:
-            _STEP_REGISTRY[name] = fn
-        return fn
-
-    return decorator
-
-
-_steps_loaded = False
-
-
-def _load_steps() -> None:
-    """Import this stage's step submodules so their @_register runs.
-
-    Imports are deferred until a step is first dispatched so that merely
-    importing the curator package (e.g. to use CurateState in a test) does not
-    pull every step module.
-    """
-    global _steps_loaded
-    if _steps_loaded:
-        return
-    for _m in _pkgutil.iter_modules(__path__):
-        if not _m.ispkg:
-            _import_module(f'{__name__}.{_m.name}')
-    _steps_loaded = True
+_register = make_register(_STEP_REGISTRY)
+_load_steps = make_loader(__name__, __path__)
 
 
 def _coerce_registry_numerics(curated):

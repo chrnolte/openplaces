@@ -57,7 +57,7 @@ save_to:
   # The normalized geometry store: this output and its link sidecars are
   # what `--reprocess attributes` reuses, so even an aggressive cleanup
   # must not reclaim them (an explicit retention wins over the aggressive
-  # core-bucket demotion; see io/cleanup.py).
+  # core-bucket demotion; see io/cleanup/walk.py).
   retention: keep
 
 pipeline:

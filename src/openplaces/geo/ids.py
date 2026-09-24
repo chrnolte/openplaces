@@ -879,6 +879,85 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     p = _conv_dict(conv_code)
     if 'no_conv' in p:
         return s.where(s.ne(''), pd.NA)
+    if 'simple_clean' in p:
+        # 'simple', after named clean-ups that undo a respelling of the
+        # same number. Named rather than given as a regular expression,
+        # because a conversion code is split on ' & ' and ': ' and an
+        # expression would not survive that.
+        #
+        #   drop_inner_letters   remove a run of letters that sits
+        #                        between digits
+        #   trim_suffix_zeros    drop trailing zeros after a decimal
+        #                        point, and the point if nothing is left
+        #
+        # Juneau County WI is the case for both: its transfer returns of
+        # 2014 to 2016 write a parcel as '29028TNE0867.0100' (county and
+        # district, a 3-letter municipality code, the parcel, a 4-digit
+        # suffix) where the parcel layer, and later returns, write
+        # '290280867.01'. Measured 2026-09-21: 0.246 of those early
+        # returns find their parcel as written, 0.825 cleaned, and the
+        # county overall goes from 0.821 to 0.945. The rule merges 58 of
+        # the layer's 31,304 distinct ids (0.2%). The county's own
+        # server was checked for an old-number field; its OLDPIN is a
+        # third spelling (the parcel's leading zero dropped) that fewer
+        # returns match than PIN does (0.310 against 0.821).
+        #
+        #   trim_zero_pairs      after punctuation is removed, drop
+        #                        trailing '00' pairs, never below 5
+        #                        characters
+        #
+        # Winnebago County WI is the case for the third: Oshkosh and
+        # Neenah parcels carry 11 digits in the parcel layer and the
+        # returns write the first 7 or 9, the rest being '0000' or '00'
+        # (a base parcel; its splits are numbered 0100, 0200). Towns
+        # write 7 digits on both sides. Measured 2026-09-21: the county
+        # goes from 0.530 to 0.843, Oshkosh from 0.298 to 0.960, and the
+        # rule merges none of the layer's 79,934 distinct ids. The
+        # county's own server was checked and carries the same number.
+        flags = set(p['simple_clean'].split())
+        known = {'drop_inner_letters', 'trim_suffix_zeros', 'trim_zero_pairs'}
+        if flags - known:
+            raise ValueError(f'Unknown simple_clean flag(s): {sorted(flags - known)}')
+        if 'drop_inner_letters' in flags:
+            s = s.str.replace(r'(?<=\d)[A-Z]+(?=\d)', '', regex=True)
+        if 'trim_suffix_zeros' in flags:
+            s = s.str.replace(r'(\.\d*?)0+$', r'\1', regex=True)
+            s = s.str.replace(r'\.$', '', regex=True)
+        out = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+        if 'trim_zero_pairs' in flags:
+            # Bounded: no id seen so far carries more than two pairs.
+            for _ in range(4):
+                strip = (out.str.endswith('00') & (out.str.len() >= 7)).fillna(False)
+                out = out.where(~strip, out.str.slice(0, -2))
+        return out.where(out.ne(''), pd.NA)
+    if 'simple_pad_last' in p:
+        # 'simple', after right-padding the id's last segment with zeros
+        # to a stated width. For a county that lengthened that segment
+        # by appending zeros, so that a parent parcel '...-0012' became
+        # '...-001200' and its later splits '...-001201': Burnett,
+        # Washburn and Bayfield WI did, and Wisconsin's transfer returns
+        # of 2014 to 2016 still carry the 4-digit form. Measured
+        # 2026-09-21 on those returns against the 2025 parcel layer:
+        # matched 0.000 as written, and 0.772, 0.868 and 0.861 padded.
+        # Left-padding (the usual reading of a short number) matched
+        # 0.000 to 0.032, which is what identifies the rule as the
+        # counties' own and not a formatting accident. An id already at
+        # full width is unchanged, so one rule serves both sides of a
+        # join. Segments are runs of letters and digits; an id with a
+        # single segment is left alone, since it has no "last" part to
+        # which a suffix convention could apply.
+        width = int(p['simple_pad_last'])
+        parts = s.str.findall(r'[0-9A-Z]+')
+
+        def _pad(segments):
+            if not isinstance(segments, list) or not segments:
+                return pd.NA
+            if len(segments) > 1:
+                segments = [*segments[:-1], segments[-1].ljust(width, '0')]
+            return ''.join(segments)
+
+        out = parts.map(_pad).astype('string')
+        return out.where(out.ne(''), pd.NA)
 
     if 'string_lengths' in p:
         regex = ''.join(
@@ -1239,6 +1318,76 @@ PARCEL_ID_ALNUM_KEYS = {
 }
 
 
+def introduced_duplicate_mask(derived, source):
+    """Rows whose derived key merges entities the source told apart.
+
+    A matching key derived by normalizing another may make two rows
+    comparable that the source itself distinguished. Those rows are the
+    ones this returns: every row whose derived value is shared by rows
+    carrying more than one distinct *source* value. A key two rows
+    already shared before the derivation is not flagged, because the
+    duplication is the source's own and normalizing did not cause it.
+
+    Parameters
+    ----------
+    derived : pandas.Series
+        The derived key.
+    source : pandas.Series
+        What the source distinguished, aligned to *derived*: the raw
+        value the key was derived from, normalized only in the ways the
+        derivation is *meant* to merge.
+
+    Returns
+    -------
+    pandas.Series
+        Boolean, True on rows to refuse.
+    """
+    pair = pd.DataFrame({'derived': derived, 'source': source}).dropna()
+    if pair.empty:
+        return pd.Series(False, index=derived.index)
+    per_key = pair.groupby('derived')['source'].nunique()
+    merging = set(per_key[per_key > 1].index)
+    if not merging:
+        return pd.Series(False, index=derived.index)
+    return derived.isin(merging).fillna(False) & derived.notna()
+
+
+def refuse_introduced_duplicates(derived, source, key_name=''):
+    """Blank a derived matching key wherever it merges distinct entities.
+
+    **Introduced duplicates are forbidden in id matching, at any count**
+    (maintainer's decision 2026-09-21). A derived key exists to reach
+    rows a stricter key missed; it has no licence to merge two entities
+    the source kept apart, and a threshold on how many it may merge
+    would only say how much silent merging is tolerable. So every
+    affected row's key is set to missing, which each join already reads
+    as "this row does not match by this key", and the count is reported.
+
+    `compute_parcel_id_local` applies the same rule from the other end,
+    refusing a whole conversion that adds duplicates; this refuses the
+    rows rather than the rule, because one fallback key serves counties
+    where it collapses nothing and counties where it collapses almost
+    everything, and a per-source verdict would lose the first to save
+    the second.
+
+    Returns *derived* unchanged when nothing is introduced.
+    """
+    bad = introduced_duplicate_mask(derived, source)
+    if not bad.any():
+        return derived
+    merged = int(bad.sum())
+    keys = int(derived[bad].nunique())
+    warnings.warn(
+        f'{key_name or "derived key"}: refused on {merged:,d} of '
+        f'{len(derived):,d} rows, where normalizing merged parcels the '
+        f'source told apart ({keys:,d} keys each covering more than one '
+        'distinct source id). Those rows will not match on this key; the '
+        'stricter key still applies to them.',
+        stacklevel=3,
+    )
+    return derived.where(~bad)
+
+
 def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
     """Add ``parcel_id_alnum``, a format-agnostic parcel-id match key.
 
@@ -1255,11 +1404,22 @@ def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
 
     This key throws away exactly the information the two sides disagree
     about -- punctuation and case -- and nothing else, so it is symmetric
-    by construction. It is deliberately *lossier* than
-    ``parcel_id_local``, which is why it is a fallback and never the
-    primary: collapsing ``1-23`` and ``12-3`` onto ``123`` is the risk
-    ``parcel_id_local``'s guard exists to avoid. Use it to catch the rows
-    the standardized key missed, not to replace it.
+    by construction. Where that throws away a real distinction, the key
+    is refused rather than used: collapsing ``1-23`` and ``12-3`` onto
+    ``123`` is the risk ``compute_parcel_id_local``'s conversion ladder
+    exists to avoid, and :func:`refuse_introduced_duplicates` holds this
+    key to the same rule, row by row (**introduced duplicates are
+    forbidden in id matching at any count**, maintainer's decision
+    2026-09-21). Measured on the statewide NC layer: in Pender the
+    standardized key has one distinct value across 54,816 rows while this
+    key has 54,502 and merges nothing, so the guard never fires and the
+    fallback keeps its whole purpose; in Carteret the same source's
+    63,355 distinct ids fall onto 5,000 of these keys, the largest
+    swallowing 335 parcels and $18.1bn of improvement value, and the
+    guard refuses every one of them. Before the guard, only
+    ``fill_only`` on the calling step stood between that and a wrong
+    number, and ``fill_only`` prevents overwriting a good value, not
+    filling an empty one with a summed collision.
 
     The source column is coalesced per row over
     :data:`PARCEL_ID_MATCH_CANDIDATES`, skipping values that carry no
@@ -1273,14 +1433,33 @@ def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
     if not present:
         return df
     out = pd.Series(pd.NA, index=df.index, dtype='string')
+    # What the source told apart, to hold the key against. The raw value
+    # each row's key was derived from, case-folded and trimmed but
+    # otherwise untouched, coalesced in the same order and under the
+    # same mask so the two stay row-aligned: case folding is the part of
+    # this key that is meant to merge, punctuation is not, so the raw
+    # kept here still carries it.
+    #
+    # `parcel_id_local` overrides it where the table has one, because it
+    # is the stricter statement of what this source distinguishes and
+    # the raw alone misses the worse half of the problem. Measured on
+    # the statewide NC layer in Carteret: the coalesce takes its key
+    # from an assessor column that is itself a block code with about
+    # 5,000 distinct values, so the raw and the stripped key agree and
+    # nothing looks merged, while `parcel_id_local` (built from the PIN
+    # column) holds 63,355 distinct parcels, up to 335 of which land on
+    # one fallback key. Against the raw the guard refuses none of that;
+    # against `parcel_id_local` it refuses all of it.
+    raw = pd.Series(pd.NA, index=df.index, dtype='string')
     for column in present:
-        candidate = (
-            df[column]
-            .astype('string')
-            .str.replace(r'[^A-Za-z0-9]', '', regex=True)
-            .str.upper()
-        )
+        source = df[column].astype('string')
+        candidate = source.str.replace(r'[^A-Za-z0-9]', '', regex=True).str.upper()
         usable = candidate.notna() & candidate.ne('') & candidate.str.strip('0').ne('')
         out = out.where(out.notna(), candidate.where(usable))
-    df[key] = out
+        raw = raw.where(raw.notna(), source.str.strip().str.upper().where(usable))
+    identity = raw
+    if 'parcel_id_local' in df.columns:
+        local = df['parcel_id_local'].astype('string').str.strip().str.upper()
+        identity = local.where(local.notna(), raw)
+    df[key] = refuse_introduced_duplicates(out, identity, key)
     return df

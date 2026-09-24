@@ -885,3 +885,668 @@ def test_nullable_dtypes_do_not_break_the_lot_split():
 
     out = impute_land_value(_state(df), min_group_size=3).curated
     assert out['land_value_imputed'].iloc[-3:-1].tolist() == [100.0, 100.0]
+
+
+# estimator='land_share'
+
+
+def test_land_share_multiplies_the_records_own_value():
+    # Donors hold 25%, 30% and 35% of their value as land (median 30%).
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=land,
+            improvement_value=100_000 - land,
+            area_ha=0.05,
+        )
+        for land in (25_000, 30_000, 35_000)
+    ]
+    candidate = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=400_000,
+        area_ha=0.05,
+    )
+    df = _frame([*donors, candidate])
+    out = impute_land_value(
+        _state(df), min_group_size=3, estimator='land_share'
+    ).curated
+
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.30 * 400_000)
+    assert out['improvement_value_imputed'].iloc[-1] == pytest.approx(0.70 * 400_000)
+
+
+def test_land_share_never_erases_a_structure_value():
+    # A large lot whose per-area rate would exceed its whole value.
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=900_000,
+            improvement_value=100_000,
+            area_ha=1,
+        )
+        for _ in range(3)
+    ]
+    big_lot_condo = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=500_000,
+        area_ha=10,
+    )
+    df = _frame([*donors, big_lot_condo])
+    rate = impute_land_value(_state(df.copy()), min_group_size=3).curated
+    share = impute_land_value(
+        _state(df.copy()), min_group_size=3, estimator='land_share'
+    ).curated
+
+    assert rate['improvement_value_imputed'].iloc[-1] == 0
+    assert share['improvement_value_imputed'].iloc[-1] > 0
+
+
+def test_a_share_class_learns_from_other_classes_not_its_own():
+    # Retired on 2026-09-22 the opposite rule, which this test used to
+    # pin: a condominium candidate took the condominium donors' share.
+    # Their recorded land is a bookkeeping convention (the ratio of a
+    # condominium's land rate to its neighbours' runs 0.001 to 5.7 and
+    # sorts by county inside one statewide source), so learning from
+    # them reproduced the convention. It now learns from the
+    # residential land around it, and condominium donors feed nothing.
+    condo_donors = [
+        _row(
+            land_use_class='Condominium',
+            land_value=1_000,
+            improvement_value=199_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    house_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=100_000,
+            improvement_value=100_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=200_000,
+        city='A',
+        area_ha=0.1,
+    )
+    df = _frame([*condo_donors, *house_donors, condo])
+    out = impute_land_value(
+        _state(df), min_group_size=3, estimator='land_share'
+    ).curated
+
+    # The houses' land rate over the condominium's own lot (100,000 per
+    # ha over 0.1 ha), never the condominium donors' recorded 0.005
+    # share, which would have given 1,000.
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(100_000)
+    token = out['land_value_imputed_source'].iloc[-1]
+    assert token.startswith('share_class_city__is_residential')
+
+
+def test_a_lot_keeps_the_whole_estimate_however_many_units_share_it():
+    # The maintainer's invariant, 2026-09-22: a building may hold a
+    # fraction of the land value, the parcel holds all of it. Four
+    # condominium records on one outline must together be worth the
+    # neighbourhood rate over that one lot, not four times it.
+    lot = Polygon([(0, 0), (0, 100), (100, 100), (100, 0)])
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=50_000,
+            improvement_value=50_000,
+            city='A',
+            area_ha=0.5,
+        )
+        for _ in range(3)
+    ]
+    units = [
+        _row(
+            land_use_class='Condominium',
+            land_value=0,
+            improvement_value=300_000,
+            city='A',
+            area_ha=1.0,
+        )
+        for _ in range(4)
+    ]
+    df = gpd.GeoDataFrame(
+        _frame([*donors, *units]),
+        geometry=[None, None, None, lot, lot, lot, lot],
+        crs='EPSG:3857',
+    )
+    out = impute_land_value(_state(df), min_group_size=3, estimator='hybrid').curated
+    # Donor rate is 50,000 over 0.5 ha = 100,000 per ha, and the lot is
+    # 1 ha, so the four records share 100,000 rather than taking it each.
+    on_the_lot = out['land_value_imputed'].iloc[3:]
+    assert on_the_lot.sum() == pytest.approx(100_000)
+    assert on_the_lot.tolist() == pytest.approx([25_000] * 4)
+    assert out['land_value_imputed_source'].iloc[-1].startswith('share_class_')
+
+
+def test_a_share_class_does_not_feed_another_classs_estimate():
+    # Condominium rows leave the donor pool entirely, not just their
+    # own class's tiers: a Single-Family candidate must be priced by
+    # the houses alone even where condominiums outnumber them.
+    condo_donors = [
+        _row(
+            land_use_class='Condominium',
+            land_value=1_000,
+            improvement_value=199_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(9)
+    ]
+    house_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=100_000,
+            improvement_value=100_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    house = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=200_000,
+        city='A',
+        area_ha=0.1,
+    )
+    df = _frame([*condo_donors, *house_donors, house])
+    out = impute_land_value(
+        _state(df), min_group_size=3, estimator='land_share'
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.5 * 200_000)
+
+
+def test_the_size_band_tier_prices_a_candidate_by_its_own_lot_size():
+    # A class with too few donors of its own falls through to the size
+    # band, which replaced the floor-area-ratio density bin on
+    # 2026-09-22: small lots here carry a fifth of their value in land,
+    # large ones three fifths, and a city-wide median would split the
+    # difference at 0.4.
+    # The lot areas differ inside each band: identical values would
+    # give `qcut` a repeated edge, and both bands would collapse into
+    # one, which is a property of the fixture rather than of the rule.
+    small = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=20_000,
+            improvement_value=80_000,
+            city='A',
+            area_ha=a,
+        )
+        for a in (0.010, 0.012, 0.014, 0.016)
+    ]
+    large = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=60_000,
+            improvement_value=40_000,
+            city='A',
+            area_ha=a,
+        )
+        for a in (0.9, 1.0, 1.1, 1.2)
+    ]
+    candidate = _row(
+        land_use_class='Townhome',
+        land_value=0,
+        improvement_value=100_000,
+        city='A',
+        area_ha=0.011,
+    )
+    out = impute_land_value(
+        _state(_frame([*small, *large, candidate])),
+        min_group_size=3,
+        size_bands=2,
+        estimator='land_share',
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.2 * 100_000)
+    assert out['land_value_imputed_source'].iloc[-1].startswith('share_city__size_band')
+
+
+def test_a_density_bin_is_no_longer_in_the_default_share_tiers():
+    # It needs a roll floor area, which Florida and Wisconsin do not
+    # record at all, so the tier could never fire there. A recipe may
+    # still ask for it by name.
+    dense = [
+        _row(
+            land_use_class='Multi-Family',
+            land_value=20_000,
+            improvement_value=80_000,
+            city='A',
+            area_ha=0.01,
+            living_area_sqft=2.5 * 100 / 0.09290304,
+        )
+        for _ in range(3)
+    ]
+    sparse = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=60_000,
+            improvement_value=40_000,
+            city='A',
+            area_ha=0.1,
+            living_area_sqft=0.2 * 1000 / 0.09290304,
+        )
+        for _ in range(3)
+    ]
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=500_000,
+        city='A',
+        area_ha=0.02,
+        living_area_sqft=2.2 * 200 / 0.09290304,
+    )
+    df = _frame([*dense, *sparse, condo])
+    out = impute_land_value(
+        _state(df),
+        min_group_size=3,
+        estimator='land_share',
+        floor_area_columns=['living_area_sqft'],
+    ).curated
+
+    # The condominium takes the neighbouring land RATE over its own lot:
+    # the six donors' rates are 2,000,000 and 600,000 per ha, median
+    # 1,300,000, over 0.02 ha. Not the dense donors' 0.2 share the
+    # density tier used to supply, which would have given 100,000.
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(26_000)
+    assert '_density_bin' not in out['land_value_imputed_source'].iloc[-1]
+
+
+def test_land_share_without_floor_area_falls_back_to_residential():
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=40_000,
+            improvement_value=60_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=300_000,
+        city='A',
+        area_ha=0.02,
+    )
+    df = _frame([*donors, condo])
+    out = impute_land_value(
+        _state(df),
+        min_group_size=3,
+        estimator='land_share',
+        floor_area_columns=['living_area_sqft'],
+    ).curated
+
+    # Donor rate 40,000 over 0.1 ha, over the condominium's 0.02 ha lot.
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(8_000)
+    assert is_imputed(out['land_value_imputed_source']).iloc[-1]
+
+
+def test_share_and_rate_tokens_differ_on_the_tier_they_share():
+    # Both estimators end in [city, _is_residential]; the token has to
+    # say which one priced the row.
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=40_000,
+            improvement_value=60_000,
+            city='A',
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    # Not a Condominium: that class no longer uses the share at all, so
+    # it could not tell the two tokens apart any more.
+    candidate = _row(
+        land_use_class='Townhome',
+        land_value=0,
+        improvement_value=300_000,
+        city='A',
+        area_ha=0.02,
+    )
+    frame = _frame([*donors, candidate])
+    by_rate = impute_land_value(_state(frame.copy()), min_group_size=3).curated
+    by_share = impute_land_value(
+        _state(frame.copy()), min_group_size=3, estimator='land_share'
+    ).curated
+
+    rate_token = by_rate['land_value_imputed_source'].iloc[-1]
+    share_token = by_share['land_value_imputed_source'].iloc[-1]
+    assert rate_token.startswith('city__is_residential')
+    assert share_token.startswith('share_city__is_residential')
+
+
+def test_land_share_keeps_the_recorded_total_route():
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=40_000,
+            improvement_value=60_000,
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+    recorded = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=150_000,
+        total_value=200_000,
+        area_ha=0.1,
+    )
+    df = _frame([*donors, recorded])
+    out = impute_land_value(
+        _state(df), min_group_size=3, estimator='land_share'
+    ).curated
+
+    assert out['land_value_imputed'].iloc[-1] == 50_000
+    assert out['improvement_value_imputed'].iloc[-1] == 150_000
+
+
+def _hybrid_donors():
+    # Rate 100,000 $/ha; land share 20%.
+    return [
+        _row(
+            land_use_class='Single-Family',
+            land_value=10_000,
+            improvement_value=40_000,
+            area_ha=0.1,
+        )
+        for _ in range(3)
+    ]
+
+
+def test_hybrid_keeps_the_rate_where_it_is_reliable():
+    house = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=300_000,
+        area_ha=0.2,
+    )
+    out = impute_land_value(
+        _state(_frame([*_hybrid_donors(), house])),
+        min_group_size=3,
+        estimator='hybrid',
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(20_000)
+
+
+def test_a_condominium_takes_the_neighbouring_rate_over_its_own_lot():
+    # Was `test_hybrid_uses_the_share_for_condominiums`, which expected
+    # the donors' 20% share of the unit's own value (60,000). A share
+    # does not travel across densities: it would have priced this lot's
+    # land at the unit count times the neighbourhood rate. The rate
+    # does travel, so the answer is 100,000 per ha over 0.2 ha.
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=300_000,
+        area_ha=0.2,
+    )
+    out = impute_land_value(
+        _state(_frame([*_hybrid_donors(), condo])),
+        min_group_size=3,
+        estimator='hybrid',
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(20_000)
+    assert out['land_value_imputed_source'].iloc[-1].startswith('share_class_')
+
+
+def test_hybrid_uses_the_share_where_the_rate_would_erase_the_structure():
+    big_lot = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=300_000,
+        area_ha=5,
+    )
+    out = impute_land_value(
+        _state(_frame([*_hybrid_donors(), big_lot])),
+        min_group_size=3,
+        estimator='hybrid',
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.2 * 300_000)
+    assert out['improvement_value_imputed'].iloc[-1] > 0
+
+
+def test_hybrid_uses_the_share_on_dense_lots():
+    dense = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=300_000,
+        area_ha=0.02,
+        living_area_sqft=1.5 * 200 / 0.09290304,
+    )
+    donors = [dict(d, living_area_sqft=None) for d in _hybrid_donors()]
+    out = impute_land_value(
+        _state(_frame([*donors, dense])),
+        min_group_size=3,
+        estimator='hybrid',
+        floor_area_columns=['living_area_sqft'],
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.2 * 300_000)
+
+
+def _sqrt_scaling_donors(city='A'):
+    """Donors whose land value grows with the square root of lot area.
+
+    Land is 100,000 * sqrt(area_ha), so the exponent is 0.5 and a
+    proportional rate cannot fit them: its median $/ha is set by the
+    middle of the size range and is wrong at both ends.
+    """
+    return [
+        _row(
+            land_use_class='Single-Family',
+            land_value=100_000 * a**0.5,
+            improvement_value=100_000,
+            city=city,
+            area_ha=a,
+        )
+        for a in (0.04, 0.09, 0.16, 0.25, 0.36, 0.49, 0.64, 0.81, 1.0, 1.21)
+    ]
+
+
+def test_a_fitted_exponent_recovers_a_square_root_scaling():
+    candidate = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=500_000,
+        city='A',
+        area_ha=4.0,
+    )
+    out = impute_land_value(
+        _state(_frame([*_sqrt_scaling_donors(), candidate])),
+        min_group_size=2,
+        rate_exponent='fitted',
+    ).curated
+    # 100,000 * sqrt(4) = 200,000, within the tolerance a five-band
+    # median fit leaves.
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(200_000, rel=0.1)
+
+
+def test_the_proportional_rate_overprices_the_same_large_lot():
+    # The default is unchanged, and on these donors it is wrong: it
+    # charges a 4 ha lot as though land scaled with area.
+    candidate = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=500_000,
+        city='A',
+        area_ha=4.0,
+    )
+    out = impute_land_value(
+        _state(_frame([*_sqrt_scaling_donors(), candidate])),
+        min_group_size=2,
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] > 300_000
+
+
+def test_a_fitted_exponent_never_leaves_the_unit_interval():
+    # Land value that falls as a lot grows is an artifact of the
+    # records, not a market, and neither is one rising faster than area.
+    falling = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=1_000_000 / a,
+            improvement_value=100_000,
+            city='A',
+            area_ha=a,
+        )
+        for a in (0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6, 51.2)
+    ]
+    candidate = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=500_000,
+        city='A',
+        area_ha=1.0,
+    )
+    out = impute_land_value(
+        _state(_frame([*falling, candidate])),
+        min_group_size=2,
+        rate_exponent='fitted',
+    ).curated
+    # Clipped to 0, so every lot in the city takes the same land value
+    # rather than a negative slope being extrapolated.
+    assert out['land_value_imputed'].iloc[-1] > 0
+
+
+def test_unknown_estimator_raises():
+    df = _frame([_row(land_use_class='Single-Family', land_value=1, area_ha=1)])
+    with pytest.raises(ValueError, match='estimator'):
+        impute_land_value(_state(df), estimator='hedonic')
+
+
+# Per-admin-unit choice of estimator. Two towns in one chunk, each
+# internally consistent under a different rule, so the outcome does not
+# depend on how the donor halves happen to split: every donor of Ayer
+# holds the same land share (0.4) whatever its lot size, and every donor
+# of Bede the same rate per hectare (100) whatever its value.
+_AREAS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25]
+
+
+def _two_town_donors() -> list[dict]:
+    share_town = [
+        _row(
+            land_use_class='Single-Family',
+            city='Ayer',
+            admin3_id='US-XX-AAA',
+            land_value=400,
+            improvement_value=600,
+            area_ha=a,
+        )
+        for a in _AREAS
+    ]
+    rate_town = [
+        _row(
+            land_use_class='Single-Family',
+            city='Bede',
+            admin3_id='US-XX-BBB',
+            land_value=100 * a,
+            improvement_value=50_000,
+            area_ha=a,
+        )
+        for a in _AREAS
+    ]
+    return [*share_town, *rate_town]
+
+
+def _ayer_candidate(**overrides) -> dict:
+    return _row(
+        land_use_class='Single-Family',
+        city='Ayer',
+        admin3_id='US-XX-AAA',
+        land_value=0,
+        improvement_value=1_000,
+        area_ha=7,
+        **overrides,
+    )
+
+
+def _hybrid(df, **kwargs):
+    return impute_land_value(
+        _state(df),
+        min_group_size=2,
+        estimator='hybrid',
+        **kwargs,
+    ).curated
+
+
+def test_a_unit_whose_donors_favor_the_share_leads_with_it():
+    df = _frame([*_two_town_donors(), _ayer_candidate()])
+    out = _hybrid(df, choose_estimator_by_admin_unit=True, choice_min_donors=4)
+    # 0.4 of the record's own value, not a rate times its 7 ha lot.
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(0.4 * 1_000)
+    assert 'share_' in out['land_value_imputed_source'].iloc[-1]
+
+
+def test_the_per_unit_choice_is_off_unless_asked_for():
+    df = _frame([*_two_town_donors(), _ayer_candidate()])
+    out = _hybrid(df)
+    estimate = out['land_value_imputed'].iloc[-1]
+    assert estimate != pytest.approx(0.4 * 1_000)
+    assert 'share_' not in out['land_value_imputed_source'].iloc[-1]
+
+
+def test_a_unit_with_too_few_donors_keeps_the_rate():
+    df = _frame([*_two_town_donors(), _ayer_candidate()])
+    out = _hybrid(df, choose_estimator_by_admin_unit=True, choice_min_donors=1_000)
+    assert out['land_value_imputed'].iloc[-1] != pytest.approx(0.4 * 1_000)
+
+
+def test_a_unit_that_keeps_the_rate_still_hands_over_an_erasing_row():
+    # Bede's donors favor the rate, and 100/ha over a 900 ha lot would
+    # take more than this record's whole value. The row-by-row rules
+    # still fire inside a rate unit, so the share takes it.
+    erasing = _row(
+        land_use_class='Single-Family',
+        city='Bede',
+        admin3_id='US-XX-BBB',
+        land_value=0,
+        improvement_value=1_000,
+        area_ha=900,
+    )
+    df = _frame([*_two_town_donors(), erasing])
+    out = _hybrid(df, choose_estimator_by_admin_unit=True, choice_min_donors=4)
+    estimate = out['land_value_imputed'].iloc[-1]
+    assert estimate < 1_000
+    assert 'share_' in out['land_value_imputed_source'].iloc[-1]
+
+
+def test_the_share_takes_over_only_at_the_whole_recorded_value():
+    # A rate estimate of 95% of the record's value leaves a structure
+    # value standing, so the default (1.0) leaves it with the rate.
+    donors = [
+        _row(
+            land_use_class='Single-Family',
+            city='Bede',
+            land_value=100 * a,
+            improvement_value=50_000,
+            area_ha=a,
+        )
+        for a in _AREAS
+    ]
+    near = _row(
+        land_use_class='Single-Family',
+        city='Bede',
+        land_value=0,
+        improvement_value=1_000,
+        area_ha=9.5,
+    )
+    out = _hybrid(_frame([*donors, near]))
+    assert out['land_value_imputed'].iloc[-1] == pytest.approx(950)
+    assert 'share_' not in out['land_value_imputed_source'].iloc[-1]
+    out_09 = _hybrid(_frame([*donors, near]), share_when_rate_reaches=0.9)
+    assert 'share_' in out_09['land_value_imputed_source'].iloc[-1]

@@ -1,6 +1,29 @@
 admin_id,source_id,kind,pattern,conv,tolerance,source
 US-WI-ON,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,,
 US-WI-VI,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,0.03,
+US-WI-AS,,parcel,,simple,,
+US-WI-BF,,parcel,,simple,,
+US-WI-DU,,parcel,,simple,,
+US-WI-GE,,parcel,,simple,,
+US-WI-MA,,parcel,,simple,,
+US-WI-MN,,parcel,,simple,,
+US-WI-SW,,parcel,,simple,,
+US-WI-SY,,parcel,,simple,,
+US-WI-TA,,parcel,,simple,,
+US-WI-TR,,parcel,,simple,,
+US-WI-VE,,parcel,,simple,,
+US-WI-WI,,parcel,,simple_clean: trim_zero_pairs,1,
+US-WI-JU,,parcel,,simple_clean: drop_inner_letters trim_suffix_zeros,1,
+US-WI-DR,,parcel,,simple,1,
+US-WI-KW,,parcel,,simple,1,
+US-WI-LA,,parcel,,simple,1,
+US-WI-OC,,parcel,,simple,1,
+US-WI-WL,,parcel,,simple,1,
+US-WI-BU,,parcel,,simple_pad_last: 6,1,
+US-WI-WH,,parcel,,simple_pad_last: 6,1,
+US-WI-BY,,parcel,,simple_pad_last: 5,1,parcel_id_tax
+US-WI-CO,,parcel,,simple,1,parcel_id_tax
+US-WI-EC,,parcel,,simple,1,
 US-NC-CAB,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-CAM,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-CAR,,parcel,,simple,,parcel_id_admin3

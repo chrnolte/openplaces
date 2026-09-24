@@ -47,7 +47,7 @@ Licence: Apache-2.0
 Upstream: https://jackcess.sourceforge.io/
           (Maven Central: com.healthmarketscience.jackcess:jackcess)
 
-Not redistributed here. src/openplaces/io/access.py downloads the jar
+Not redistributed here. src/openplaces/io/ingester/access.py downloads the jar
 (version 5.0.0) from Maven Central on first use into the models
 directory and refuses it unless it matches a pinned sha256.
 
