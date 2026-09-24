@@ -3,7 +3,9 @@ RecipeDAG: the recipe dependency graph behind orchestration.
 
 Wraps get_recipe_dependencies and get_output_path so the recipes stay the
 single source of truth: adding an enrichment recipe to a curation pipeline
-automatically adds its jobs and its image-cache dependency. Consumed by
+automatically adds its jobs. An image recipe it names is configuration
+only (the imagery is fetched in memory and never written), so it is a
+dependency edge, never a job (see writes_nothing). Consumed by
 workflow/Snakefile; imports nothing from snakemake, so the library works
 without it.
 """
@@ -102,6 +104,30 @@ def primary_output_path(recipe, admin_id=None):
     if (recipe.get('aggregate_by') or {}).get('single_file'):
         partition_id = 'all'
     return get_output_path(recipe, admin_id=admin_id, partition_id=partition_id)
+
+
+def writes_nothing(recipe) -> bool:
+    """True for a recipe that is configuration only and has no job.
+
+    An image recipe (entity type `image`) declares camera settings for
+    the enrichment steps that name it in `image_recipe`; the imagery is
+    fetched in memory during enrichment and never written, because the
+    provider's terms forbid caching it. It therefore has no ingest job
+    and no output file: scheduling one would run a stage that writes
+    nothing and fail on the missing output, or worse, spend the billed
+    requests first. The graph keeps the recipe as a dependency edge (so
+    excluding an enrich recipe still prunes its image recipe) and
+    nothing else.
+    """
+    entity = recipe.get('entity')
+    if isinstance(entity, dict):
+        entity_type = entity.get('entity_type')
+    else:
+        # A loaded recipe carries a core.schema.Entity here, whose
+        # entity_type is an EntityType wrapping the string.
+        entity_type = getattr(entity, 'entity_type', None)
+        entity_type = getattr(entity_type, 'entity_type', entity_type)
+    return entity_type == 'image'
 
 
 def node_key(node: StageNode) -> tuple:
@@ -244,6 +270,8 @@ class RecipeDAG:
         seen: set[tuple] = set()
 
         def _add(recipe_id, recipe, walk_admin):
+            if writes_nothing(recipe):
+                return
             for node_admin in self._node_admins(recipe_id, walk_admin):
                 admin_str = str(node_admin) if node_admin is not None else None
                 key = (recipe_id, admin_str, None)
@@ -321,6 +349,8 @@ class RecipeDAG:
                     upstream = self._recipe(upstream_id)
                     upstream_admins = self._node_admins(upstream_id, consumer_admin)
                 except Exception:  # noqa: BLE001
+                    continue
+                if writes_nothing(upstream):
                     continue
                 for upstream_admin in upstream_admins:
                     admin_str = (
@@ -918,6 +948,8 @@ class RecipeDAG:
             seen.add(upstream_id)
             try:
                 upstream = self._recipe(upstream_id)
+                if writes_nothing(upstream):
+                    continue
                 for upstream_admin in self._node_admins(upstream_id, node_admin):
                     paths.append(primary_output_path(upstream, admin_id=upstream_admin))
                 if upstream.get('stage') == 'harmonize' or upstream.get('entity_links'):
