@@ -691,21 +691,29 @@ def aggregate_multi_parcel_sales(
     return state
 
 
-# What names a sale, in the order a reader would reach for. The
-# document is the thing a registry issues and a person can look up;
-# everything after it is there to fingerprint a sale the source named
-# no document for, and is deliberately a *small, stable* set rather
-# than the whole row: a hash over every column would change whenever a
-# roll is re-ingested or a value corrected.
-TRANSACTION_ID_COLUMNS = (
-    'sale_document_id',
-    'sale_record_kind',
-    'parcel_id_local',
-    'parcel_id_assessor',
-    'sale_year',
-    'sale_month',
-    'price',
+# How a sale with no recorded document is fingerprinted, narrowest
+# first. Each tier is added only if the ones before it leave two such
+# sales sharing a fingerprint, because **every column in the hash is a
+# column that can change the id**: these ids are published, and a sale
+# re-ingested with a corrected use code or parcel key should keep its
+# name. What a sale is, before anything else, is a price on a date.
+#
+# The parcel keys come next because two sales at one price in one
+# month are nearly always different properties, and the record kind
+# last because it separates a deed from the assessor's echo of it,
+# which `dedup_transactions` and `flag_sales_matching_other_kind` have
+# usually already dealt with.
+TRANSACTION_FINGERPRINT_TIERS = (
+    ('sale_year', 'sale_month', 'price'),
+    ('parcel_id_local', 'parcel_id_assessor'),
+    ('sale_record_kind',),
 )
+
+# Above this share of rows sharing a document with another, the column
+# is not identifying sales and the ids stop being references anyone
+# could look up. Matches the spirit of `NO_ACCOUNT_NUMBER_SHARE` for
+# properties.
+REPEATED_DOCUMENT_SHARE = 0.02
 
 
 @_register('assign_transaction_ids')
@@ -731,9 +739,14 @@ def assign_transaction_ids(
     Alachua County FL rows, and on 94.8% of Miami-Dade's, whose other
     5.2% name no document at all (Florida's roll writes a blank book
     and page, which `derive_document_id` correctly reads as naming
-    nothing). Those rows are named by a fingerprint of the columns
-    above, the same fallback `assign_entity_ids` uses for a property
-    whose assessor issued no account number.
+    nothing). Those rows are fingerprinted instead, the same fallback
+    `assign_entity_ids` uses for a property whose assessor issued no
+    account number, but over a **deliberately minimal** column set:
+    price and date first, and a further tier only where that leaves two
+    unnamed sales sharing a fingerprint
+    (`TRANSACTION_FINGERPRINT_TIERS`). Every column in the hash is a
+    column that can change a published id, so the fewest that separate
+    the rows is the right number rather than every column that might.
 
     Runs after `aggregate_multi_parcel_sales`, so a deed covering
     several parcels is already one row and gets one id.
@@ -748,13 +761,12 @@ def assign_transaction_ids(
         Name used for rows the source gave no document, appearing in
         their id as `{admin}_{label}:{fingerprint}`.
     """
-    from openplaces.io.harmonizer.entity_ids import mint_ids
+    from openplaces.io.harmonizer.entity_ids import normalize_issued_id
 
     curated = state.curated
     if curated is None or curated.empty:
         return state
 
-    identifying = [c for c in TRANSACTION_ID_COLUMNS if c in curated.columns]
     if document_column not in curated.columns:
         # Without a document there is nothing to name a sale by except
         # its content; say so rather than minting silently from a
@@ -767,36 +779,67 @@ def assign_transaction_ids(
             stacklevel=2,
         )
 
-    # Mint on a positionally-clean frame. `mint_ids` assigns through a
-    # boolean mask (`ids[missing] = ...`), which is label-based, and the
-    # frame reaching here can carry a duplicate index:
-    # `aggregate_multi_parcel_sales` indexes its aggregated rows by the
-    # representative row's label, so a label appearing twice misaligns
-    # that assignment and raises "Must have equal len keys and value
-    # when setting with an iterable" (Polk County FL, 2026-09-24).
-    # Resetting costs nothing, since the index is about to be replaced.
-    ids, report = mint_ids(
-        curated[identifying].reset_index(drop=True),
-        admin_id=str(state.admin_id),
-        id_column=document_column if document_column in curated.columns else None,
-        label=label,
-        caller='assign_transaction_ids',
-        advice=(
-            'A sale is named by the document it was recorded under, so a '
-            'repeated document usually means derive_document_id found no '
-            'usable reference rather than that a better column exists.'
-        ),
+    # Positional throughout: the frame reaching here can carry a
+    # duplicate index, because `aggregate_multi_parcel_sales` indexes
+    # its aggregated rows by the representative row's label.
+    frame = curated.reset_index(drop=True)
+    admin = str(state.admin_id)
+
+    issued = (
+        normalize_issued_id(frame[document_column])
+        if document_column in frame.columns
+        else pd.Series(pd.NA, index=frame.index, dtype='string')
     )
-    # Every surviving row gets its own id. `mint_ids` deliberately gives
-    # one id to rows that are exact duplicates, which is right for a
-    # property (two sources describing one account) and wrong here: a
-    # row reaching this step already survived `dedup_transactions`, so
-    # it is a row the recipe means to keep, and an index that merged
-    # two of them would have the delivery's de-duplication drop one
-    # silently. Osceola County FL minted 789,903 ids for 793,283 sales
-    # before this suffix (2026-09-24); those 3,380 are sales the source
-    # states identically and distinguishes by nothing this step reads.
-    ids = add_unique_suffix(pd.Series(ids.to_numpy(), dtype='string'))
+    ids = (f'{admin}_' + issued).astype('string')
+
+    unnamed = issued.isna()
+    tiers_used = 0
+    if unnamed.any():
+        # Widen the fingerprint only while two unnamed sales still share
+        # one. Escalation is over the whole county rather than per row,
+        # so an id depends on the columns used, not on which other rows
+        # happen to be present.
+        columns: list[str] = []
+        fingerprint = None
+        for tier in TRANSACTION_FINGERPRINT_TIERS:
+            present = [c for c in tier if c in frame.columns]
+            if not present:
+                continue
+            columns += present
+            tiers_used += 1
+            fingerprint = pd.util.hash_pandas_object(
+                frame.loc[unnamed, columns].astype('string'), index=False
+            )
+            if not fingerprint.duplicated().any():
+                break
+        if fingerprint is not None:
+            named = fingerprint.map('{:016x}'.format).astype('string')
+            ids.loc[unnamed] = f'{admin}_{label}:' + named
+
+    # A document that names many rows names none of them. Those rows
+    # still get an id, by suffix, but the id stops being the reference
+    # a reader could look the sale up by, so say so rather than let a
+    # county quietly ship `..._2`, `..._3` throughout.
+    named = ~unnamed
+    if named.any():
+        repeated = int(ids[named].duplicated(keep=False).sum())
+        if repeated > REPEATED_DOCUMENT_SHARE * len(frame):
+            warnings.warn(
+                f'assign_transaction_ids: {repeated:,} of {len(frame):,} '
+                f'sales share their {document_column!r} with another, so '
+                'that column is not identifying them. They are separated '
+                'by suffix; check what derive_document_id found for this '
+                'source.',
+                stacklevel=2,
+            )
+
+    # Every surviving row gets its own id: a row reaching this step
+    # already survived `dedup_transactions`, so it is one the recipe
+    # means to keep, and an index that merged two of them would have
+    # the delivery's de-duplication drop one silently. Osceola County
+    # FL had 3,380 such rows of 793,283 (2026-09-24), sales its source
+    # states identically and distinguishes by nothing read here.
+    ids = add_unique_suffix(ids)
     curated = curated.copy()
     curated.index = pd.Index(ids.to_numpy(), name='transaction_id')
     state.curated = curated
@@ -804,6 +847,7 @@ def assign_transaction_ids(
         print(
             f'  assign_transaction_ids: {len(curated):,} sales, '
             f'{curated.index.nunique():,} ids '
-            f'({report.get("n_without_number", 0):,} named by content)'
+            f'({int(unnamed.sum()):,} fingerprinted over '
+            f'{tiers_used} tier(s))'
         )
     return state
