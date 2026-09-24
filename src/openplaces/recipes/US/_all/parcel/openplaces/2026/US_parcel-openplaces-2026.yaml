@@ -57,16 +57,26 @@ pipeline:
   # its living area the sum; the counts sum; the total value sums. Fills
   # only where the parcel spine has nothing, so a county whose parcel
   # layer carries the attribute directly keeps it.
+  # improvement_value is the one exception (recover): a stacked lot keeps
+  # only what its units agree on, so a condominium lot's improvement is
+  # missing or zero while its units record it. The units' recorded sum
+  # replaces that, and only where a unit records a positive figure. A
+  # lot the roll does not value (a manufactured home on a personal
+  # property title, an exemption, business personal property) stays as
+  # it is: filling it would be imputation, which openplaces does not do
+  # for structure values (maintainer, 2026-09-22).
   - step: aggregate_from_entities
     recipe_id: US_property-spine-2026
     # A standalone roll keys on the local parcel id; a roll bundled with
     # its parcel layer (MassGIS L3_ASSESS) on the state-wide one.
     key: [parcel_id_local, parcel_id_admin2]
+    recover: [improvement_value]
     columns:
       year_built: min
       living_area_sqft: sum
       gross_floor_area_sqft: sum
       total_value: sum
+      improvement_value: sum
       n_stories: max
       n_bedrooms: sum
       n_bathrooms: sum
