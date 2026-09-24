@@ -423,6 +423,16 @@ pipeline:
   # each column; the price was never wrong, the denominator was.
   - step: aggregate_multi_parcel_sales
 
+  # Give each sale an id, immediately after the aggregation that fixes
+  # what one row is. Until 2026-09-23 a transaction had none: the
+  # curated output carried an unnamed RangeIndex, so every county
+  # numbered its rows 0, 1, 2. Harmless per county, destructive when
+  # pooled, because `export_delivery` de-duplicates on the index (a
+  # footprint on a county line is one entity curated twice) and so kept
+  # 291,024 of Wisconsin's 2,751,753 sales. A delivered sale also has
+  # to be referenceable by whoever reads it.
+  - step: assign_transaction_ids
+
   # Price over the assessed value of everything the deed conveyed, so
   # it comes after the aggregation: a multi-parcel deed's price over
   # one parcel's assessed value was the defect the aggregation removes,

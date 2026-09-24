@@ -137,6 +137,8 @@ def mint_ids(
     id_column: str | None,
     label: str,
     repeats_by_content: bool = False,
+    caller: str = 'assign_entity_ids',
+    advice: str = "Name a better column in the recipe's `entity_id` if it has one.",
 ) -> tuple[pd.Series, dict]:
     """Ids for one source's rows within one admin unit.
 
@@ -190,11 +192,10 @@ def mint_ids(
     no_account_number = share > NO_ACCOUNT_NUMBER_SHARE
     if no_account_number:
         warnings.warn(
-            f'assign_entity_ids: {distinct_repeats.sum():,d} of {len(rows):,d} '
+            f'{caller}: {distinct_repeats.sum():,d} of {len(rows):,d} '
             f'{label} rows ({share:.0%}) share their {id_column!r} with a '
             'different row, so the source issues no account number; those '
-            'rows are named by their content. Name a better column in the '
-            "recipe's `entity_id` if it has one.",
+            f'rows are named by their content. {advice}',
             stacklevel=2,
         )
     if distinct_repeats.any() and (repeats_by_content or no_account_number):

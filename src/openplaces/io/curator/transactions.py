@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 
 import pandas as pd
 
@@ -686,5 +687,105 @@ def aggregate_multi_parcel_sales(
         print(
             f'  aggregate_multi_parcel_sales: {int(shared.sum()):,} rows on '
             f'{len(aggregated):,} multi-parcel documents became one row each'
+        )
+    return state
+
+
+# What names a sale, in the order a reader would reach for. The
+# document is the thing a registry issues and a person can look up;
+# everything after it is there to fingerprint a sale the source named
+# no document for, and is deliberately a *small, stable* set rather
+# than the whole row: a hash over every column would change whenever a
+# roll is re-ingested or a value corrected.
+TRANSACTION_ID_COLUMNS = (
+    'sale_document_id',
+    'sale_record_kind',
+    'parcel_id_local',
+    'parcel_id_assessor',
+    'sale_year',
+    'sale_month',
+    'price',
+)
+
+
+@_register('assign_transaction_ids')
+def assign_transaction_ids(
+    state: CurateState,
+    document_column: str = 'sale_document_id',
+    label: str = 'sale',
+) -> CurateState:
+    """Index the curated sales by a stable id, scoped to the admin unit.
+
+    A transaction had no id at all: the curated output carried an
+    unnamed RangeIndex, so every county numbered its rows 0, 1, 2. That
+    is invisible per county and destructive when counties are pooled -
+    `export_delivery` de-duplicates on the index, because a footprint on
+    a county line really is one entity curated twice, and pooling
+    Wisconsin's 72 counties therefore kept 291,024 of 2,751,753 sales.
+    A delivered sale also has to be referenceable by whoever reads it.
+
+    The id is the recorded document, scoped by the admin unit that
+    issued it (`US-FL-MD_<document>`), because document numbers repeat
+    between counties. Measured 2026-09-23, a document identifies a sale
+    wherever the source names one: unique on 100% of Dane County WI and
+    Alachua County FL rows, and on 94.8% of Miami-Dade's, whose other
+    5.2% name no document at all (Florida's roll writes a blank book
+    and page, which `derive_document_id` correctly reads as naming
+    nothing). Those rows are named by a fingerprint of the columns
+    above, the same fallback `assign_entity_ids` uses for a property
+    whose assessor issued no account number.
+
+    Runs after `aggregate_multi_parcel_sales`, so a deed covering
+    several parcels is already one row and gets one id.
+
+    Parameters
+    ----------
+    state : CurateState
+        Curation state; `state.curated` is re-indexed in place.
+    document_column : str, optional
+        Column holding the recorded document's identifier.
+    label : str, optional
+        Name used for rows the source gave no document, appearing in
+        their id as `{admin}_{label}:{fingerprint}`.
+    """
+    from openplaces.io.harmonizer.entity_ids import mint_ids
+
+    curated = state.curated
+    if curated is None or curated.empty:
+        return state
+
+    identifying = [c for c in TRANSACTION_ID_COLUMNS if c in curated.columns]
+    if document_column not in curated.columns:
+        # Without a document there is nothing to name a sale by except
+        # its content; say so rather than minting silently from a
+        # fingerprint alone.
+        warnings.warn(
+            f'assign_transaction_ids: no {document_column!r} column, so '
+            'every sale is named by its content fingerprint. Run '
+            'derive_document_id first if the source carries a document '
+            'reference.',
+            stacklevel=2,
+        )
+
+    ids, report = mint_ids(
+        curated[identifying],
+        admin_id=str(state.admin_id),
+        id_column=document_column if document_column in curated.columns else None,
+        label=label,
+        caller='assign_transaction_ids',
+        advice=(
+            'A sale is named by the document it was recorded under, so a '
+            'repeated document usually means derive_document_id found no '
+            'usable reference rather than that a better column exists.'
+        ),
+    )
+    curated = curated.copy()
+    curated.index = pd.Index(ids.to_numpy(), name='transaction_id')
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  assign_transaction_ids: {len(curated):,} sales, '
+            f'{curated.index.nunique():,} ids '
+            f'({report.get("n_without_number", 0):,} named by content)'
         )
     return state
