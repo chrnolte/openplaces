@@ -581,7 +581,9 @@ link that predates a rebuilt spine. The step sits **after** the parcel
 spine's checkpointed step: a restored checkpoint skips every step before
 it and validates against the geospine only, so anything placed earlier
 that reads another recipe's output goes stale unnoticed (the transaction
-`link_by_id` near the top of that recipe has this weakness). Curate's
+`link_by_id` sat near the top of that recipe with this weakness until
+2026-09-23; it now follows the link table, and
+`tests/recipe/test_parcel_spine_step_order.py` pins both). Curate's
 `aggregate_from_entities` reads the table; see the stacked-units paragraph
 under Stage 1 for the passes the ingest-time split adds.
 
