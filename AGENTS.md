@@ -959,7 +959,17 @@ Steps are organized by the nature of the transformation:
   coverage exactly (63.9% `year_built` and floor area, the PACS segment
   sum now named `gross_floor_area_sqft`), so a county
   whose geospine predates the change loses nothing. An all-missing group
-  reduces to missing, not to pandas' zero sum.
+  reduces to missing, not to pandas' zero sum. A column named under
+  `recover` (the parcel recipe names `improvement_value`) is the one
+  departure from fill-only: a stacked lot keeps only what its units
+  agree on, so its improvement is missing or zero while the units
+  record it, and the units' positive sum replaces that. Nothing is
+  written where no unit records a positive figure: a lot the roll does
+  not value stays as it is, because estimating it would be an
+  imputation step, which openplaces does not do for structure values
+  (maintainer, 2026-09-22). Measured 2026-09-22 on cheer-eastern-nc:
+  179 of 503 such lots hold a recorded figure ($44.1M); on
+  cheer-coastal-tx 447 of 15,555 ($64.8M).
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).

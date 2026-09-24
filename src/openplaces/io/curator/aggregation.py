@@ -106,6 +106,7 @@ def aggregate_from_entities(
     key: str | list[str] = 'parcel_id_local',
     reference_key: str | list[str] | None = None,
     fill_only: bool = True,
+    recover: list[str] | None = None,
 ) -> CurateState:
     """Reduce a reference entity's rows onto the curated rows they belong to.
 
@@ -115,6 +116,24 @@ def aggregate_from_entities(
     result onto the curated rows by *key*. A parcel's year built becomes
     the earliest of its properties', its living area the sum, a room count
     the sum, without the harmonize stage ever having copied them.
+
+    A column named in *recover* is written under a stricter rule, made
+    for a value a stacked lot lost at ingest: the lot row keeps only what
+    its units agree on, so a condominium lot's improvement value is
+    missing or zero while its units carry the figure. The reduction is
+    written only where it is positive, onto a cell that is missing or
+    not positive. Nothing is written where no reference row records a
+    positive value: a lot whose roll does not value the building (a
+    manufactured home on a personal-property title, an exemption,
+    business personal property, agricultural use value) stays as it was,
+    because filling it would be estimation, which is a declared
+    imputation step or nothing (maintainer's decision, 2026-09-22).
+    The recovered figure is recorded, not modeled, so it carries no
+    imputed marker.
+    Measured 2026-09-22 on cheer-eastern-nc: 179 of 503 such lots, $44.1M.
+    Measured 2026-09-22 on cheer-coastal-tx: 447 of 15,555, $64.8M (Texas
+    taxes business personal property and manufactured homes on their own
+    rolls, so its gaps are mostly real).
 
     Parameters
     ----------
@@ -136,6 +155,10 @@ def aggregate_from_entities(
     fill_only : bool, optional
         Fill only curated cells that are missing (default). With False the
         reduced value replaces whatever the curated column held.
+    recover : list of str, optional
+        Columns written only where the reduction is positive, onto cells
+        that are missing or not positive (see above). Takes precedence
+        over *fill_only* for the columns it names.
     """
     curated = state.curated
     keys_ = [key] if isinstance(key, str) else list(key)
@@ -223,9 +246,18 @@ def aggregate_from_entities(
     # properties states a floor area has no floor area, not a zero one.
     reduced = reduced.where(grouped.count() > 0)
     written = []
+    recover = set(recover or ())
     for column in reduced.columns:
         incoming = keys.map(reduced[column])
-        if column in curated.columns and fill_only:
+        if column in recover:
+            positive = pd.to_numeric(incoming, errors='coerce').gt(0).fillna(False)
+            if column in curated.columns:
+                existing = curated[column]
+                stated = pd.to_numeric(existing, errors='coerce').gt(0).fillna(False)
+                curated[column] = existing.where(~(positive & ~stated), incoming)
+            else:
+                curated[column] = incoming.where(positive)
+        elif column in curated.columns and fill_only:
             existing = curated[column]
             curated[column] = existing.where(existing.notna(), incoming)
         else:

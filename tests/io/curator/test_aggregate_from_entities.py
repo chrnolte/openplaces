@@ -207,3 +207,80 @@ def test_no_shared_key_skips_with_a_warning(properties):
             _state(curated), 'r', columns={'year_built': 'min'}
         )
     assert 'year_built' not in state.curated.columns
+
+
+@pytest.fixture
+def valued_units(monkeypatch):
+    # Lot L1: two units, one of them valued. Lot L2: two units, both
+    # recorded as zero. Lot L3: two units stating nothing. Lot L4: one
+    # valued unit on a lot that already states its own figure.
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L1', 'L2', 'L2', 'L3', 'L3', 'L4'],
+            'improvement_value': [150000.0, 0.0, 0.0, 0.0, None, None, 90000.0],
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+
+
+def test_recover_writes_a_recorded_positive_sum_onto_an_empty_or_zero_lot(
+    valued_units,
+):
+    curated = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L2', 'L3', 'L4', 'L5'],
+            'improvement_value': [0.0, 0.0, None, 250000.0, 0.0],
+        }
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'r',
+        columns={'improvement_value': 'sum'},
+        recover=['improvement_value'],
+    )
+    out = state.curated['improvement_value']
+    # L1: a unit records the figure, so the lot's zero is replaced.
+    assert out[0] == 150000.0
+    # L2 and L3: no unit records a positive value; the lot stays exactly
+    # as it was (a zero stays a zero, a blank stays blank). Writing here
+    # would be the imputation the maintainer declined.
+    assert out[1] == 0.0
+    assert pd.isna(out[2])
+    # L4: a lot that states its own positive figure keeps it.
+    assert out[3] == 250000.0
+    # L5: no property row at all.
+    assert out[4] == 0.0
+
+
+def test_recover_on_an_absent_column_writes_only_positive_sums(valued_units):
+    curated = pd.DataFrame({'parcel_id_local': ['L1', 'L2', 'L3']})
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'r',
+        columns={'improvement_value': 'sum'},
+        recover=['improvement_value'],
+    )
+    out = state.curated['improvement_value']
+    assert out[0] == 150000.0
+    assert pd.isna(out[1]) and pd.isna(out[2])
+
+
+def test_fill_only_alone_would_have_left_the_zero(valued_units):
+    # The contrast the recover rule exists for: fill_only fills blanks
+    # only, so a present zero on L1 survives it.
+    curated = pd.DataFrame({'parcel_id_local': ['L1'], 'improvement_value': [0.0]})
+    state = aggregation.aggregate_from_entities(
+        _state(curated), 'r', columns={'improvement_value': 'sum'}
+    )
+    assert state.curated['improvement_value'].tolist() == [0.0]
