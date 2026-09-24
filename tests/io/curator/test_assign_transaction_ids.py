@@ -116,6 +116,41 @@ def test_a_duplicate_index_does_not_break_the_minting():
     assert list(state.curated['parcel_id_local']) == ['p1', 'p2', 'p3']
 
 
+def test_a_fingerprint_uses_price_and_date_before_anything_else():
+    """The narrowest tier is what a sale is: a price on a date.
+
+    Every column in the hash can change a published id, so a sale
+    whose parcel key is corrected must keep its name where price and
+    date already separate it.
+    """
+    frame = _sales()
+    frame['sale_document_id'] = None
+
+    before = assign_transaction_ids(_state(frame.copy())).curated.index
+    moved = frame.copy()
+    moved['parcel_id_local'] = ['x1', 'x2', 'x3']
+    moved['sale_record_kind'] = ['assessor_last_sale'] * 3
+    after = assign_transaction_ids(_state(moved)).curated.index
+
+    assert list(before) == list(after)
+
+
+def test_a_wider_tier_is_used_only_where_the_narrow_one_collides():
+    """Two sales at one price in one month are told apart by parcel."""
+    frame = _sales()
+    frame['sale_document_id'] = None
+    frame['sale_year'] = [2020, 2020, 2021]
+    frame['sale_month'] = [1, 1, 3]
+    frame['price'] = [100.0, 100.0, 300.0]
+
+    state = assign_transaction_ids(_state(frame))
+
+    # Separated by the parcel tier, not by a `_2` suffix.
+    ids = [str(v) for v in state.curated.index]
+    assert len(set(ids)) == 3
+    assert not any(i.endswith('_2') for i in ids), ids
+
+
 def test_two_indistinguishable_sales_still_get_an_id_each():
     """Osceola County FL, 2026-09-24: 789,903 ids for 793,283 sales.
 
