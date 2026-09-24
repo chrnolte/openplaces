@@ -36,8 +36,7 @@ def data_root(tmp_path, monkeypatch):
 @pytest.fixture(scope='module')
 def dag():
     # Built against the real data root (module scope, so it is constructed
-    # before any function-scoped data_root monkeypatch): expanding per-town
-    # image jobs requires ingested admin boundaries. plan() then stats
+    # before any function-scoped data_root monkeypatch). plan() then stats
     # outputs under whatever root is configured at call time.
     return RecipeDAG(TARGET, admin_ids=[COUNTY])
 
@@ -113,11 +112,15 @@ def test_mermaid_full_detail(dag):
 def test_mermaid_collapse(dag):
     # The default auto-collapses if and only if the DAG exceeds the threshold
     assert dag.to_mermaid() == dag.to_mermaid(collapse_admin=len(dag.nodes()) > 30)
-    # Explicit collapse folds per-admin jobs into recipe-level nodes
-    collapsed = dag.to_mermaid(collapse_admin=True)
-    assert 'admin units)' in collapsed
+    # Explicit collapse folds per-admin jobs into recipe-level nodes. A
+    # one-county graph has one job per recipe (image recipes, once the
+    # only per-town jobs, are no longer jobs), so two counties are needed
+    # for a recipe to carry the "(n admin units)" label.
+    two = RecipeDAG(TARGET, admin_ids=[COUNTY, 'US-NC-CUR'])
+    collapsed = two.to_mermaid(collapse_admin=True)
+    assert '2 admin units)' in collapsed
     assert 'US_footprint_openplaces_2026_all[' in collapsed
-    assert len(collapsed) < len(dag.to_mermaid(collapse_admin=False))
+    assert len(collapsed) < len(two.to_mermaid(collapse_admin=False))
 
 
 def test_dry_run_command_and_stored_file(data_root, monkeypatch):
