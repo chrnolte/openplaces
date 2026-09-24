@@ -409,7 +409,7 @@ Layer 2  recipe
 Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator

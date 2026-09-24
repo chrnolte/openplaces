@@ -1,4 +1,4 @@
-"""Tests for io/cleanup.py on a synthetic data root."""
+"""Tests for the io/cleanup package on a synthetic data root."""
 
 import json
 import os
@@ -14,6 +14,7 @@ import openplaces.io as opio
 from openplaces.config import cfg
 from openplaces.core.constants import STANDARD_DIRS
 from openplaces.io import cleanup as cl
+from openplaces.io.cleanup import compaction
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 NSI = 'US_building-nsi-2026'
@@ -876,14 +877,15 @@ def test_compact_destructive_aborts_on_recipe_parse_error(data_root, monkeypatch
     broken._literal = {}
     broken._auto_consumers = []
     broken._auto_cache = {}
-    monkeypatch.setattr(cl, '_dependency_index', lambda: broken)
+    # compact looks the index up in its own module, not the package.
+    monkeypatch.setattr(compaction, '_dependency_index', lambda: broken)
     with pytest.raises(RuntimeError, match='failed to load'):
         cl.compact(delete=('orphans',), dry_run=False)
 
 
 def test_compact_min_recipe_guard(data_root, monkeypatch):
     tiny = cl._DependencyIndex(recipe_ids=[NSI])
-    monkeypatch.setattr(cl, '_dependency_index', lambda: tiny)
+    monkeypatch.setattr(compaction, '_dependency_index', lambda: tiny)
     orphan = cfg.get_dir('cache') / 'US' / 'NC' / '_all' / 'US-NC_bogus-x-1.parquet'
     orphan.parent.mkdir(parents=True, exist_ok=True)
     orphan.write_bytes(b'junk')
