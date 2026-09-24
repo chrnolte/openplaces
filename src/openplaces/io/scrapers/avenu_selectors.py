@@ -16,9 +16,23 @@ DOC_TYPE_DROPDOWN = '#SearchFormEx1_ACSDropDownList_DocumentType'
 # inside #DocList1_ContentContainer1; header <tr> uses class DataGridHeader
 RESULTS_CONTAINER = '#DocList1_ContentContainer1'
 RESULTS_TABLE = '#DocList1_GridView_Document'
+# `DataGridSelectedRow` has to be in this list, and leaving it out was a
+# real defect rather than an omission: clicking a row for its details
+# re-classes it to that, so without it the clicked row **leaves the
+# match set**. Measured on Cambridge, 2024-03 (2026-09-23): 20 rows
+# matched before the first click and 19 after it. `parse_results` reads
+# book and page from `query_selector_all(RESULTS_ROW)[i]` while its
+# details come from `locator(RESULTS_ROW).nth(i)`, so a set that
+# changes under the loop makes `i` stop denoting a fixed row, and rows
+# are skipped, re-read, or paired with a neighbour's book and page.
+# That is the source of the one repeated (book, page) pair per result
+# list seen in every crawled month (Cambridge 79, Somerville 82 of that
+# kind), where the two rows differ in instrument number and parties and
+# are therefore two documents, one carrying the other's reference.
 RESULTS_ROW = (
     '#DocList1_ContentContainer1 tr.DataGridRow, '
-    '#DocList1_ContentContainer1 tr.DataGridAlternatingRow'
+    '#DocList1_ContentContainer1 tr.DataGridAlternatingRow, '
+    '#DocList1_ContentContainer1 tr.DataGridSelectedRow'
 )
 
 NEXT_BUTTON = '#DocList1_LinkButtonNext'
