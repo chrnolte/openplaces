@@ -9,10 +9,11 @@ Two findings from piloting this on Colombia decided the approach, and both
 went against the obvious design:
 
 **Do not filter by type.** Restricting children to a country's municipality
-class looks more precise and is actually worse -- 89.7% matched against
-91.7% unfiltered -- because a spine unit is often typed as something else in
-Wikidata (a capital district, a special unit). It also costs a manual class
-lookup per country, which the unfiltered query avoids entirely.
+class looks more precise and is actually worse.
+Measured 2026-08-22 on CO: 89.7% matched with the filter, 91.7% without.
+A spine unit is often typed as something else in Wikidata (a capital
+district, a special unit), and the filter costs a manual class lookup per
+country, which the unfiltered query avoids entirely.
 
 **Do not walk the subclass tree.** A generic query using
 `P31/P279* wd:Q56061` times out even scoped to a single country, so
@@ -21,8 +22,9 @@ version that runs.
 
 **Do not resolve ambiguity automatically.** Where two Wikidata items share a
 name under the same parent, this module reports the conflict rather than
-choosing. For Colombia that is 5.3% of units, and the duplicates are mostly
-natural features (Cerro Negro, Cuchilla Pena Negra) that happen to carry a
+choosing. Measured 2026-08-22 on CO: 5.3% of units are ambiguous, and the
+duplicates are mostly natural features (Cerro Negro, Cuchilla Pena Negra)
+that happen to carry a
 `P131` link -- but Otanche is a real municipality with two items, so picking
 one silently would sometimes be wrong.
 """
@@ -60,8 +62,8 @@ def children_query(parent_prefix: str, limit: int = 40000) -> str:
         ISO 3166-2 prefix of the parents whose children are wanted, e.g.
         'CO-' for Colombia's departments.
     limit : int, optional
-        Result cap. Colombia returns about 25,500 rows, so the default
-        leaves room; a country that hits the cap needs paginating.
+        Result cap. Measured 2026-08-22 on CO: about 25,500 rows, so the
+        default leaves room; a country that hits the cap needs paginating.
 
     Returns
     -------
@@ -248,9 +250,10 @@ PARENT_BATCH_SIZE = 50
 def class_tree_query(root=ADMINISTRATIVE_ENTITY):
     """Return SPARQL for every subclass of the administrative-entity class.
 
-    One request per process (9,045 classes, under 2 s), after which
-    membership is a set lookup. Filtering items by P31/P279* inside each
-    harvest query is what the pilot found times out per country.
+    One request per process, after which membership is a set lookup
+    (Measured 2026-09-13 on wikidata: 9,045 classes, under 2 s). Filtering
+    items by P31/P279* inside each harvest query is what the pilot found
+    times out per country.
     """
     return f'SELECT ?c WHERE {{ ?c wdt:P279* wd:{root} }}'
 
@@ -357,9 +360,10 @@ def select_units(
 ):
     """Keep the harvested items that are this level's administrative units.
 
-    A "located in" link is carried by anything with a place: Kenya's 47
-    counties come back among 4,680 children, beside settlements, hills
-    and electoral constituencies. The unit list is cut in steps, each
+    A "located in" link is carried by anything with a place.
+    Measured 2026-09-13 on KE: 47 counties come back among 4,680 children,
+    beside settlements, hills and electoral constituencies. The unit list
+    is cut in steps, each
     measured against a country it was wrong for. Only items of a class
     in the administrative-entity tree stay, and none that carries its
     own ISO 3166-1 code: Guadeloupe is located in France and coded

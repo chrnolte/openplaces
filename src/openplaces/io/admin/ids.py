@@ -169,9 +169,10 @@ def admin2_id_index_from_admin2_gadm(admin2):
     the 2026 re-mint; the successor instead reproduces the code the
     committed spine already records for a unit and assigns only units the
     spine does not name. Because GADM's sibling groups are not the spine's
-    (45,966 level-3 units against 48,695), minting here could not reproduce
-    the spine even under the current rules. Kept as the record of how
-    pre-2026 identifiers were derived; do not wire it into new recipes.
+    (Measured 2026-08-26 on admin-gadm-4.1: 45,966 level-3 units against
+    the spine's 48,695), minting here could not reproduce the spine even
+    under the current rules. Kept as the record of how pre-2026
+    identifiers were derived; do not wire it into new recipes.
     """
 
     # Join with level-2 administrative units

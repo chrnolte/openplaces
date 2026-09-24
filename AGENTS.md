@@ -323,6 +323,19 @@ repository.
 - Standardize on American English spelling ('meter', 'center', 'reproject') throughout all comments and docstrings.
 - Retain deep technical/algorithmic rationale and historical context in comments and docstrings to help developers understand why decisions were made.
 - Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
+- **Quote a statistic that can move; do not avoid it** (maintainer's
+  rule, 2026-09-22). A number is the evidence for a method, so a
+  docstring states it in one form, on one line, so that it can be found,
+  dated and flagged when the data it was measured on is rebuilt:
+  `Measured <YYYY-MM-DD> on <scope>: <claim>`, where the scope is an
+  admin id, a region id or another single token (`US`, `CO`,
+  `cheer-coastal-tx`, `admin-gadm-4.1`). `python -m
+  openplaces.flow.measured_claims` lists every claim in the tree and
+  reports `stale` where the scope's curated output or delivered bundle
+  is newer than the claim's date, `current` where it is not, and
+  `no build` where the scope resolves to nothing on this machine. A
+  stale number is documentation debt to re-measure, never a reason to
+  delete the number.
 
 ## Directory structure
 Write all plans to ``<repository_root>/plans/``. Never write a plan outside the
@@ -443,7 +456,7 @@ never reaches a function looking names up in its own globals.
 
 Four key identifiers form the naming system used throughout the codebase:
 
-- **`AdminId`** — hierarchical geographic identifier, e.g. `AdminId('US', 'MA', 'MI')`. Level 0 = global, 1 = country, 2 = state/region, 3 = county/district, 4 = municipality/town. String form uses `-` separator: `'US-MA-MI'`.
+- **`AdminId`** — hierarchical geographic identifier, e.g. `AdminId('US', 'NC', 'CUR')`. Level 0 = global, 1 = country, 2 = state/region, 3 = county/district (a town in New England, where the county is skipped: Somerville is `US-MA-SOM`), 4 = municipality/town. String form uses `-` separator: `'US-NC-CUR'`.
 - **`Entity`** — a data entity defined by `entity_type` + `source` + `version`, e.g. `Entity('parcel', 'massgis', '2025')`. String form: `'parcel-massgis-2025'`. Valid entity types are in `ENTITY_TYPES` (parcel, building, footprint, property, transaction, admin, ...).
 - **`DataSet`** — a non-entity dataset defined by `Theme` + `source` + `version`, e.g. `DataSet('land-elevation', 'usgs', '3dep')`. Themes are hierarchical, separated by `-`, with the top level constrained to `TOP_LEVEL_THEMES` (land, landcover, water, built, people, risk, ...).
 - **`Source`** — a data source with download URL(s), portal URL, DOI, etc.

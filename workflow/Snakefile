@@ -19,7 +19,7 @@
 # write permission and then refuses to ever regenerate the file,
 # aborting the run. Applied to the share bucket it meant re-curating an
 # already-shipped county failed outright. The shipped bundle is guarded
-# instead by io/delivery.py, which leaves its four files read-only.
+# instead by io/delivery/, which leaves its four files read-only.
 # That refusal is a filesystem check, not a record of Snakemake's own
 # flag, so the deliver rule clears the bit while planning (see below).
 #
@@ -199,7 +199,7 @@ for node in dag.nodes():
     # lifecycle, and it is not the orchestrator.
     _flagged = _out
     if node.stage == 'deliver':
-        # io/delivery.py leaves the shipped bundle read-only between runs,
+        # io/delivery/ leaves the shipped bundle read-only between runs,
         # and Snakemake refuses to run any rule whose output is read-only --
         # whatever set the bit. Clear it while planning; the delivery step
         # re-locks after writing. A dry run leaves the files unlocked until
