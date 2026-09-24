@@ -341,6 +341,28 @@ def share_columns(recipe) -> tuple[list[str], list[str]]:
     return list(share.get('columns') or []), list(share.get('point_columns') or [])
 
 
+def share_is_spatial(recipe) -> bool:
+    """Whether the bundle carries geometry, from `share: geometry:`.
+
+    Most curated entities are places and ship four files. A transaction
+    is not a place: it is an event whose location belongs to the parcel
+    it names, and a deed covering several parcels has no one point at
+    all. Such a recipe declares `share: geometry: false` and ships the
+    canonical table and its evidence supplement only, rather than
+    inventing a centroid to satisfy the point file.
+
+    Default True, so every recipe written before this stays spatial.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    return bool((recipe.get('share') or {}).get('geometry', True))
+
+
 class RestrictedInputError(RuntimeError):
     """A delivery would pass on data whose terms forbid passing it on."""
 
@@ -432,6 +454,19 @@ def _share_spec(recipe):
             f'its own `{SOURCE_SUFFIX}` sidecar added automatically, so '
             'naming one here duplicates it.'
         )
+
+    # A non-spatial bundle writes no point file, so it needs no
+    # coordinates and may declare none: requiring them would force a
+    # transaction recipe to invent a location for an event that has
+    # none of its own.
+    if not share_is_spatial(recipe):
+        if point_columns:
+            raise ValueError(
+                f'Recipe {recipe_id!r} declares `share: geometry: false` '
+                'but also names `share: point_columns:`. There is no point '
+                'file for them to go in; move them to `share: columns:`.'
+            )
+        return columns, point_columns
 
     coordinates = [c for c in COORDINATE_COLUMNS if c in point_columns]
     if coordinates:
@@ -677,15 +712,21 @@ def delivery_paths(
             if sum(unit == mine for unit in unit_of.values()) > 1:
                 canonical = canonical.parent / str(region) / canonical.name
 
-    return {
-        'canonical': canonical,
-        'point': canonical.with_stem(f'{canonical.stem}_point'),
-        'geo': canonical.with_stem(f'{canonical.stem}_geo'),
-        'evidence': canonical.with_stem(f'{canonical.stem}_evidence'),
-        # Ships with the data because the obligations do: whoever receives
-        # the bundle needs to know what its sources require of them.
-        'terms': canonical.with_stem(f'{canonical.stem}_LICENSE').with_suffix('.txt'),
-    }
+    paths = {'canonical': canonical}
+    # A non-spatial bundle has no point or boundary file, and this is
+    # the single source of truth the orchestrator declares its outputs
+    # from, so omitting them here is what keeps the job from waiting on
+    # files nothing will write.
+    if share_is_spatial(recipe):
+        paths['point'] = canonical.with_stem(f'{canonical.stem}_point')
+        paths['geo'] = canonical.with_stem(f'{canonical.stem}_geo')
+    paths['evidence'] = canonical.with_stem(f'{canonical.stem}_evidence')
+    # Ships with the data because the obligations do: whoever receives
+    # the bundle needs to know what its sources require of them.
+    paths['terms'] = canonical.with_stem(f'{canonical.stem}_LICENSE').with_suffix(
+        '.txt'
+    )
+    return paths
 
 
 ACCURACY_DIR_NAME = 'accuracies'
@@ -827,6 +868,7 @@ def export_delivery(
         recipe = get_recipe_by_id(recipe)
 
     canonical_columns, point_columns = _share_spec(recipe)
+    spatial = share_is_spatial(recipe)
     paths = delivery_paths(recipe, admin_id, admin_level, output_dir, region)
     if admin_id is None:
         admin_id = delivery_admin_id(recipe, admin_level, region)
@@ -876,13 +918,15 @@ def export_delivery(
         # Requesting only the declared columns dropped that key, and the
         # read then failed with 'Could not identify column to join
         # GeoParquet'; nothing here checks `save_to: combined`.
-        if 'geometry' not in available:
+        # A non-spatial entity has no sidecar to join, and asking for
+        # one makes the read look for geometry that was never written.
+        if spatial and 'geometry' not in available:
             for join_key in ('_join_id', 'geo_id'):
                 if join_key in available:
                     if join_key not in wanted:
                         wanted.append(join_key)
                     break
-        part = read_parquet(path, geom=True, columns=wanted)
+        part = read_parquet(path, geom=spatial, columns=wanted)
         # A declared column a single unit happens to lack is
         # filled, not dropped, so every unit has the same schema.
         for column in declared:
@@ -891,7 +935,10 @@ def export_delivery(
         part[admin_id_column] = process_id
         frames.append(part)
 
-    pooled = gpd.GeoDataFrame(pd.concat(frames), crs=frames[0].crs)
+    if spatial:
+        pooled = gpd.GeoDataFrame(pd.concat(frames), crs=frames[0].crs)
+    else:
+        pooled = pd.concat(frames)
     frames.clear()
 
     coverage_columns = [c for c in canonical_columns if c != admin_id_column]
@@ -918,19 +965,21 @@ def export_delivery(
     canonical = pd.DataFrame(pooled[[*canonical_columns, *source_columns]])
     to_parquet(canonical, staged['canonical'])
 
-    point = points_from_coords(
-        pooled[
-            [
-                *[c for c in canonical_columns if c not in COORDINATE_COLUMNS],
-                *point_columns,
-                *source_columns,
-                *COORDINATE_COLUMNS,
+    point = None
+    if spatial:
+        point = points_from_coords(
+            pooled[
+                [
+                    *[c for c in canonical_columns if c not in COORDINATE_COLUMNS],
+                    *point_columns,
+                    *source_columns,
+                    *COORDINATE_COLUMNS,
+                ]
             ]
-        ]
-    )
-    to_parquet(point, staged['point'], schema_version='1.1.0')
+        )
+        to_parquet(point, staged['point'], schema_version='1.1.0')
 
-    to_parquet(pooled[['geometry']], staged['geo'], schema_version='1.1.0')
+        to_parquet(pooled[['geometry']], staged['geo'], schema_version='1.1.0')
 
     # Which copy of each entity survived deduplication, so pass two
     # keeps the matching evidence row rather than an arbitrary one.
@@ -1005,6 +1054,8 @@ def export_delivery(
 
     if verbose:
         for role in ('canonical', 'point', 'geo', 'evidence'):
+            if role not in paths:
+                continue
             size_mb = paths[role].stat().st_size / 1024**2
             print(f'{role:>9}: {paths[role].name} ({size_mb:,.0f} MB)')
         print(f'{n_entities:,} entities from {len(inputs)} {admin_id_column} unit(s)')

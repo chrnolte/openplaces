@@ -1152,6 +1152,18 @@ compact delivery. Each canonical column's `{col}_source` sidecar is appended
 automatically and written into *both* the canonical and the evidence file, so
 either reads on its own.
 
+**Four files, unless the entity is not a place.** The point file is built from
+`long` and `lat`, which `_share_spec` therefore requires in `share: columns:`,
+so a geometry-less entity could not be delivered at all until
+`share: geometry: false`. A recipe declaring it ships the canonical table and
+its evidence supplement only, and `delivery_paths` omits the `point` and `geo`
+keys -- that dict is also the orchestrator's output declaration, so a delivery
+job then waits on nothing that is never written. It is opt-in and defaults to
+the four-file behavior. The transaction curation recipe is the case it exists
+for: a sale is an event whose location belongs to the parcel it names (carried
+as `parcel_id_local`, so a consumer joins geometry itself), and a deed covering
+several parcels has no single point to put it on.
+
 A `share: delivery:` block names the regions: `admin_level` (a bundle's own
 level) plus either `admin_ids` (one grouping, listed inline) or `regions` (a
 list of ids from the shared region registry, below). The declared member list
