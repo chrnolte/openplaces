@@ -535,3 +535,73 @@ pipeline:
   - step: cast_categoricals
 
   - step: order_columns
+
+# What a delivery of this recipe carries, and to whom.
+#
+# `geometry: false`: a transaction is an event, not a place. Its
+# location belongs to the parcel it names (`parcel_id_local`, which the
+# canonical table carries so a consumer can join geometry itself), and
+# a deed covering several parcels has no single point at all. So the
+# bundle is the canonical table and its evidence supplement, with no
+# point or boundary file, rather than a centroid invented to fill one.
+#
+# The column list is every state's, not each state's: a column one
+# state lacks is written empty rather than dropped, so both bundles
+# share a schema. Wisconsin has no multi-year roll and so no
+# `at_sale_*` values (`property_match_type` says `single_vintage`
+# there); Florida's `use_group` is empty until the DOR code gets a
+# crosswalk, which is why `use_group_code` ships beside it.
+#
+# Deliberately absent: `grantor` and `grantee`. They are in the curated
+# table on an installation that chose to keep them, and
+# `export_delivery` refuses a recipe that names a personal attribute
+# here, but the list should not have to be corrected by that check.
+share:
+  columns:
+    # What was sold, and where it can be joined
+    - parcel_id_local
+    - parcel_id_assessor
+    - admin3_id
+    - sale_document_id
+    # The sale itself
+    - sale_year
+    - sale_month
+    - price
+    - sale_record_kind
+    # Graded, never filtered: the hub grades and the consumer sets the
+    # cutoff (see this recipe's header).
+    - sale_arms_length_confidence
+    - sale_qualification_group
+    - n_parcels_per_sale
+    - sale_matches_deed
+    - sale_double_closing_earlier_leg
+    - sale_nominal_price_floor
+    - sale_price_to_assessed_ratio
+    - single_family_sales_disclosure_share
+    # The property, as the current layer describes it
+    - use_group
+    - use_group_code
+    - use_subgroup
+    - land_value
+    - improvement_value
+    - year_built
+    - n_dwellings
+    # The property as it was when it sold, and how that was reached
+    - property_match_type
+    - at_sale_tax_year
+    - at_sale_year_built
+    - at_sale_living_area_sqft
+    - at_sale_land_area_sqft
+    - at_sale_market_value
+    - at_sale_land_value
+    - at_sale_n_dwellings
+    - at_sale_n_buildings
+    # Which rule reached the parcel, so a weak link is visible rather
+    # than implied by an empty value column
+    - parcel_link_method
+  geometry: false
+  delivery:
+    admin_level: 2
+    regions:
+      - wisconsin-statewide
+      - florida-statewide
