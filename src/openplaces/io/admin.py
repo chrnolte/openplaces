@@ -28,13 +28,14 @@ from openplaces.core.constants import (
     STRING_SEPARATOR_WITHIN_IDS,
 )
 from openplaces.io.admin_codes import assign_admin_ids
-from openplaces.io.readers import get_admin, get_dataset
+from openplaces.io.readers import get_admin, get_admin_ids, get_dataset
 from openplaces.path import recipe_path
 from openplaces.recipe import (  # noqa: F401
     find_admin_recipe_id,
     get_output_path,
     get_recipe,
     get_recipe_by_id,
+    get_recipe_id,
 )
 from openplaces.utils import create_comparable_name_link, standardize_names
 
@@ -1841,8 +1842,69 @@ def _register_code_source(level, recipe_id, admin_ids):
     table.to_csv(path, index=False, encoding='utf-8', lineterminator='\n')
 
 
+def _recipe_label(admin_recipe):
+    """Name a recipe for an error message, without requiring an entity."""
+    try:
+        return get_recipe_id(admin_recipe)
+    except (ValueError, KeyError, TypeError):
+        return 'the recipe'
+
+
+def _read_recipe_output(admin_recipe, admin_ids=None):
+    """Read a recipe's own output, whether it is one file or one per country.
+
+    A global recipe that downloads by country writes a file per country
+    (`admin-wikidata-2026_admin2`, `admin-geoboundaries-6~0~0_admin2`),
+    so there is no world-wide path to read: asking for one raises,
+    because a null admin id is level 0 and the recipe saves at level 1.
+    Reading the countries and concatenating is the same table the
+    caller wanted, and it is also what lets the world move off its old
+    source one country at a time rather than in a single pass.
+
+    Parameters
+    ----------
+    admin_recipe : dict
+        A loaded recipe.
+    admin_ids : iterable of str, optional
+        Countries to read. Unset reads every country with an output.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The recipe's rows, indexed as it wrote them.
+    """
+    # A world-scoped recipe carries an `AdminId` at level 0, which is
+    # truthy but stringifies empty; the string form is what says whether
+    # the recipe is scoped to a unit.
+    if str(admin_recipe['admin_id']):
+        return pd.read_parquet(
+            get_output_path(admin_recipe, admin_id=admin_recipe['admin_id'])
+        )
+    if admin_ids is None:
+        admin_ids = get_admin_ids(admin_level=1)
+    # Keyed by resolved path, so a recipe that happens to write one file
+    # for several units is read once rather than once per unit.
+    paths = {}
+    for admin_id in admin_ids:
+        path = get_output_path(admin_recipe, admin_id=admin_id)
+        if path.exists():
+            paths[str(path)] = path
+    frames = [pd.read_parquet(path) for path in paths.values()]
+    if not frames:
+        raise FileNotFoundError(
+            f'{_recipe_label(admin_recipe)} has no ingested output for '
+            f'{", ".join(admin_ids) or "any country"}.'
+        )
+    return pd.concat(frames)
+
+
 def update_admin_spine(
-    level, admin_recipe_id, test, silent=False, replace_countries=False
+    level,
+    admin_recipe_id,
+    test,
+    silent=False,
+    replace_countries=False,
+    admin_ids=None,
 ):
     """Update the `openplaces` admin spine with admin recipe info
 
@@ -1863,6 +1925,11 @@ def update_admin_spine(
         only adding units the spine lacks. This is how a country's units
         move from one global source to another: rows the new source does
         not name are dropped, not carried.
+    admin_ids : iterable of str, optional
+        For a global recipe that writes one file per country, the
+        countries to read and update. Unset reads every country that has
+        an output. Naming a few is what makes the move off an old source
+        a country at a time, each one leaving the spine valid.
     """
 
     admin_recipe = get_recipe_by_id(admin_recipe_id)
@@ -1876,9 +1943,7 @@ def update_admin_spine(
     # spine at this level with only the matching rows enriched -- never
     # just the recipe's own rows -- which would make every check below
     # against a stale, superseded admin_id a false negative.
-    admin_local = pd.read_parquet(
-        get_output_path(admin_recipe, admin_id=admin_recipe['admin_id'])
-    )
+    admin_local = _read_recipe_output(admin_recipe, admin_ids)
     # A source that may not be redistributed contributes identity only:
     # which units exist and what they are called. Its own codes and its
     # alternative and native-script spellings stay out of the spine,
@@ -2013,6 +2078,11 @@ def update_admin_spine(
                 level, admin_recipe_id, admin_local.index[coded.to_numpy()]
             )
 
+    # The id column has to carry its name: `get_admin` resolves it by
+    # header and raises on a file whose first column is unnamed, so a
+    # spine written without it cannot be read back at all. The frames
+    # joined above do not always carry it through.
+    new_admin_spine.index.name = f'admin{level}_id'
     # Write in the same byte-exact form as `build.remint_spine`: no BOM,
     # and LF on every platform, so either writer reproduces the file.
     admin_recipe_path = recipe_path(
@@ -2021,6 +2091,73 @@ def update_admin_spine(
         filename=f'admin{level}' + ('_test' if test else '') + '.csv',
     )
     new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8', lineterminator='\n')
+
+
+def _write_spine(frame, level, test):
+    """Write a spine level in the byte-exact form both writers produce.
+
+    The id column carries its name because `get_admin` resolves it by
+    header and raises without it, so a spine written without one cannot
+    be read back at all.
+    """
+    frame = frame.copy()
+    frame.index.name = f'admin{level}_id'
+    path = recipe_path(
+        None,
+        'admin-spine-2026',
+        filename=f'admin{level}' + ('_test' if test else '') + '.csv',
+    )
+    frame.to_csv(path, encoding='utf-8', lineterminator='\n')
+    return path
+
+
+def drop_admin_units(level, admin_ids, test=True, silent=False):
+    """Remove every row of these countries at one spine level.
+
+    Two things need this and `update_admin_spine` can express neither,
+    because `replace_countries` only replaces a country the new source
+    has rows for.
+
+    A country whose new source has units at one level and none below it
+    keeps its old lower rows, now pointing at parents that no longer
+    exist: Aland's 16 municipalities are the right level-2 list, and its
+    13 old level-3 rows have nowhere to hang.
+
+    And a country no open source names at all cannot be replaced, only
+    emptied. Keeping its rows means shipping another source's work under
+    this project's licence; dropping them says plainly that the units are
+    not ours to publish. Which of the two is right is a decision for a
+    person, so this function only carries it out.
+
+    Parameters
+    ----------
+    level : int
+        Spine level to remove rows from.
+    admin_ids : iterable of str
+        Level-1 ids whose rows go. A country with no rows is not an
+        error: emptying an already-empty level is what was asked for.
+    test : bool, optional
+        True (the default) writes to '{file}_test.csv'.
+    silent : bool, optional
+        True suppresses the count.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The rows that were removed, so a caller can report or restore
+        them.
+    """
+    countries = {str(admin_id) for admin_id in admin_ids}
+    spine = get_admin(level=level, all_columns=True)
+    country_of = spine.index.to_series().str.split(STRING_SEPARATOR_WITHIN_IDS, n=1)
+    dropped = spine[country_of.str[0].isin(countries).to_numpy()]
+    _write_spine(spine.drop(index=dropped.index), level, test)
+    if not silent:
+        print(
+            f'level {level}: removed {len(dropped):,} rows from '
+            f'{dropped.index.to_series().str.split("-").str[0].nunique()} countries'
+        )
+    return dropped
 
 
 def context_layers(admin_id):

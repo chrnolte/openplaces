@@ -307,7 +307,7 @@ Layer 2  recipe
 Layer 3  io/__init__, io/consent, geo/address
 Layer 4  io/readers, io/access, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/admin_migration, io/delivery, io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator

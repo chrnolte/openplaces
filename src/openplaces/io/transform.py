@@ -82,6 +82,41 @@ def _concat_columns(cols: list[pd.Series], sep: str = '') -> pd.Series:
     return frame.agg(sep.join, axis=1)
 
 
+def _coalesce_columns(
+    cols: list[pd.Series], empty_values: list[Any] | None = None
+) -> pd.Series:
+    """Take each row's first present value across columns, in order.
+
+    A source that splits one concept over mutually exclusive columns
+    needs the two read as one: a Philippine city carries a province
+    code, or none at all in Metro Manila, which has no provinces and
+    where the region is the parent instead. Concatenating them would be
+    wrong and an outer join would duplicate rows, so the columns are
+    coalesced into the single parent code.
+
+    Missing, blank, and any value named in `empty_values` count as
+    absent. The sentinel list exists because a JSON source commonly
+    writes "not applicable" as `false` or `0` rather than as null, and
+    those arrive as ordinary strings once the column is rendered.
+
+    Parameters
+    ----------
+    cols : list of pd.Series
+        Columns to read, highest priority first.
+    empty_values : list, optional
+        Further values that count as absent, compared as text.
+    """
+    sentinels = {str(value) for value in (empty_values or [])}
+    result = pd.Series(pd.NA, index=cols[0].index, dtype='string')
+    for col in cols:
+        values = _to_string_series(col)
+        present = values.notna() & (values.str.strip() != '')
+        if sentinels:
+            present &= ~values.isin(sentinels)
+        result = result.where(result.notna(), values.where(present))
+    return result
+
+
 def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
     """Expand a 2-digit year to 4 digits using the POSIX ``%y`` convention.
 
@@ -222,6 +257,7 @@ STRING_OPS: dict[str, Callable] = {
     'lstrip': lambda x, chars=None: x.str.lstrip(chars),
     'replace': lambda x, old, new: x.str.replace(old, new, regex=False),
     'concat': _concat_columns,
+    'coalesce': _coalesce_columns,
     'add_prefix': lambda x, prefix: prefix + x.astype(str),
     'add_suffix': lambda x, suffix: x.astype(str) + suffix,
     'split_take': lambda x, sep, index=0: x.str.split(sep).str[index],
@@ -583,14 +619,15 @@ def apply_transformation(
                 # A recipe-relative crosswalk asset (e.g. a '*-remap.csv'
                 # beside the recipe), resolved by recipe id like the
                 # harmonizer's remap_id.
-                df[output_col] = df[config['input']].map(
+                df[output_col] = _map_through_crosswalk(
+                    df[config['input']],
                     get_crosswalk(
                         {
                             'recipe_id': _resolve_crosswalk_id(
                                 config['crosswalk_id'], admin_id
                             )
                         }
-                    )
+                    ),
                 )
             else:
                 df[output_col] = _apply_remap_file(
@@ -761,16 +798,18 @@ def _apply_string(
         raise ValueError(f'Unknown string operation: {operation}')
 
     # Handle multi-column operations like concat
-    if operation == 'concat':
+    if operation in ('concat', 'coalesce'):
         inputs = config['inputs']
         # Check if all input columns exist
         missing_cols = [col for col in inputs if col not in df.columns]
         if missing_cols:
-            raise ValueError(f'Missing columns for concat: {missing_cols}')
+            raise ValueError(f'Missing columns for {operation}: {missing_cols}')
 
         cols = [df[col] for col in inputs]
-        sep = config.get('args', {}).get('sep', '')
-        return STRING_OPS[operation](cols, sep=sep)
+        args = config.get('args', {})
+        if operation == 'coalesce':
+            return STRING_OPS[operation](cols, empty_values=args.get('empty_values'))
+        return STRING_OPS[operation](cols, sep=args.get('sep', ''))
 
     # Single column operations
     input_col = config['input']
@@ -956,6 +995,56 @@ def _read_crosswalk_table(read, key_position: int = 0) -> pd.DataFrame:
     return text if padded.any() else table
 
 
+def _map_through_crosswalk(series: pd.Series, crosswalk: pd.Series) -> pd.Series:
+    """Map a column through a crosswalk whose keys may be typed unlike it.
+
+    `_read_crosswalk_table` keeps a key column as text when one of its
+    keys is zero-padded, because that is a sure sign of an identifier.
+    A key such as Canada's province code `24` carries no such sign, so
+    pandas reads it as the integer 24, which matches nothing in a column
+    read as text under `csv_dtype: str`, and the all-null result raises
+    nothing at all: Canada's 293 census divisions each came out with no
+    parent, and only `assign_admin_ids` refusing a parentless unit made
+    it visible.
+
+    Aligning here rather than at read time settles it for every
+    crosswalk, because only here are both dtypes known: a crosswalk is
+    an identifier table whatever its keys look like, and what it has to
+    match is the column in hand.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Column to map.
+    crosswalk : pd.Series
+        Keys (index) to values.
+    """
+    if len(crosswalk) and not series.empty:
+        keys_are_text = pd.api.types.is_string_dtype(crosswalk.index)
+        values_are_text = pd.api.types.is_string_dtype(
+            series
+        ) or pd.api.types.is_object_dtype(series)
+        if values_are_text and not keys_are_text:
+            crosswalk = crosswalk.copy()
+            crosswalk.index = _to_string_series(pd.Series(crosswalk.index)).to_numpy()
+
+    mapped = series.map(crosswalk)
+
+    # A crosswalk that matches nothing at all is a defect in the recipe
+    # or in the key types, never an intended outcome, and it used to
+    # pass silently down the pipeline.
+    if len(crosswalk) and series.notna().any() and not mapped.notna().any():
+        warnings.warn(
+            f'A crosswalk of {len(crosswalk)} entries matched none of the '
+            f'{int(series.notna().sum())} values it was applied to. Compare '
+            f'a key ({crosswalk.index[0]!r}) with a value '
+            f'({series.dropna().iloc[0]!r}): the two usually differ in type '
+            'or in zero padding.',
+            stacklevel=2,
+        )
+    return mapped
+
+
 def _apply_remap(
     series: pd.Series, mapping: dict[str, Any], default: Any = None
 ) -> pd.Series:
@@ -994,8 +1083,14 @@ def _apply_remap_file(
     crosswalk = _read_crosswalk_table(
         lambda dtype: pd.read_csv(crosswalk_file, dtype=dtype), key_col
     )
-    mapping = dict(zip(crosswalk.iloc[:, key_col], crosswalk.iloc[:, value_col]))
-    return series.map(mapping)
+    # Same key-type alignment as the `crosswalk_id` path: a sidecar with
+    # plain numeric keys reads as integers and would match nothing in a
+    # text column.
+    mapping = pd.Series(
+        crosswalk.iloc[:, value_col].to_numpy(),
+        index=crosswalk.iloc[:, key_col],
+    )
+    return _map_through_crosswalk(series, mapping)
 
 
 def _apply_remap_conditional(
@@ -1092,10 +1187,18 @@ def get_crosswalk(crosswalk_dict, flip=False):
         raise ValueError(f'Crosswalk dictionary not interpretable:\n\n{crosswalk_dict}')
 
     if flip:
+        # A blank key maps nothing, exactly as a null one does, and
+        # several blanks are not a collision worth reporting. The admin
+        # layer is read through `get_admin`, which outer-joins onto the
+        # spine, so every unit the named recipe does not cover arrives
+        # with an empty key: while the world moves off its old source
+        # one country at a time, that is most of them, and Botswana's
+        # six not-yet-replaced districts aborted its level-3 ingest.
+        usable = crosswalk_series.notnull() & (
+            crosswalk_series.astype(str).str.strip() != ''
+        )
         crosswalk_series = (
-            crosswalk_series[crosswalk_series.notnull()]
-            .reset_index()
-            .set_index(crosswalk_series.name)
+            crosswalk_series[usable].reset_index().set_index(crosswalk_series.name)
         )
 
     mask_index_duplicates = crosswalk_series.index.duplicated(keep=False)

@@ -22,11 +22,9 @@ BG,28,0,,28,1.0,2,intuitive coverage 100%
 BH,4,0,,4,1.0,2,intuitive coverage 100%
 BI,17,18,2,17,1.0,2,published convention
 BJ,12,12,2,12,1.0,2,published convention
-BL,2,0,,2,1.0,2,intuitive coverage 100%
 BM,11,0,,11,1.0,2,intuitive coverage 100%
 BN,4,4,2,4,1.0,2,published convention
 BO,9,9,1,9,1.0,2,intuitive coverage 100%
-BQ,3,3,2,3,1.0,2,published convention
 BR,27,27,2,26,0.963,2,published convention
 BS,32,43,2,32,1.0,2,published convention
 BT,20,2,2,20,1.0,2,published convention
@@ -58,21 +56,18 @@ DZ,48,0,,48,1.0,2,intuitive coverage 100%
 EC,24,24,1,24,1.0,2,intuitive coverage 100%
 EE,15,0,,15,1.0,2,intuitive coverage 100%
 EG,27,29,2,27,1.0,2,published convention
-EH,4,0,,4,1.0,2,intuitive coverage 100%
 ER,6,6,2,6,1.0,2,published convention
 ES,18,68,2,18,1.0,2,published convention
 ET,11,13,2,11,1.0,2,published convention
 FI,5,4,2,5,1.0,2,published convention
 FJ,5,5,1,5,1.0,2,intuitive coverage 100%
 FM,4,4,3,4,1.0,2,two characters cover every unit (ISO publishes three)
-FO,6,0,,6,1.0,2,intuitive coverage 100%
 FR,13,36,1,13,1.0,2,intuitive coverage 100%
 GA,9,0,,9,1.0,2,intuitive coverage 100%
 GB,4,252,3,4,1.0,2,ISO length measured over 252 districts not these 4 units; 2 chars cover all
 GD,7,0,,7,1.0,2,intuitive coverage 100%
 GE,12,12,2,12,1.0,2,published convention
 GF,2,0,,2,1.0,2,intuitive coverage 100%
-GG,12,0,,12,1.0,2,intuitive coverage 100%
 GH,16,17,2,16,1.0,2,published convention
 GL,5,6,2,5,1.0,2,published convention
 GM,6,6,1,6,1.0,2,intuitive coverage 100%
@@ -109,7 +104,6 @@ KN,14,2,1,14,1.0,2,intuitive coverage 100%
 KP,14,0,,12,0.857,3,intuitive coverage only 86%
 KR,17,0,,17,1.0,2,intuitive coverage 100%
 KW,6,6,2,6,1.0,2,published convention
-KY,6,0,,6,1.0,2,intuitive coverage 100%
 KZ,14,16,3,14,1.0,2,two characters cover every unit (ISO publishes three)
 LA,18,19,2,18,1.0,2,published convention
 LB,8,8,2,8,1.0,2,published convention
@@ -177,9 +171,7 @@ SC,26,0,,26,1.0,2,intuitive coverage 100%
 SD,18,18,2,18,1.0,2,published convention
 SE,21,21,1,21,1.0,2,intuitive coverage 100%
 SG,5,0,,5,1.0,2,intuitive coverage 100%
-SH,3,3,2,3,1.0,2,published convention
 SI,12,0,,12,1.0,2,intuitive coverage 100%
-SJ,2,0,,2,1.0,2,intuitive coverage 100%
 SK,8,8,2,8,1.0,2,published convention
 SL,4,5,1,4,1.0,2,intuitive coverage 100%
 SM,9,0,,9,1.0,2,intuitive coverage 100%
@@ -197,7 +189,6 @@ TF,4,0,,4,1.0,2,intuitive coverage 100%
 TG,5,5,1,5,1.0,2,intuitive coverage 100%
 TH,77,1,1,75,0.974,3,intuitive coverage only 97%
 TJ,5,5,2,5,1.0,2,published convention
-TK,3,0,,3,1.0,2,intuitive coverage 100%
 TL,13,13,2,13,1.0,2,published convention
 TM,6,6,1,6,1.0,2,intuitive coverage 100%
 TN,24,0,,24,1.0,2,intuitive coverage 100%
@@ -215,13 +206,11 @@ UY,19,19,2,19,1.0,2,published convention
 UZ,14,14,2,14,1.0,2,published convention
 VC,6,0,,6,1.0,2,intuitive coverage 100%
 VE,25,25,1,25,1.0,2,intuitive coverage 100%
-VG,5,0,,5,1.0,2,intuitive coverage 100%
 VI,3,0,,3,1.0,2,intuitive coverage 100%
 VN,63,5,2,63,1.0,2,published convention
 VU,6,6,3,6,1.0,2,two characters cover every unit (ISO publishes three)
 WF,3,3,2,3,1.0,2,published convention
 WS,11,11,2,11,1.0,2,published convention
-XA,2,0,,2,1.0,2,intuitive coverage 100%
 XK,7,0,,7,1.0,2,intuitive coverage 100%
 YE,21,22,2,20,0.952,2,published convention
 YT,17,0,,17,1.0,2,intuitive coverage 100%
@@ -236,5 +225,4 @@ Z8,1,0,,1,1.0,2,intuitive coverage 100%
 Z9,2,0,,2,1.0,2,intuitive coverage 100%
 ZA,9,9,2,9,1.0,2,published convention
 ZM,10,0,,10,1.0,2,intuitive coverage 100%
-ZN,5,0,,5,1.0,2,intuitive coverage 100%
 ZW,10,10,2,10,1.0,2,published convention

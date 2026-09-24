@@ -1,0 +1,93 @@
+# Turkish provinces (il) and their ISO 3166-2 codes.
+#
+# This exists for the same reason Japan's prefecture layer does: the
+# district recipe beside it joins each district to its province on
+# `admin2_id_iso`, read from the spine, and the spine's Turkish level 2
+# has never carried such a column. The join found no key,
+# `get_crosswalk` warned and returned an empty mapping rather than
+# raising, and the recipe sat uningested while the spine kept GADM's 929
+# districts. Nothing reported it, because a national recipe takes its
+# country out of the migration ledger at that level whether or not it
+# has ever run.
+#
+# The 81 provinces are exactly the items whose ISO 3166-2 code begins
+# TR-, which is already how the district query finds their parents, so
+# one filter builds both ends of the join.
+#
+# Against the spine this corrects two outright errors, "Kinkkale" for
+# Kirikkale and "Zinguldak" for Zonguldak, replaces the abbreviation
+# "K. Maras" and the superseded "Afyon" with Kahramanmaras and
+# Afyonkarahisar, and restores the diacritics stripped from most of the
+# rest.
+
+description: >-
+  Turkish province (il) names and ISO 3166-2 codes (admin level 2).
+
+admin_id: TR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: tuik
+    portal_url: "https://www.tuik.gov.tr/"
+    # As for the district recipe: TUIK is the authority for Turkish
+    # administrative divisions, and Wikidata is the machine-readable
+    # route, under CC0.
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3Fiso%20%3Fen%20WHERE%20%7B%20%3Fitem%20wdt%3AP300%20%3Fiso%20.%20FILTER%28STRSTARTS%28%3Fiso%2C%20%22TR-%22%29%29%20OPTIONAL%20%7B%20%3Fitem%20rdfs%3Alabel%20%3Fen%20FILTER%28lang%28%3Fen%29%20%3D%20%22en%22%29%20%7D%20%7D"
+    license: "CC0 (Wikidata)"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+# Wikidata content-negotiates and ignores `format=csv` in the query
+# string, so the format is asked for by header. Without this the
+# download lands as SPARQL XML under a .csv name.
+download_headers:
+  Accept: "text/csv"
+
+uncompressed_file_name: "tr_provinces.csv"
+
+columns:
+  admin2_id_iso: iso
+  name: en
+
+keep_unnamed_columns: False
+
+transformations:
+  # Every label reads "Adana Province"; without stripping it, each
+  # identifier would be minted from the word Province.
+  - output: name
+    input: name
+    type: string
+    operation: replace
+    args:
+      old: " Province"
+      new: ""
+  # Every province's parent is the country, and `assign_admin_ids` reads
+  # the parent from a column, so one has to exist.
+  - output: admin1_id
+    input: admin2_id_iso
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: admin1_id
+    input: admin1_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "TR"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

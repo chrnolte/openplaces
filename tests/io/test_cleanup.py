@@ -941,3 +941,42 @@ def test_compact_never_classes_a_custom_directory_as_an_orphan(data_root):
         assert mine.exists()
     finally:
         STANDARD_DIRS.pop(name, None)
+
+
+def _scaffolding_tree(data_root):
+    """A cache holding two harvest-only countries and one with real work."""
+    cache = data_root / 'data' / 'cache'
+    for country in ('KE', 'UG'):
+        harvest = cache / country / '_all' / 'admin' / 'wikidata' / '2026'
+        harvest.mkdir(parents=True)
+        (harvest / f'{country}_admin-wikidata-2026_admin2.parquet').write_bytes(b'x')
+        polygons = cache / country / '_all' / 'admin' / 'geoboundaries' / '6~0~0'
+        polygons.mkdir(parents=True)
+        (polygons / f'{country}_admin_admin2.parquet').write_bytes(b'x')
+    working = cache / 'US' / '_all' / 'admin' / 'wikidata' / '2026'
+    working.mkdir(parents=True)
+    (working / 'US_admin-wikidata-2026_admin2.parquet').write_bytes(b'x')
+    parcels = cache / 'US' / 'NC' / 'parcel'
+    parcels.mkdir(parents=True)
+    (parcels / 'US-NC_parcel.parquet').write_bytes(b'x')
+    return cache
+
+
+def test_scaffolding_only_country_folders_go_and_working_ones_stay(data_root):
+    cache = _scaffolding_tree(data_root)
+    report = cl.drop_spine_scaffolding(buckets=('cache',), dry_run=False, verbose=False)
+    removed = set(report.loc[report['removed'], 'country'])
+    assert removed == {'KE', 'UG'}
+    assert not (cache / 'KE').exists() and not (cache / 'UG').exists()
+    # The US folder holds parcels, so neither it nor the harvest inside
+    # it is touched: there the directory is not the problem.
+    assert (cache / 'US' / 'NC' / 'parcel').exists()
+    assert (cache / 'US' / '_all' / 'admin' / 'wikidata' / '2026').exists()
+
+
+def test_a_dry_run_reports_without_deleting(data_root):
+    cache = _scaffolding_tree(data_root)
+    report = cl.drop_spine_scaffolding(buckets=('cache',), verbose=False)
+    assert set(report.loc[report['scaffolding_only'], 'country']) == {'KE', 'UG'}
+    assert not report['removed'].any()
+    assert (cache / 'KE').exists() and (cache / 'UG').exists()

@@ -1,0 +1,98 @@
+# Philippine barangays from the PSGC: the largest single block of GADM
+# rows left in the spine.
+#
+# 42,046 units against the 41,929 the spine carried from GADM, which was
+# 45 per cent of every GADM row still standing.
+#
+# Parentage is read from the `cityCode` and `municipalityCode` fields,
+# not from the barangay's own code, and the difference is 897 rows. A
+# barangay carries both fields and exactly one is populated, the other
+# arriving as the JSON literal `false`, so they are coalesced.
+#
+# Taking the first six characters of the barangay's own code is the
+# obvious shortcut and is right everywhere except the City of Manila,
+# which is the one city the PSGC subdivides: its barangays sit under 14
+# sub-municipalities (Tondo I/II, Binondo, Quiapo and the rest), so
+# their codes read `1339xx` for a district that is not a city and has no
+# row at level 3. Their `cityCode` names the City of Manila correctly,
+# which is why the fields win over the code.
+
+description: >-
+  Philippine barangay names and PSGC codes (admin level 4).
+
+admin_id: PH
+
+entity:
+  entity_type: admin
+  source:
+    source_id: psa
+    portal_url: "https://psa.gov.ph/classification/psgc"
+    download_url: "https://psgc.gitlab.io/api/barangays/"
+    license: "PSGC is a public statistical classification published by the PSA"
+    terms_url: "https://psa.gov.ph/classification/psgc"
+    redistribution_restricted: false
+  version: 2026
+
+uncompressed_file_name: "barangays.json"
+
+columns:
+  admin4_id_admin1: code
+  name: name
+  _city_code: cityCode
+  _municipality_code: municipalityCode
+
+keep_unnamed_columns: true
+
+transformations:
+  # Every row at this level is a barangay, and the spine's `type` column
+  # takes the country's own word for it (as Germany's levels take
+  # `Landkreis`). A constant needs an input column to hang off, so it is
+  # built by emptying one and prefixing the result.
+  - output: type
+    input: admin4_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: type
+    input: type
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "Barangay"
+  # Whichever of the two the source populated, truncated to the six
+  # characters the level-3 recipe stores.
+  - output: admin3_id_admin1
+    type: string
+    operation: coalesce
+    inputs:
+      - _city_code
+      - _municipality_code
+    args:
+      empty_values: [false]
+  - output: admin3_id_admin1
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 6
+
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "PH_admin-psa-2026_admin3"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin4

@@ -1,0 +1,106 @@
+# Canadian census divisions, from Statistics Canada's cartographic
+# boundary files.
+#
+# Replaces GADM as Canada's level-3 source. Wikidata could not do this
+# country: asked for Canada's level 3 it returned 4,172 items of the
+# class "Indian reservation of Canada" against the 293 census divisions,
+# and the mint refused the result outright ("Ran out of 2-character
+# codes: needed 810, 143 available"), so the absurd harvest was caught
+# by the identifier format rather than by review.
+#
+# The boundary file rather than the SGC classification CSV, which this
+# recipe read first, because it carries three things the classification
+# does not: the polygons, each division's real designation in `CDTYPE`
+# (Regional County Municipality, County, Regional District and nine
+# more, the detail GADM had), and `PRUID`, the province code, without
+# having to truncate anything. Checked before switching: all 293 codes
+# are identical in the two files and, once the boundary file's padding
+# before a single digit is collapsed, so is every name.
+#
+# Not the Esri REST service, though it serves a generalised version of
+# the same layer and both Canadian levels fit inside its 6,000-record
+# cap. It began answering 500 after a handful of requests on
+# 2026-09-23, including to a layer-info URL that had worked minutes
+# before, and a static file asks less of somebody else's server than a
+# query does. The cost is the download size and full-resolution
+# coastlines: 140 MB compressed, 278 MB of shapefile.
+
+description: >-
+  Statistics Canada census division boundaries, as admin level 3 for
+  Canada.
+
+admin_id: CA
+
+entity:
+  entity_type: admin
+  source:
+    source_id: statcan
+    portal_url: "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm"
+    download_url: "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lcd_000b21a_e.zip"
+    # Terms read 2026-09-23. The Statistics Canada Open Licence grants a
+    # "worldwide, royalty-free, non-exclusive licence to use, reproduce,
+    # publish, freely distribute, or sell the Information", and permits
+    # sublicensing on consistent terms, so redistribution under this
+    # repository's own licence is within it. That matters more here than
+    # usual: the polygons these replace were GADM's, which could never
+    # ship at all.
+    #
+    # The licence requires a notice wherever the data are reproduced,
+    # carried in `license` below because that is the field
+    # `bundle_terms` reports. There is no attribution key, and inventing
+    # one would give a recipe that reads as though attribution were
+    # handled while nothing read it.
+    license: >-
+      Statistics Canada Open Licence; reproduction and redistribution
+      permitted with the required notice, "Source: Statistics Canada,
+      2021 Census Boundary Files, 2021. Reproduced and distributed on an
+      'as is' basis with the permission of Statistics Canada."
+    terms_url: "https://www.statcan.gc.ca/en/reference/licence"
+    redistribution_restricted: false
+  version: 2021
+
+compressed_file_name: "lcd_000b21a_e.zip"
+uncompressed_file_name: "lcd_000b21a_e.shp"
+
+columns:
+  admin3_id_admin1: CDUID
+  name: CDNAME
+  type: CDTYPE
+  _province_code: PRUID
+
+keep_unnamed_columns: False
+
+transformations:
+  # The boundary file pads a single-digit division number to two
+  # columns, so "Division No. 1" arrives as "Division No.  1" on 36 of
+  # the 293. Collapsing it is what makes these names identical to the
+  # classification's, and so keeps every identifier this level had.
+  - output: name
+    input: name
+    type: string
+    operation: replace
+    args:
+      old: "  "
+      new: " "
+  # Province to admin2_id through the sidecar crosswalk rather than by
+  # name, because the spine's level-2 ids are ISO 3166-2 codes that no
+  # name-minting rule would reproduce: "Yukon" gives no T for CA-YT and
+  # "Quebec" no C for CA-QC. Those ids are better than minted ones and
+  # are already off GADM, so this level bends to them.
+  - output: admin2_id
+    input: _province_code
+    type: remap_file
+    crosswalk_id: CA_admin-statcan-2021_province-to-admin2
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin3

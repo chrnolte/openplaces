@@ -1,0 +1,8 @@
+admin1_id,level,wikidata_id,name,reason
+CN,2,Q57251,Taiwan,"Wikidata types Taiwan as a province of China. The spine does not carry it and adding it would assert a contested claim; decision 2026-09-23 is to carry no territorial claim the spine does not already carry."
+IN,2,Q66278313,Jammu and Kashmir,"Claimed by both India and Pakistan and absent from the spine. Excluded under the 2026-09-23 decision, which is about not asserting a claim rather than about who governs it."
+IN,2,Q200667,Ladakh,"Split from Jammu and Kashmir in 2019 and claimed in part by both Pakistan and China; absent from the spine. Excluded under the same decision."
+PK,2,Q200130,Azad Kashmir,"Administered by Pakistan and claimed by India; absent from the spine. Excluded under the same decision as India's side of the dispute, so the spine takes neither side."
+PK,2,Q200697,Gilgit-Baltistan,"Administered by Pakistan and claimed by India; absent from the spine. Excluded under the same decision."
+RU,2,Q114333615,Zaporozhye,"A Ukrainian oblast annexed by Russia in 2022 and recognised as Ukrainian by the United Nations. Absent from the spine, and adding it would assert the annexation."
+PK,2,Q6608704,Sind,"Not a territorial question: a duplicate of Sindh, which the harvest also returns. Listed here because the effect is the same, one row that must not reach the spine, and the reason is recorded so it is not mistaken for a political exclusion."

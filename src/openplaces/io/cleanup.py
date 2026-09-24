@@ -1462,6 +1462,141 @@ def _match_recipe_for_path(
     return None, admin_str
 
 
+#: The global admin layers the spine is minted from. Each is ingested
+#: once per country, which leaves a directory per country in every
+#: bucket they touch, for roughly 250 countries nobody is working in.
+SPINE_SCAFFOLDING_RECIPES = (
+    'admin-wikidata-2026_admin2',
+    'admin-wikidata-2026_admin3',
+    'admin-wikidata-2026_admin4',
+    'admin-geoboundaries-6~0~0_admin2',
+    'admin-geoboundaries-6~0~0_admin3',
+    'admin-geoboundaries-6~0~0_admin4',
+)
+
+
+def _scaffolding_dirs(recipe_ids, sample_admin_id='KE') -> set[tuple[str, ...]]:
+    """Return each scaffolding recipe's directory, relative to its country.
+
+    Derived from a recipe's own output path rather than written down, so
+    a recipe that moves takes this with it. The country is a sample: the
+    recipes save one file per country under an identical subtree.
+    """
+    relative = set()
+    for recipe_id in recipe_ids:
+        try:
+            recipe = get_recipe_by_id(recipe_id)
+        except (FileNotFoundError, KeyError, ValueError):
+            continue
+        directory = Path(get_output_path(recipe, admin_id=sample_admin_id)).parent
+        parts = directory.parts
+        if sample_admin_id not in parts:
+            continue
+        relative.add(parts[parts.index(sample_admin_id) + 1 :])
+    return relative
+
+
+def drop_spine_scaffolding(
+    recipe_ids=SPINE_SCAFFOLDING_RECIPES,
+    buckets=('cache', 'external', 'heap'),
+    dry_run=True,
+    verbose=True,
+):
+    """Delete country folders holding nothing but the spine's admin layers.
+
+    The Wikidata and geoBoundaries harvests are read once, into the
+    admin spine that ships with the package, and are then spent for
+    every country the user is not working in. What they leave behind is
+    not the files so much as the directories: one per country per
+    bucket, which buries the handful of countries that hold real work.
+
+    A country folder is removed only when every file under it belongs to
+    one of these layers. A country that also holds parcels, footprints
+    or anything else keeps its folder, and the layers inside it are left
+    alone too, because there the directory is not the problem.
+
+    Deletion is safe in the sense that matters here: re-running the two
+    ingest recipes rebuilds exactly what was removed. It is not
+    reversible otherwise, so it defaults to a dry run.
+
+    Parameters
+    ----------
+    recipe_ids : iterable of str, optional
+        The layers that count as scaffolding.
+    buckets : iterable of str, optional
+        Configured directories to scan. Defaults to the three the two
+        recipes write to: the ingested output, the download, and the
+        unzipped source.
+    dry_run : bool, optional
+        True (the default) reports what would go without removing it.
+    verbose : bool, optional
+        Print a line per bucket.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per country folder considered, with its bucket, path,
+        the number of files under it, whether those files are all
+        scaffolding, and whether the folder was removed.
+    """
+    relative_dirs = _scaffolding_dirs(recipe_ids)
+    rows = []
+    for bucket, root in _bucket_roots(buckets):
+        if bucket not in set(buckets) or not root.exists():
+            continue
+        for country_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+            if not _is_country_dir(country_dir):
+                continue
+            files = [p for p in country_dir.rglob('*') if p.is_file()]
+            if not files:
+                only_scaffolding = True
+            else:
+                only_scaffolding = all(
+                    any(
+                        file.relative_to(country_dir).parts[: len(dirs)] == dirs
+                        for dirs in relative_dirs
+                    )
+                    for file in files
+                )
+            rows.append(
+                {
+                    'bucket': bucket,
+                    'country': country_dir.name,
+                    'path': str(country_dir),
+                    'n_files': len(files),
+                    'scaffolding_only': only_scaffolding,
+                    'removed': only_scaffolding and not dry_run,
+                }
+            )
+            if only_scaffolding and not dry_run:
+                shutil.rmtree(country_dir, ignore_errors=True)
+    report = pd.DataFrame(
+        rows,
+        columns=[
+            'bucket',
+            'country',
+            'path',
+            'n_files',
+            'scaffolding_only',
+            'removed',
+        ],
+    )
+    if verbose and len(report):
+        verb = 'would be removed' if dry_run else 'removed'
+        for bucket, group in report.groupby('bucket'):
+            spent = group[group['scaffolding_only']]
+            print(
+                f'{bucket}: {len(spent):,} of {len(group):,} country folders '
+                f'{verb}, {len(group) - len(spent):,} kept for holding other work'
+            )
+    return report
+
+
+def _is_country_dir(path: Path) -> bool:
+    """True for a two-letter country folder, which is what a bucket root holds."""
+    return len(path.name) == 2 and path.name.isalnum() and path.name.isupper()
+
+
 def _bucket_roots(buckets) -> list[tuple[str, Path]]:
     """Configured roots of the requested buckets plus nested known buckets,
     deepest first, so each file is attributed to its most specific bucket."""

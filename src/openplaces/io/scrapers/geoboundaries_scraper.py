@@ -20,6 +20,7 @@ next year reads the same polygons as today's.
 
 from __future__ import annotations
 
+import re
 import time
 import urllib.error
 import urllib.request
@@ -39,6 +40,10 @@ LICENSES_RECIPE = 'admin-geoboundaries-6~0~0'
 # redistributed with attribution.
 SHIPPABLE_TIER = 'permissive'
 REQUEST_INTERVAL_S = 1.0
+# The signature of UTF-8 bytes that were once decoded as Latin-1: the
+# lead byte of a two-byte sequence shows up as A-tilde or A-circumflex,
+# followed by the punctuation or symbol the trail byte maps to.
+MOJIBAKE = re.compile('[ÃÂÎ][¡-¿©³]')
 
 
 def load_licenses() -> pd.DataFrame:
@@ -105,6 +110,8 @@ def _attach_parents(path, target_path, admin1_id, admin_level):
     # file is rewritten as GeoPackage so the ingester never meets it.
     pyogrio.set_gdal_config_options({'OGR_GEOJSON_MAX_OBJ_SIZE': 0})
     frame = gpd.read_file(path)
+    if 'shapeName' in frame:
+        frame['shapeName'] = frame['shapeName'].map(repair_mojibake)
     if admin_level == 2:
         frame['admin1_id'] = admin1_id
     else:
@@ -138,6 +145,45 @@ def _attach_parents(path, target_path, admin1_id, admin_level):
         placed = frame['parent_admin_id'].isin(live)
         frame = frame[placed]
     frame.to_file(target_path, driver='GPKG')
+
+
+def repair_mojibake(name):
+    """Undo a name whose UTF-8 bytes were once read as Latin-1.
+
+    Some geoBoundaries files arrive with their accented names already
+    mangled: Chile's regions read "RegiÃ³n de Antofagasta". A polygon is
+    pinned to its spine unit by name, so every one of those pins
+    silently fails, and Chile's 16 level-2 polygons weighted nothing.
+
+    The repair is the inverse of the mistake and is applied only when it
+    round-trips, so a name that was never mangled, or that Latin-1
+    cannot represent, is returned untouched.
+
+    Parameters
+    ----------
+    name : str
+        A name as read from the file.
+
+    Returns
+    -------
+    str
+        The repaired name, or the original.
+
+    Examples
+    --------
+    >>> repair_mojibake('RegiÃ³n de AysÃ©n')
+    'Región de Aysén'
+    >>> repair_mojibake('Región de Aysén')
+    'Región de Aysén'
+    """
+    text = str(name)
+    if not MOJIBAKE.search(text):
+        return name
+    try:
+        repaired = text.encode('latin-1').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return name
+    return repaired
 
 
 def _live_ids(admin1_id, level):

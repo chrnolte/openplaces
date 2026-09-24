@@ -1,0 +1,69 @@
+# French communes from the national statistics institute, replacing
+# GISCO.
+#
+# GISCO's terms require that "the data will not be used for commercial
+# purposes" and carry a EuroGeographics attribution, which openplaces
+# cannot honour: it is Apache-2.0 and grants commercial use, so a spine
+# carrying GISCO units offers rights the project does not hold. INSEE's
+# own list is the same country's communes under the Licence Ouverte.
+#
+# The file holds four kinds of row and only one of them is a commune.
+# `COMD` is a commune deleguee and `COMA` a commune associee, both of
+# which are former communes kept as sub-units of the one that absorbed
+# them; `ARM` is a municipal arrondissement of Paris, Lyon or Marseille.
+# Taking all four would put 37,544 rows where France has 34,935
+# communes, and would nest a unit inside its own parent.
+#
+# See FR_admin-insee-2024_admin2 for the licence and for why the
+# overseas communes are excluded: their departement codes start at 971
+# and every metropolitan one, Corsica's 2A and 2B included, sorts below.
+
+description: >-
+  French metropolitan communes with their official INSEE codes, from
+  the Code Officiel Geographique (admin level 4).
+
+admin_id: FR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: insee
+    portal_url: "https://www.insee.fr/fr/information/7766585"
+    download_url: "https://www.insee.fr/fr/statistiques/fichier/7766585/v_commune_2024.csv"
+    license: "Licence Ouverte (Etalab); reuse and redistribution permitted with attribution to INSEE"
+    terms_url: "https://www.etalab.gouv.fr/licence-ouverte-open-licence"
+    redistribution_restricted: false
+  version: 2024
+
+uncompressed_file_name: "v_commune_2024.csv"
+
+# See the level-2 recipe: without this, commune 01001 becomes 1001.
+csv_dtype: str
+
+query: "_row_kind == 'COM' and admin3_id_admin1 < '971'"
+
+columns:
+  name: LIBELLE
+  admin4_id_admin1: COM
+  admin3_id_admin1: DEP
+  _row_kind: TYPECOM
+
+keep_unnamed_columns: true
+
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "FR_admin-insee-2024_admin3"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin4

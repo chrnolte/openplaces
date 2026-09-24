@@ -1,0 +1,89 @@
+# Canadian census subdivisions, the municipalities, from Statistics
+# Canada's cartographic boundary files.
+#
+# 5,161 of them, against the 5,577 rows GADM held here before level 4
+# was emptied on 2026-09-22.
+#
+# Parentage is truncation, not a join, and here it has to be: unlike the
+# census division layer, which carries `PRUID` outright, this layer
+# names no census division at all. A subdivision's seven-digit code
+# opens with its division's four, which is the whole of it, and the
+# level-3 recipe stores the code in that form.
+#
+# `CSDTYPE` carries the designation the classification CSV could not:
+# 57 distinct kinds, from city and town through Indian reserve,
+# municipalite and northern village. See the level-3 recipe for why the
+# boundary file is read rather than the Esri REST service.
+
+description: >-
+  Statistics Canada census subdivision boundaries, as admin level 4 for
+  Canada.
+
+admin_id: CA
+
+entity:
+  entity_type: admin
+  source:
+    source_id: statcan
+    portal_url: "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm"
+    download_url: "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lcsd000b21a_e.zip"
+    # See the level-3 recipe: the Statistics Canada Open Licence permits
+    # reproduction, redistribution and sublicensing, and requires the
+    # notice carried in `license`.
+    license: >-
+      Statistics Canada Open Licence; reproduction and redistribution
+      permitted with the required notice, "Source: Statistics Canada,
+      2021 Census Boundary Files, 2021. Reproduced and distributed on an
+      'as is' basis with the permission of Statistics Canada."
+    terms_url: "https://www.statcan.gc.ca/en/reference/licence"
+    redistribution_restricted: false
+  version: 2021
+
+compressed_file_name: "lcsd000b21a_e.zip"
+uncompressed_file_name: "lcsd000b21a_e.shp"
+
+columns:
+  admin4_id_admin1: CSDUID
+  name: CSDNAME
+  type: CSDTYPE
+
+keep_unnamed_columns: False
+
+transformations:
+  # As at level 3: the boundary file pads a single-digit number to two
+  # columns, and collapsing it keeps these names matching the
+  # classification's.
+  - output: name
+    input: name
+    type: string
+    operation: replace
+    args:
+      old: "  "
+      new: " "
+  # The census division is the first four characters of the
+  # subdivision's own code, in the form the level-3 recipe stores.
+  - output: admin3_id_admin1
+    input: admin4_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 4
+
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "CA_admin-statcan-2021_admin3"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin4

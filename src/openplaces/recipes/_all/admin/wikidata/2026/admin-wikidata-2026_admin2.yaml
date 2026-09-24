@@ -9,6 +9,11 @@
 # keeps one administrative class per country, the most common one among
 # the country's direct children; see io/scrapers/wikidata_admin_scraper.py
 # and the class-overrides sidecar beside this file.
+#
+# The world moves off its old source one country at a time, and
+# admin-wikidata-2026_migration.csv beside this file records where that
+# stands: one row per country and level, with the counts each source
+# offers and a status. See io/admin_migration.py.
 
 description: >-
   Second-level administrative units worldwide from Wikidata: names, native

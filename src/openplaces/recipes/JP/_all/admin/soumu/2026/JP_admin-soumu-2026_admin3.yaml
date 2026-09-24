@@ -55,27 +55,88 @@ download_headers:
 
 uncompressed_file_name: "jp_municipality_codes.csv"
 
+# The codes are all digits and must stay text. Read as numbers they
+# lose a leading zero, and the damage is silent rather than fatal:
+# Aomori's 020001 becomes 20001, whose first two digits are 20, so the
+# prefecture of Aomori attached itself to Nagano. Measured 2026-09-23.
+csv_dtype: str
+
 columns:
   admin3_id_admin1: code
   name: en
 
 keep_unnamed_columns: False
 
-# The first two digits of the JIS code are the prefecture (JIS X 0401),
-# which is what links a municipality to its admin2 parent.
 transformations:
-  - output: admin2_id_admin1
+  # The first two digits of the code are the prefecture (JIS X 0401),
+  # which is what links a municipality to its admin2 parent.
+  - output: _prefecture_code
     input: admin3_id_admin1
     type: string
     operation: substring
     args:
       start: 0
       end: 2
+  # P429 is held by prefectures as well as municipalities, and a
+  # prefecture's code is its two digits then 000 then a check digit. Left
+  # alone those rows join to their own prefecture and arrive as
+  # municipalities of themselves, which is how "Aomori Prefecture"
+  # turned up as a municipality. Marking them with a key no prefecture
+  # layer carries makes the crosswalk drop them, and it reports the
+  # count while doing it.
+  - output: _middle_digits
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 2
+      end: 5
+  - output: _not_a_municipality
+    input: _middle_digits
+    type: remap
+    mapping:
+      "000": "prefecture"
+  # An ordinance-designated city's wards hold codes of their own and
+  # would sit beside the city that contains them, so the level would
+  # overlap itself: 15 cities and 183 wards, measured 2026-09-23.
+  #
+  # Tokyo is the exception, and it is not a detail: its 23 special wards
+  # are municipalities in their own right, not parts of a city, and
+  # their codes fall in the same 101-199 band. The test is therefore the
+  # prefecture and the code together, never the code alone.
+  - output: _prefecture_and_middle
+    type: string
+    operation: concat
+    inputs:
+      - _prefecture_code
+      - _middle_digits
+  - output: _ward_of_a_designated_city
+    input: _prefecture_and_middle
+    type: remap_conditional
+    conditions:
+      - condition: regex
+        # Not prefecture 13; then 1xx where xx is not 00, which is the
+        # designated city itself.
+        pattern: "^(?!13)\\d{2}1(?!00)\\d{2}$"
+        output: "ward"
+  - output: admin2_id_admin1
+    type: string
+    operation: coalesce
+    inputs:
+      - _not_a_municipality
+      - _ward_of_a_designated_city
+      - _prefecture_code
 
+# The prefecture layer beside this one, not the spine. Reading the spine
+# is why this recipe never ran: the spine's Japanese level 2 carries no
+# `admin2_id_admin1`, so the join found no key at all, and because
+# `get_crosswalk` warns and returns an empty mapping rather than
+# raising, nothing said so. The Philippines hit the same wall and the
+# answer is the same: keep the chain inside the country's own recipes.
 admin_id_crosswalk:
   admin_level: 2
   admin_id_column: admin2_id_admin1
-  admin_recipe_id: "admin-spine-2026_admin2"
+  admin_recipe_id: "JP_admin-soumu-2026_admin2"
 
 create_index:
   function: "openplaces.io.admin_codes.assign_admin_ids"

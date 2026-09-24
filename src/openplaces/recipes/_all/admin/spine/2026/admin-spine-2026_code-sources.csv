@@ -7,8 +7,17 @@ CO,3,CO_admin-dane-2025_admin3,DANE municipality code
 GB,2,GB_admin-ons-2024_admin2,ONS country code
 GB,3,GB_admin-ons-2024_admin3,ONS county or unitary authority code
 GB,4,GB_admin-ons-2024_admin4,ONS local authority district code
-FR,4,FR_admin-gisco-2024_admin4,LAU code (INSEE commune)
-DE,4,DE_admin-gisco-2024_admin4,LAU code (Gemeindeschluessel)
+FR,4,FR_admin-insee-2024_admin4,LAU code (INSEE commune)
+DE,4,DE_admin-bkg-2026_admin4,LAU code (Gemeindeschluessel)
 BR,3,BR_admin-ibge-2026_admin3,IBGE municipality code
-PH,2,PH_admin-psa-2026_admin3,PSGC province code (from each municipality's provinceCode)
+PH,2,PH_admin-psa-2026_admin2,PSGC province code (from each municipality's provinceCode)
 PH,3,PH_admin-psa-2026_admin3,PSGC municipality code
+DE,2,DE_admin-bkg-2026_admin2,
+DE,3,DE_admin-bkg-2026_admin3,
+FR,2,FR_admin-insee-2024_admin2,
+FR,3,FR_admin-insee-2024_admin3,
+PH,4,PH_admin-psa-2026_admin4,
+CA,3,CA_admin-statcan-2021_admin3,
+CA,4,CA_admin-statcan-2021_admin4,
+JP,2,JP_admin-soumu-2026_admin2,
+JP,3,JP_admin-soumu-2026_admin3,

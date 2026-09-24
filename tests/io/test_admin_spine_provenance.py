@@ -10,10 +10,12 @@ names came from GADM alone, so none may be published at all.
 Only the present spine is kept. Snapshots of earlier vintages carried
 the same GADM values and resolved nothing a present-only spine needs.
 
-Every row of a country without a national admin recipe comes from
-Wikidata (CC0) and says so with its `admin{N}_id_wikidata`; a native
-name (`name_original`) is Wikidata's too, and may stand only on such a
-row.
+A country whose rows have been moved to Wikidata (CC0) says so with its
+`admin{N}_id_wikidata`, and the migration ledger records which countries
+those are; a native name (`name_original`) is Wikidata's too, and may
+stand only on a row carrying that id. The move runs one country at a
+time, so the check is against the ledger rather than against the whole
+world at once.
 """
 
 import pandas as pd
@@ -67,26 +69,102 @@ def test_a_native_name_stands_only_on_a_wikidata_row(level):
     assert stray == 0, f'level {level}: {stray} native names without a Wikidata id'
 
 
-# The world rows are not yet replaced from the Wikidata layer: the
-# harvest and the update are built and tested, the replacement itself
-# (a re-mint of every non-national country) is postponed until the
-# project works in those countries. Strict, so the day it lands this
-# marker has to go.
-@pytest.mark.xfail(strict=True, reason='world rows from Wikidata postponed')
+# The world's rows move off GADM one country at a time, so this cannot
+# be a single assertion about every country at once. It is an assertion
+# about the countries the migration ledger says have moved, which is a
+# real invariant from the first country onward and grows with the work.
+#
+# "Migrated" means off GADM, not specifically onto Wikidata. Germany
+# went to its own federal mapping agency because no global source could
+# name its Kreise, and that is a better outcome than Wikidata, not a
+# failure of one. So a migrated country satisfies this by carrying
+# Wikidata identifiers *or* by having a national recipe at that level.
 @pytest.mark.parametrize('level', LEVELS)
-def test_every_row_without_a_national_source_comes_from_wikidata(level):
+def test_every_migrated_country_is_off_gadm(level):
+    from openplaces.io.admin_migration import migrated
+
+    done = migrated(level)
+    if not done:
+        pytest.skip(f'level {level}: no country has been migrated yet')
     frame = _spine(level)
     column = f'admin{level}_id_wikidata'
     assert column in frame, f'level {level}: no {column} column'
     country = frame[f'admin{level}_id'].str.split('-').str[0]
-    national = {c for c in set(country) if _national(c, level)}
-    # Z1 to Z9 are the disputed-area placeholders GADM invented; no
-    # source but GADM knows them, and their removal from level 1 is a
-    # decision still open (see the phase-3 plan).
-    placeholder = country.str.fullmatch(r'Z\d')
-    unsourced = frame[~country.isin(national) & ~placeholder & (frame[column] == '')]
-    stray = sorted(set(unsourced[f'admin{level}_id'].str.split('-').str[0]))
-    assert not stray, f'level {level}: rows with no Wikidata id in {stray}'
+    from_wikidata = frame[column] != ''
+    from_national = country.map(lambda c: _national(c, level))
+    stray = sorted(
+        set(
+            frame.loc[
+                country.isin(done) & ~from_wikidata & ~from_national,
+                f'admin{level}_id',
+            ]
+        )
+    )
+    assert not stray, (
+        f'level {level}: the ledger calls these countries migrated, but '
+        f'{len(stray)} of their rows come from neither Wikidata nor a '
+        f'national recipe: {stray[:10]}'
+    )
+
+
+@pytest.mark.parametrize('level', LEVELS)
+def test_an_unsourced_country_has_no_rows_at_all(level):
+    """What no open source names, the shipped spine does not carry.
+
+    This is also the guard a contributor needs. A user who holds GADM
+    may fill these countries in locally, which their own licence allows
+    and this project's does not: doing so edits the spine inside the
+    installed package, and without this test that edit would reach a
+    pull request unnoticed.
+    """
+    from openplaces.io.admin_migration import unsourced
+
+    empty = unsourced(level)
+    if not empty:
+        pytest.skip(f'level {level}: no country is recorded as unsourced')
+    frame = _spine(level)
+    country = frame[f'admin{level}_id'].str.split('-').str[0]
+    stray = sorted(set(frame.loc[country.isin(empty), f'admin{level}_id']))
+    assert not stray, (
+        f'level {level}: the ledger says no open source names these units, '
+        f'but the spine carries {len(stray)} of them: {stray[:10]}'
+    )
+
+
+@pytest.mark.parametrize('level', LEVELS)
+def test_a_deferred_country_has_no_rows_at_that_level(level):
+    """A level put out of scope is emptied, not left on the old source.
+
+    The reason `deferred` exists rather than a note on `held`: the rows
+    that were there came from GADM, and "we will get to this level
+    later" is not a licence to keep publishing them meanwhile. The same
+    contributor guard as the unsourced test above applies, and here it
+    matters more, because refilling one of these is a plausible
+    good-faith mistake: a source does name these units.
+    """
+    from openplaces.io.admin_migration import deferred
+
+    empty = deferred(level)
+    if not empty:
+        pytest.skip(f'level {level}: no country is recorded as deferred')
+    frame = _spine(level)
+    country = frame[f'admin{level}_id'].str.split('-').str[0]
+    stray = sorted(set(frame.loc[country.isin(empty), f'admin{level}_id']))
+    assert not stray, (
+        f'level {level}: the ledger defers these countries, so their rows '
+        f'were removed, but the spine carries {len(stray)} again: {stray[:10]}'
+    )
+
+
+@pytest.mark.parametrize('level', LEVELS)
+def test_a_country_not_yet_migrated_is_not_claimed_to_be(level):
+    """The ledger may not run ahead of the spine, only behind it."""
+    from openplaces.io.admin_migration import in_scope, migrated
+
+    claimed = migrated(level)
+    assert claimed <= in_scope(level) | {c for c in claimed if _national(c, level)}, (
+        f'level {level}: the ledger lists countries the spine has no rows for'
+    )
 
 
 def test_every_registered_source_is_a_recipe():

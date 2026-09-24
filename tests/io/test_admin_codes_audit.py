@@ -70,13 +70,31 @@ class TestReproducedIsDerived:
 
     def test_unweighted_derivation_stays_above_its_floor(self):
         # Without weights the contested codes fall the other way, so the
-        # count is a floor, not an identity. Measured 2026-09-06: 0.913
-        # at level 2 and 0.834 at level 3. A derivation regression, or
+        # count is a floor, not an identity. A derivation regression, or
         # pinning creeping back in (which reports 0.998), moves it.
+        #
+        # The floor also drifts down as the spine moves off GADM, so it
+        # is set well below the reading of the day and re-baselined when
+        # a tranche breaches it. Measured 2026-09-06, before the move:
+        # 0.913 at level 2 and 0.834 at level 3. Measured 2026-09-22,
+        # with 156 of 236 tracked countries migrated: 0.849 and 0.824.
+        #
+        # The cause is the sources, not the generator. Splitting that
+        # second reading by the migration ledger gives, at level 2,
+        # 0.923 for countries still on GADM against 0.812 for the
+        # migrated (0.683 for the Philippines); at level 3, 0.862 to
+        # 0.839. A national classification names a unit "City of Manila"
+        # or "National Capital Region" where GADM names it "Manila", and
+        # the longer form contests more codes. Finishing the migration
+        # should land near 0.82 at both levels.
+        #
+        # So a reading that sits a little under the floor and tracks the
+        # ledger the same way is drift; a reading far under it, or one
+        # where countries still on GADM have moved, is a regression.
         report = audit_spine(levels=(2, 3), reproduce=True)
         share = report['reproduced'] / report['units']
-        assert 0.85 < share[2] < 0.97, share[2]
-        assert 0.78 < share[3] < 0.97, share[3]
+        assert 0.78 < share[2] < 0.97, share[2]
+        assert 0.75 < share[3] < 0.97, share[3]
 
 
 class TestAuditReportShape:
