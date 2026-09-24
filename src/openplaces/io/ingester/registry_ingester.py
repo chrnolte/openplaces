@@ -43,6 +43,28 @@ from openplaces.timing import Timer
 # only this one exposes the recorded-date search the crawler uses.
 DRIVABLE_PLATFORM = 'avenu_i2'
 
+# The adapter that drives each registry application, keyed by the
+# `platform` a town's crosswalk row names. Massachusetts alone spreads
+# its 21 districts over at least three of these, so the platform is
+# data about the registry rather than a property of the state.
+ADAPTERS = {
+    DRIVABLE_PLATFORM: AvenuAdapter,
+}
+
+# Platforms an adapter exists for that still cannot be crawled by date,
+# with the reason, so the skip says why rather than "no adapter". ALIS
+# indexes recorded land by name and by instrument number: no screen it
+# offers takes a date range on its own (every one read on 2026-09-23),
+# so enumerating a town's deeds would mean iterating names rather than
+# days. `AlisAdapter` drives what ALIS does support, a lookup.
+NOT_CRAWLABLE = {
+    'alis': (
+        'ALIS indexes by name and instrument number, not by date, so a '
+        'date-range crawl is not possible; openplaces.io.scrapers.'
+        'alis_adapter.AlisAdapter looks a name or an instrument up'
+    ),
+}
+
 
 def _month_partitions(year: int) -> list[tuple[str, str]]:
     """Return (date_from, date_to) string pairs for each month of year."""
@@ -197,28 +219,36 @@ class RegistryIngester:
                 town_name = entry['town_name']
                 base_url = entry['base_url']
                 # A state's registries need not all run one application.
-                # Massachusetts publishes 21 districts, of which 11 are
-                # on masslandrecords and the rest on their own sites,
-                # some ALIS, some unexamined. Skipping by name beats
+                # Massachusetts publishes 21 districts: 11 on
+                # masslandrecords (`avenu_i2`), three on ALIS, and the
+                # rest on sites whose search application has not been
+                # examined. Skipping an undrivable one by name beats
                 # crawling into a 404 for a minute and reporting it as
                 # an empty search menu, which is how Brookline read
                 # until 2026-09-22.
                 platform = entry.get('platform', DRIVABLE_PLATFORM)
-                if platform != DRIVABLE_PLATFORM:
+                adapter_class = ADAPTERS.get(platform)
+                if adapter_class is None:
+                    reason = NOT_CRAWLABLE.get(
+                        platform,
+                        f'this ingester crawls {sorted(ADAPTERS)}',
+                    )
                     warnings.warn(
                         f'{town_name} ({admin4_id}) is served by '
-                        f'{base_url}, which runs {platform!r}; this '
-                        f'ingester drives {DRIVABLE_PLATFORM!r} only. '
+                        f'{base_url}, which runs {platform!r}: {reason}. '
                         'Skipping.',
                         stacklevel=2,
                     )
                     continue
                 if self.verbose:
-                    print(f'Crawling {town_name} ({admin4_id}) via {base_url}')
+                    print(
+                        f'Crawling {town_name} ({admin4_id}) via {base_url} '
+                        f'({platform})'
+                    )
 
                 page_count = 0
                 context = await browser.new_context()
-                adapter = AvenuAdapter(base_url, context)
+                adapter = adapter_class(base_url, context)
                 await adapter.start_session()
 
                 for doc_type in TRANSACTION_DOC_TYPES:
@@ -248,7 +278,7 @@ class RegistryIngester:
                         if page_count >= self.session_refresh_pages:
                             await context.close()
                             context = await browser.new_context()
-                            adapter = AvenuAdapter(base_url, context)
+                            adapter = adapter_class(base_url, context)
                             await adapter.start_session()
                             page_count = 0
 
