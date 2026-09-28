@@ -36,6 +36,7 @@ from collections import defaultdict
 import pandas as pd
 
 from openplaces.io.admin_codes.anchors import normalize_name
+from openplaces.io.admin_codes.languages import UNDETERMINED
 
 WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql'
 
@@ -230,6 +231,17 @@ HUMAN_SETTLEMENT = 'Q486972'
 ELECTORAL_WORDS = re.compile(
     r'constituen|electoral|election|polling|wahlkreis|stimmkreis', re.I
 )
+# What a class is called when its members are not units at all. A unit
+# that was abolished is history, and the query already drops an item
+# marked dissolved (P576); what it cannot drop is an item whose only
+# type is a class of abolished units, and those classes are numerous
+# enough to win a level: Switzerland's level 3 came out as 113 "former
+# municipality of Switzerland" and Poland's level 4 as 1,795 "former
+# municipality". A list is not a unit either, and Zimbabwe's level 4
+# was 56 items of "List of wards of Zimbabwe".
+NON_UNIT_WORDS = re.compile(
+    r'\bformer\b|\bhistoric|\bdefunct\b|\bdisestablish|\bancient\b|^list of\b', re.I
+)
 # Subtrees that reach the administrative tree and hold nothing that
 # governs: a fort, an airbase, a diocese, an Antarctic claim.
 EXCLUDED_TREES = {
@@ -239,12 +251,37 @@ EXCLUDED_TREES = {
     'Q20926517': 'religious administrative territorial entity',
     'Q15239622': 'disputed territory',
     'Q398141': 'school district',
+    'Q23413': 'castle',
 }
+
+# Class-label nouns that name no kind of unit, so a class carrying one
+# is never merged into the level for sharing it. These hold whatever a
+# country did not type precisely, at any tier.
+GENERIC_NOUNS = frozenset(
+    {
+        'administrative territorial entity',
+        'administrative division',
+        'administrative unit',
+        'administrative region',
+        'territorial entity',
+        'division',
+        'entity',
+        'unit',
+        'area',
+        'region',
+        'territory',
+    }
+)
 
 #: Parents per SPARQL request. Measured 2026-09-12: 47 Kenyan counties in
 #: one request take 3 s; 100 Thai districts 2 s. Larger batches risk the
 #: endpoint's 60 s limit on a busy day.
 PARENT_BATCH_SIZE = 50
+
+#: Items per detail request in the two-pass fallback. The items are
+#: named outright, so the cost is the per-item optionals rather than a
+#: set to walk, and a few hundred is comfortably inside the budget.
+DETAIL_BATCH_SIZE = 200
 
 
 def class_tree_query(root=ADMINISTRATIVE_ENTITY):
@@ -260,7 +297,7 @@ def class_tree_query(root=ADMINISTRATIVE_ENTITY):
 
 def _select(fields):
     return (
-        f'SELECT {fields} ?itemLabel ?native ?iso '
+        f'SELECT {fields} ?itemLabel ?enLabel ?native ?iso '
         '(GROUP_CONCAT(DISTINCT ?cls; separator="|") AS ?classes) '
         '(GROUP_CONCAT(DISTINCT ?up; separator="|") AS ?parents) '
         '(GROUP_CONCAT(DISTINCT ?up2; separator="|") AS ?grandparents) '
@@ -268,25 +305,102 @@ def _select(fields):
     )
 
 
-def _tail(group):
-    # A unit that was dissolved or replaced is history, not a unit: the
-    # Soviet raions Armenia's marzer replaced still carry a "located in"
-    # link and would outnumber them. "Replaced by" alone does not end a
-    # unit that still carries an ISO code: Nigeria's Benue State is
-    # "replaced by" the states carved out of it and is a state yet.
+def label_languages(language=None):
+    """Return the label-service language list for a country.
+
+    Asking for English gives a unit the name an English encyclopedia
+    uses, which is not the name it has: Spain's communities come back
+    "Andalusia" and "Aragon" for Andalucia and Aragon, Italy's regions
+    "Apulia" for Puglia, and Czechia's "Hradec Kralove" for
+    Kralovehradecky kraj. That costs twice. The spine then publishes a
+    name no source in the country uses, and the pin that decides whether
+    a unit keeps its identifier is a name comparison, so the harvest
+    stops matching both the present spine and the geoBoundaries polygons
+    pinned to it (Spain pinned 4 of 18).
+
+    The country's own language first and English behind it is what the
+    label service is for. English still answers wherever the local label
+    is missing, so no unit loses a name by this.
+
+    Parameters
+    ----------
+    language : str, optional
+        The country's language code, from the country-language table.
+
+    Returns
+    -------
+    str
+        A language list for `bd:serviceParam wikibase:language`.
+    """
+    if not language or language == UNDETERMINED:
+        return 'en'
+    return f'{language},en'
+
+
+#: How an item's types are read: from its type *statements*, minus the
+#: ones that have ended and the ones marked wrong.
+#:
+#: `wdt:P31` is the truthy predicate and keeps a statement whose own
+#: qualifier says the membership ended, so a unit abolished decades
+#: ago still reads as a current unit of its class. P576 does not catch
+#: these: what was recorded is that the thing stopped being a
+#: municipality, not that it stopped existing. The Netherlands is the
+#: worked case, measured 2026-09-22: 1,317 items claim to be a
+#: municipality of the Netherlands and 1,088 of those claims carry an
+#: end date, leaving 344 against the 342 the country has.
+#:
+#: Reading statements also picks up a non-preferred type that `wdt:`
+#: hides, which is why a count can rise by one or two.
+#:
+#: Stripping an ended type is not the same as dropping the item: a
+#: former Dutch municipality keeps its "former municipality" type,
+#: which the abolished-class rule in `select_units` then strikes, and
+#: only an item left with no type at all falls out. That is why the
+#: two mechanisms are separate.
+LIVE_TYPES = (
+    ' OPTIONAL { ?item p:P31 ?clsStatement . ?clsStatement ps:P31 ?cls .'
+    ' FILTER NOT EXISTS { ?clsStatement pq:P582 ?clsEnd }'
+    ' FILTER NOT EXISTS'
+    ' { ?clsStatement wikibase:rank wikibase:DeprecatedRank } }'
+)
+
+
+def _tail(group, language=None):
+    # A unit that was dissolved is history, not a unit.
+    #
+    # A "replaced by" (P1366) filter used to stand here too, for the
+    # Soviet raions Armenia's marzer replaced, which still carry a
+    # "located in" link and would have outnumbered them. It was a blunt
+    # proxy: it dropped any replaced item without an ISO code, and most
+    # units below level 2 have no ISO code. It cost Sweden twelve
+    # current municipalities, the capital among them.
+    #
+    # Removed 2026-09-22 once `LIVE_TYPES` made it unnecessary, and
+    # measured rather than assumed. Of the 28 Swedish municipalities it
+    # dropped, 16 have no live type and are still excluded by the newer
+    # rule; the 12 that do are the ones that were missing. Harvested
+    # both ways: Armenia, the case it was written for, returns its 11
+    # provinces either way, and Chile and the Netherlands do not move,
+    # while Sweden goes from 278 municipalities to its correct 290.
     return (
         ' FILTER NOT EXISTS { ?item wdt:P576 ?dissolved }'
-        ' FILTER NOT EXISTS { ?item wdt:P1366 ?replaced .'
-        ' FILTER NOT EXISTS { ?item wdt:P300 ?anycode } }'
-        ' OPTIONAL { ?item wdt:P1705 ?native } OPTIONAL { ?item wdt:P31 ?cls }'
+        ' OPTIONAL { ?item wdt:P1705 ?native }' + LIVE_TYPES + ''
         ' OPTIONAL { ?item wdt:P300 ?iso } OPTIONAL { ?item wdt:P131 ?up }'
         ' OPTIONAL { ?item wdt:P131/wdt:P131 ?up2 } OPTIONAL { ?item wdt:P297 ?cc }'
-        ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en" } }'
-        f' GROUP BY {group} ?itemLabel ?native ?iso'
+        # The English label as well as the local one. Asking the label
+        # service for a language written in another script returns a
+        # name the spine cannot carry: Japan's prefectures come back
+        # as their kanji, which no admin code can be derived from, and
+        # every prefecture would be re-minted as a placeholder with its
+        # 1,809 municipalities orphaned under it.
+        ' OPTIONAL { ?item rdfs:label ?enLabel FILTER(LANG(?enLabel) = "en") }'
+        ' SERVICE wikibase:label { bd:serviceParam wikibase:language '
+        f'"{label_languages(language)}" }} }}'
+        f' GROUP BY {group} ?itemLabel ?enLabel ?native ?iso'
     )
 
 
-def country_children_query(alpha2):
+def country_children_query(alpha2, language=None):
     """Return SPARQL for a country's candidate second-level units.
 
     Two routes, unioned, because neither is complete on its own: 12 of
@@ -302,29 +416,99 @@ def country_children_query(alpha2):
     ----------
     alpha2 : str
         ISO 3166-1 alpha-2 code, e.g. 'KE'.
+    language : str, optional
+        The country's language, asked for ahead of English.
     """
     return (
         _select('?item ?direct') + f' ?country wdt:P297 "{alpha2}" .'
         ' { ?item wdt:P131 ?country . BIND(true AS ?direct) }'
         ' UNION { ?item wdt:P300 ?code .'
         f' FILTER(STRSTARTS(?code, "{alpha2}-")) BIND(false AS ?direct) }}'
-        + _tail('?item ?direct')
+        + _tail('?item ?direct', language)
     )
 
 
-def parent_children_query(parent_ids):
+def parent_children_query(parent_ids, language=None):
     """Return SPARQL for the units located in a batch of parent items.
 
     Parameters
     ----------
     parent_ids : iterable of str
         Q-numbers of the parents, at most `PARENT_BATCH_SIZE` at a time.
+    language : str, optional
+        The country's language, asked for ahead of English.
     """
     values = ' '.join(f'wd:{q}' for q in parent_ids)
     return (
         _select('?item ?parent')
         + f' VALUES ?parent {{ {values} }} ?item wdt:P131 ?parent .'
-        + _tail('?item ?parent')
+        + _tail('?item ?parent', language)
+    )
+
+
+def parent_children_classes_query(parent_ids):
+    """Return SPARQL for the children of a batch of parents, classes only.
+
+    The first of two passes for a parent the endpoint will not answer
+    for in one query. A German or Indian state, or an Australian one,
+    has tens of thousands of "located in" children, and asking for their
+    labels, codes, parents and grandparents at once runs past the
+    endpoint's budget: it closes the connection rather than answering,
+    and a smaller batch is not available below a single parent.
+
+    This asks only what decides whether an item is a candidate at all,
+    which is its class. No label service, no second "located in" hop, no
+    optionals beyond `P31`. The caller keeps the items whose class is in
+    the administrative tree, which for those states is hundreds out of
+    tens of thousands, and fetches the rest for those alone.
+
+    Parameters
+    ----------
+    parent_ids : iterable of str
+        Q-numbers of the parents.
+
+    Returns
+    -------
+    str
+        A SPARQL query returning item and classes.
+    """
+    values = ' '.join(f'wd:{qid(q)}' for q in parent_ids)
+    return (
+        'SELECT ?item (GROUP_CONCAT(DISTINCT ?cls; separator="|") AS ?classes)'
+        f' WHERE {{ VALUES ?parent {{ {values} }} ?item wdt:P131 ?parent .'
+        ' FILTER NOT EXISTS { ?item wdt:P576 ?dissolved }' + LIVE_TYPES + ' }'
+        ' GROUP BY ?item'
+    )
+
+
+def item_details_query(item_ids, parent_id, language=None):
+    """Return SPARQL for named items' details, as the children query gives them.
+
+    The second of the two passes. The items are named outright, so the
+    endpoint has no set to walk, and the result has the same columns as
+    `parent_children_query` so the selection rule cannot tell which
+    route produced it. The parent is bound rather than matched, because
+    it is already known and joining to it again would cost a walk.
+
+    Parameters
+    ----------
+    item_ids : iterable of str
+        Q-numbers of the items wanted, a batch at a time.
+    parent_id : str
+        The parent these items were found under.
+    language : str, optional
+        The country's language, asked for ahead of English.
+
+    Returns
+    -------
+    str
+        A SPARQL query with the columns `parent_children_query` returns.
+    """
+    values = ' '.join(f'wd:{qid(i)}' for i in item_ids)
+    return (
+        _select('?item ?parent')
+        + f' VALUES ?item {{ {values} }} BIND(wd:{qid(parent_id)} AS ?parent)'
+        + _tail('?item ?parent', language)
     )
 
 
@@ -357,6 +541,9 @@ def select_units(
     electoral_classes=(),
     settlement_classes=(),
     country_classes=(),
+    class_labels=None,
+    unit_classes=None,
+    non_unit_classes=(),
 ):
     """Keep the harvested items that are this level's administrative units.
 
@@ -413,6 +600,21 @@ def select_units(
     country_classes : iterable of str, optional
         Q-numbers of classes whose label names the country; preferred
         as the type of a unit outside the dominant class.
+    class_labels : dict, optional
+        English label per class Q-number. Used to keep the classes that
+        name the same kind of unit as the dominant one (Burundi's bare
+        "province" beside its "province of Burundi"); without it those
+        units are lost.
+    non_unit_classes : iterable of str, optional
+        Q-numbers of classes whose members are not units: abolished
+        units and lists. Struck from every item's types before anything
+        else is decided.
+    unit_classes : iterable of str, optional
+        Q-numbers that *are* this level, from a reviewed sidecar row.
+        Given, they settle the level outright and every rule below is
+        skipped, because the rules have already been read and found
+        wrong for this country. `keep_classes` is the weaker
+        instruction: keep these too, beside whatever the rules choose.
 
     Returns
     -------
@@ -429,16 +631,31 @@ def select_units(
         .str.split('|')
         .map(lambda cs: [qid(c) for c in cs if c])
     )
+    # A class of abolished units, or a list, is struck from an item's
+    # types rather than demoted: an item whose only remaining type is
+    # one of those is not a unit and leaves with it, while an item that
+    # is also typed as a current unit keeps that type and stays.
+    usable = set(admin_classes) - set(non_unit_classes)
     rows['admin_list'] = rows['class_list'].map(
-        lambda cs: [c for c in cs if c in admin_classes]
+        lambda cs: [c for c in cs if c in usable]
     )
     candidates = rows[rows['admin_list'].map(bool)]
     if 'country_code' in candidates:
         own = candidates['country_code'].fillna('').astype(str).str.strip() != ''
         candidates = candidates[~own]
+    if unit_classes:
+        return _declared_units(candidates, list(unit_classes))
     if candidates.empty:
         return candidates.assign(unit_class=pd.Series(dtype=str)), None
-    settlement = set(settlement_classes)
+    # A settlement class whose label names the country is that country's
+    # own administrative class, not a place people happen to live in:
+    # Guam's 19 villages and Taiwan's townships are its units and are
+    # filed under human settlement all the same. Demoting them left Guam
+    # with 7 generic municipalities and Taiwan with 25 indigenous areas.
+    # This only reaches the uncoded branch below, so Mexico's 460
+    # "locality of Mexico" items still never compete with its 32 coded
+    # states.
+    settlement = set(settlement_classes) - set(country_classes)
     electoral = set(electoral_classes)
     coded = pd.DataFrame()
     if 'iso' in candidates:
@@ -490,8 +707,12 @@ def select_units(
         # administrative division" holds Romania's 41 counties and
         # Bucharest, "county of Romania" the 41. The narrower class is
         # the level; the wider one stays kept, for the capital.
+        # A class kept for naming the same unit as the dominant one has
+        # no members in the pool, so it restates nothing and is asked
+        # about only when labeling a row.
+        mine = members.get(cls, set())
         return any(
-            members[o] < members[cls] and 2 * len(members[o]) >= len(members[cls])
+            members[o] < mine and 2 * len(members[o]) >= len(mine)
             for o in ranked
             if o != cls
         )
@@ -502,6 +723,7 @@ def select_units(
 
     ranked = lead(ranked)
     above = set()
+    siblings = set()
     if 'parents' in pool:
         pool_items = set(pool['item'].map(qid))
         parents_of = _links(pool['parents'])
@@ -526,19 +748,61 @@ def select_units(
         of_dominant = counted.map(lambda cs, c=ranked[0]: c in cs)
         above = set().union(*parents_of[of_dominant])
         above -= set(pool.loc[of_dominant, 'item'].map(qid))
+        # A class sharing the dominant class's parents sits beside it,
+        # not under it, and a country whose level is split across two
+        # such classes loses the smaller one otherwise: Poland's 65
+        # cities with powiat rights beside its 314 powiats, and the same
+        # shape in Italy's metropolitan cities and Romania's towns.
+        # Only a class the country named its own qualifies, so a generic
+        # one cannot sweep a lower tier in, and the parent test keeps
+        # out what really is lower (Poland's villages, located in its
+        # gminas).
+        #
+        # Only where no ISO code is on offer. Where codes exist they
+        # already decide which classes stand beside the level, and by
+        # coded item rather than by class, so reaching past them let two
+        # historical "region of Spain" items in beside the autonomous
+        # communities.
+        for cls in ranked[1:] if not len(coded) else ():
+            if cls not in set(country_classes):
+                continue
+            mask = counted.map(lambda cs, c=cls: c in cs)
+            beside = parents_of[mask].map(lambda ps: bool(ps & above))
+            if len(beside) and beside.mean() >= 0.5:
+                siblings.add(cls)
         risen = [c for c in ranked[1:] if above & members[c]]
         ranked = [c for c in ranked if c not in risen]
         # Its other members go with it: Kenya's Coast Province is also
         # a bare "administrative territorial entity".
         above |= set().union(*(members[c] for c in risen))
     dominant = ranked[0]
-    if not len(coded) and 'direct' in pool and len(members[dominant]) < 2:
-        # One uncoded child of a country is not a level of it: Aruba's
-        # single bare "administrative territorial entity".
+    # Every administrative class on offer, not only those of the pool:
+    # the class that names the same unit as the dominant one may have no
+    # coded item at all, which is what keeps it out of the pool.
+    offered = set(candidates['admin_list'].explode().dropna())
+    if not len(coded) and len(members[dominant]) < 2 and len(offered) > 1:
+        # One uncoded item is not a level when the harvest offered other
+        # classes and they were all ruled out: Aruba's single bare
+        # "administrative territorial entity" beside its settlements,
+        # Belize's one "administrative region" left over from eight
+        # classes, Burundi's one commune. What this must not touch is a
+        # parent that really holds one child, which arrives as a harvest
+        # of one item in one class and keeps it.
         return candidates.iloc[:0].assign(unit_class=pd.Series(dtype=str)), None
-    secondary = set(ranked[1:]) if len(coded) and 'direct' in pool else set()
+    # Where codes are on offer, every remaining coded class stands
+    # beside the level, by coded item rather than by class. At level 2
+    # that is what ISO lists (Myanmar's states beside its regions); at
+    # lower levels it is the same fact (Italy's metropolitan cities
+    # beside its provinces, both coded, and without this the country
+    # keeps 83 of its 107).
+    secondary = set(ranked[1:]) if len(coded) else set()
     sidecar = set(keep_classes or ())
-    whole = sidecar | {dominant}
+    whole = (
+        sidecar
+        | {dominant}
+        | _bare_synonym(dominant, offered, class_labels)
+        | (siblings - {dominant})
+    )
     kept = candidates[
         ~candidates['item'].map(qid).isin(above)
         & candidates['admin_list'].map(lambda cs: bool(whole & set(cs)))
@@ -576,6 +840,97 @@ def select_units(
     return kept.drop(columns=['class_list', 'admin_list']), dominant
 
 
+def _declared_units(candidates, unit_classes):
+    """Keep exactly the classes a reviewed sidecar row names as the level.
+
+    Two countries need this and no rule can reach them. Kenya's
+    sub-counties and Namibia's constituencies are the administrative
+    unit below the county and the region, and Wikidata types both as
+    constituencies, which the electoral demotion exists to remove. The
+    demotion is right for the 19 countries it was added for and wrong
+    for these two, and the difference is a fact about Kenya and Namibia,
+    not a pattern in the data.
+
+    Parameters
+    ----------
+    candidates : pandas.DataFrame
+        The administrative candidates, with an `admin_list` column.
+    unit_classes : list of str
+        Q-numbers that are this level, most authoritative first.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, str)
+        The kept rows and the first named class.
+    """
+    wanted = set(unit_classes)
+    kept = candidates[candidates['admin_list'].map(lambda cs: bool(wanted & set(cs)))]
+    if kept.empty:
+        return kept.assign(unit_class=pd.Series(dtype=str)), None
+    kept = kept.assign(
+        unit_class=kept['admin_list'].map(
+            lambda cs: next(c for c in unit_classes if c in cs)
+        )
+    )
+    return kept.drop(columns=['class_list', 'admin_list']), unit_classes[0]
+
+
+def _bare_synonym(dominant, classes, class_labels):
+    """Return the unqualified class the dominant one refines, if it is on offer.
+
+    Wikidata types a country's units under a country-specific class and,
+    for some of them, under the plain class it refines: three of
+    Burundi's five provinces are a "province of Burundi" and two are
+    simply a "province". They are one tier, and taking only the larger
+    class costs the country the rest of its units.
+
+    Only the bare class qualifies, never another qualified one. Sharing
+    the head noun is not enough: Vietnam's "province of South Vietnam"
+    holds a province of a state that no longer exists, and merging it
+    would put Kiến Hòa back on the map.
+
+    A class whose noun is vague on its own ("administrative territorial
+    entity", "division", "region") is not merged in either: the bare
+    class then holds whatever a country did not type precisely, at any
+    tier.
+
+    Parameters
+    ----------
+    dominant : str
+        Q-number of the class the level is built from.
+    classes : iterable of str
+        Every administrative class on offer among the candidates.
+    class_labels : dict or None
+        English label per class Q-number. Without it nothing is merged,
+        because the noun cannot be read.
+
+    Returns
+    -------
+    set of str
+        Q-numbers to keep beside the dominant class.
+
+    Examples
+    --------
+    >>> labels = {'Q1': 'province of Burundi', 'Q2': 'province', 'Q3': 'district'}
+    >>> sorted(_bare_synonym('Q1', ['Q1', 'Q2', 'Q3'], labels))
+    ['Q2']
+    """
+    if not class_labels:
+        return set()
+    noun = type_noun(class_labels.get(dominant, ''))
+    if (
+        not noun
+        or noun in GENERIC_NOUNS
+        or noun == str(class_labels.get(dominant, '')).strip().lower()
+    ):
+        return set()
+    return {
+        c
+        for c in classes
+        if c != dominant and str(class_labels.get(c, '')).strip().lower() == noun
+    }
+
+
 def _links(column):
     """Return each row's set of Q-numbers from a |-joined URI column."""
     return (
@@ -600,7 +955,118 @@ def type_noun(type_label):
     return label.split()[-1]
 
 
-def strip_type_word(names, type_labels):
+def is_latin(text):
+    """True when a name is written in the Latin script.
+
+    The spine's `name` has to be, because an admin code is derived from
+    it and the code vocabulary is ASCII; a name in another script yields
+    no code and the unit is minted as a placeholder instead. The native
+    spelling is not lost by this: it is what `name_original` carries.
+
+    A name with no letters at all (a number, a symbol) counts as Latin,
+    since nothing about it argues for the English label instead.
+
+    Parameters
+    ----------
+    text : str
+        A name.
+
+    Returns
+    -------
+    bool
+        True when at least half its letters are ASCII.
+
+    Examples
+    --------
+    >>> is_latin('Hokkaido')
+    True
+    >>> is_latin('北海道')
+    False
+    >>> is_latin('Ceuta')
+    True
+    """
+    import unicodedata
+
+    letters = [c for c in unicodedata.normalize('NFD', str(text)) if c.isalpha()]
+    if not letters:
+        return True
+    return sum(1 for c in letters if c.isascii()) / len(letters) >= 0.5
+
+
+def prefer_latin(labels, english):
+    """Take the local label unless it is in another script.
+
+    Parameters
+    ----------
+    labels : pandas.Series
+        Labels as the label service returned them, in the country's own
+        language where it has one.
+    english : pandas.Series
+        The English label per item, aligned with `labels`.
+
+    Returns
+    -------
+    pandas.Series
+        The local label where the spine can carry it, else the English
+        one, else the local label after all.
+    """
+    english = english.reindex(labels.index).fillna('').astype(str).str.strip()
+    usable = labels.map(is_latin) | (english == '')
+    return labels.where(usable, english)
+
+
+def _strip_pack_type_words(name, pack):
+    """Drop a leading or trailing type word in the country's own language.
+
+    Asking Wikidata for a local label brings the local type word with
+    it: Chile's regions come back "Region de Antofagasta" where the
+    spine and every Chilean source say "Antofagasta", and Czechia's
+    "Jihomoravsky kraj" against "Jihomoravsky". The class label cannot
+    strip these, because it is in English and says "region of Chile".
+    The language pack already holds the vocabulary, for code
+    abbreviation; matching folded lets an accented "Region" meet the
+    unaccented entry.
+
+    Parameters
+    ----------
+    name : str
+        A unit label.
+    pack : LanguagePack
+        The country's vocabulary.
+
+    Returns
+    -------
+    str
+        The name without its type word, or unchanged when stripping
+        would leave nothing.
+    """
+    from openplaces.io.admin_codes.languages import fold_diacritics
+
+    def is_type(token):
+        folded = fold_diacritics(token).lower()
+        return pack.is_type_word(token) or pack.is_type_word(folded)
+
+    def is_filler(token):
+        folded = fold_diacritics(token).lower()
+        return any(
+            test(candidate)
+            for test in (pack.is_article, pack.is_preposition)
+            for candidate in (token, folded)
+        )
+
+    tokens = str(name).split()
+    while tokens and is_type(tokens[0]):
+        tokens = tokens[1:]
+        # One binding word, not a run: "Region de Los Lagos" is Los
+        # Lagos, and eating the article too leaves "Lagos".
+        if tokens and is_filler(tokens[0]):
+            tokens = tokens[1:]
+    while tokens and is_type(tokens[-1]):
+        tokens = tokens[:-1]
+    return ' '.join(tokens) or str(name).strip()
+
+
+def strip_type_word(names, type_labels, pack=None):
     """Drop a trailing or leading type noun from unit labels, where safe.
 
     "Busia County" becomes "Busia" and "Provincia de Cartago" stays as
@@ -609,12 +1075,18 @@ def strip_type_word(names, type_labels):
     two siblings collapse onto one name, so a real "North County" next
     to a "North" keeps its word.
 
+    With a language pack, the country's own type words are removed too,
+    which is what a locally labeled harvest needs.
+
     Parameters
     ----------
     names : pandas.Series
         Unit labels.
     type_labels : pandas.Series
         Class label per unit, aligned with `names`.
+    pack : LanguagePack, optional
+        The country's vocabulary, for type words the English class label
+        cannot name.
 
     Returns
     -------
@@ -625,13 +1097,15 @@ def strip_type_word(names, type_labels):
 
     def strip(name, type_label):
         noun = type_noun(type_label)
-        if not noun:
-            return name
-        pattern = (
-            rf'^(?:{re.escape(noun)}\s+(?:of\s+)?)?(.*?)(?:\s+{re.escape(noun)})?$'
-        )
-        match = re.fullmatch(pattern, str(name).strip(), flags=re.IGNORECASE)
-        core = match.group(1).strip() if match else str(name).strip()
+        core = str(name).strip()
+        if noun:
+            pattern = (
+                rf'^(?:{re.escape(noun)}\s+(?:of\s+)?)?(.*?)(?:\s+{re.escape(noun)})?$'
+            )
+            match = re.fullmatch(pattern, core, flags=re.IGNORECASE)
+            core = (match.group(1).strip() if match else core) or core
+        if pack is not None:
+            core = _strip_pack_type_words(core, pack)
         return core or str(name).strip()
 
     stripped = pd.Series(

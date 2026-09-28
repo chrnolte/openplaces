@@ -1,0 +1,94 @@
+# German federal states (Laender) from the federal mapping agency.
+#
+# Germany is the country the global sources cannot serve. Wikidata types
+# the ~400 Kreise per state across about 25 classes, and many are located
+# in a Regierungsbezirk rather than in the state, so no class and no
+# one-hop query reaches them: the level came out as 82 items of the class
+# "Amt". GADM names the units but may not be redistributed, and GISCO,
+# which supplied German municipalities until now, is non-commercial and
+# redistribution-restricted, so neither may sit in a spine that ships
+# under Apache-2.0.
+#
+# The Bundesamt fuer Kartographie und Geodaesie publishes Verwaltungs-
+# gebiete 1:250 000 (VG250) as open data under Datenlizenz Deutschland
+# Namensnennung 2.0: free of charge, redistribution permitted, a visible
+# source note required. One download carries every level, so the level-3
+# and level-4 recipes beside this one read the same file.
+#
+# GF is the geofactor: 4 is the land area of a unit and the other values
+# repeat it for its water area, which would double-count every coastal
+# state. Filtering to GF 4 leaves exactly 16 rows.
+
+description: >-
+  German federal states with their official AGS codes and boundaries,
+  from BKG VG250 (admin level 2).
+
+admin_id: DE
+
+entity:
+  entity_type: admin
+  source:
+    source_id: bkg
+    portal_url: "https://gdz.bkg.bund.de/index.php/default/open-data.html"
+    download_url: "https://daten.gdz.bkg.bund.de/produkte/vg/vg250_ebenen_0101/aktuell/vg250_01-01.utm32s.gpkg.ebenen.zip"
+    # Read from dokumentation/nutzungsbedingungen_vg250.pdf inside the
+    # archive on 2026-09-22, not inferred: "Die Daten werden
+    # geldleistungsfrei gemaess der Datenlizenz Deutschland
+    # Namensnennung 2.0 zur Verfuegung gestellt." Redistribution is
+    # permitted; the licence requires a visible source note reading
+    # "(c) BKG <year> dl-de/by-2-0" wherever the data are shown.
+    license: "DL-DE-BY-2.0; redistribution permitted with attribution to BKG"
+    terms_url: "https://www.govdata.de/dl-de/by-2-0"
+    redistribution_restricted: false
+  version: 2026
+
+compressed_file_name: "vg250_01-01.utm32s.gpkg.ebenen.zip"
+uncompressed_file_name: "vg250_ebenen_0101/DE_VG250.gpkg"
+
+layer: vg250_lan
+
+# The land area of each unit; the other geofactors repeat it for its
+# water area, which would double-count every coastal unit. The filter
+# runs after the columns are renamed, so the geofactor is mapped to
+# survive that far.
+query: "_geofactor == 4"
+
+columns:
+  name: GEN
+  type: BEZ
+  admin2_id_admin1: AGS
+  _geofactor: GF
+
+keep_unnamed_columns: true
+
+transformations:
+  # Every Land's parent is the country. `assign_admin_ids` reads the
+  # parent from a column, so one has to exist: an empty slice of the AGS
+  # gives a blank string of the right length, and the prefix makes it
+  # 'DE'. There is no literal-column operation to say this more directly.
+  - output: admin1_id
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: admin1_id
+    input: admin1_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "DE"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

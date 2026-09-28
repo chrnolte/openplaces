@@ -1,0 +1,78 @@
+# German municipalities (Gemeinden) from the federal mapping agency,
+# replacing GISCO.
+#
+# This level had a source already, and that is the point of replacing it.
+# GISCO's terms require that "the data will not be used for commercial
+# purposes" and carry a EuroGeographics attribution; the recipe records
+# it as `redistribution_restricted: true` with a non-commercial usage
+# requirement. openplaces is Apache-2.0, which grants commercial use, so
+# a spine carrying GISCO units offers rights the project does not hold.
+# BKG's VG250 is the same country's municipalities under a licence that
+# does permit redistribution, so the conflict simply goes away.
+#
+# 10,939 units, of which 192 are gemeindefreie Gebiete: unincorporated
+# areas that belong to no municipality and are units of the level all
+# the same.
+#
+# See DE_admin-bkg-2026_admin2 for the licence, read from the archive.
+
+description: >-
+  German municipalities (Gemeinden) with their official AGS codes and
+  boundaries, from BKG VG250 (admin level 4).
+
+admin_id: DE
+
+entity:
+  entity_type: admin
+  source:
+    source_id: bkg
+    portal_url: "https://gdz.bkg.bund.de/index.php/default/open-data.html"
+    download_url: "https://daten.gdz.bkg.bund.de/produkte/vg/vg250_ebenen_0101/aktuell/vg250_01-01.utm32s.gpkg.ebenen.zip"
+    license: "DL-DE-BY-2.0; redistribution permitted with attribution to BKG"
+    terms_url: "https://www.govdata.de/dl-de/by-2-0"
+    redistribution_restricted: false
+  version: 2026
+
+compressed_file_name: "vg250_01-01.utm32s.gpkg.ebenen.zip"
+uncompressed_file_name: "vg250_ebenen_0101/DE_VG250.gpkg"
+
+layer: vg250_gem
+
+# The land area of each unit; see the level-2 recipe.
+query: "_geofactor == 4"
+
+columns:
+  name: GEN
+  type: BEZ
+  admin4_id_admin1: AGS
+  _geofactor: GF
+
+keep_unnamed_columns: true
+
+transformations:
+  # The Kreis's AGS is the first five digits of the Gemeinde's.
+  - output: admin3_id_admin1
+    input: admin4_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 5
+
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "DE_admin-bkg-2026_admin3"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin4

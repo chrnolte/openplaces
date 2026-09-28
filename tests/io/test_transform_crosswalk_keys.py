@@ -6,8 +6,14 @@ all-NaN result raises nothing.
 """
 
 import pandas as pd
+import pytest
 
-from openplaces.io.transform import _apply_remap_file, _read_crosswalk_table
+from openplaces.io import transform
+from openplaces.io.transform import (
+    _apply_remap_file,
+    _read_crosswalk_table,
+    get_crosswalk,
+)
 
 
 def _write_csv(path, rows):
@@ -32,3 +38,38 @@ def test_plain_numeric_keys_keep_their_numeric_values(tmp_path):
 
     assert table['code'].tolist() == [37, 119]
     assert table['value'].tolist() == [1500, 2400]
+
+
+def _admin_layer(monkeypatch, keys):
+    """An admin layer as `get_admin` returns it: the spine, outer-joined."""
+    frame = pd.DataFrame(
+        {'admin2_id_wikidata': keys},
+        index=pd.Index([f'BW-{i:02d}' for i in range(len(keys))], name='admin2_id'),
+    )
+    monkeypatch.setattr(transform, 'get_admin', lambda *a, **k: frame)
+    return {
+        'admin_id': 'BW',
+        'admin_level': 2,
+        'admin_id_column': 'admin2_id_wikidata',
+        'admin_recipe_id': 'admin-wikidata-2026_admin2',
+    }
+
+
+def test_units_the_layer_does_not_cover_are_dropped_not_collided(monkeypatch):
+    # `get_admin` outer-joins the named layer onto the spine, so every
+    # unit it does not cover arrives with an empty key. While the world
+    # moves off its old source a country at a time that is most of them,
+    # and Botswana's six not-yet-replaced districts aborted its level-3
+    # ingest as a duplicate index.
+    crosswalk_dict = _admin_layer(monkeypatch, ['Q1', '', 'Q2', '', '', ''])
+
+    crosswalk = get_crosswalk(crosswalk_dict, flip=True)
+
+    assert sorted(crosswalk.index) == ['Q1', 'Q2']
+
+
+def test_a_real_duplicate_key_is_still_an_error(monkeypatch):
+    crosswalk_dict = _admin_layer(monkeypatch, ['Q1', 'Q1', ''])
+
+    with pytest.raises(ValueError, match='duplicated indices'):
+        get_crosswalk(crosswalk_dict, flip=True)

@@ -1,0 +1,58 @@
+# French departements from the national statistics institute.
+#
+# 96 metropolitan departements, including Paris, which is the unit the
+# Wikidata harvest lost: it is located in the Metropole du Grand Paris
+# rather than in Ile-de-France, and the per-parent query reaches one
+# hop. A code list has no such problem, because parentage is a column.
+#
+# See FR_admin-insee-2024_admin2 beside this file for the licence and
+# for why the overseas departements are excluded.
+
+description: >-
+  French metropolitan departements with their official INSEE codes,
+  from the Code Officiel Geographique (admin level 3).
+
+admin_id: FR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: insee
+    portal_url: "https://www.insee.fr/fr/information/7766585"
+    download_url: "https://www.insee.fr/fr/statistiques/fichier/7766585/v_departement_2024.csv"
+    license: "Licence Ouverte (Etalab); reuse and redistribution permitted with attribution to INSEE"
+    terms_url: "https://www.etalab.gouv.fr/licence-ouverte-open-licence"
+    redistribution_restricted: false
+  version: 2024
+
+uncompressed_file_name: "v_departement_2024.csv"
+
+# See the level-2 recipe: INSEE codes carry meaningful leading zeros.
+csv_dtype: str
+
+query: "admin2_id_admin1 >= '11'"
+
+columns:
+  name: LIBELLE
+  admin3_id_admin1: DEP
+  admin2_id_admin1: REG
+
+keep_unnamed_columns: true
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "FR_admin-insee-2024_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin3

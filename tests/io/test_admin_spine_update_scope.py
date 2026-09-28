@@ -68,6 +68,15 @@ def test_the_recipe_still_owns_its_own_slice(spine_update):
     assert NEW_WAKE_TOWN in updated.index
 
 
+def test_the_id_column_keeps_its_name(spine_update, tmp_path):
+    # `get_admin` resolves the id column by header and raises on a file
+    # whose first column is unnamed, so a spine written without it
+    # cannot be read back: the next update fails on its own output.
+    spine_update()
+    header = (tmp_path / 'admin4_test.csv').read_text().splitlines()[0]
+    assert header.startswith('admin4_id,')
+
+
 def test_the_spine_is_written_byte_exact(spine_update, tmp_path):
     # The same form `build.remint_spine` writes, so whichever writer ran
     # last, the committed file reads the same on every platform.
@@ -197,3 +206,104 @@ class TestReplaceCountries:
         updated = global_update()
         assert sorted(updated.index) == ['XX-AA', 'XX-BB', 'XX-CC', 'YY-AA']
         assert updated.loc['XX-AA', 'name'] == 'Old A'
+
+
+class TestDroppingAUnitsLevel:
+    """Emptying a country's level, which `replace_countries` cannot do."""
+
+    @pytest.fixture
+    def spine(self, monkeypatch, tmp_path):
+        frame = pd.DataFrame(
+            {'name': ['A', 'B', 'C', 'Kept'], 'type': ['Region'] * 4},
+            index=pd.Index(['XX-AA', 'XX-BB', 'YY-AA', 'ZZ-AA'], name='admin2_id'),
+        )
+        out_path = tmp_path / 'admin2_test.csv'
+        monkeypatch.setattr(admin_module, 'get_admin', lambda *a, **k: frame.copy())
+        monkeypatch.setattr(admin_module, 'recipe_path', lambda *a, **k: out_path)
+        return out_path
+
+    def test_only_the_named_countries_go(self, spine):
+        dropped = admin_module.drop_admin_units(2, ['XX', 'YY'], silent=True)
+        assert sorted(dropped.index) == ['XX-AA', 'XX-BB', 'YY-AA']
+        written = pd.read_csv(spine, dtype=str, index_col=0)
+        assert list(written.index) == ['ZZ-AA']
+
+    def test_a_country_with_no_rows_is_not_an_error(self, spine):
+        dropped = admin_module.drop_admin_units(2, ['QQ'], silent=True)
+        assert dropped.empty
+        written = pd.read_csv(spine, dtype=str, index_col=0)
+        assert len(written) == 4
+
+    def test_the_id_column_keeps_its_name(self, spine):
+        admin_module.drop_admin_units(2, ['XX'], silent=True)
+        assert spine.read_text().splitlines()[0].startswith('admin2_id,')
+
+    def test_a_prefix_is_not_a_country(self, spine):
+        # 'X' must not take 'XX'; the split is on the separator, not a
+        # string prefix, which is the bug that once deleted Warren with
+        # Wake.
+        dropped = admin_module.drop_admin_units(2, ['X'], silent=True)
+        assert dropped.empty
+
+
+class TestOneCountryAtATime:
+    """A global recipe that writes a file per country is read that way.
+
+    There is no world-wide output path for such a recipe: a null admin
+    id is level 0 and the recipe saves at level 1, so asking for one
+    raises. Reading the countries is also what lets the world move off
+    its old source one country at a time.
+    """
+
+    @pytest.fixture
+    def per_country(self, monkeypatch, tmp_path):
+        frames = {
+            'XX': pd.DataFrame(
+                {'name': ['New A'], 'type': ['Region']},
+                index=pd.Index(['XX-AA'], name='admin2_id'),
+            ),
+            'YY': pd.DataFrame(
+                {'name': ['New B'], 'type': ['Region']},
+                index=pd.Index(['YY-BB'], name='admin2_id'),
+            ),
+        }
+        paths = {}
+        for country, frame in frames.items():
+            path = tmp_path / f'{country}.parquet'
+            frame.to_parquet(path)
+            paths[country] = path
+
+        def _output_path(recipe, admin_id=None, **kwargs):
+            if not str(admin_id or ''):
+                raise ValueError('admin_id is at level 0')
+            return paths[str(admin_id)]
+
+        monkeypatch.setattr(
+            admin_module, 'get_recipe_by_id', lambda *a, **k: {'admin_id': AdminId()}
+        )
+        monkeypatch.setattr(admin_module, 'get_output_path', _output_path)
+        monkeypatch.setattr(admin_module, 'get_admin_ids', lambda *a, **k: ['XX', 'YY'])
+        return paths
+
+    def test_every_country_is_read_when_none_is_named(self, per_country):
+        recipe = {'admin_id': AdminId()}
+        frame = admin_module._read_recipe_output(recipe)
+        assert sorted(frame.index) == ['XX-AA', 'YY-BB']
+
+    def test_naming_one_country_reads_only_that_one(self, per_country):
+        recipe = {'admin_id': AdminId()}
+        frame = admin_module._read_recipe_output(recipe, ['XX'])
+        assert sorted(frame.index) == ['XX-AA']
+
+    def test_a_country_with_no_output_is_not_an_error(self, per_country):
+        recipe = {'admin_id': AdminId()}
+        per_country['YY'].unlink()
+        frame = admin_module._read_recipe_output(recipe, ['XX', 'YY'])
+        assert sorted(frame.index) == ['XX-AA']
+
+    def test_nothing_ingested_at_all_says_so(self, per_country):
+        recipe = {'admin_id': AdminId()}
+        for path in per_country.values():
+            path.unlink()
+        with pytest.raises(FileNotFoundError):
+            admin_module._read_recipe_output(recipe, ['XX', 'YY'])

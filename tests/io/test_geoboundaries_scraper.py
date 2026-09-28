@@ -31,6 +31,16 @@ def test_only_the_permissive_tier_is_fetched(monkeypatch, tmp_path):
     assert calls == []
 
 
+def test_a_mangled_name_is_repaired_and_a_clean_one_is_left_alone():
+    # Chile's 16 level-2 polygons arrive mangled and so pin to nothing.
+    assert gb.repair_mojibake('RegiÃ³n de AysÃ©n') == 'Región de Aysén'
+    assert gb.repair_mojibake('Región de Aysén') == 'Región de Aysén'
+    assert gb.repair_mojibake('Nairobi') == 'Nairobi'
+    # Something the inverse cannot represent is returned untouched
+    # rather than raising or being half-converted.
+    assert gb.repair_mojibake('Ã京') == 'Ã京'
+
+
 def test_the_committed_sidecar_holds_every_share_alike_file():
     table = gb.load_licenses()
     assert set(table['tier']) <= {'permissive', 'share-alike', 'unreviewed'}

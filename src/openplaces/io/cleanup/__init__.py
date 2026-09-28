@@ -22,6 +22,9 @@ consumption, lock, walk, compaction.
 from openplaces.io.cleanup.compaction import (
     _MIN_RECIPES_FOR_ORPHAN_GC as _MIN_RECIPES_FOR_ORPHAN_GC,
 )
+from openplaces.io.cleanup.compaction import (
+    SPINE_SCAFFOLDING_RECIPES as SPINE_SCAFFOLDING_RECIPES,
+)
 from openplaces.io.cleanup.compaction import _bucket_of as _bucket_of
 from openplaces.io.cleanup.compaction import _bucket_roots as _bucket_roots
 from openplaces.io.cleanup.compaction import _classify_file as _classify_file
@@ -30,6 +33,7 @@ from openplaces.io.cleanup.compaction import _compact_delete as _compact_delete
 from openplaces.io.cleanup.compaction import (
     _enrich_suffix_index as _enrich_suffix_index,
 )
+from openplaces.io.cleanup.compaction import _is_country_dir as _is_country_dir
 from openplaces.io.cleanup.compaction import _layer_output_names as _layer_output_names
 from openplaces.io.cleanup.compaction import (
     _match_recipe_for_file as _match_recipe_for_file,
@@ -43,7 +47,13 @@ from openplaces.io.cleanup.compaction import (
 )
 from openplaces.io.cleanup.compaction import _recipe_id_rest as _recipe_id_rest
 from openplaces.io.cleanup.compaction import _recipe_token_index as _recipe_token_index
+from openplaces.io.cleanup.compaction import (
+    _scaffolding_dirs as _scaffolding_dirs,
+)
 from openplaces.io.cleanup.compaction import compact as compact
+from openplaces.io.cleanup.compaction import (
+    drop_spine_scaffolding as drop_spine_scaffolding,
+)
 from openplaces.io.cleanup.consumption import _all_recipe_ids as _all_recipe_ids
 from openplaces.io.cleanup.consumption import _consumer_satisfies as _consumer_satisfies
 from openplaces.io.cleanup.consumption import _consumers_complete as _consumers_complete

@@ -1,0 +1,76 @@
+# German Kreise from the federal mapping agency: the level no global
+# source could supply.
+#
+# See DE_admin-bkg-2026_admin2 beside this file for why Germany needs an
+# in-country source at all, and for the licence, which was read from the
+# archive rather than inferred.
+#
+# 401 units: 252 Landkreise, 98 kreisfreie Staedte, 42 Kreise and 9
+# Stadtkreise, which is the tier Wikidata splits across about 25 classes
+# and reaches 82 of.
+#
+# Parentage is the code, not a name match or an overlay. The AGS is
+# positional: two digits of Land, one of Regierungsbezirk, two of Kreis,
+# three of Gemeinde. So a Kreis's first two digits are its Land's AGS,
+# which `admin2_id_admin1` in the level-2 recipe carries.
+
+description: >-
+  German districts (Kreise) with their official AGS codes and
+  boundaries, from BKG VG250 (admin level 3).
+
+admin_id: DE
+
+entity:
+  entity_type: admin
+  source:
+    source_id: bkg
+    portal_url: "https://gdz.bkg.bund.de/index.php/default/open-data.html"
+    download_url: "https://daten.gdz.bkg.bund.de/produkte/vg/vg250_ebenen_0101/aktuell/vg250_01-01.utm32s.gpkg.ebenen.zip"
+    license: "DL-DE-BY-2.0; redistribution permitted with attribution to BKG"
+    terms_url: "https://www.govdata.de/dl-de/by-2-0"
+    redistribution_restricted: false
+  version: 2026
+
+compressed_file_name: "vg250_01-01.utm32s.gpkg.ebenen.zip"
+uncompressed_file_name: "vg250_ebenen_0101/DE_VG250.gpkg"
+
+layer: vg250_krs
+
+# The land area of each unit; see the level-2 recipe.
+query: "_geofactor == 4"
+
+columns:
+  name: GEN
+  type: BEZ
+  admin3_id_admin1: AGS
+  _geofactor: GF
+
+keep_unnamed_columns: true
+
+transformations:
+  # The Land's AGS is the first two digits of the Kreis's.
+  - output: admin2_id_admin1
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 2
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "DE_admin-bkg-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin3

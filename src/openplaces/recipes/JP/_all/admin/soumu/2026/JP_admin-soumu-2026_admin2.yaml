@@ -1,0 +1,108 @@
+# Japanese prefectures and their JIS X 0401 codes.
+#
+# This exists because the level-3 recipe beside it could never run. That
+# recipe joins each municipality to its parent on the two-digit
+# prefecture code, read from `admin2_id_admin1` on the spine, and the
+# spine's Japanese level 2 has never carried such a column: it holds
+# name, type and the identifier's own provenance and nothing else. The
+# join therefore found no key, `get_crosswalk` warned and returned an
+# empty mapping rather than raising, and the recipe sat uningested while
+# the spine kept GADM's 1,809 municipalities. Nothing reported this,
+# because a national recipe takes its country out of the migration
+# ledger at that level whether or not it has ever been run.
+#
+# The fix is the one the Philippines uses: give the country its own
+# level 2, so the chain is self-contained and neither end depends on
+# what the shared spine happens to carry.
+#
+# ISO 3166-2:JP is JP-01 to JP-47 and its numeric part is exactly the
+# JIS X 0401 prefecture code, so one field supplies both the identity
+# and the join key.
+#
+# Three names change against the spine, and all three are improvements:
+# Kochi and Oita gain their macrons, and Nagasaki was misspelt
+# "Naoasaki".
+
+description: >-
+  Japanese prefecture names and JIS X 0401 codes (admin level 2).
+
+admin_id: JP
+
+entity:
+  entity_type: admin
+  source:
+    source_id: soumu
+    portal_url: "https://www.soumu.go.jp/denshijiti/code.html"
+    # As for the level-3 recipe: the authority for the codes is the
+    # Ministry of Internal Affairs and Communications, whose own list is
+    # kanji with no romanization. Wikidata is the machine-readable
+    # bridge that carries the romanized name and the code together, and
+    # it is CC0.
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3Fiso%20%3Fen%20WHERE%20%7B%20%3Fitem%20wdt%3AP31%20wd%3AQ50337%20%3B%20wdt%3AP300%20%3Fiso%20.%20OPTIONAL%20%7B%20%3Fitem%20rdfs%3Alabel%20%3Fen%20FILTER%28lang%28%3Fen%29%20%3D%20%22en%22%29%20%7D%20%7D"
+    license: "CC0 (Wikidata); JIS X 0401 codes are a public standard"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+# Wikidata content-negotiates and ignores `format=csv` in the query
+# string, so the format is asked for by header. Without this the
+# download lands as SPARQL XML under a .csv name.
+download_headers:
+  Accept: "text/csv"
+
+uncompressed_file_name: "jp_prefecture_codes.csv"
+
+columns:
+  admin2_id_admin1: iso
+  name: en
+
+keep_unnamed_columns: False
+
+transformations:
+  # Wikidata labels most prefectures "Aichi Prefecture" but not Tokyo,
+  # so the suffix is stripped rather than assumed. Without this every
+  # identifier would be minted from the word Prefecture.
+  - output: name
+    input: name
+    type: string
+    operation: replace
+    args:
+      old: " Prefecture"
+      new: ""
+  # JP-01 to JP-47 becomes 01 to 47, which is the JIS X 0401 code the
+  # level-3 recipe joins on.
+  - output: admin2_id_admin1
+    input: admin2_id_admin1
+    type: string
+    operation: replace
+    args:
+      old: "JP-"
+      new: ""
+  # Every prefecture's parent is the country, and `assign_admin_ids`
+  # reads the parent from a column, so one has to exist.
+  - output: admin1_id
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: admin1_id
+    input: admin1_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "JP"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

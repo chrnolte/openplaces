@@ -42,4 +42,5 @@ from openplaces.io.admin.ids import (
 )
 from openplaces.io.admin.names import clean_geographic_name as clean_geographic_name
 from openplaces.io.admin.names import fold_to_ascii as fold_to_ascii
+from openplaces.io.admin.spine import drop_admin_units as drop_admin_units
 from openplaces.io.admin.spine import update_admin_spine as update_admin_spine

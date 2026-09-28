@@ -1,0 +1,86 @@
+# French regions from the national statistics institute.
+#
+# France is the second country the global sources could not serve.
+# Wikidata returned 96 departments and no Paris, because Paris is
+# located in the Metropole du Grand Paris rather than in Ile-de-France
+# and the per-parent query reaches one hop. GADM names the units but may
+# not be redistributed, and GISCO, which supplied French communes until
+# now, is non-commercial and redistribution-restricted.
+#
+# INSEE's Code Officiel Geographique is the official list: regions,
+# departements and communes with the codes every French dataset joins
+# on. data.gouv.fr records INSEE's own publication of it under `fr-lo`,
+# the Licence Ouverte, which permits reuse, redistribution and
+# commercial use with attribution.
+#
+# Metropolitan France only. The five overseas regions are Guadeloupe,
+# Martinique, Guyane, La Reunion and Mayotte, each of which holds its
+# own ISO 3166-1 code and its own country in the spine, so ingesting
+# them here would give those units two homes. Their REG codes are 01 to
+# 06 and every metropolitan one is 11 or greater.
+
+description: >-
+  French metropolitan regions with their official INSEE codes, from the
+  Code Officiel Geographique (admin level 2).
+
+admin_id: FR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: insee
+    portal_url: "https://www.insee.fr/fr/information/7766585"
+    download_url: "https://www.insee.fr/fr/statistiques/fichier/7766585/v_region_2024.csv"
+    # Recorded by data.gouv.fr against INSEE's own publication of this
+    # dataset, checked 2026-09-22: licence `fr-lo`, the Licence Ouverte.
+    license: "Licence Ouverte (Etalab); reuse and redistribution permitted with attribution to INSEE"
+    terms_url: "https://www.etalab.gouv.fr/licence-ouverte-open-licence"
+    redistribution_restricted: false
+  version: 2024
+
+uncompressed_file_name: "v_region_2024.csv"
+
+# Every INSEE code is all digits with a meaningful leading zero, so the
+# whole file is read as text: inferred integers turn region 01 into 1
+# and commune 01001 into 1001.
+csv_dtype: str
+
+# The five overseas regions are their own countries in the spine.
+query: "admin2_id_admin1 >= '11'"
+
+columns:
+  name: LIBELLE
+  admin2_id_admin1: REG
+
+keep_unnamed_columns: true
+
+transformations:
+  # Every region's parent is the country, and `assign_admin_ids` reads
+  # the parent from a column, so one has to exist. An empty slice of the
+  # code plus a prefix is the only way to state a constant here.
+  - output: admin1_id
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: admin1_id
+    input: admin1_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "FR"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

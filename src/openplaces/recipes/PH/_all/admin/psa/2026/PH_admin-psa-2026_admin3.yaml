@@ -46,6 +46,8 @@ columns:
   admin3_id_admin1: code
   name: name
   admin2_id_admin1: provinceCode
+  _region_code: regionCode
+  _is_city: isCity
 
 keep_unnamed_columns: False
 
@@ -55,11 +57,29 @@ keep_unnamed_columns: False
 # and the spine carries the historical six-digit form, which is its first
 # six characters.
 #
-# The province code: the spine holds it four digits wide with any leading
-# zero dropped -- Aklan is `604`, not `0604` -- so the source is truncated
-# to four and stripped to match. Zero-padding the other way would be the
-# natural instinct and would match nothing.
+# The parent code: a city or municipality sits in a province, except in
+# Metro Manila, where the 17 of them are independent and the PSGC leaves
+# `provinceCode` as the JSON literal `false`. The level-2 layer beside
+# this one seats those under NCR itself (see its header), so the parent
+# is the province code where there is one and the region code otherwise.
+# Coalescing is right where concatenating would be wrong and an outer
+# join would duplicate rows: the two columns are alternatives, never
+# both.
+#
+# Either way the spine holds the parent four digits wide with any
+# leading zero dropped, so Aklan is `604` rather than `0604` and NCR is
+# `1300`, and the code is truncated to four and stripped to match.
+# Zero-padding the other way would be the natural instinct and would
+# match nothing.
 transformations:
+  # The source distinguishes the two kinds of unit at this level with a
+  # boolean rather than a word.
+  - output: type
+    input: _is_city
+    type: remap
+    mapping:
+      true: "City"
+      false: "Municipality"
   - output: admin3_id_admin1
     input: admin3_id_admin1
     type: string
@@ -67,6 +87,37 @@ transformations:
     args:
       start: 0
       end: 6
+  # Two chartered cities belong to no province and are not in Metro
+  # Manila, so the region fallback above would seat them under a region
+  # that is not at level 2. Both are enclaves of a province they are
+  # administratively separate from, and both are placed with that
+  # province here, which is where the spine carried them and where an
+  # atlas draws them. Saying so costs 2 cities and 82 barangays if
+  # omitted.
+  #
+  # The City of Isabela is the capital of Basilan (1507) but is
+  # administered with Region IX while Basilan sits in BARMM. The City of
+  # Cotabato is an enclave of Maguindanao (1538); it voted to join BARMM
+  # in 2019, which this PSGC vintage records only in its ten-digit code.
+  #
+  # Unmapped rows come out missing, which is what makes this usable as
+  # the first input of the coalesce below rather than a rewrite of the
+  # whole column.
+  - output: _province_override
+    input: admin3_id_admin1
+    type: remap
+    mapping:
+      "099701": "150700000"
+      "129804": "153800000"
+  - output: admin2_id_admin1
+    type: string
+    operation: coalesce
+    inputs:
+      - _province_override
+      - admin2_id_admin1
+      - _region_code
+    args:
+      empty_values: [false]
   - output: admin2_id_admin1
     input: admin2_id_admin1
     type: string
@@ -81,10 +132,14 @@ transformations:
     args:
       chars: "0"
 
+# The province layer beside this one, not the spine. Reading the spine
+# made this recipe depend on the state of a file it also feeds, which
+# broke the moment the provinces themselves were replaced; the PSGC
+# gives both tiers, so the chain can be self-contained.
 admin_id_crosswalk:
   admin_level: 2
   admin_id_column: admin2_id_admin1
-  admin_recipe_id: "admin-spine-2026_admin2"
+  admin_recipe_id: "PH_admin-psa-2026_admin2"
 
 create_index:
   function: "openplaces.io.admin_codes.assign_admin_ids"

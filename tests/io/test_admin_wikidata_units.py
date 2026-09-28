@@ -102,6 +102,59 @@ def test_a_leading_type_word_is_stripped_too():
     assert wd.strip_type_word(names, types).tolist() == ['Cartago', 'Alpha']
 
 
+def test_a_name_in_another_script_falls_back_to_english():
+    # Japan's prefectures came back as kanji once the label service was
+    # asked for Japanese: no admin code can be derived from them, so
+    # all 47 were re-minted as placeholders and their 1,809
+    # municipalities orphaned under them.
+    labels = pd.Series(['北海道', 'Ceuta', 'Aragón', 'Кировская область'])
+    english = pd.Series(['Hokkaido', 'Ceuta', '', 'Kirov Oblast'])
+    assert wd.prefer_latin(labels, english).tolist() == [
+        'Hokkaido',
+        'Ceuta',
+        # No English label to fall back to, so the local one stands
+        # rather than the unit losing its name.
+        'Aragón',
+        'Kirov Oblast',
+    ]
+
+
+def test_is_latin_reads_the_letters_not_the_accents():
+    assert wd.is_latin('Hokkaido')
+    assert wd.is_latin('Aragón')
+    assert wd.is_latin('123')
+    assert not wd.is_latin('北海道')
+    assert not wd.is_latin('Αττική')
+
+
+def test_the_light_pass_asks_for_classes_and_nothing_costly():
+    # The point of the first pass is what it leaves out: a state with
+    # tens of thousands of children can be listed only without the
+    # label service and the second "located in" hop.
+    light = wd.parent_children_classes_query(['Q980'])
+    assert 'VALUES ?parent { wd:Q980 }' in light
+    # Types are read from statements, not from `wdt:P31`, so that a
+    # membership which has ended does not count; see `LIVE_TYPES` and
+    # tests/io/test_admin_wikidata_live_types.py.
+    assert 'ps:P31 ?cls' in light
+    assert 'wikibase:label' not in light
+    assert 'wdt:P131/wdt:P131' not in light
+    assert 'wdt:P300' not in light
+
+
+def test_the_detail_pass_returns_what_the_one_shot_query_does():
+    # The selection rule must not be able to tell which route produced
+    # its rows, so the columns have to match.
+    one_shot = wd.parent_children_query(['Q980'], 'de')
+    details = wd.item_details_query(['Q1', 'Q2'], 'Q980', 'de')
+    for column in ('?itemLabel', '?enLabel', '?native', '?iso', '?classes'):
+        assert column in one_shot and column in details, column
+    assert 'VALUES ?item { wd:Q1 wd:Q2 }' in details
+    # The parent is known, so it is bound rather than matched again.
+    assert 'BIND(wd:Q980 AS ?parent)' in details
+    assert '"de,en"' in details
+
+
 def test_type_noun_reads_both_label_shapes():
     assert wd.type_noun('county of Kenya') == 'county'
     assert wd.type_noun('Thai subdistrict') == 'subdistrict'
@@ -388,3 +441,158 @@ def test_electoral_words_name_constituencies_not_units():
     assert wd.ELECTORAL_WORDS.search('Stimmkreis')
     assert not wd.ELECTORAL_WORDS.search('department of France')
     assert not wd.ELECTORAL_WORDS.search('municipality of the Netherlands')
+
+
+def test_the_bare_class_the_dominant_one_refines_is_kept_with_it():
+    # Burundi: three of its five provinces are typed "province of
+    # Burundi" and two only "province". One tier, so one level.
+    bare = 'Q34876'
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Province {i}', [PROVINCE], 'true') for i in range(3)]
+        + [_row(f'Q{i}', f'Province {i}', [bare], 'true') for i in range(10, 12)]
+    )
+    kept, dominant = wd.select_units(
+        harvest,
+        ADMIN | {bare},
+        class_labels={PROVINCE: 'province of Burundi', bare: 'province'},
+    )
+    assert dominant == PROVINCE
+    assert len(kept) == 5
+
+
+def test_another_qualified_class_is_not_merged_into_the_level():
+    # Vietnam: "province of South Vietnam" shares the noun and names a
+    # state that no longer exists.
+    former = 'Q10831626'
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Province {i}', [PROVINCE], 'true') for i in range(3)]
+        + [_row('Q99', 'Kien Hoa', [former], 'true')]
+    )
+    kept, dominant = wd.select_units(
+        harvest,
+        ADMIN | {former},
+        class_labels={
+            PROVINCE: 'province of Vietnam',
+            former: 'province of South Vietnam',
+        },
+    )
+    assert dominant == PROVINCE
+    assert 'Kien Hoa' not in list(kept['itemLabel'])
+
+
+def test_a_class_beside_the_level_is_kept_with_it():
+    # Poland's level 3 is 314 powiats and 65 cities with powiat rights,
+    # both located in its voivodeships.
+    city_powiat = 'Q925381'
+    rows = [_row(f'Q{i}', f'Powiat {i}', [COUNTY]) for i in range(6)] + [
+        _row(f'Q{i}', f'City {i}', [city_powiat]) for i in (20, 21)
+    ]
+    for row in rows:
+        row['parents'] = 'http://www.wikidata.org/entity/Q900'
+    kept, dominant = wd.select_units(
+        pd.DataFrame(rows),
+        ADMIN | {city_powiat},
+        settlement_classes={city_powiat},
+        country_classes={city_powiat},
+    )
+    assert dominant == COUNTY
+    assert len(kept) == 8
+
+
+def test_a_lower_tier_sharing_the_country_name_is_not_kept_beside_it():
+    # Poland's villages are country-named too, and are located in its
+    # gminas, not in the voivodeships the powiats sit in.
+    village = 'Q3558970'
+    rows = [_row(f'Q{i}', f'Powiat {i}', [COUNTY]) for i in range(6)]
+    for row in rows:
+        row['parents'] = 'http://www.wikidata.org/entity/Q900'
+    below = [_row(f'Q{i}', f'Village {i}', [village]) for i in (20, 21)]
+    for row in below:
+        row['parents'] = 'http://www.wikidata.org/entity/Q901'
+    kept, dominant = wd.select_units(
+        pd.DataFrame(rows + below),
+        ADMIN | {village},
+        settlement_classes={village},
+        country_classes={village},
+    )
+    assert dominant == COUNTY
+    assert len(kept) == 6
+
+
+def test_a_class_of_abolished_units_is_not_a_level():
+    # Switzerland's level 3 came out as 113 "former municipality of
+    # Switzerland", outnumbering its districts.
+    former = 'Q19730508'
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Gone {i}', [former]) for i in range(8)]
+        + [_row(f'Q{i}', f'District {i}', [COUNTY]) for i in range(20, 23)]
+    )
+    kept, dominant = wd.select_units(
+        harvest, ADMIN | {former}, non_unit_classes={former}
+    )
+    assert dominant == COUNTY
+    assert sorted(kept['itemLabel']) == ['District 20', 'District 21', 'District 22']
+
+
+def test_an_item_typed_both_ways_keeps_its_current_class():
+    former = 'Q19730508'
+    harvest = pd.DataFrame(
+        [_row('Q1', 'Still here', [former, COUNTY]), _row('Q2', 'Gone', [former])]
+    )
+    kept, dominant = wd.select_units(
+        harvest, ADMIN | {former}, non_unit_classes={former}
+    )
+    assert dominant == COUNTY
+    assert list(kept['itemLabel']) == ['Still here']
+
+
+def test_non_unit_words_name_what_is_not_a_unit():
+    assert wd.NON_UNIT_WORDS.search('former municipality of Switzerland')
+    assert wd.NON_UNIT_WORDS.search('historical administrative division')
+    assert wd.NON_UNIT_WORDS.search('List of wards of Zimbabwe')
+    assert not wd.NON_UNIT_WORDS.search('district of Taiwan')
+    assert not wd.NON_UNIT_WORDS.search('province of Burundi')
+
+
+def test_a_declared_unit_class_settles_the_level_outright():
+    # Kenya's sub-counties are its National Assembly constituencies, so
+    # the electoral demotion has to be overruled by review, not by rule.
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Constituency {i}', [CONSTITUENCY]) for i in range(6)]
+        + [_row(f'Q{i}', f'Municipality {i}', [COUNTY]) for i in range(20, 22)]
+    )
+    kept, dominant = wd.select_units(
+        harvest,
+        ADMIN | {CONSTITUENCY},
+        electoral_classes={CONSTITUENCY},
+        unit_classes=[CONSTITUENCY],
+    )
+    assert dominant == CONSTITUENCY
+    assert len(kept) == 6
+    assert set(kept['unit_class']) == {CONSTITUENCY}
+
+
+def test_a_declared_class_nothing_carries_leaves_the_level_empty():
+    harvest = pd.DataFrame([_row('Q1', 'Alpha', [COUNTY])])
+    kept, dominant = wd.select_units(harvest, ADMIN, unit_classes=[CONSTITUENCY])
+    assert kept.empty and dominant is None
+
+
+def test_a_vague_bare_class_is_never_merged_in():
+    # "administrative territorial entity" holds whatever a country did
+    # not type precisely, at any tier.
+    vague = 'Q56061'
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Entity {i}', [PROVINCE], 'true') for i in range(6)]
+        + [_row(f'Q{i}', f'Thing {i}', [vague], 'true') for i in range(10, 14)]
+    )
+    kept, dominant = wd.select_units(
+        harvest,
+        ADMIN | {vague},
+        class_labels={
+            PROVINCE: 'administrative territorial entity of Kenya',
+            vague: 'administrative territorial entity',
+        },
+    )
+    assert dominant == PROVINCE
+    assert len(kept) == 6

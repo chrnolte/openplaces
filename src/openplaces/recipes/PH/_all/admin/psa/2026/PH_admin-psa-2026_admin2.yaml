@@ -1,0 +1,123 @@
+# Philippine provinces, plus Metro Manila, from the PSGC.
+#
+# This level was the country's structural problem. Wikidata's hierarchy
+# starts at the 17 regions, where the spine's level 2 is the 81
+# provinces, so adopting it would have left the PSA's 1,628 cities and
+# municipalities at level 3 without a parent. The question answers
+# itself once the country's own classification is asked: the PSA
+# publishes regions, provinces, cities and municipalities, and
+# barangays, so the spine can take the tier it already uses instead of
+# reshaping the Philippines to suit a global source.
+#
+# The National Capital Region is the exception that makes this two
+# endpoints rather than one. NCR has no provinces: its 17 cities and
+# municipalities are independent, and the PSGC seats them under four
+# unnamed districts instead. ISO 3166-2:PH resolves this the same way
+# and lists 82 subdivisions, the 81 provinces plus NCR, which is also
+# the shape the spine already had (as "Metropolitan Manila"). So this
+# recipe reads the provinces endpoint and the regions endpoint and keeps
+# exactly one region.
+#
+# The two are concatenated before ingest rather than after, because
+# `create_index` mints admin ids per ingested file: two files would mint
+# two independent id sets under the same parent and could collide.
+#
+# The province code is carried in the form the level-3 recipe already
+# joins on: the first four characters of the nine-digit PSGC with the
+# leading zero dropped, so Aklan is `604` rather than `0604`. Padding
+# the other way is the natural instinct and matches nothing. NCR's
+# region code `130000000` reduces to `1300` under the same rule, which
+# collides with no province: a province code opens with its region's two
+# digits, and NCR is the region that has no provinces.
+
+description: >-
+  Philippine province and Metro Manila names and PSGC codes (admin level 2).
+
+admin_id: PH
+
+entity:
+  entity_type: admin
+  source:
+    source_id: psa
+    portal_url: "https://psa.gov.ph/classification/psgc"
+    # As for the level-3 recipe beside this one: the authority is the
+    # PSA, which publishes the PSGC as a quarterly spreadsheet whose URL
+    # changes each release; this endpoint is a community-maintained
+    # machine-readable mirror of that publication, and the convenience
+    # is not the PSA's.
+    download_url_scraper: "json_endpoints_scraper"
+    license: "PSGC is a public statistical classification published by the PSA"
+    terms_url: "https://psa.gov.ph/classification/psgc"
+    redistribution_restricted: false
+  version: 2026
+
+scraper_options:
+  urls:
+    - "https://psgc.gitlab.io/api/provinces/"
+    - "https://psgc.gitlab.io/api/regions/"
+  source_column: "_tier"
+
+uncompressed_file_name: "provinces-and-regions.json"
+
+columns:
+  admin2_id_admin1: code
+  name: name
+  _tier: _tier
+
+keep_unnamed_columns: true
+
+# Runs after the rename, so it names the openplaces columns. Of the 17
+# regions only NCR is kept: the other 16 are containers for provinces
+# this file already holds, and admitting them would give every province
+# a sibling that covers it.
+query: "_tier == 'provinces' or admin2_id_admin1 == '130000000'"
+
+transformations:
+  # The endpoint a row came from is also what the row is.
+  - output: type
+    input: _tier
+    type: remap
+    mapping:
+      provinces: "Province"
+      regions: "Region"
+  - output: admin2_id_admin1
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 4
+  - output: admin2_id_admin1
+    input: admin2_id_admin1
+    type: string
+    operation: lstrip
+    args:
+      chars: "0"
+  # Every province's parent is the country, and `assign_admin_ids` reads
+  # the parent from a column, so one has to exist.
+  - output: admin1_id
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 0
+  - output: admin1_id
+    input: admin1_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "PH"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

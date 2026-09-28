@@ -1,0 +1,9 @@
+{
+  "accuracy_m": 1.0,
+  "grid_files": [],
+  "operation_definition": "proj=pipeline step inv proj=utm zone=32 ellps=GRS80 step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of UTM zone 32N + ETRS89 to WGS 84 (1) + axis order change (2D)",
+  "registered": "2026-09-22",
+  "source_crs": "EPSG:25832",
+  "target_crs": "EPSG:4326"
+}

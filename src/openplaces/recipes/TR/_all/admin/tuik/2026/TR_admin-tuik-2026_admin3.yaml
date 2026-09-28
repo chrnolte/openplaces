@@ -19,6 +19,27 @@
 # "Kas ilcesi", "Demre (ilce)" or "Ardanuc Ilcesi" while the spine carries
 # the bare name; `ilce`/`ilcesi` mean district. Stripping them took the
 # match from 32.6% to 78.4%.
+#
+# **The stripping is done in the query, not in a transformation**, and the
+# reason is the pipeline's order rather than taste: `drop_duplicates` runs
+# before transformations, so a name cleaned afterwards is cleaned too late
+# for the dedupe to see it. Left uncleaned, a district arrived both as
+# "Ibradi ilcesi" and as "Ibradi" and was counted twice: 1,039 rows
+# against the 973 districts Turkey has.
+#
+# The word sits in three places and one pattern cannot take all of them
+# without damage. Removing a trailing "ilcesi)" also took the closing
+# bracket and left "Bayat (Afyonkarahisar", so the query applies three
+# replacements in order: before a bracket ("Yesilyurt Ilcesi (Tokat)"),
+# inside one ("Bayat (Afyonkarahisar ilcesi)"), then at the end
+# ("Ibradi ilcesi", "Karakecili (ilce)"). A bracketed province is kept,
+# because many district names repeat across provinces and the bare name
+# would collide.
+#
+# That leaves 982 rows, 980 once duplicate name-and-province pairs go,
+# against 973. The residue is Wikidata modelling rather than anything
+# this recipe can reach, and it is nearer the truth than GADM's 929,
+# which additionally could not be redistributed.
 
 description: >-
   Turkish district (ilce) names at admin level 3.
@@ -33,7 +54,7 @@ entity:
     # TUIK is the authority for Turkish administrative divisions. Wikidata
     # is used as the machine-readable route because it exposes the district
     # class directly, under CC0.
-    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3FitemLabel%20%3FparentIso%20WHERE%20%7B%3Fparent%20wdt%3AP300%20%3FparentIso%20.%20FILTER(STRSTARTS(%3FparentIso%2C%22TR-%22))%20%3Fitem%20wdt%3AP131%20%3Fparent%20.%20%3Fitem%20wdt%3AP31%20wd%3AQ1147395%20.%20SERVICE%20wikibase%3Alabel%7Bbd%3AserviceParam%20wikibase%3Alanguage%20%22tr%2Cen%22%7D%7D"
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20DISTINCT%20%3Fname%20%3FparentIso%20WHERE%20%7B%20%3Fparent%20wdt%3AP300%20%3FparentIso%20.%20FILTER%28STRSTARTS%28%3FparentIso%2C%20%22TR-%22%29%29%20%3Fitem%20wdt%3AP131%20%3Fparent%20%3B%20wdt%3AP31%20wd%3AQ1147395%20.%20OPTIONAL%20%7B%20%3Fitem%20rdfs%3Alabel%20%3Ftr%20FILTER%28lang%28%3Ftr%29%20%3D%20%22tr%22%29%20%7D%20OPTIONAL%20%7B%20%3Fitem%20rdfs%3Alabel%20%3Fen%20FILTER%28lang%28%3Fen%29%20%3D%20%22en%22%29%20%7D%20BIND%28REPLACE%28REPLACE%28REPLACE%28COALESCE%28%3Ftr%2C%20%3Fen%2C%20%22%22%29%2C%22%5C%5Cs%2A%28%C4%B0l%C3%A7esi%7Cil%C3%A7esi%7C%C4%B0l%C3%A7e%7Cil%C3%A7e%29%5C%5Cs%2A%5C%5C%28%22%2C%20%22%20%28%22%29%2C%22%5C%5Cs%2B%28%C4%B0l%C3%A7esi%7Cil%C3%A7esi%7C%C4%B0l%C3%A7e%7Cil%C3%A7e%29%5C%5C%29%24%22%2C%20%22%29%22%29%2C%22%5C%5Cs%2A%5C%5C%28%3F%28%C4%B0l%C3%A7esi%7Cil%C3%A7esi%7C%C4%B0l%C3%A7e%7Cil%C3%A7e%29%5C%5C%29%3F%24%22%2C%20%22%22%29%20AS%20%3Fname%29%20FILTER%28%3Fname%20%21%3D%20%22%22%29%20%7D"
     license: "CC0 (Wikidata)"
     terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
     redistribution_restricted: false
@@ -49,15 +70,27 @@ download_headers:
 uncompressed_file_name: "tr_districts.csv"
 
 columns:
-  name: itemLabel
+  name: name
   admin2_id_iso: parentIso
 
 keep_unnamed_columns: False
 
+# Two items can survive the query as the same district of the same
+# province once the vocabulary is stripped. This runs before the
+# transformations, which is why the stripping is done in the query.
+drop_duplicates:
+  - name
+  - admin2_id_iso
+
+# The province layer beside this one, not the spine. Reading the spine
+# is why this recipe never ran: the spine's Turkish level 2 carries no
+# `admin2_id_iso`, so the join found no key at all, and because
+# `get_crosswalk` warns and returns an empty mapping rather than
+# raising, nothing said so.
 admin_id_crosswalk:
   admin_level: 2
   admin_id_column: admin2_id_iso
-  admin_recipe_id: "admin-spine-2026_admin2"
+  admin_recipe_id: "TR_admin-tuik-2026_admin2"
 
 create_index:
   function: "openplaces.io.admin_codes.assign_admin_ids"
