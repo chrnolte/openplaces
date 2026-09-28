@@ -1,0 +1,34 @@
+# Per-source override for US-TX-TRA_property-traviscad-2026:
+# quality_grade (_quality-grade Grade Factor) -> quality_class. Draft
+# 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_quality-class-keywords.csv for the value it
+# names; every other value falls through to it.
+#
+# Evidence: Six letters A, G, F, E, P, S, no legend. The shared letter-
+#   grade rows would read A as very good and E as low, but A holds
+#   236,579 of 256,354 graded rows (92%), the share an average grade
+#   has, so the letters are read as Average, Good, Fair, Excellent,
+#   Poor, Superior. Unverified.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   quality_class
+#                1 low to 6 excellent, as in the shared table. Empty is
+#                a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,quality_class,reviewed,note
+,A,exact,3,false,Read as average
+,G,exact,4,false,Read as good
+,F,exact,2,false,Read as fair
+,E,exact,5,false,Read as excellent
+,P,exact,1,false,Read as poor
+,S,exact,6,false,Read as superior

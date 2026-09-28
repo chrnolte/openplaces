@@ -1,0 +1,30 @@
+# Per-source override for US-PA-NO_parcel-northamptonco-2026:
+# foundation_description (BASEMENT) -> foundation_type. Draft
+# 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_foundation-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: No decoder is published. Read with the code order of
+#   Montgomery PA's BASEMENT table; the share of 4 (89.0%) is close to
+#   Montgomery's basement share (81.6%). Unverified.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   foundation_type
+#                B basement, C crawl, F fill, I pile, P pier, S slab, W
+#                solid wall. Empty is a stop row: the value stays
+#                missing and the shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,foundation_type,reviewed,note
+,1,exact,,false,Read as none
+,2,exact,C,false,Read as crawl
+,3,exact,B,false,Read as part basement
+,4,exact,B,false,Read as full basement

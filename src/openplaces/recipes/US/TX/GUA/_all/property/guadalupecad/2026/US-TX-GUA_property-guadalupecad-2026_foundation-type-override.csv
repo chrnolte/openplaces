@@ -1,0 +1,29 @@
+# Per-source override for US-TX-GUA_property-guadalupecad-2026:
+# foundation_description (_foundation-description) -> foundation_type.
+# Draft 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_foundation-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: The district writes codes both bare and labeled (CS-CONC SL,
+#   CP-CONC PO, WP-WOOD PO, MP-METAL P).
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   foundation_type
+#                B basement, C crawl, F fill, I pile, P pier, S slab, W
+#                solid wall. Empty is a stop row: the value stays
+#                missing and the shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,foundation_type,reviewed,note
+,CS,exact,S,true,Same code as CS-CONC SL
+,CP,exact,P,true,Same code as CP-CONC PO
+,WP,exact,P,true,Same code as WP-WOOD PO
+,^MP\b,regex,P,false,MP-METAL P read as metal post

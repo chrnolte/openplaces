@@ -1,0 +1,31 @@
+# Per-source override for US-OH-KN_property-knoxcounty-2026:
+# foundation_description (_dwelling BasementCode) -> foundation_type.
+# Draft 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_foundation-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: MVP1_OH_Codes.csv category Bsmt_Type: 1 None, 2 Pt Crawl, 3
+#   Pt Bsmt/Pt Slab, 4 Pt Bsmt/Pt Crawl, 5 Crawl, 6 Full Basement.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   foundation_type
+#                B basement, C crawl, F fill, I pile, P pier, S slab, W
+#                solid wall. Empty is a stop row: the value stays
+#                missing and the shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,foundation_type,reviewed,note
+,1,exact,,true,None: slab or crawl not stated
+,2,exact,C,true,Part crawl
+,3,exact,B,false,"Part basement, part slab"
+,4,exact,B,false,"Part basement, part crawl"
+,5,exact,C,true,Crawl
+,6,exact,B,true,Full basement

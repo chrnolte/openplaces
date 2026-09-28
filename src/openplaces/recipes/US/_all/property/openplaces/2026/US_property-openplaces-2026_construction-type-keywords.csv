@@ -1,0 +1,41 @@
+# Shared keyword table: construction_description (the source's own
+# words) -> construction_type (NSI bldgtype codes). Draft 2026-09-13,
+# read by the curate translation step specified in
+# plans/curate-translation-tables.md.
+#
+# Columns:
+#   pattern            text to find in the source value, matched
+#                      case-insensitively
+#   match_type         contains (literal substring) or regex
+#   construction_type  W wood, M masonry, C concrete, S steel,
+#                      H manufactured. Empty is a stop row: the value
+#                      is known to be ambiguous, no later row may claim
+#                      it, and the cell stays missing
+#   reviewed           true where the reading holds across sources;
+#                      the step fills from reviewed rows only
+#   note               why the row exists or what it guards against
+#
+# Rows apply top to bottom and the first match wins, so a specific
+# phrase sits above the general word it contains. Bare codes (single
+# letters, two-letter abbreviations, digits) never belong here: they
+# go in a per-source override beside the source recipe.
+pattern,match_type,construction_type,reviewed,note
+MOBILE|MANUFACTURED|MFG HOME|MFD HOME|(SINGLE|DOUBLE|TRIPLE)[ -]?WIDE,regex,H,true,"Manufactured housing is its own NSI class"
+MODULAR,contains,W,false,"Factory built to the site code and wood framed; not NSI H"
+MASON(RY)? ?(AND|&|/) ?FRAME|FRAME ?(AND|&|/) ?MASON|BRICK ?/ ?FRAM|FRAME ?/ ?BRICK,regex,,true,"Mixed walls name no single structural class"
+FRAME WITH CONCRETE|FRAME W/ ?CONC,regex,,true,"Minneapolis wording; stops the bare CONCRETE row below"
+VENE|BRICK V$|STONE V$,regex,W,false,"Brick or stone veneer faces a framed wall, including the TX truncations BRICK VENE and BRICK V; guards the BRICK row"
+VINYL|ALUMINUM|\bALUM\b|CLAPBOARD|SHINGLE|SIDING|HARDI|FIBER ?CEMENT|CEMENT BOARD|MASONITE|CEDAR|SHAKE,regex,W,false,"Cladding is fixed to a framed wall; above STEEL and MASON so ALUM/VINYL/STEEL siding and brick-and-vinyl are not read as steel or masonry"
+WOOD OR STEEL|WOOD/STEEL|STEEL STUD,regex,W,true,"Marshall and Swift class D and FL DOR class 4 wording: light frame"
+REINFORCED CONCRETE|CONCRETE FRAME|FIRE ?PROOF CONC|POURED CONCRETE|PRE-?CAST|TILT[ -]?UP,regex,C,true,"Concrete structural frame"
+CONCRETE BLOCK|CONC(RETE)? ?BLK|CINDER ?BLOCK|\bCMU\b|CONCRETE MASONRY,regex,M,true,"Block walls are masonry, not a concrete frame"
+STRUCTURAL STEEL|STEEL FRAME|FIRE ?PROOF(ED)? STEEL|PRE-?ENGINEERED|METAL FRAME|\bSTEEL\b,regex,S,true,"Steel frame; wood-with-steel-stud wording is claimed above"
+\bMETAL\b|\bMTL\b,regex,S,false,"DCAD frame type METAL; elsewhere may name metal cladding"
+MASON|BRICK|\bBLOCK\b|STONE|ADOBE,regex,M,true,"MASON also catches the MASONARY misspelling (Dakota MN)"
+\bCONCRETE\b|\bCONC\b,regex,C,false,"Bare concrete: frame or block not stated"
+\bLOGS?\b,regex,W,true,"Log walls are wood"
+WOOD|FRAME|TIMBER|JOIST|POST[ -]?FRAME|\bPOLE\b,regex,W,true,"Wood frame, after every more specific frame row above"
+\bWD\b|\bFR\b,regex,W,false,"Abbreviated wood or frame"
+STUCCO|DRYVIT|\bEIFS\b,regex,,true,"Stucco covers frame and masonry alike"
+FIRE ?RESISTANT|FIRE ?PROOF|INCOMBUSTIBLE|NON-?COMBUSTIBLE,regex,,true,"A fire rating without a material"
+NONE|UNKNOWN|OTHER|N/A|MIXED|VARIOUS,regex,,true,"No construction stated"

@@ -1,0 +1,33 @@
+# Per-source override for US-PA-AL_property-wprdc-2026:
+# condition (CONDITION) -> condition_class. Draft 2026-09-13, read by
+# the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_condition-class-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: The WPRDC data dictionary: 1 excellent, 7 very good, 2 good,
+#   3 average, 4 fair, 5 poor, 8 very poor, 6 unsound.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   condition_class
+#                1 unsound to 8 excellent, as in the shared table. Empty
+#                is a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,condition_class,reviewed,note
+,1,exact,8,true,Excellent
+,7,exact,7,true,Very good
+,2,exact,6,true,Good
+,3,exact,5,true,Average
+,4,exact,4,true,Fair
+,5,exact,3,true,Poor
+,8,exact,2,true,Very poor
+,6,exact,1,true,Unsound

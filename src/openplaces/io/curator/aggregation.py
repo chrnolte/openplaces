@@ -16,9 +16,31 @@ import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
 from openplaces.io.curator import CurateState, _register
+from openplaces.io.curator.provenance import record_sources, source_column
 from openplaces.io.readers import describe_recipe, get_entities
 from openplaces.recipe import resolve_attribute_name
 from openplaces.table import _agg_func_for, _has_agg_func
+
+
+def _linked_recipe_id(recipe_id: str) -> str:
+    """The recipe whose rows a link table was written for.
+
+    A link table is written in harmonize, between spines. A curate
+    recipe keeps its spine's index (`US_property-openplaces-2026`'s
+    rows are `US_property-spine-2026`'s property ids), so its rows are
+    reached through the spine's link.
+    """
+    from openplaces.recipe import get_recipe_by_id
+
+    seen = set()
+    while recipe_id not in seen:
+        seen.add(recipe_id)
+        recipe = get_recipe_by_id(recipe_id)
+        predecessor = recipe.get('entity_recipe')
+        if recipe.get('stage') != 'curate' or not predecessor:
+            return recipe_id
+        recipe_id = predecessor
+    return recipe_id
 
 
 def _rows_by_link(state, recipe_id, reference, values, functions):
@@ -52,7 +74,7 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
 
     try:
         owner = get_link_owner_recipe_id(state.recipe)
-        path = get_entity_link_path(recipe_id, owner, state.admin_id)
+        path = get_entity_link_path(_linked_recipe_id(recipe_id), owner, state.admin_id)
         links = read_entity_link(path)
     except Exception:
         # No resolvable link for this recipe and unit (a curate recipe
@@ -96,6 +118,55 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
             f'  aggregate_from_entities: grouped by {path.name} ({len(links):,d} links)'
         )
     return rows, group_key, keys
+
+
+#: Reduction for a class a parcel can only state if its properties
+#: agree on it (see `_reduce`).
+AGREE = 'agree'
+
+
+def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
+    """Reduce *values* per group, one function per column.
+
+    `agree` keeps a group's value only where every row that states one
+    states the same one, and leaves the group missing otherwise. It is
+    the rule the ingest-time stacked-units split applies to a lot's
+    units, and it exists for a class such as a foundation type: a
+    parcel with a slab house and a crawl-space house has no single
+    foundation, and `first` would name whichever row came first.
+    """
+    plain = {c: f for c, f in functions.items() if f != AGREE}
+    grouped = values[list(functions)].groupby(group_key)
+    if plain:
+        reduced = grouped.agg(plain)
+        # pandas sums an all-missing group to 0; a parcel none of whose
+        # properties states a floor area has no floor area, not a zero one.
+        reduced = reduced.where(grouped.count()[list(plain)] > 0)
+    else:
+        reduced = pd.DataFrame(index=grouped.size().index)
+    for column in functions:
+        if functions[column] != AGREE:
+            continue
+        by_group = values[column].groupby(group_key)
+        reduced[column] = by_group.first().where(by_group.nunique() == 1)
+    return reduced[list(functions)]
+
+
+def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
+    """Per group, the provenance tokens of the rows that state *column*.
+
+    Tokens are the `+`-separated parts of each row's sidecar, kept once
+    each in order of first appearance, so a parcel whose properties
+    came from two sources names both.
+    """
+    stating = values[column].notna() & values[sidecar].notna()
+    tokens = values.loc[stating, sidecar].astype(str)
+
+    def union(series):
+        parts = dict.fromkeys(t for v in series for t in v.split('+') if t)
+        return '+'.join(parts) or None
+
+    return tokens.groupby(group_key[stating]).agg(union)
 
 
 @_register('aggregate_from_entities')
@@ -144,7 +215,11 @@ def aggregate_from_entities(
         Columns to reduce. A list uses the registry's aggregation for each
         column; a mapping gives a per-column override (`{year_built: min,
         n_stories: max}`), for a column whose registry rule (a mean for
-        both) is not what the parcel needs.
+        both) is not what the parcel needs. `agree` writes a value only
+        where every reference row stating one states the same one, for
+        a class such as `foundation_type`. Where the reference carries
+        a `{column}_source` sidecar, the curated column gets one too,
+        naming the tokens of the rows its value came from.
     key : str or list of str, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both
@@ -200,8 +275,11 @@ def aggregate_from_entities(
     present = [c for c in spec if c in available]
     if not present:
         return state
+    sidecars = {c: source_column(c) for c in present if source_column(c) in available}
     reference = get_entities(
-        recipe_id, state.admin_id, columns=[reference_key, *present]
+        recipe_id,
+        state.admin_id,
+        columns=[reference_key, *present, *sidecars.values()],
     )
     if reference is None or len(reference) == 0:
         return state
@@ -234,17 +312,16 @@ def aggregate_from_entities(
             and not pd.api.types.is_numeric_dtype(series)
             else series
         )
+    for column, sidecar in sidecars.items():
+        if column in functions:
+            numeric[sidecar] = reference[sidecar]
     values = pd.DataFrame(numeric)
     linked = _rows_by_link(state, recipe_id, reference, values, functions)
     if linked is not None:
         values, group_key, keys = linked
     else:
         group_key, keys = reference[reference_key], curated[key]
-    grouped = values.groupby(group_key)
-    reduced = grouped.agg(functions)
-    # pandas sums an all-missing group to 0; a parcel none of whose
-    # properties states a floor area has no floor area, not a zero one.
-    reduced = reduced.where(grouped.count() > 0)
+    reduced = _reduce(values, group_key, functions)
     written = []
     recover = set(recover or ())
     for column in reduced.columns:
@@ -254,14 +331,21 @@ def aggregate_from_entities(
             if column in curated.columns:
                 existing = curated[column]
                 stated = pd.to_numeric(existing, errors='coerce').gt(0).fillna(False)
-                curated[column] = existing.where(~(positive & ~stated), incoming)
+                wrote = positive & ~stated
+                curated[column] = existing.where(~wrote, incoming)
             else:
+                wrote = positive
                 curated[column] = incoming.where(positive)
         elif column in curated.columns and fill_only:
             existing = curated[column]
+            wrote = existing.isna() & incoming.notna()
             curated[column] = existing.where(existing.notna(), incoming)
         else:
+            wrote = incoming.notna()
             curated[column] = incoming
+        if column in sidecars and wrote.any():
+            tokens = _union_tokens(values, group_key, column, sidecars[column])
+            record_sources(curated, column, keys.map(tokens).where(wrote))
         written.append(column)
     state.curated = curated
     if state.verbose:

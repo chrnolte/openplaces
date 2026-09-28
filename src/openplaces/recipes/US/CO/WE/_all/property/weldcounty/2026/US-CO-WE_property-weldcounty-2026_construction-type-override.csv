@@ -1,0 +1,31 @@
+# Per-source override for US-CO-WE_property-weldcounty-2026:
+# construction_description (_buildings CLASS) -> construction_type.
+# Draft 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_construction-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: CLASS is the Realware construction class letter. No list is
+#   published; the letters are read as Marshall and Swift classes, which
+#   Realware prices with.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   construction_type
+#                W wood, M masonry, C concrete, S steel, H manufactured.
+#                Empty is a stop row: the value stays missing and the
+#                shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,construction_type,reviewed,note
+,A,exact,S,false,Read as Marshall and Swift A
+,B,exact,C,false,Read as Marshall and Swift B
+,C,exact,M,false,Read as Marshall and Swift C
+,D,exact,W,false,Read as Marshall and Swift D
+,S,exact,S,false,Read as Marshall and Swift S

@@ -1,0 +1,26 @@
+# Per-source override for US-TX-KER_property-kerrcad-2025:
+# foundation_description (_foundation-description) -> foundation_type.
+# Draft 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_foundation-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: Bare codes only, no legend; unverified readings.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   foundation_type
+#                B basement, C crawl, F fill, I pile, P pier, S slab, W
+#                solid wall. Empty is a stop row: the value stays
+#                missing and the shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,foundation_type,reviewed,note
+,CS,exact,S,false,Read as concrete slab
+,PBP,exact,P,false,"Read as pier, beam and post"

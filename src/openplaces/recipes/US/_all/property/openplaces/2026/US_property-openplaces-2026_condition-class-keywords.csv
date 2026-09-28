@@ -1,0 +1,41 @@
+# Shared keyword table: condition (the source's own rating) ->
+# condition_class on a common eight-step scale. Draft 2026-09-13, read
+# by the curate translation step specified in
+# plans/curate-translation-tables.md. The scale is a proposal awaiting
+# the user's decision (see the plan's open questions).
+#
+# Columns:
+#   pattern          text to find in the source value, matched
+#                    case-insensitively
+#   match_type       contains (literal substring) or regex
+#   condition_class  the IAAO CDU ladder: 1 unsound, 2 very poor,
+#                    3 poor, 4 fair, 5 average, 6 good, 7 very good,
+#                    8 excellent. Empty is a stop row: the value is
+#                    known to be ambiguous, no later row may claim it,
+#                    and the cell stays missing
+#   reviewed         true where the reading holds across sources; the
+#                    step fills from reviewed rows only
+#   note             why the row exists or what it guards against
+#
+# Rows apply top to bottom and the first match wins, so VERY GOOD sits
+# above GOOD and VERY POOR above POOR. The two-letter CDU codes (AV,
+# GD, FR, PR, VG, VP, UN, EX) are listed because every source that
+# uses them spells them the same way; single letters (A, G, F, P, E)
+# are not, since E is excellent in one county and a grade elsewhere.
+pattern,match_type,condition_class,reviewed,note
+DEPRECIATION|NOT APPLICABLE|\bN/A\b|UNKNOWN|\bNONE\b|NO DATA|NOT ASSIGNED,regex,,true,"No condition stated"
+UNSOUND|UNINHABITABLE|UNUSABLE|SALVAGE|CONDEMNED|DILAPIDATED|\bUN\b,regex,1,true,"Unsound"
+UNDESIRABLE|STRUCTURALLY COMPROMISED,regex,1,false,"Bottom of a CDU-style ladder"
+VERY POOR|\bVP\b,regex,2,true,"Very poor"
+BADLY WORN,contains,2,false,"Adams and Weld CO wording"
+VERY GOOD|\bVG\b,regex,7,true,"Very good"
+EXCELLENT|\bEX\b,regex,8,true,"Excellent"
+NEW(ER)? CONSTRUCTION|RENOVATED|REMODELED,regex,8,false,"Newer construction, top of Philadelphia's ladder"
+AVERAGE ?\+|AVERAGE PLUS|ABOVE AVERAGE|ABOVE NORMAL,regex,5,false,"Average plus: between average and good"
+BELOW AVERAGE|BELOW NORMAL|AVERAGE ?-|AVERAGE MINUS,regex,4,false,"Below average"
+\bPOOR\b|\bPR\b,regex,3,true,"Poor"
+\bFAIR\b|\bFR\b,regex,4,true,"Fair"
+\bGOOD\b|\bGD\b,regex,6,true,"Good"
+AVERAGE|\bAVG?\b|NORMAL,regex,5,true,"Average"
+TYPICAL,contains,5,false,"DC's Typical, read as average"
+\bLOW\b,regex,3,false,"Adams CO Low condition, read as poor"

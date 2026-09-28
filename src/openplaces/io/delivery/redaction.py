@@ -55,7 +55,17 @@ _ENTITY_NAMES = frozenset(str(entity_type) for entity_type in ENTITY_TYPES)
 
 # Sidecar tokens that name a layer or a method, never a source: a cell
 # carrying only these could have come from any source feeding the layer.
-_UNSPECIFIC = _ENTITY_NAMES | {'reconciled', 'usaddress', 'imputed', 'assessor'}
+# `keywords` and `override` name the kind of table the curate step
+# `translate_descriptions` read (io.curator.translation, which sits
+# above this module and so cannot be imported here).
+_UNSPECIFIC = _ENTITY_NAMES | {
+    'reconciled',
+    'usaddress',
+    'imputed',
+    'assessor',
+    'keywords',
+    'override',
+}
 
 
 def _tokens(value) -> frozenset:

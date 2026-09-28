@@ -1,0 +1,93 @@
+# Recipe: canonical openplaces property dataset, one row per property.
+#
+# Curates the harmonized property spine. Its first task is translation:
+# ingest keeps what each county calls a foundation or a frame in a
+# descriptive column (foundation_description, construction_description,
+# Florida's construction_class code), and this recipe turns those words
+# into one vocabulary, NSI's found_type and bldgtype codes, so that a
+# slab in Galveston and a slab in Allegheny read the same.
+#
+# It runs on properties, not on parcels, because the tables are chosen
+# per source: a property row's `source` label names the roll it came
+# from, and that roll's override table is read before the shared one.
+# Parcels take the result from here (US_parcel-openplaces-2026,
+# aggregate_from_entities with `agree`). Specified in
+# plans/curate-translation-tables.md (maintainer's decision
+# 2026-09-24).
+#
+# The tables:
+# - a shared keyword table per variable beside this recipe,
+#   US_property-openplaces-2026_<variable>-keywords.csv, for sources
+#   that use words;
+# - a per-source override beside the source's own recipe,
+#   <source recipe id>_<variable>-override.csv, for sources that use
+#   codes (a Texas district's CS is a concrete slab; elsewhere it can
+#   be a crawl space), consulted first.
+# Only rows marked reviewed write a value. The drafted tables of
+# 2026-09-13 hold unreviewed rows, which leave their values missing
+# until a person or a measurement confirms them.
+
+description: >-
+  Canonical openplaces properties: each source's own foundation and
+  construction words translated into NSI's codes through shared and
+  per-source tables.
+
+stage: curate
+admin_id: US
+
+entity:
+  entity_type: property
+  source:
+    source_id: openplaces
+    # Not an external source: this is an openplaces pipeline product, so
+    # it carries whatever its inputs carry and nothing of its own. The
+    # applicable terms are derived per output by io.bundle_terms, which
+    # walks the dependency graph rather than reading a licence here.
+    # Left unrestricted-unknown deliberately: "depends on the inputs" is
+    # not "unrestricted".
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+entity_recipe: US_property-spine-2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: share
+
+pipeline:
+  # Foundation type, from the source's own foundation words or codes.
+  # Some sources map a basement-only field here (Ohio's BSMT,
+  # Allegheny's BASEMENT); "no basement" is a stop row, since it tells
+  # a slab from a crawl space not at all.
+  - step: translate_descriptions
+    output: foundation_type
+    columns: [foundation_description]
+    keywords: foundation-type-keywords
+    overrides: foundation-type-override
+
+  # Construction type. Florida's roll states a numbered construction
+  # class instead of words, which its override decodes.
+  - step: translate_descriptions
+    output: construction_type
+    columns: [construction_description, construction_class]
+    keywords: construction-type-keywords
+    overrides: construction-type-override
+
+  # The spine carries every column its sources mapped, owner names
+  # among them. This keeps registered attributes only and drops
+  # personal ones, as the transaction curate does; see that recipe for
+  # the per-user setting that can keep them on one installation.
+  - step: keep_registered_columns
+    keep:
+      - source
+      # Florida's class codes, kept beside the translation as evidence
+      # (the registry has no row for them yet).
+      - construction_class
+      - structure_quality_code
+
+  - step: cast_categoricals
+
+  - step: order_columns

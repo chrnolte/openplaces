@@ -1,0 +1,44 @@
+# Shared keyword table: quality_grade (the source's own grade) ->
+# quality_class on a common six-step scale. Draft 2026-09-13, read by
+# the curate translation step specified in
+# plans/curate-translation-tables.md. The scale is a proposal awaiting
+# the user's decision (see the plan's open questions).
+#
+# Columns:
+#   pattern        text to find in the source value, matched
+#                  case-insensitively
+#   match_type     contains (literal substring) or regex
+#   quality_class  1 low, 2 below average, 3 average, 4 above average
+#                  (good), 5 very good, 6 excellent (superior,
+#                  luxury). The six steps are FL DOR's structure
+#                  quality codes 1 to 6. Empty is a stop row: the value
+#                  is known to be ambiguous, no later row may claim it,
+#                  and the cell stays missing
+#   reviewed       true where the reading holds across sources; the
+#                  step fills from reviewed rows only
+#   note           why the row exists or what it guards against
+#
+# Rows apply top to bottom and the first match wins. The letter-grade
+# rows come first and require the letter to stand alone or be followed
+# by a sign, a digit, a space or GRADE, so C+1 - AVERAGE + reads as its
+# letter and a class code such as B12 or RA1 is never read as a grade.
+# A lone letter is an iasWorld or CAMA letter grade (A very good to E
+# low, X and AA above A); a source whose letters mean something else
+# (Travis TX: E is excellent) needs a per-source override.
+pattern,match_type,quality_class,reviewed,note
+COMMON AREA|NOT APPLICABLE|\bN/A\b|UNKNOWN|\bNONE\b|NOT ASSIGNED|NO DATA,regex,,true,"No grade stated"
+^\s*(AA|XX?)\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*(AA|XX?)\s*[+-]?\d*\s*-,regex,6,true,"AA, X and XX sit above A"
+^\s*S\s*[+-]?\s*$,regex,6,false,"S grades in Carteret NC, read as superior"
+^\s*A\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*A\s*[+-]?\d*\s*-,regex,5,true,"Letter grade A"
+^\s*B\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*B\s*[+-]?\d*\s*-,regex,4,true,"Letter grade B; a digit only after a sign, so B12 stays a class code"
+^\s*C\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*C\s*[+-]?\d*\s*-,regex,3,true,"Letter grade C"
+^\s*D\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*D\s*[+-]?\d*\s*-,regex,2,true,"Letter grade D"
+^\s*E\s*([+-]\s*\d*|0)?\s*(GRADE)?\s*$|^\s*E\s*[+-]?\d*\s*-,regex,1,true,"Letter grade E"
+EXCEPTIONAL|SUPERIOR|LUXURY|MANSION|HIGHEST|PREMIUM|CUSTOM,regex,6,true,"Top of the ladder"
+DELUXE,contains,5,false,"Cook County IL construction quality"
+EXCELLENT|VERY GOOD|VERY HIGH,regex,5,true,"Excellent or very good"
+\bVG\b,regex,5,false,"Very good abbreviated (Polk TX VG R)"
+ABOVE AVERAGE|ABOVE AVG|ABOVE NORMAL|AVERAGE ?\+|AVERAGE PLUS|\bGOOD\b|\bHIGH\b,regex,4,true,"Above average"
+BELOW AVERAGE|BELOW AVG|BELOW NORMAL|AVERAGE ?-|AVERAGE MINUS|\bFAIR\b|ECONOMY,regex,2,true,"Below average"
+AVERAGE|\bAVG\b|TYPICAL|STANDARD|NORMAL|MEDIUM,regex,3,true,"Average"
+\bLOW\b|MINIMUM|CHEAP|SUBSTANDARD|\bPOOR\b,regex,1,true,"Low cost"
