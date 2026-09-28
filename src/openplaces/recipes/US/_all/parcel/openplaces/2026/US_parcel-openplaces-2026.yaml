@@ -184,6 +184,20 @@ pipeline:
         ruleset: land-use-keywords.csv
         where_null: keyword_class
 
+      # The same reading with no guard, for the one question the guard
+      # must not silence: does the structure description name an
+      # institutional residence? Boston's roll files nursing homes and
+      # day-care centers under "residential | apartments" with the
+      # style ELDERLY HOME or DAY CARE CENTER, and with the style
+      # silenced 138 such parcels read Multi-Family (measured
+      # 2026-09-28 on US-MA-BOS by the multifamily session). Read only
+      # by the Multi-Family veto and the Institutional decision below;
+      # it never asserts a residential class on its own.
+      - output: style_class_unguarded
+        type: ruleset_class
+        column: building_style
+        ruleset: land-use-keywords.csv
+
       # Log-space z-score of max footprint area within its assessor use
       # cohort. Used to identify vacant parcels.
       - output: footprint_area_log_zscore
@@ -381,8 +395,28 @@ pipeline:
       # houses leaving Townhome) and 4.14% in Wilson NC (apartments
       # its roll files as COMMERCIAL or RESIDENTIAL Multi Family
       # Dwelling, previously Commercial or Single-Family).
+      #
+      # Two vetoes (2026-09-28, from the multifamily session's replay):
+      # the structure description names an institutional residence,
+      # which the land-use lookahead cannot see (Boston: 138 nursing
+      # homes and day-care centers filed as apartments), and the
+      # structure evidence reads Manufactured Home (Polk County FL: 675
+      # mobile homes on lots the DOR codes multi-family under ten units).
+      # A vetoed parcel falls to the Institutional decision or to the
+      # reconcile_land_use default, where the structure evidence wins,
+      # as it did before this decision existed.
       - class: Multi-Family
         min_score: 1
+        require:
+          - type: none_of
+            indicators:
+              - {type: equals, column: style_class_unguarded, value: Institutional}
+              - type: in_set
+                column: group_parcel
+                values: [Manufactured Home]
+              - type: in_set
+                column: group_footprint_fema
+                values: [Manufactured Home]
         indicators:
           - type: any_of
             indicators:
@@ -500,6 +534,10 @@ pipeline:
             indicators:
               - {type: equals, column: keyword_class, value: Institutional}
               - {type: equals, column: style_class, value: Institutional}
+              # An institutional residence named by the structure
+              # description outranks a generic residential land use
+              # (see the Multi-Family veto above).
+              - {type: equals, column: style_class_unguarded, value: Institutional}
           - type: in_set
             column: group_parcel
             values:

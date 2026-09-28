@@ -322,3 +322,59 @@ def test_row_house_style_does_not_override_a_multi_family_land_use(recipe):
     )
     assert result.iloc[0] == 'Multi-Family'
     assert result.iloc[1] == 'Townhome'
+
+
+def test_an_institutional_residence_style_outranks_an_apartments_land_use(recipe):
+    # Boston files nursing homes and day-care centers as apartments and
+    # names them only in the structure description. The land use alone
+    # would read Multi-Family; the style vetoes that and asserts
+    # Institutional. Public-housing apartments (style APARTMENTS) are
+    # untouched.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | apartments',
+                'building_style': 'ELDERLY HOME',
+            },
+            {
+                'use_group_combined': 'residential | other residential',
+                'building_style': 'DAY CARE CENTER',
+            },
+            {
+                'use_group_combined': 'residential | apartments',
+                'building_style': 'APARTMENTS',
+                'group_parcel': 'Government Services',
+            },
+        ],
+    )
+    assert result.iloc[0] == 'Institutional'
+    assert result.iloc[1] == 'Institutional'
+    assert result.iloc[2] == 'Multi-Family'
+
+
+def test_manufactured_home_evidence_vetoes_a_multi_family_land_use(recipe):
+    # Polk County FL codes lots holding mobile homes "multi-family less
+    # than 10 units". The structure evidence reads Manufactured Home,
+    # so the land-use keyword must not claim the parcel; it falls to
+    # the reconcile_land_use default, as it did before the decision.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_parcel': 'Manufactured Home',
+            },
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_footprint_fema': 'Manufactured Home',
+            },
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_parcel': 'Multi Family',
+            },
+        ],
+    )
+    assert pd.isna(result.iloc[0])
+    assert pd.isna(result.iloc[1])
+    assert result.iloc[2] == 'Multi-Family'
