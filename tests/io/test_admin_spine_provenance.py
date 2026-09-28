@@ -13,9 +13,16 @@ the same GADM values and resolved nothing a present-only spine needs.
 A country whose rows have been moved to Wikidata (CC0) says so with its
 `admin{N}_id_wikidata`, and the migration ledger records which countries
 those are; a native name (`name_original`) is Wikidata's too, and may
-stand only on a row carrying that id. The move runs one country at a
-time, so the check is against the ledger rather than against the whole
-world at once.
+stand only on a row carrying that id. The move ran one country at a
+time, so most checks here are against the ledger rather than against
+the whole world at once.
+
+Since 2026-09-28 there is also a whole-world check, because the world
+finished: every country the spine could not move off GADM was emptied
+instead, so nothing is left that no license-clean source accounts for.
+`test_every_country_in_the_spine_is_accounted_for` is the one that
+states it, and it is the only test here that would notice a country
+nothing else names.
 """
 
 import pandas as pd
@@ -153,6 +160,46 @@ def test_a_deferred_country_has_no_rows_at_that_level(level):
     assert not stray, (
         f'level {level}: the ledger defers these countries, so their rows '
         f'were removed, but the spine carries {len(stray)} again: {stray[:10]}'
+    )
+
+
+@pytest.mark.parametrize('level', LEVELS)
+def test_every_country_in_the_spine_is_accounted_for(level):
+    """No row may be in the spine without a license-clean source for it.
+
+    Every test above checks one named group: the migrated countries,
+    the unsourced ones, the deferred ones. None of them asks the
+    closing question, which is whether anything is in the spine that
+    belongs to no group at all. From 2026-09-28 the spine ships no
+    GADM, and that is only an invariant if it is stated as one.
+
+    A country counts as accounted for when the ledger calls it
+    migrated, or when code-sources.csv names the recipe that supplied
+    its codes. Deliberately **not** `_national`, which asks only
+    whether a national recipe exists: Russia had a Rosstat level-3
+    recipe that had never been ingested, so a recipe-exists test passed
+    while 2,430 GADM rayons stood in the spine, uncounted by every
+    report because the ledger does not track a country a recipe
+    claims. code-sources.csv is written by the step that copies the
+    codes, so a row in it is evidence the recipe actually ran.
+
+    Turkey is accounted for by the ledger rather than by the file: it
+    was migrated from TUIK, a national source that supplies no
+    `admin{N}_id_admin1`, so nothing registered a code source for it.
+    """
+    from openplaces.io.admin_migration import migrated
+
+    sources = _sources()
+    registered = set(sources.loc[sources['level'] == str(level), 'admin1_id'])
+    accounted = registered | migrated(level)
+    frame = _spine(level)
+    country = frame[f'admin{level}_id'].str.split('-').str[0]
+    stray = sorted(set(country) - accounted)
+    counts = {c: int((country == c).sum()) for c in stray}
+    assert not stray, (
+        f'level {level}: {sum(counts.values())} rows in {len(stray)} countries '
+        f'have no registered code source and are not recorded as migrated, so '
+        f'nothing says where they came from: {counts}'
     )
 
 
