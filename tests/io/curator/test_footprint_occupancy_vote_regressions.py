@@ -778,6 +778,44 @@ def test_a_shed_on_a_multi_family_parcel_is_secondary(recipe):
     assert classes[2] == 'Multi-Family'
 
 
+def test_an_apartment_building_without_a_dwelling_point_stays_multi_family(
+    recipe,
+):
+    """A large secondary footprint on a multi-family parcel is a building
+    of the complex, not an accessory structure.
+
+    Galveston County TX, 2026-09-28: the first cut of the shed guard
+    demoted 2,668 multi-family secondary footprints of median 239 m2 on
+    parcels of median 18 footprints, apartment buildings no Overture
+    point had landed on. Size keeps the class where dwelling evidence
+    is missing.
+    """
+    out = _run(
+        recipe,
+        [
+            # An apartment building: secondary, 360 m2, no points of its own.
+            {
+                'use_group_combined_parcel': 'APARTMENTS',
+                'priority_on_parcel': 'secondary',
+                'n_dwellings_overture': 0,
+                'length_m': 30.0,
+                'width_m': 12.0,
+            },
+            # The carport beside it stays an accessory structure.
+            {
+                'use_group_combined_parcel': 'APARTMENTS',
+                'priority_on_parcel': 'secondary',
+                'n_dwellings_overture': 0,
+                'length_m': 12.0,
+                'width_m': 6.0,
+            },
+        ],
+    )
+    classes = out['occupancy_type'].astype(object).tolist()
+    assert classes[0] == 'Multi-Family'
+    assert classes[1] == 'Secondary'
+
+
 def test_raw_code_does_not_fire_a_text_rule(recipe):
     """A code-only county's land use must not match keyword patterns.
 
