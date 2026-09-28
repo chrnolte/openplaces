@@ -135,11 +135,12 @@ pipeline:
   # use_group_combined.
   #
   # building_style is deliberately not part of the combined label
-  # (decided 2026-09-13). In some counties the occupancy signal is only
-  # in the structure description (Sampson County, NC: use_group is a
-  # land segment type, HOMESITE / CROPLAND / WOODLAND, that matches no
-  # land-use keyword, while USE_DESC names its manufactured homes), but
-  # folding it in here made cohort statistics keyed on
+  # (decided 2026-09-13). It was added for counties whose occupancy
+  # signal sits only in the structure description. Sampson County, NC
+  # was the motivating case, but on the current spine its land use
+  # comes from NC OneMap on 98% of parcels, and NC OneMap's
+  # use_subgroup already carries the county's USE_DESC text. Folding
+  # style in made cohort statistics keyed on
   # use_group_combined fragment on style text, and let two readings of
   # one assessor field vote twice. The curate parcel vote reads
   # building_style as its own indicator instead (style_class in

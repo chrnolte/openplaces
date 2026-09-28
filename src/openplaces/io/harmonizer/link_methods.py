@@ -11,11 +11,18 @@ no record of the route; this step writes the record.
 
 The label names a rule, never a strength. It is a fixed word per pass
 (`parcel_id_local`, `address_id_local`), it is written once, on the first
-pass that reaches the row, and no later pass changes or removes it. That
-is deliberate: a per-link score, a scorer tuned on the links it made, or
-a step that takes an earlier link back is the shape of a patented method
-in this domain (see the patent-risk section of AGENTS.md), and an exact
-key tried after another exact key is none of those.
+pass that reaches the row, and no later pass changes or removes it.
+
+That is deliberate, and the reason is narrower than "we add no score".
+US10606854B2's software claim (17) recites no scoring, no calibration
+and no unlinking at all, so the absence of those does not by itself
+distinguish a tiered match from it. What does is that **every tier here
+compares exact keys**: a parcel number, then an address key built from
+normalized components. Nothing falls through to a similarity
+comparison. Do not add a fuzzy tier behind these passes without the
+maintainer's decision (see the patent-risk section of AGENTS.md); the
+labels this step writes would be the natural place to hang one, which
+is exactly why the warning belongs here.
 
 The step runs after the link pass it describes and reads the same
 reference, with the same guard against placeholder keys, so it cannot
@@ -36,8 +43,12 @@ from openplaces.io.harmonizer.links import (
 from openplaces.io.readers import get_entities
 
 
-def _reference_keys(state, recipe_id, ref_key, layer=None) -> set:
-    """Usable key values of one reference table for this admin unit."""
+def _reference_keys(state, recipe_id, ref_key, layer=None, spine_key=None) -> set:
+    """Usable key values of one reference table for this admin unit.
+
+    *spine_key* is the spine's key series, passed on to the placeholder
+    guard exactly as `link_by_id` passes it, so both spare the same keys.
+    """
     try:
         ref = get_entities(recipe_id, state.admin_id, layer=layer, missing='ignore')
     except Exception as exc:
@@ -46,7 +57,7 @@ def _reference_keys(state, recipe_id, ref_key, layer=None) -> set:
     if ref is None or ref_key not in getattr(ref, 'columns', ()):
         return set()
     ref = pd.DataFrame(ref[[ref_key]])
-    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id)
+    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id, spine_key=spine_key)
     return set(ref[ref_key].dropna().astype('string'))
 
 
@@ -60,6 +71,8 @@ def record_link_method(
     auto_discover: bool = False,
     entity_type: str = 'parcel',
     output_column: str = 'parcel_link_method',
+    via_column: str | None = None,
+    via_label: str | None = None,
 ) -> HarmonizeState:
     """Label rows the preceding link pass reached and no earlier one did.
 
@@ -80,11 +93,18 @@ def record_link_method(
         Entity type discovered when *auto_discover* is set.
     output_column : str, optional
         Column written. A row already labeled keeps its label.
+    via_column, via_label : str, optional
+        A reached row with a value in *via_column* is labeled
+        *via_label* instead: a sale that named a stacked unit and found
+        the parcel through the unit's lot (`lot_id_local`,
+        `stacked_units`) came by a different rule than one whose own
+        number is a parcel's.
     """
     spine = state.spine
     if spine is None or spine_key not in spine.columns:
         return state
     ref_key = ref_key or spine_key
+    skey = spine[spine_key]
 
     keys: set = set()
     if auto_discover:
@@ -94,20 +114,23 @@ def record_link_method(
             if (match.get('key') or ref_key) != ref_key:
                 continue
             keys |= _reference_keys(
-                state, match['recipe_id'], ref_key, match.get('layer')
+                state, match['recipe_id'], ref_key, match.get('layer'), skey
             )
     elif recipe_id:
-        keys = _reference_keys(state, recipe_id, ref_key)
+        keys = _reference_keys(state, recipe_id, ref_key, spine_key=skey)
     else:
         raise ValueError('record_link_method needs recipe_id or auto_discover.')
 
-    reached = spine[spine_key].astype('string').isin(keys)
+    reached = skey.astype('string').isin(keys)
     existing = (
         spine[output_column].astype('string')
         if output_column in spine.columns
         else pd.Series(pd.NA, index=spine.index, dtype='string')
     )
-    spine[output_column] = existing.where(existing.notna() | ~reached, label)
+    labels = pd.Series(label, index=spine.index, dtype='string')
+    if via_column and via_label and via_column in spine.columns:
+        labels = labels.mask(spine[via_column].notna(), via_label)
+    spine[output_column] = existing.where(existing.notna() | ~reached, labels)
     state.spine = spine
     if state.verbose:
         n_new = int((existing.isna() & reached).sum())

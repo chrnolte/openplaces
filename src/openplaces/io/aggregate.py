@@ -248,6 +248,234 @@ def _to_id_list(ids):
     return [str(a) for a in ids]
 
 
+class _NotStreamable(Exception):
+    """Raised when a streamed aggregate cannot establish one schema."""
+
+
+def _unified_input_schema(inputs, columns):
+    """One arrow schema covering every input, or None if unobtainable.
+
+    The streaming writer fixes its schema before it sees data, so that
+    schema must already be the widest of the inputs. Taking the first
+    input's instead fails on a real panel: Miami-Dade's 2002 vintage
+    has columns that are entirely empty, which arrive as arrow type
+    `null`, and a later vintage's `large_string` cannot be cast down to
+    that. `unify_schemas` promotes the other way, and null casts to
+    anything.
+
+    Returns None when the post-transform columns are not the ones on
+    disk (a transform derived or renamed some), since their types
+    cannot be read from a footer; the caller then falls back.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    try:
+        schemas = [pq.read_schema(p) for _, p in inputs]
+        try:
+            unified = pa.unify_schemas(schemas, promote_options='permissive')
+        except TypeError:
+            # pyarrow < 14 has no promote_options.
+            unified = pa.unify_schemas(schemas)
+    except Exception:  # noqa: BLE001
+        return None
+
+    if set(columns) != set(unified.names):
+        return None
+    return pa.schema([unified.field(name) for name in columns])
+
+
+def _streamable_columns(inputs, transform):
+    """The post-transform column union of *inputs*, or None if unknowable.
+
+    The streaming writer fixes one schema before it sees any data, so it
+    needs every column up front. Parquet footers give the columns on
+    disk, but a `transform` (the legacy-column upgrader) renames and
+    derives columns, so the footer list is the wrong one: taking it
+    directly reinstated `consideration_raw` and dropped the `price` the
+    upgrader had just derived.
+
+    Applying the transform to a zero-row frame of the footer's columns
+    yields the post-transform names without reading any data. A
+    transform that cannot survive that returns None, and the caller
+    falls back to the in-memory path rather than guess.
+    """
+    columns: list[str] = []
+    for _input_id, p in inputs:
+        cols = list(parquet_columns(p))
+        if transform is not None:
+            try:
+                probe = pd.DataFrame({c: pd.Series(dtype='object') for c in cols})
+                cols = list(transform(probe).columns)
+            except Exception:  # noqa: BLE001
+                return None
+        for col in cols:
+            if col not in columns:
+                columns.append(col)
+    return columns
+
+
+def _can_stream_aggregate(*, how, final_path, replace_by, has_geo, reset_index):
+    """Whether *final_path* can be written one input at a time.
+
+    Streaming holds one input in memory instead of every input plus the
+    existing file, which is what a large panel needs: Miami-Dade's 22
+    yearly vintages are 19.1 million rows, and concatenating them beside
+    a reloaded copy of themselves needs roughly twice that in one frame.
+
+    It is only possible when nothing has to be compared across the whole
+    result: no geometry to give one CRS, no `replace_by` row surgery, no
+    meaningful index to sort, and no existing file to de-duplicate
+    against.
+    """
+    if has_geo or replace_by is not None or not reset_index:
+        return False
+    return how == 'replace' or not final_path.exists()
+
+
+def _stream_aggregate_to_file(
+    final_path,
+    inputs,
+    *,
+    combined=False,
+    file_metadata=None,
+    transform=None,
+    verbose=False,
+):
+    """Concatenate *inputs* into *final_path* one input at a time.
+
+    Same result as the in-memory path for the cases
+    `_can_stream_aggregate` allows, at the memory cost of a single
+    input rather than all of them.
+
+    Duplicate detection is by 64-bit row hash rather than by holding the
+    rows: a hash collision would raise a spurious duplicate error, never
+    merge two distinct rows, so the failure direction is safe. Rows are
+    written to a temporary file and moved into place only once the whole
+    batch has been checked, so a duplicate leaves no partial output.
+
+    Parameters
+    ----------
+    final_path : pathlib.Path
+        Output parquet path.
+    inputs : list of (id, pathlib.Path)
+        Files to concatenate, each paired with its partition id.
+    combined : bool
+        Accepted for signature parity with `_aggregate_to_file`; a
+        streamed aggregate never carries geometry, so it has no effect.
+    file_metadata : dict of str to str, optional
+        Footer key-value metadata written to the output.
+    transform : callable, optional
+        Applied to every frame after reading.
+    verbose : bool
+        Print a one-line summary.
+
+    Raises
+    ------
+    ValueError
+        If the batch contains full-row duplicates across its inputs.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    columns = _streamable_columns(inputs, transform)
+    if columns is None:
+        raise _NotStreamable(final_path.name)
+
+    # The schema has to be the *widest* of the inputs, not the first
+    # input's. A column that is empty in the earliest vintage arrives
+    # as arrow type `null`, and the first attempt at this fixed the
+    # schema from the first chunk and then tried to cast a later
+    # vintage's `large_string` down to it, which arrow rightly refuses.
+    # Unifying the parquet footers promotes null to the real type
+    # instead, and a null-to-anything cast is always available.
+    target_schema = _unified_input_schema(inputs, columns)
+    if target_schema is None:
+        raise _NotStreamable(final_path.name)
+
+    tmp_path = final_path.with_name(final_path.name + '.building')
+    writer = None
+    schema = None
+    hashes = []
+    n_rows = 0
+    try:
+        for _input_id, p in inputs:
+            df = read_parquet(p, geom=False)
+            if transform is not None:
+                df = transform(df)
+            df = df.reset_index(drop=True)
+            df = df.reindex(columns=columns)
+            df = coerce_mixed_object_columns(df)
+            hashes.append(pd.util.hash_pandas_object(df, index=False).to_numpy())
+            n_rows += len(df)
+            table = pa.Table.from_pandas(df, preserve_index=False)
+            if not table.schema.equals(target_schema, check_metadata=False):
+                table = table.cast(target_schema)
+            if writer is None:
+                # The footer metadata goes on the schema up front: setting
+                # it afterwards would mean reading the finished file back
+                # in full, which is the thing this path exists to avoid.
+                schema = target_schema
+                if file_metadata:
+                    merged_meta = dict(table.schema.metadata or {})
+                    merged_meta.update(
+                        {
+                            (k.encode() if isinstance(k, str) else k): (
+                                v.encode() if isinstance(v, str) else v
+                            )
+                            for k, v in file_metadata.items()
+                        }
+                    )
+                    schema = target_schema.with_metadata(merged_meta)
+                writer = pq.ParquetWriter(tmp_path, schema)
+            table = table.replace_schema_metadata(schema.metadata)
+            writer.write_table(table)
+            del df, table
+        if writer is None:
+            raise ValueError(f'No inputs to aggregate into {final_path.name}')
+
+        all_hashes = np.concatenate(hashes) if hashes else np.empty(0, dtype=np.uint64)
+        hashes.clear()
+        n_unique = len(np.unique(all_hashes))
+        if n_unique != n_rows:
+            input_ids = ', '.join(str(input_id) for input_id, _ in inputs)
+            raise ValueError(
+                f'New data for {final_path.name} contains '
+                f'{n_rows - n_unique} duplicate row(s) before aggregation; '
+                'refusing to merge. This usually means the same rows were '
+                f'saved into several input partitions. Inspect the input '
+                f'files ({input_ids}); rows are not shown because they may '
+                'contain personal data.'
+            )
+
+    except PermissionError as e:
+        raise PermissionError(
+            f'Cannot write to {final_path.name}.\n\n'
+            '\033[1m-> Close the file in QGIS / ArcGIS / Dropbox sync '
+            'and re-run.\033[0m'
+        ) from e
+    except BaseException:
+        # A partial temp file is never left behind to be mistaken for
+        # a finished aggregate.
+        if writer is not None:
+            writer.close()
+            writer = None
+        tmp_path.unlink(missing_ok=True)
+        raise
+    finally:
+        if writer is not None:
+            writer.close()
+
+    # Move into place only now that the whole batch has been checked.
+    tmp_path.replace(final_path)
+
+    if verbose:
+        print(
+            f'Aggregated {len(inputs)} chunk(s) -> {final_path.name} '
+            f'({n_rows:,} rows, streamed)'
+        )
+
+
 def _aggregate_to_file(
     final_path,
     inputs,
@@ -344,6 +572,39 @@ def _aggregate_to_file(
     # the bare chunk came first) or raise (when it came later).
     input_has_geo = {p: _has_geometry(p) for p in input_paths}
     has_geo = any(input_has_geo.values())
+
+    # A large panel rolled up in one frame is the memory ceiling of the
+    # whole ingest: Miami-Dade's 22 vintages are 19.1 million rows, and
+    # the in-memory path below holds them beside a reloaded copy of the
+    # existing file. Stream instead wherever nothing has to be compared
+    # across the whole result.
+    if _can_stream_aggregate(
+        how=how,
+        final_path=final_path,
+        replace_by=replace_by,
+        has_geo=has_geo,
+        reset_index=reset_index,
+    ):
+        try:
+            _stream_aggregate_to_file(
+                final_path,
+                inputs,
+                combined=combined,
+                file_metadata=file_metadata,
+                transform=transform,
+                verbose=verbose,
+            )
+        except _NotStreamable:
+            # Fall through to the in-memory path, which needs no schema
+            # up front. Correctness first: a batch whose columns cannot
+            # be known before reading is rare, and being slow on it
+            # beats writing it wrong.
+            pass
+        else:
+            if not keep_original:
+                for _input_id, p in inputs:
+                    _delete_parquet_pair(p)
+            return
 
     try:
         dfs = []

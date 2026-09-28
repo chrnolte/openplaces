@@ -713,6 +713,71 @@ def test_single_family_keyword_reads_a_dropped_l(recipe):
     assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
 
 
+@pytest.mark.parametrize(
+    'label',
+    ['RES THREE FAMILY', 'RES 3-FAMILY', 'FOUR FAMILY', 'THREE DECKER'],
+)
+def test_three_family_and_decker_keywords_read_multi_family(recipe, label):
+    """Counts above two and the decker name the class, as two-family does.
+
+    The parcel vote's keyword file reads them; the footprint file
+    stopped at two-family, so a three-decker's footprint had no keyword
+    claim at all.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': label,
+                'n_dwellings_overture': 3,
+                'length_m': 15.0,
+                'width_m': 10.0,
+            }
+        ],
+    )
+    assert out['occupancy_keyword_class'].astype(object).iloc[0] == 'Multi-Family'
+
+
+def test_a_shed_on_a_multi_family_parcel_is_secondary(recipe):
+    """The parcel's keyword marks every footprint alike; a secondary
+    footprint keeps Multi-Family only on its own dwelling evidence.
+
+    Wake County NC: 94 secondary footprints of median 27 m2 on THREEFAM
+    and FOURFAM parcels read Multi-Family from the parcel label alone.
+    """
+    out = _run(
+        recipe,
+        [
+            # The shed: secondary, small, no dwellings of its own.
+            {
+                'use_group_combined_parcel': 'RES THREE FAMILY',
+                'priority_on_parcel': 'secondary',
+                'length_m': 6.0,
+                'width_m': 4.5,
+            },
+            # A second building with its own dwelling points keeps the class.
+            {
+                'use_group_combined_parcel': 'RES THREE FAMILY',
+                'priority_on_parcel': 'secondary',
+                'n_dwellings_overture': 3,
+                'length_m': 15.0,
+                'width_m': 10.0,
+            },
+            # The principal building, as before.
+            {
+                'use_group_combined_parcel': 'RES THREE FAMILY',
+                'n_dwellings_overture': 3,
+                'length_m': 15.0,
+                'width_m': 10.0,
+            },
+        ],
+    )
+    classes = out['occupancy_type'].astype(object).tolist()
+    assert classes[0] == 'Secondary'
+    assert classes[1] == 'Multi-Family'
+    assert classes[2] == 'Multi-Family'
+
+
 def test_raw_code_does_not_fire_a_text_rule(recipe):
     """A code-only county's land use must not match keyword patterns.
 

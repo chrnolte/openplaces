@@ -41,3 +41,6 @@ US-NC-NOR,northamptoncounty,parcel,,simple,,
 US-NC-PAM,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-PAM,pamlicocounty,parcel,,simple,,
 US-TN,tncomptroller,parcel,,simple,,
+US-FL-HO,floridagio,parcel,,simple,1,
+US-FL-MR,floridagio,parcel,,simple,1,
+US-FL-LA,floridagio,parcel,,simple,1,

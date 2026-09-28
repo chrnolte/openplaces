@@ -141,13 +141,39 @@ class AvenuAdapter:
             d = _date.fromisoformat(iso)
             return f'{d.month}/{d.day}/{d.year}'
 
-        # Switch to Recorded Date Search
+        # Switch to Recorded Date Search. The bundled selector is a
+        # positional id (`..._LinnkButton_15`, the site's own spelling),
+        # and the number is that link's place in the criteria menu,
+        # which differs per registry: Norfolk has no 15th entry, so
+        # Brookline died on `null.click()` twice, a minute into a crawl,
+        # with a stack trace naming neither the selector nor the county.
+        # Resolve by the link's text first and keep the id as a
+        # fallback, so a registry that renumbers its menu still works.
+        target_id = await self.page.evaluate(
+            """(sel) => {
+                const byId = document.querySelector(sel);
+                if (byId) return byId.id || sel;
+                const links = Array.from(document.querySelectorAll('a'));
+                const hit = links.find(
+                    a => /recorded\\s*date/i.test(a.textContent || '')
+                );
+                return hit ? (hit.id || null) : null;
+            }""",
+            CRITERIA_DATE_SEARCH,
+        )
+        if not target_id:
+            raise RuntimeError(
+                'Avenu: no "Recorded Date Search" link on this registry '
+                f'({self.base_url}); the bundled selector '
+                f'{CRITERIA_DATE_SEARCH!r} is positional and this menu '
+                'does not have that entry.'
+            )
         async with self.page.expect_response(
             lambda r: r.url.endswith('Default.aspx') and r.request.method == 'POST',
             timeout=15000,
         ):
             await self.page.evaluate(
-                f"document.querySelector('{CRITERIA_DATE_SEARCH}').click()"
+                '(id) => document.getElementById(id).click()', target_id
             )
         await self.page.wait_for_load_state('networkidle')
         await self._wait_unblocked()

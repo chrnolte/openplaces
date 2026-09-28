@@ -36,7 +36,7 @@ import warnings
 
 import pandas as pd
 
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer import HarmonizeState, _register, normalize_admin_name
 from openplaces.io.readers import get_admin
 
 _TYPE_SUFFIX = re.compile(r'\s+(city|town|village|township|borough)$', re.I)
@@ -44,10 +44,10 @@ _TYPE_SUFFIX = re.compile(r'\s+(city|town|village|township|borough)$', re.I)
 
 def _normalized_name(names: pd.Series) -> pd.Series:
     """Fold a unit name to the form two sources can agree on."""
+    # The type word goes first: a municipality's is the Census suffix on
+    # its name ("Adams city"), not part of what the source calls it.
     text = names.astype('string').str.strip()
-    text = text.str.replace(_TYPE_SUFFIX, '', regex=True).str.upper()
-    text = text.str.replace(r'\bSAINT\b', 'ST', regex=True)
-    return text.str.replace(r'[^A-Z0-9]', '', regex=True)
+    return normalize_admin_name(text.str.replace(_TYPE_SUFFIX, '', regex=True))
 
 
 def match_admin_names(

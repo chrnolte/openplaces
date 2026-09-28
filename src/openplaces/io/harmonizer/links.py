@@ -47,6 +47,7 @@ from openplaces.io import to_parquet
 from openplaces.io.aggregate import _agg_func_for, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
+    _PROVENANCE_SUFFIX,
     _STEP_PHASES,
     HarmonizeState,
     _register,
@@ -72,6 +73,13 @@ from openplaces.table import require_unique_index
 # The key link_by_id joins on unless a recipe names another. Auto-discovery
 # resolves its own key per match; anything else here is a caller override.
 DEFAULT_LINK_KEY = 'parcel_id_local'
+
+# Spine columns whose values are parcel_id_local keys, whatever the
+# column is called. `parcel_link_key` (io/harmonizer/parcel_link_keys.py)
+# holds the same key for every row that does not name a stacked unit, so
+# a guard that recognizes only the literal default name stops guarding a
+# spine that has moved onto it.
+PARCEL_ID_LOCAL_KEYS = (DEFAULT_LINK_KEY, 'parcel_link_key')
 
 # Matching keys an auto-discovered link never copies onto the spine by
 # default (see link_by_id's auto_discover branch).
@@ -2172,15 +2180,22 @@ def _write_prioritized(
         rather than every joined attribute, to avoid a provenance-sidecar
         column explosion.
     """
-    from openplaces.io.harmonizer import _record_source
+    from openplaces.io.harmonizer import _record_source, _record_sources
+
+    def _mark(mask) -> None:
+        """Record provenance, per row where the caller supplied it."""
+        if isinstance(provenance_token, pd.Series):
+            _record_sources(spine, name, provenance_token, mask)
+        else:
+            _record_source(spine, name, mask, provenance_token)
 
     if name not in spine.columns:
         spine[name] = new_vals
-        if provenance_token:
-            _record_source(spine, name, new_vals.notna(), provenance_token)
+        if provenance_token is not None:
+            _mark(new_vals.notna())
         return
 
-    before = spine[name].copy() if provenance_token else None
+    before = spine[name].copy() if provenance_token is not None else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
     existing, incoming = _align_for_combine(spine[name], new_vals)
     if coverage >= majority_coverage:
@@ -2188,10 +2203,10 @@ def _write_prioritized(
     else:
         spine[name] = existing.combine_first(incoming)
 
-    if provenance_token:
+    if provenance_token is not None:
         after = spine[name]
         changed = after.notna() & (before.isna() | (before != after))
-        _record_source(spine, name, changed, provenance_token)
+        _mark(changed)
 
 
 #: Columns *ref_address_key* needs on the reference: keyword name of
@@ -2436,8 +2451,39 @@ def _columns_as_pairs(
     return [(c, c) for c in columns]
 
 
+def _upstream_tokens(ref_indexed, column: str, skey: pd.Series, token: str | None):
+    """Per-row provenance for a joined column, original source preferred.
+
+    A reference that records where its own values came from is asked
+    first: its `{column}_source` is carried through the join so the
+    spine keeps the name of the source that *originally* supplied the
+    value, not the name of the table it was read out of. Where the
+    reference has no sidecar, or none for a given row, the recipe's own
+    token stands in.
+
+    This is what makes the sidecar usable by
+    :func:`openplaces.io.redaction.withhold`, which withholds a
+    restricted source's values cell by cell by matching that name. A
+    value taken from a parcel spine used to read `spine`, hiding the
+    county source that supplied it, so a restricted county reaching a
+    sale through the spine could not be withheld per cell.
+    """
+    if token is None:
+        return None
+    sidecar = f'{column}{_PROVENANCE_SUFFIX}'
+    if sidecar not in ref_indexed.columns:
+        return token
+    upstream = skey.map(ref_indexed[sidecar])
+    return upstream.where(upstream.notna(), token)
+
+
 def _warn_if_link_underperforms(
-    matched: int, total: int, spine_key: str, recipe_id: str, admin_id
+    matched: int,
+    total: int,
+    spine_key: str,
+    recipe_id: str,
+    admin_id,
+    fill_only: bool = False,
 ) -> None:
     """Flag a `parcel_id_local` join that resolved too few of the spine.
 
@@ -2449,10 +2495,23 @@ def _warn_if_link_underperforms(
     `PARCEL_ID_RELINK_THRESHOLD` and a shortfall is named, with the
     command that re-derives the rule from the data actually in hand.
 
-    Only `parcel_id_local` joins are checked: other keys are not derived
-    by a conversion this repository can re-fit.
+    Only keys carrying a `parcel_id_local` value are checked: others are
+    not derived by a conversion this repository can re-fit. That includes
+    `parcel_link_key`, which *is* that key for all but the rows naming a
+    stacked unit. Checking it is not optional housekeeping: Lake County
+    FL fell from 96.5% to nothing when its bundled conversion stopped
+    fitting, and said so to no one, because the spine had by then moved
+    off the literal column name this guard used to require.
     """
-    if spine_key != DEFAULT_LINK_KEY or not total:
+    if spine_key not in PARCEL_ID_LOCAL_KEYS or not total:
+        return
+    # A `fill_only` pass exists to reach the rows an earlier pass could
+    # not, so matching a minority is its job, not a symptom. The
+    # transaction spine's property link reaches only sales of stacked
+    # units: warning on it fired for 30 Florida counties at once and
+    # buried the passes that genuinely misfit (Pasco's parcel join at
+    # 62.4%, Volusia's at 60.5%).
+    if fill_only:
         return
     achieved = matched / total
     if achieved >= PARCEL_ID_RELINK_THRESHOLD:
@@ -3037,7 +3096,11 @@ def link_by_id(
                 skey.map(mapper),
                 # A lossy key must only fill what a precise one left.
                 majority_coverage=float('inf') if fill_only else 0.5,
-                provenance_token=token if out_name in provenance_cols else None,
+                provenance_token=(
+                    _upstream_tokens(ref_unique, col, skey, token)
+                    if out_name in provenance_cols
+                    else None
+                ),
             )
         matched = int(skey.isin(set(rkey.dropna())).sum())
         if state.verbose:
@@ -3046,7 +3109,7 @@ def link_by_id(
                 f'rows matched {recipe_id} ({len(pairs)} columns)'
             )
         _warn_if_link_underperforms(
-            matched, len(spine), spine_key, recipe_id, state.admin_id
+            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
         )
     elif mode == 'count':
         count_as = count_as or 'n_transactions'
@@ -3188,6 +3251,14 @@ def link_by_id(
                 new_vals,
                 # A lossy key must only fill what a precise one left.
                 majority_coverage=float('inf') if fill_only else 0.5,
+                # The recipe's own name, not an upstream sidecar, unlike
+                # the 'attributes' branch. Two reasons, and they agree:
+                # this is the auto-discovered path, so `recipe_id` is
+                # already the county source that supplied the value and
+                # there is nothing more original to reach; and a value
+                # here may be an aggregate over several reference rows,
+                # which can disagree about their own provenance, so one
+                # token per spine row would be a guess.
                 provenance_token=token if out_name in provenance_cols else None,
             )
         # count_as=False asks for the attributes alone: a spine receiving
@@ -3200,13 +3271,21 @@ def link_by_id(
             gsize = grouped.size()
             mapper = gsize.to_dict() if gsize.empty else gsize
             _accumulate_count(state, spine, count_col, skey.map(mapper))
+        # Counted whether or not anyone is watching: this is the mode
+        # auto-discovery uses, so a spine whose only parcel link is an
+        # auto-discovered one is exactly the case that most needs the
+        # guard below. Computing it only under `verbose` is how Holmes
+        # County FL rebuilt at 6.8% matched without a word.
+        matched = int(skey.isin(set(rkey.dropna())).sum())
         if state.verbose:
-            matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
                 f'rows matched {recipe_id} '
                 f'({len(pairs)} columns, {count_col or "no count"})'
             )
+        _warn_if_link_underperforms(
+            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+        )
     else:
         raise ValueError(
             f'link_by_id: unknown mode {mode!r}; expected '

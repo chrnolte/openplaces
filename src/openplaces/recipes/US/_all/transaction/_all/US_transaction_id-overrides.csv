@@ -45,3 +45,6 @@ US-FL-AL,fldor,parcel,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_af
 US-FL-OS,fldor,parcel,Sx,string_lengths: 1 2 2 2 3 4 4 & skip_empty: 1,1
 US-FL-SA,fldor,parcel,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,1
 US-FL-OR,fldor,parcel,Dx,string_lengths: 2 2 2 4 2 3 & skip_empty: 1,
+US-FL-HO,fldor,parcel,,simple,1
+US-FL-MR,fldor,parcel,,simple,1
+US-FL-LA,fldor,parcel,,simple,1

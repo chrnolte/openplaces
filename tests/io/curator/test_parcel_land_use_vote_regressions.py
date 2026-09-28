@@ -207,3 +207,174 @@ def test_service_station_is_not_swept_into_rv_park(recipe):
     # Matches nothing at all now, rather than matching the RV pattern.
     assert pd.isna(out.iloc[0])
     assert out.iloc[1] == 'RV Park'
+
+
+def _keyword_class(recipe, labels: list[str]) -> pd.Series:
+    """Classify labels with the shipped keyword_class indicator alone."""
+    state = CurateState(
+        recipe=recipe,
+        entity_recipe={},
+        admin_id=None,
+        verbose=False,
+        timer=None,
+        curated=pd.DataFrame({'use_group_combined': labels}),
+    )
+    derive = _step(recipe, 'derive_indicators')
+    spec = next(i for i in derive['indicators'] if i['output'] == 'keyword_class')
+    return derive_indicators(state, [spec]).curated['keyword_class'].astype(object)
+
+
+# Fabricated labels in the shapes assessor rolls use. Each pins either a
+# Multi-Family match or a rule the Multi-Family row must not displace.
+MULTI_FAMILY_KEYWORD_CASES = [
+    ('residential | two family', 'Multi-Family'),
+    ('residential | three family', 'Multi-Family'),
+    ('RES/ 2-FAMILY', 'Multi-Family'),
+    ('DUPLEX', 'Multi-Family'),
+    ('THREE DECKER', 'Multi-Family'),
+    ('residential | apartments 4-8 units', 'Multi-Family'),
+    # An apartment building taxed as commercial is still apartments.
+    ('COMMERCIAL | MULTI FAMILY DWELLING', 'Multi-Family'),
+    # "Family" alone is not a count: single family names no class here.
+    ('residential | single family', None),
+    ('MULTIPLE HOUSES ON ONE PARCEL', 'Multiple Single-Family'),
+    # MULTI must qualify a dwelling, not a split-level house.
+    ('SPLIT MULTI LEVEL', None),
+    # Earlier rows keep precedence where the label names them.
+    ('residential | condominium | TWO FAMILY', 'Condominium'),
+    ('TOWNHOUSE APARTMENT', 'Townhome'),
+    ('DOUBLE WIDE DUPLEX', 'Manufactured Home'),
+    ('VACANT DUPLEX LOT', 'Vacant'),
+    # Mixed use keeps its non-residential reading.
+    ('mixed | mixed residential commercial', 'Commercial'),
+    ('STORES/APT', 'Retail'),
+    ('OFFICE/APTS', 'Office'),
+    ('DEPARTMENT STORE', 'Retail'),
+]
+
+
+@pytest.mark.parametrize(('label', 'expected'), MULTI_FAMILY_KEYWORD_CASES)
+def test_multi_family_keyword_row(recipe, label, expected):
+    out = _keyword_class(recipe, [label])
+    if expected is None:
+        assert pd.isna(out.iloc[0])
+    else:
+        assert out.iloc[0] == expected
+
+
+def test_multi_family_land_use_outvotes_a_single_family_default(recipe):
+    # NSI and FEMA both model a single-family house, but the roll
+    # records two families. Without the keyword decision the parcel was
+    # left to reconcile_land_use, where the two models outvote the roll.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | two family',
+                'group_parcel': 'Single Family',
+                'group_footprint_fema': 'Single Family',
+            }
+        ],
+    )
+    assert result.iloc[0] == 'Multi-Family'
+
+
+def test_style_asserts_multi_family_only_with_corroboration(recipe):
+    # A structure description is a second reading of the same record: on
+    # its own it leaves the parcel to the reconcile_land_use default,
+    # and it counts once an independent source reads Multi Family.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | other residential',
+                'building_style': 'APARTMENTS',
+            },
+            {
+                'use_group_combined': 'residential | other residential',
+                'building_style': 'APARTMENTS',
+                'group_footprint_fema': 'Multi Family',
+            },
+        ],
+    )
+    assert pd.isna(result.iloc[0])
+    assert result.iloc[1] == 'Multi-Family'
+
+
+def test_row_house_style_does_not_override_a_multi_family_land_use(recipe):
+    # A three family whose style reads ROW MIDDLE is a multi-unit row
+    # house: the land use names the class, so the style is silent. The
+    # same style on a single-family land use still marks a townhome.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | three family',
+                'building_style': 'ROW MIDDLE',
+                'group_parcel': 'Single Family',
+            },
+            {
+                'use_group_combined': 'residential | single family',
+                'building_style': 'ROW MIDDLE',
+                'group_parcel': 'Single Family',
+            },
+        ],
+    )
+    assert result.iloc[0] == 'Multi-Family'
+    assert result.iloc[1] == 'Townhome'
+
+
+def test_an_institutional_residence_style_outranks_an_apartments_land_use(recipe):
+    # Boston files nursing homes and day-care centers as apartments and
+    # names them only in the structure description. The land use alone
+    # would read Multi-Family; the style vetoes that and asserts
+    # Institutional. Public-housing apartments (style APARTMENTS) are
+    # untouched.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | apartments',
+                'building_style': 'ELDERLY HOME',
+            },
+            {
+                'use_group_combined': 'residential | other residential',
+                'building_style': 'DAY CARE CENTER',
+            },
+            {
+                'use_group_combined': 'residential | apartments',
+                'building_style': 'APARTMENTS',
+                'group_parcel': 'Government Services',
+            },
+        ],
+    )
+    assert result.iloc[0] == 'Institutional'
+    assert result.iloc[1] == 'Institutional'
+    assert result.iloc[2] == 'Multi-Family'
+
+
+def test_manufactured_home_evidence_vetoes_a_multi_family_land_use(recipe):
+    # Polk County FL codes lots holding mobile homes "multi-family less
+    # than 10 units". The structure evidence reads Manufactured Home,
+    # so the land-use keyword must not claim the parcel; it falls to
+    # the reconcile_land_use default, as it did before the decision.
+    result = _classify(
+        recipe,
+        [
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_parcel': 'Manufactured Home',
+            },
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_footprint_fema': 'Manufactured Home',
+            },
+            {
+                'use_group_combined': 'residential | multi-family less than 10',
+                'group_parcel': 'Multi Family',
+            },
+        ],
+    )
+    assert pd.isna(result.iloc[0])
+    assert pd.isna(result.iloc[1])
+    assert result.iloc[2] == 'Multi-Family'

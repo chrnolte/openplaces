@@ -1193,6 +1193,19 @@ pipeline:
                 column: occupancy_type_prevote
                 values: [Single-Family, Multi-Family, Manufactured Home, Secondary]
               - {type: is_null, column: occupancy_type_prevote}
+          # The parcel's labels (assessor keyword, NSI, FEMA) mark every
+          # footprint on the parcel alike, so the shed beside a
+          # three-decker read Multi-Family: 94 secondary footprints of
+          # median 27 m2 on THREEFAM and FOURFAM parcels in Wake County
+          # NC, and 75 of 77 two-family outbuildings before that
+          # (measured 2026-09-28). A secondary footprint keeps the class
+          # only on its own dwelling evidence, Overture's points on the
+          # outline itself; otherwise it is the accessory structure the
+          # Secondary decision below names.
+          - type: any_of
+            indicators:
+              - {type: in_set, column: priority_on_parcel, values: [primary, unknown]}
+              - {type: numeric_at_least, column: n_dwellings_overture, min: 2}
         indicators:
           # Question 1 already decided this; the indicator simply carries that
           # decision through so the class is written. Its provenance is
