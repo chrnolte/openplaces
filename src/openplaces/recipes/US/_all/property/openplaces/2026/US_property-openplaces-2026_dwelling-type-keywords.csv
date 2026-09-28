@@ -1,0 +1,35 @@
+# Shared keyword table: dwelling_type_description (and building_style
+# where the step is configured to fall back to it) -> dwelling_class.
+# Draft 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md.
+#
+# Columns:
+#   pattern         text to find in the source value, matched
+#                   case-insensitively
+#   match_type      contains (literal substring) or regex
+#   dwelling_class  Not a Dwelling (parking space, boat slip, storage
+#                   unit), Manufactured Home, Attached (end, center or
+#                   interior unit, row, townhouse, condo, multi-unit),
+#                   Detached. Empty is a stop row: the value is known
+#                   to be ambiguous, no later row may claim it, and the
+#                   cell stays missing
+#   reviewed        true where the reading holds across sources; the
+#                   step fills from reviewed rows only
+#   note            why the row exists or what it guards against
+#
+# Rows apply top to bottom and the first match wins. The accessory
+# dwelling stop sits first so GARAGE APT is not read as a garage, and
+# SEMI-DETACHED is claimed by Attached before the Detached row.
+pattern,match_type,dwelling_class,reviewed,note
+GARAGE APT|APARTMENT OVER GARAGE|APT OVER GAR|GUEST HOUSE|IN-?LAW|ACCESSORY,regex,,true,"An accessory dwelling: a dwelling, attachment unstated"
+PARKING|BOAT ?SLIP|STORAGE|GARAGE (SPACE|UNIT|STALL|CONDO),regex,Not a Dwelling,true,"MD SDAT unit types and condo parking or storage units"
+CABANA|LOCKER|CARPORT|BOAT ?(DOCK|LIFT),regex,Not a Dwelling,false,"Rarer non-dwelling unit types"
+MOD ?/ ?MAN,regex,,true,"Union OH MOD/MAN joins modular and manufactured"
+MOBILE|MANUFACTURED|\bMANUF\b|(SINGLE|DOUBLE|TRIPLE)[ -]?WIDE|MULTI[ -]?SECTION|MOHO|MAN\. (SINGLE|DOUBLE),regex,Manufactured Home,true,"Manufactured home, including Nash NC's MANUF HOME"
+\bMH\b,regex,Manufactured Home,false,"MH abbreviation"
+END UNIT|CENTER UNIT|CENTRE UNIT|INTERIOR UNIT|MIDDLE UNIT|INSIDE UNIT|\bROW\b|ROW ?HOUSE|TOWN ?HOUSE|TOWN ?HOME|DUPLEX|TRIPLEX|SEMI-?DET|CONDO|APARTMENT,regex,Attached,true,"Shares a wall with another dwelling"
+\bEND\b|\bINSIDE\b|\bTH\b|\bTWIN\b|QUAD|FOURPLEX|STACK|GARDEN|\bAPT\b|MULTI[ -]?(FAM|CONV|GRDN)|(TWO|THREE|FOUR|2|3|4)[ -]?FAM|DECKER|CONVER|\b(LOW|MID|HIGH)[ -]?RISE\b,regex,Attached,false,"Multi-unit forms: shared walls or floors likely"
+MODULAR,contains,Detached,false,"Modular home, usually one detached house"
+SINGLE[ -]?FAM|DETACHED|FREE ?STANDING,regex,Detached,true,"One detached house"
+STANDARD UNIT|RANCH|COLONIAL|\bCAPE\b|BUNGALOW|COTTAGE|CONVENTIONAL|CONVENT|SPLIT|BI-?LEVEL|CONTEMP|VICTORIAN|TUDOR|GARRISON|GAMBREL|SALT ?BOX|A-FRAME|\bLOG\b|CABIN|FARM ?HOUSE|OLD STYLE|ANTIQUE|MODERN,regex,Detached,false,"House styles, mostly detached; a condo may carry a style too"
+RENTAL|COMMERCIAL|VACANT|\bOTHER\b|UNKNOWN|MIXED USE|OUTBUILDING,regex,,true,"No dwelling type stated"

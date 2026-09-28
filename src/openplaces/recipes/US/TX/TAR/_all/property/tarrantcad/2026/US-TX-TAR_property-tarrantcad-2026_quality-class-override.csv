@@ -1,0 +1,29 @@
+# Per-source override for US-TX-TAR_property-tarrantcad-2026:
+# quality_grade (_supplemental Quality) -> quality_class. Draft
+# 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_quality-class-keywords.csv for the value it
+# names; every other value falls through to it.
+#
+# Evidence: TAD's ladder is Low, Average, Above Average, Good,
+#   Excellent, Highest: Good sits above Above Average, which the shared
+#   table reads as the same step.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   quality_class
+#                1 low to 6 excellent, as in the shared table. Empty is
+#                a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,quality_class,reviewed,note
+,Good,exact,5,false,Above Above Average
+,Excellent,exact,6,false,Below Highest only
+,Common Area Quality,exact,,true,Not a grade

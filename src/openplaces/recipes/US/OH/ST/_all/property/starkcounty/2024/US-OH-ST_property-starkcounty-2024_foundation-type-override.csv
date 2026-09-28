@@ -1,0 +1,28 @@
+# Per-source override for US-OH-ST_property-starkcounty-2024:
+# foundation_description (BSMT) -> foundation_type. Draft 2026-09-13,
+# read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_foundation-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: Stark's code-label values; the recipe reads 1-FULL, 2-PART,
+#   3-WALKOUT and 4-GROUND LEVEL as a basement. These rows confirm the
+#   two the shared table leaves unreviewed.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   foundation_type
+#                B basement, C crawl, F fill, I pile, P pier, S slab, W
+#                solid wall. Empty is a stop row: the value stays
+#                missing and the shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,foundation_type,reviewed,note
+,2-PART,exact,B,true,Part basement
+,4-GROUND LEVEL,exact,B,true,Ground-level basement

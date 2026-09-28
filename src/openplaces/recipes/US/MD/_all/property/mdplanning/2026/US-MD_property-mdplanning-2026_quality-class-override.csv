@@ -1,0 +1,35 @@
+# Per-source override for US-MD_property-mdplanning-2026:
+# quality_grade (_buildings BL_BLDGRAD) -> quality_class. Draft
+# 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_quality-class-keywords.csv for the value it
+# names; every other value falls through to it.
+#
+# Evidence: SDAT grade codes 1 to 9, "lowest to highest quality"; codes
+#   3 and 4 hold 69.2% of buildings. Folded onto six steps with 4 as
+#   average; unverified.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   quality_class
+#                1 low to 6 excellent, as in the shared table. Empty is
+#                a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,quality_class,reviewed,note
+,1,exact,1,false,Lowest
+,2,exact,1,false,
+,3,exact,2,false,
+,4,exact,3,false,Read as average
+,5,exact,4,false,
+,6,exact,5,false,
+,7,exact,6,false,
+,8,exact,6,false,
+,9,exact,6,false,Highest

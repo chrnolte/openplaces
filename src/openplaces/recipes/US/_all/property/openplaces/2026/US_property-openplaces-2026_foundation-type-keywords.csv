@@ -1,0 +1,39 @@
+# Shared keyword table: foundation_description (the source's own
+# words) -> foundation_type (NSI found_type codes). Draft 2026-09-13,
+# read by the curate translation step specified in
+# plans/curate-translation-tables.md.
+#
+# Columns:
+#   pattern          text to find in the source value, matched
+#                    case-insensitively
+#   match_type       contains (literal substring) or regex
+#   foundation_type  B basement, C crawl, F fill, I pile, P pier,
+#                    S slab, W solid wall. Empty is a stop row: the
+#                    value is known to be ambiguous, no later row may
+#                    claim it, and the cell stays missing
+#   reviewed         true where the reading holds across sources; the
+#                    step fills from reviewed rows only
+#   note             why the row exists or what it guards against
+#
+# Rows apply top to bottom and the first match wins. CRAWL sits above
+# the basement rows so FULL CRAWL is a crawl space; a partial basement
+# sits above CRAWL so a half-basement-half-crawl house counts as B.
+# Bare codes (S, CS, PB, 1 to 9) never belong here: CS is a concrete
+# slab in Texas and a crawl space elsewhere, so each source's codes
+# go in a per-source override beside its recipe.
+pattern,match_type,foundation_type,reviewed,note
+\bNONE\b|NO BASEMENT|\bUNKNOWN\b|\bOTHER\b|NOT ASSIGNED,regex,,true,"No basement says nothing about slab versus crawl"
+(PT|PART(IAL)?|1/[234]|2/3|3/4|HALF) ?(BSMT|BASEMENT),regex,B,false,"A partial basement is a basement for NSI; the rest may be crawl or slab"
+CRAWL,contains,C,true,"Crawl space, including FULL CRAWL"
+BASEMENT|\bBSMT\b|WALK-?OUT|DAYLIGHT|GARDEN LEVEL|\bFULL\b,regex,B,true,"Full basement; FULL alone is a basement-type field's full basement"
+\bPART(IAL)?\b|GROUND LEVEL,regex,B,false,"Partial or ground-level basement in a basement-type field"
+POST[ -]?TENS,regex,S,true,"Post-tensioned slab (Cooke TX POST TENSI); guards the POST row"
+PILING|\bPILES?\b|STILT,regex,I,true,"Piles"
+PIER|\bPOSTS?\b|P ?& ?B\b|(WOOD|WD|CONC(RETE)?) ?PO\b|POST (AND|&) BEAM,regex,P,true,"Pier and beam or posts; TX exports truncate WOOD POST to WOOD PO"
+\bP ?- ?B\b,regex,P,false,"P-B, Gregg TX's spelling of pier and beam beside SLAB"
+\bFILL\b,regex,F,true,"Slab on compacted fill"
+STEM ?WALL,regex,F,false,"Stem wall with fill; FEMA files it under fill"
+SLAB|CONC(RETE)? ?SL\b|CONCRETE S$|MONOLITHIC|ON GRADE,regex,S,true,"Slab on grade, including the truncated TX CONC SL and CONCRETE S"
+CONT(INUOUS)?\.? ?WALL|FOUNDATION WALL|SOLID WALL|CONCRETE WALL|POURED WALL|BLOCK WALL,regex,W,false,"NSI solid wall; in NC a continuous wall usually encloses a crawl space"
+BRICK|BLOCK|POURED|STONE|STUCCO|MASONRY|\bCONC(RETE)?\b,regex,C,false,"A foundation wall's material, most often around a crawl space"
+ELEVATED|RAISED|ENGINEERED|MIXED,regex,,true,"Elevated on piers or piles, not stated which"

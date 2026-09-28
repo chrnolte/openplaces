@@ -284,3 +284,60 @@ def test_fill_only_alone_would_have_left_the_zero(valued_units):
         _state(curated), 'r', columns={'improvement_value': 'sum'}
     )
     assert state.curated['improvement_value'].tolist() == [0.0]
+
+
+@pytest.fixture
+def classed_properties(monkeypatch):
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['p1', 'p1', 'p2', 'p2', 'p3', 'p3', 'p4'],
+            'foundation_type': ['S', 'S', 'S', 'C', 'S', None, None],
+            'foundation_type_source': [
+                'srca+keywords',
+                'srcb+override',
+                'srca+keywords',
+                'srca+keywords',
+                'srca+override',
+                None,
+                None,
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+
+
+def test_agree_writes_a_class_only_where_the_properties_agree(classed_properties):
+    curated = pd.DataFrame({'parcel_id_local': ['p1', 'p2', 'p3', 'p4', 'p5']})
+    state = aggregation.aggregate_from_entities(
+        _state(curated), 'r', columns={'foundation_type': 'agree'}
+    )
+    out = state.curated['foundation_type']
+    assert out.iloc[0] == 'S'
+    # A slab house and a crawl-space house: no single foundation.
+    assert pd.isna(out.iloc[1])
+    # A property that states nothing does not disagree.
+    assert out.iloc[2] == 'S'
+    assert out.iloc[3:].isna().all()
+
+
+def test_the_sidecar_names_the_rows_the_value_came_from(classed_properties):
+    curated = pd.DataFrame({'parcel_id_local': ['p1', 'p2', 'p3']})
+    state = aggregation.aggregate_from_entities(
+        _state(curated), 'r', columns={'foundation_type': 'agree'}
+    )
+    sources = state.curated['foundation_type_source']
+    assert sources.iloc[0] == 'srca+keywords+srcb+override'
+    # No value written, no provenance.
+    assert pd.isna(sources.iloc[1])
+    assert sources.iloc[2] == 'srca+override'

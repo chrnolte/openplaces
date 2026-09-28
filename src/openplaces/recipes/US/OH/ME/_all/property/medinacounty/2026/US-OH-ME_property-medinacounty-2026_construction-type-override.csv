@@ -1,0 +1,32 @@
+# Per-source override for US-OH-ME_property-medinacounty-2026:
+# construction_description (_building Class) -> construction_type. Draft
+# 2026-09-13, read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_construction-type-keywords.csv for the value
+# it names; every other value falls through to it.
+#
+# Evidence: The recipe header states that Class (D, C, S, P, A, B) is
+#   the Marshall and Swift construction class of commercial building
+#   sections.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   construction_type
+#                W wood, M masonry, C concrete, S steel, H manufactured.
+#                Empty is a stop row: the value stays missing and the
+#                shared table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,construction_type,reviewed,note
+,A,exact,S,true,Marshall and Swift class A: fireproof steel frame
+,B,exact,C,true,Marshall and Swift class B: reinforced concrete frame
+,C,exact,M,true,Marshall and Swift class C: masonry bearing walls
+,D,exact,W,true,Marshall and Swift class D: wood or light frame
+,S,exact,S,true,Marshall and Swift class S: pre-engineered metal
+,P,exact,W,false,P read as a pole (post) frame

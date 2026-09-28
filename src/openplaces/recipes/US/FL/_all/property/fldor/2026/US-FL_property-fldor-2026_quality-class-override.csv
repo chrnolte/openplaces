@@ -1,0 +1,32 @@
+# Per-source override for US-FL_property-fldor-2026:
+# structure_quality_code (IMP_QUAL) -> quality_class. Draft 2026-09-13,
+# read by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_quality-class-keywords.csv for the value it
+# names; every other value falls through to it.
+#
+# Evidence: FL DOR's structure quality codes as decoded by US-
+#   FL_property-fldor-2026_structure-quality-code-labels.csv; the common
+#   scale takes its six steps from this list.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   quality_class
+#                1 low to 6 excellent, as in the shared table. Empty is
+#                a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,quality_class,reviewed,note
+structure_quality_code,1,exact,1,true,Minimum or low cost
+structure_quality_code,2,exact,2,true,Below average
+structure_quality_code,3,exact,3,true,Average
+structure_quality_code,4,exact,4,true,Above average
+structure_quality_code,5,exact,5,true,Excellent
+structure_quality_code,6,exact,6,true,Superior

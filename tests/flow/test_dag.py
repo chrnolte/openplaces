@@ -131,6 +131,19 @@ def test_property_parcel_link_is_written_after_both_of_its_sides(dag):
     assert link not in dag.extra_outputs('harmonize', 'US_property-spine-2026', COUNTY)
 
 
+def test_curated_properties_sit_between_the_property_spine_and_parcels(dag):
+    # Translation runs on property rows (each names its roll, whose
+    # override is read first), and curated parcels reduce the result
+    # with `agree`. So the property curate reads the property spine and
+    # is read by the parcel curate.
+    property_spine = get_output_path('US_property-spine-2026', admin_id=COUNTY)
+    curated = get_output_path('US_property-openplaces-2026', admin_id=COUNTY)
+    assert property_spine in dag.input_paths(
+        'curate', 'US_property-openplaces-2026', COUNTY
+    )
+    assert curated in dag.input_paths('curate', 'US_parcel-openplaces-2026', COUNTY)
+
+
 def test_retention_classes(dag):
     assert dag.retention('ingest', 'US_building-nsi-2026') == 'until_consumed'
     assert dag.retention('harmonize', 'US_footprint-spine-2026') == 'keep'

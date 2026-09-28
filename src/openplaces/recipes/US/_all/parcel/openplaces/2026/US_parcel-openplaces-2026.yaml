@@ -95,6 +95,20 @@ pipeline:
       n_residential_buildings: sum
       has_homestead_exemption: max
 
+  # Foundation and construction type, translated per property from each
+  # source's own words by US_property-openplaces-2026 (see
+  # plans/curate-translation-tables.md). `agree`: a parcel states a
+  # class only where every property on it that states one states the
+  # same one, so a lot with a slab house and a crawl-space house has no
+  # foundation type rather than whichever came first. The `_source`
+  # sidecars come along, naming the rolls the value was read from.
+  - step: aggregate_from_entities
+    recipe_id: US_property-openplaces-2026
+    key: [parcel_id_local, parcel_id_admin2]
+    columns:
+      foundation_type: agree
+      construction_type: agree
+
   # The dwelling-kind counts above exist only where a county's roll or
   # building record carries unit types (a few TX districts and NC
   # counties today). Declared so that the footprint recipe's
