@@ -360,6 +360,13 @@ ranks the open plans; update it when adding or finishing one.
 
 Implement all complex plans (plans affecting the functionality of multiple src/ files or notebooks) on a new git worktree in ``<repository_root>/_<worktree_branch_name>/``. If the plan is simple (variable renaming, comments, single file), ask the user whether implementing the plan directly on 'main' is acceptable.
 
+## Module READMEs
+Before editing files in a folder that has a `README.md`, read it. The
+detailed architecture reference lives there, beside the code:
+`io/ingester`, `io/harmonizer`, `io/enricher`, `io/curator`,
+`io/delivery` and `flow` (all under `src/openplaces/`), as well as
+`recipes` and `notebooks`.
+
 ## Jupyter notebooks
 When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
 notebooks/README.md
@@ -538,54 +545,13 @@ that calls stages by hand has to follow it, and **a parcel geospine built
 before one of its county's rolls was ingested silently lacks that roll's
 values until it is rerun**.
 
-**A property's id is the account number its assessor issued**, prefixed with
-the admin unit that scopes it: `US-TX-VIC_000123`
-(`io/harmonizer/entity_ids.py`, step `assign_entity_ids` in
-`US_property-spine-2026`). The number comes from the column a source's
-recipe names in `entity_id`, else whichever of `property_id_assessor`,
-`property_id_admin2`, `parcel_id_assessor` repeats on the fewest rows: the
-*account*, never the lot (New Hanover County NC's account number repeats on
-no row, its PIN on 19,519). Nothing raises: a source whose best column still
-repeats on most rows issues no account number and is named by content, with
-a warning. A source holding several `tax_year` values keeps only its latest
-roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
-county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
-properties), the unit's latest year and not the latest row per account,
-which would revive every account retired since. Case is folded and runs of separators become one hyphen, but their
-positions are kept, because in a map-block-lot number they carry meaning
-(dropping them made 426 Somerville MA accounts collide). Two sources
-publishing the same accounts therefore mint the same ids, and **rows sharing
-an id merge into one**, the first-loaded (most specific) source winning each
-cell and `source` becoming `a+b`: Boston's city table and MassGIS's layer are
-364,997 rows and 185,132 properties. The few differing rows under one number
-get `_2`, `_3` ordered by content, and a source with no issued number is
-named `{admin}_{source}:{content hash}`. A spatial entity's id comes from its
-geometry; this is the equivalent for an entity that has none.
-
-**Relationships between entities are link tables** (`geo/link.py`,
-`io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
-entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The
-spatial joins write theirs from an overlay; `link_entities_by_id` writes the
-property-to-parcel table from an exact match on `parcel_id_local`, with
-columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
-(a test pins that a link table holds nothing else, so it can never carry a
-person). It runs in `US_parcel-spine-2026` because that is the first recipe
-in which both sides exist. `link_method` is a fixed label naming the rule
-that found the pair, never a score, and no link is removed once written
-(patent shape 4). A key on more rows than `link_by_id`'s placeholder cutoff
-keeps its pairs under `parcel_id_local_shared_key`, because a link table,
-unlike a sum, need not decide whether it is a placeholder or a large stack:
-a reader that sums values leaves that method out. The footer
-(`openplaces:entity_link`) records both input files, so a reader can tell a
-link that predates a rebuilt spine. The step sits **after** the parcel
-spine's checkpointed step: a restored checkpoint skips every step before
-it and validates against the geospine only, so anything placed earlier
-that reads another recipe's output goes stale unnoticed (the transaction
-`link_by_id` sat near the top of that recipe with this weakness until
-2026-09-23; it now follows the link table, and
-`tests/recipe/test_parcel_spine_step_order.py` pins both). Curate's
-`aggregate_from_entities` reads the table; see the stacked-units paragraph
-under Stage 1 for the passes the ingest-time split adds.
+**A property's id is the account number its assessor issued**, scoped by
+its admin unit (`assign_entity_ids`), and rows sharing an id merge into
+one. **Relationships between entities are link tables**, one row per
+pair (`link_entities_by_id` for property to parcel); `link_method` is a
+fixed label, never a score, and no link is removed once written (patent
+shape 4). Both are described in full in
+`src/openplaces/io/harmonizer/README.md`.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 
@@ -650,493 +616,43 @@ Key recipe functions (`recipe.py`):
 
 ### Data pipeline: ingest → harmonize → enrich → curate
 
-**Stage 1 - Ingest** (`io/ingester/`, `io/ingester/table_ingester.py`):
+Each stage's full reference lives in a README beside its code; read it
+before editing that package.
 
-`Ingester` orchestrates download, unzip, and processing of one recipe:
-1. Resolves admin IDs to save/process/download (three potentially different levels)
-2. For each download partition (admin unit × partition ID): downloads + unzips source,
-   calls `TableIngester` to process each chunk
-3. After tile partitions: merges per-tile partials into per-admin files
-4. In aggregate mode: calls `aggregate_to_admin_level()` to merge process-level chunks
-   into save-level files
-
-`TableIngester` handles reading, transforming, and saving one table from an
-already-resolved source file. It applies column mappings, type casts, spatial filtering,
-and the attribute registry type checks.
-
+**Stage 1 - Ingest** (`io/ingester/`, reference in
+`src/openplaces/io/ingester/README.md`): downloads, unzips and maps one
+recipe's source into per-admin parquet (`Ingester`, `TableIngester`).
 **Every parcel table is split into lots and properties at ingest**
-(`io/stacked_units.py`). Sixteen parcel sources stack several ownership
-records on one lot polygon (Florida's statewide layer alone carries 1.13
-million condo-unit rows on shared outlines), and a stacked row is a
-property, not a parcel. After preprocessing, rows are grouped by `lot_key`
-(default `geo_id`, the geometry hash; a recipe may name a source lot id):
-exact duplicates collapse, a group with one row is a lot and passes
-through, and a group with several distinct rows becomes one parcel row
-keeping only the values its members agree on (a varying value is left
-missing, never summed, and a column the registry aggregates by `sum` is
-left missing even where they agree, because one unit's floor area is not
-the lot's and curate's `aggregate_from_entities` fills only empty cells)
-plus one property row per member. Rows that repeat a record on another
-polygon are parts of one lot, not units: they merge into one row and
-yield no property rows. Under a source `lot_key` that row takes the union
-of the lot's polygons with `geo_id` recomputed (Wilson County NC draws
-1,060 lot ids as 2 to 7 polygons); under `geo_id` nothing is unioned,
-since two polygons in one group are a collision of the quantized hash
-and a union would invent an outline. A unit id repeated within a lot
-drops nothing and is counted in the ingest log. The property rows go to an
-implicit `additional_layers` entry of the same recipe
-(`property-<source>-<version>`, `layer_key: parcel_id_local`) that the
-recipe loader adds to every parcel ingest recipe without a declared
-property layer. Discovery, the property spine, readers and cleanup see
-that layer like a declared one; the ingester's layer loop skips it
-(`STACKED_UNITS_LAYER_KEY`) because the parcel table's own processing
-wrote it. `stacked_units: false` opts a recipe out.
-
-**A unit keeps its own keys and names its lot in `lot_id_local`.** Where
-units have their own account numbers, the lot's parcel row cannot carry any
-one of them and takes the lot key, which no tax roll knows (Galveston County
-TX: 5,186 roll rows in 119 of 184 stacks). Nothing is rewritten to bridge
-that. The pair (unit key, lot key) the split records is read three times:
-- `assign_entity_ids` labels the split's rows `<source>:units`, loads them
-  last, and merges a unit with its roll row where both carry the account
-  number (Galveston: 5,205 merged, 440 units the roll does not know). Units
-  whose number repeats inside the layer are named by content, the rest keep
-  it, so a layer that numbers some stacks and not others still converges.
-- `link_entities_by_id` adds two exact passes to the key pass:
-  `stacked_units` (a unit links to the lot it names) and
-  `stacked_units_crosswalk` (a roll row keyed on a unit links to that
-  unit's lot, to every lot where the split saw the key on several). A
-  property on several lots gets a `share` by lot area, `share_basis` saying
-  so; it is wrong for improvements, which stand on one lot, and stays until
-  a property-to-footprint link can replace it.
-- the parcel geospine's property `link_by_id` moves a roll row keyed on a
-  unit to its lot before joining (`_move_units_to_lots`), and reads the
-  split layer itself by `lot_id_local`. An account on several lots becomes
-  one row per lot: its land is divided by lot area, every other additive
-  value goes whole to the largest lot and stays empty on the rest, because
-  a building stands on one lot (`total_value` so overstates the largest
-  lot by the others' land).
-`aggregate_from_entities` sums over the link table when a valid one exists
-and falls back to the key column otherwise: on a lot any roll describes,
-rows whose `link_source` is only `:units` are left out, so a roll and the
-units split off the parcel layer are never summed together; shares scale
-summed columns; `*_shared_key` links are skipped. Measured on Galveston,
-rebuilt end to end 2026-09-21: curated parcel `total_value` $151.4bn to
-$79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
-173,697. A lot with a single record yields no property row, so where no
-roll exists the property spine holds stacked units only (all of Wisconsin:
-Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
-conserved to the dollar). The module docstring
-carries the patent rationale (US9298740B2, all-elements rule: claims 1
-and 15 recite the same six steps, claim 11 adds a wilderness test, and all
-three start from a parcel that *failed verification* against mapping or
-addressing data, which the split never tests; read from the patent text
-2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
-re-ingested.
-
+(`io/stacked_units.py`): a row stacked on a shared lot polygon is a
+property, not a parcel, and units keep their own keys and name their
+lot in `lot_id_local`.
 Public entrypoint:
-
 `ingest(recipe, admin_ids, partition_ids, reprocess, redownload, verbose)`.
 
-**Stage 2 — Harmonize** (`io/harmonizer/`):
-
-`Harmonizer` runs a composable step pipeline, executing steps declared in the recipe's
-`pipeline` list. Each step is a function registered via `@_register('step_name')` in one
-of the sub-modules. Registrations carry a `phase` tag (`'geometry'` for steps that
-mutate spine rows/geometry or run spatial joins; `'attributes'`, the default, for
-steps that only read or annotate) — the tag drives the link-sidecar fingerprint and
-defines the geometry/attribute recipe split below.
-
-**The geospine split.** Each expensive spine is two recipes. A *geospine* recipe
-(`US_footprint-geospine-2026`, `US_parcel-geospine-2026`) runs the geometry phase —
-spine resolution, spatial overlays and point joins, group detections, morphology —
-and persists its spine plus one n:m link sidecar per `link_to_reference` join
-(`save_link` is default-on; a step opts *out* with `save_link: false`). The
-*attribute* recipe keeps the established id (`US_footprint-spine-2026`,
-`US_parcel-spine-2026`), declares the geospine as its `entity_recipe`, starts with
-`load_geospine`, and writes an attribute-only table (`save_to: geometry: false`);
-its geometry lives with the geospine and is resolved by `get_entities` through the
-`entity_recipe` chain — by declaration, never by probing for a `_geo` sidecar, so a
-stale pre-split sidecar is ignored. Enricher and curator load their entity spine
-through `get_entities` for the same reason. Rerunning an attribute recipe involves
-no spatial computation (`--reprocess attributes` in the driver). Each sidecar's
-footer fingerprint (format 2) covers the step config, the configs of every *prior
-geometry-phase* pipeline step, and size/mtime of the ingest inputs, plus a
-per-source content sha256 stamped at write time: an input whose mtime moved but
-whose bytes did not (a sync-tool touch; Dropbox re-hydration bumped every cache
-mtime on 2026-08-24) revalidates through the hash instead of forcing a geometry
-rerun (`_fingerprints_match`). Anything else fails closed — a stale sidecar raises with instructions
-to rerun the geospine, never silently recomputing geometry. Curate readers resolve
-the sidecar's owner through `geo/link.get_link_owner_recipe_id` (the geospine when
-split, the recipe itself when not). Geospine recipes declare
-`save_to: retention: keep`: their outputs and link tables are the normalized
-geometry store, exempt even from aggressive cleanup (an explicit retention wins
-over the aggressive core-bucket demotion). Bucket policy: `core` holds the
-normalized store and intermediate evidence; terminal curate outputs ship
-self-contained (attributes + geometry) in `share`.
-
-The step sub-modules:
-- `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
-  and assign each row's containing polygon id from a space-partitioning
-  reference layer such as an admin level or a Census statistical geography
-  (`link_geographic_ids`; unlike `link_to_reference` below, every configured
-  reference is assumed to tile space without overlaps, so the relationship
-  is always exactly one containing polygon, not a many-to-many crosswalk).
-  An `inherit_from` option rolls up an already-linked recipe's own output
-  (e.g. a parcel spine inheriting from its footprint spine, which runs
-  first) wherever every row in the group agrees, so the direct spatial join
-  only runs on the residual.
-- `links.py` — join to reference datasets spatially or via crosswalks
-  (`link_to_reference`)
-- `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
-  prepared references from its persisted output and link sidecars
-  (`load_geospine`); which links to restore is read from the geospine
-  recipe's own pipeline, so the two YAMLs cannot drift
-- `attributes.py` — attribute source columns to the spine as suffixed evidence
-  columns (`reconcile_attributes`), assign each footprint's parcel priority
-  (`classify_footprint_priority`), and build the combined land-use label the
-  parcel classifier votes on (`derive_use_classes`). Its `columns` list is
-  ordered, and each entry is either a column or a list of alternatives
-  **coalesced per row** — the default is `[use_group, use_group_code]` then
-  `[use_subgroup, use_subgroup_code]`, so a source whose raw code has no
-  crosswalk still contributes that code as grouping and voting evidence,
-  while a source whose crosswalk did fire contributes only the vocabulary
-  and adds no new label values (so cohort statistics keyed on
-  `use_group_combined` are not fragmented). This matters more than it
-  looks: 20 recipes map a `use_*_code` but only 5 ship a crosswalk for it.
-  The parcel spine appends `building_style` last so a county whose
-  land-use text carries no occupancy signal can contribute one from its
-  structure description.
-  Value selection, gap-filling, and occupancy inference now run in the
-  curation stage, not here; the harmonized spine (`US_footprint-spine-2026`)
-  is an evidence-only table.
-- `addresses.py` — reconcile a canonical street address from any number of
-  source inputs (`reconcile_addresses`); coalesce ZIP-code evidence from
-  multiple columns by priority (`reconcile_postal_code` — e.g. an
-  address-parsed ZIP, then the spatially-derived `zcta5_id`, so a state with
-  no address-parsed coverage at all still gets a ZIP-like value); and derive
-  the USPS-preferred city for a ZIP code (`impute_postal_city`).
-  - These are a deliberate exception to the "gap-filling belongs in curate" rule: the
-    dividing line is whether there is dispute about how to derive its output. A ZIP code
-    has exactly one USPS-preferred city — nothing parameter-sensitive to defer — so it's
-    resolved once, in harmonize, where it's available early for downstream linking.
-- `diagnostics.py` — conflict-inspection reports (agreement rates, a
-  crosstab of disagreeing value-pairs, a bounded sample of conflicting rows)
-  written to the cache when `save_statistics` is set, mirroring
-  `io.curator.diagnostics`'s established convention. Never raises, never
-  changes the harmonized spine.
-- `filter.py` — subset rows (`filter_entities`)
-- `discover.py` — discover available data sources for an admin unit
-- `admin_names.py` — `assign_admin_id_from_name`: the admin unit a record
-  only *names*, as an id, matched exactly and uniquely against the units of
-  its county or not at all. It exists because an address key is scoped by
-  `admin4_id`: a source with an empty scope matches no parcel by address,
-  silently (0 of Vilas County WI's keyed returns, 0.759 with the scope
-  ignored). The source's spelling is a recipe-side regex; a no-op where the
-  level does not exist (New England).
-- `link_methods.py` — `record_link_method`: after each `link_by_id` pass of
-  the transaction spine, writes `parcel_link_method`, the name of the first
-  rule that reached the row (`parcel_id_local`, then an exact address key).
-  A fixed label, written once, never a score and never revised (patent
-  shape 4). It re-reads the pass's reference instead of instrumenting
-  `link_by_id`, so a step added between a pass and its label would make the
-  label describe the wrong pass. A sale that reached its parcel through a
-  unit's lot reads `stacked_units` (`via_column`/`via_label`).
-- `parcel_link_keys.py` — `derive_parcel_link_key`: the one column
-  (`parcel_link_key`) every parcel join of the transaction spine uses. A
-  deed for a condo unit states the unit's number, which after the
-  ingest-time split is on a property row, not a parcel row; the step looks
-  it up in the split's own (unit, lot) pairs and joins on the lot
-  (`lot_id_local`), never rewriting the stated number. A unit seen on
-  several lots keeps its own number: picking one would assert which parcel
-  the sale conveyed, which the record does not say.
-  Without the step a re-ingested county loses its condo sales silently
-  (Vilas County WI: 1.1% of returns).
-- `last_sales.py` — `append_last_sales`: turn the last-sale fields an
-  assessment roll carries into transaction rows
-  (`sale_record_kind = assessor_last_sale`; rows already on the spine read
-  `deed`), so a state with no recorder's feed still has prices. It is a
-  reshape, not a match: the row keeps the roll row's own `parcel_id_local`.
-  Three things are not what the name suggests. **"Has a last sale" is never
-  "non-null"**: Florida's parcel layer fills every last-sale column on every
-  row and 0 is the placeholder, in the year as well as the price, so a row
-  needs a price and a real date or year. **A roll that records the month
-  only arrives as first-of-month dates** (all 73,253 of Pitt County NC's);
-  the step keeps year and month and writes no day, so a deed and its
-  last-sale echo compare at month precision. **A roll ingested for several
-  years repeats each last sale once per year** (Florida's DOR roll holds 24);
-  the same ids, date and price are one row, while different last sales of
-  one property across years are kept, which is history a single roll year
-  lacks. Property tables are read before parcel tables, and a later source
-  adds a sale only for a `parcel_id_local` no earlier one supplied. Only an
-  allow-list of columns is read, so owner fields cannot enter. A last-sale
-  field is the most recent sale only: these rows support cross-sectional
-  work, not a repeat-sales index.
-
-All steps share a `HarmonizeState` dataclass (spine, references, crosswalks, overlays,
-metadata). Each step receives state and returns the updated state.
-
+**Stage 2 - Harmonize** (`io/harmonizer/`, reference in
+`src/openplaces/io/harmonizer/README.md`): runs a recipe's registered
+steps over a shared `HarmonizeState`. Each expensive spine is two
+recipes: a geospine (geometry phase, persisted link sidecars that fail
+closed when stale) and an attribute recipe that loads it and runs no
+spatial computation.
 Public entrypoint: `harmonize(recipe, admin_ids, reprocess, verbose)`.
 
-When working on `src/openplaces/io/harmonizer/`, read
-`src/openplaces/io/harmonizer/README.md` for a full pipeline reference before making
-changes.
+**Stage 3 - Enrich** (`io/enricher/`, reference in
+`src/openplaces/io/enricher/README.md`): writes entity-keyed evidence
+(imagery predictions, raster statistics, reference inventories) without
+selecting canonical values. Imagery is fetched in memory per run and
+never cached, because Google's terms prohibit storing it.
+Public entrypoint:
+`enrich(recipe, admin_ids, entity_recipe_id, reprocess, verbose)`.
 
-
-**Stage 3 — Enrich** (`io/enricher/`):
-
-`Enricher` reads a harmonized entity recipe and writes entity-keyed evidence
-tables. Enrichment adds observations or model outputs without selecting a
-canonical value, reconciling disagreements, or filling unrelated gaps.
-
-- `attributes.py` — registered evidence-producing steps (`classify_roof_shape`,
-  `classify_occupancy`, `detect_n_stories`); image-based steps fetch the
-  recipe's `image_recipe` imagery **in memory, per run**
-  (`io.ingester.image_ingester.fetch_images_in_memory`) and keep only the
-  predictions. There is no image ingest stage and no image cache: Google's
-  Static API policy prohibits pre-fetching, indexing, storing, or caching
-  its content, so an image recipe declares no `save_to` and carries camera
-  configuration only. The cost is that every enrichment pass re-fetches, and
-  for Street View re-pays; a step whose scraper cannot initialize warns and
-  leaves its evidence columns empty rather than aborting the batch.
-- `buildings.py` — `enrich_footprints_from_reference_buildings`: attach an
-  already-built reference *building* entity's attributes onto footprints,
-  each footprint taking the single reference building it overlaps most by
-  IoU (not raw intersection area — a large reference building clipping a
-  small footprint's corner shares more area with it than the correct small
-  building does). Source-agnostic: any building recipe with polygon
-  geometry works, so a precomputed inventory can substitute for re-running
-  imagery inference. An admin unit the reference does not cover still gets
-  the declared columns written as all-null, because curate treats a present
-  evidence file missing a declared column as a recipe error.
-- `parcels.py` — attach a reference *parcel* dataset's attributes to current
-  parcels through a fractional area-weighted crosswalk, driven by a sidecar
-  `{recipe_id}_column-notes.csv` beside the reference recipe
-- `zonal.py` — `zonal_stats`: per-entity raster statistics over polygon
-  geometry, dispatching to one of three backends in `geo/raster.py`
-  (`exactextract` for fractional pixel-area weighting, `rasterstats`, or
-  `rasterized` for a burn-and-groupby). Requires `spine_geom: true`.
-- `vicinity.py` — `vicinity_coverage`: derives a neighborhood-percentage
-  raster from a boolean source raster by FFT convolution, windowed to one
-  admin unit and padded so neighboring units still count, then samples it
-  through `zonal.py`. The derived raster is cached per admin unit and reused.
-- `derived.py` — `derive_from_spine`: per-entity metrics from spine geometry
-  and existing spine columns alone, no raster involved. Overlaps the
-  harmonize step `derive_geometry_attributes` and shares its area
-  measurement (`geo.polygon.get_areas`); it exists for spines that do not
-  run that step.
-- `detectors/` — attribute-specific detectors and shared inference runtimes
-  (EfficientDet/EfficientNet ports; torch is conda-only)
-- `models.py` — pretrained-model download and cache handling
-
-Raster-consuming steps name their raster by a path relative to the configured
-`rasters` directory, resolved by `path.resolve_raster_path()`, so a recipe
-stays portable across machines. An absolute path passes through unchanged.
-
-Examples include roof-shape, occupancy, and story-count evidence from imagery,
-and the same attributes read off a precomputed inventory
-(`US-NC_footprint_building-cheer-v0`). Evidence columns retain
-provenance-oriented names such as `roof_shape_brails`, `n_stories_brails`, and
-`foundation_type_building_cheer`.
-
-Public entrypoint: `enrich(recipe, admin_ids, entity_recipe_id, reprocess, verbose)`.
-
-**Stage 4 — Curate** (`io/curator/`):
-
-`Curator` creates the canonical entity dataset. It starts from a harmonized
-(evidence-only) entity, incorporates enrichment evidence, and applies explicit
-recipe steps that select values, fill gaps, infer canonical attributes, format
-the output, and remove records. Each step is a registered function operating on
-a shared `CurateState` (canonical GeoDataFrame in `state.curated`).
-
-Steps are organized by the nature of the transformation:
-
-- `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
-- `indicators.py` — the shared voting vocabulary and scoring cores
-  (`evaluate_indicator` predicates; `score_decisions` enumerated votes;
-  `vote_dynamic_values` open-vocabulary votes). Pure functions over a
-  DataFrame — no thresholds, class names, or geography of their own.
-  Both report provenance, and both report *evidence* rather than the class:
-  `vote_dynamic_values` joins the labels that agreed (`nsi/fema/parcel`),
-  and `score_decisions` joins the `label` of each indicator that fired for
-  the winning decision (`no_improvement_value+block_context`), falling back
-  to the decision's declared `source` only where it labeled nothing. Labels
-  are opt-in per recipe; unlabeled decisions keep their old behavior, which
-  is why a `{col}_source` can still read as a synonym of the value beside
-  it until its indicators are labeled.
-- `reconcilers.py` — resolve conflicts between competing source columns
-  (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
-  `resolve_by_vote`, the single voting seam every curate classification
-  resolves through)
-- `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
-  `impute_from_group_statistic`, `impute_occupancy_type`)
-- `aggregation.py` — reduce another entity's rows onto the curated rows
-  they belong to (`aggregate_from_entities`): a parcel's `year_built` is
-  the earliest of its properties', its `living_area_sqft` and
-  `gross_floor_area_sqft` their sums, read from
-  `US_property-spine-2026` by `parcel_id_local` with the registry's rule
-  or a per-column override, filling only what the parcel's own layer
-  left empty. It exists because the parcel geospine's property
-  `link_by_id` no longer copies property-level attributes (its explicit
-  `columns:` list stops at parcel-level values, use codes and address):
-  a copy made in the geometry phase was a second, lossy home for them and
-  tied every fix to a geometry rerun. Measured on Victoria County, TX,
-  2026-09-12: the curate-side reduction reproduces the old copy's
-  coverage exactly (63.9% `year_built` and floor area, the PACS segment
-  sum now named `gross_floor_area_sqft`), so a county
-  whose geospine predates the change loses nothing. An all-missing group
-  reduces to missing, not to pandas' zero sum. A column named under
-  `recover` (the parcel recipe names `improvement_value`) is the one
-  departure from fill-only: a stacked lot keeps only what its units
-  agree on, so its improvement is missing or zero while the units
-  record it, and the units' positive sum replaces that. Nothing is
-  written where no unit records a positive figure: a lot the roll does
-  not value stays as it is, because estimating it would be an
-  imputation step, which openplaces does not do for structure values
-  (maintainer, 2026-09-22). Measured 2026-09-22 on cheer-eastern-nc:
-  179 of 503 such lots hold a recorded figure ($44.1M); on
-  cheer-coastal-tx 447 of 15,555 ($64.8M).
-- `inferers.py` — derive new canonical features (`derive_metrics`,
-  `derive_indicators` — named indicator columns holding values, never
-  pre-thresholded booleans; every cutoff lives in the vote decisions).
-  `derive_group_class_share` adds the context an entity cannot supply about
-  itself: the share of its group (any id column it already carries, e.g.
-  `census_block_id`) whose evidence reads as a given class, excluding the
-  row itself. It is a **groupby, deliberately not a spatial operation** — no
-  buffering, no boundary union, no nearest-neighbor search — both because
-  geometric neighbor/"community" detection is a patented technique shape in
-  this domain (see the patent-risk section) and because aggregating within a
-  published administrative unit is older, plainer practice. It exists
-  because `flag_manufactured_home_communities` counts per *parcel* and so
-  cannot see a subdivided community where every home has its own lot. Feed
-  it only evidence a downstream vote has not written, or the class
-  reinforces itself. **No shipping recipe votes on it**: measured
-  2026-08-21, a block share computed from the assessor's own text
-  correlates +0.577 with the keyword rule that reads the same column, and
-  the points it uniquely moves are 0.294 precise against a 0.425 base rate.
-  It is kept as evidence, and as the mechanism
-  `notebooks/05_curate/mmh_separability.py` measures with.
-  `derive_group_count` and `derive_group_rank` are the same kind of
-  groupby, counting or ranking (largest first, ties by id) the rows of
-  a group that satisfy voting indicators. **The footprint recipe votes
-  twice on `occupancy_type`**: they read the first vote's classes of a
-  parcel's primaries, and a second `resolve_by_vote` (`base_output:
-  occupancy_type_pass1`) turns small secondary Manufactured Home
-  footprints into Secondary. It is safe only because the second pass
-  writes secondaries and reads primaries; it reads which labels carried
-  the first pass through the `has_token` predicate, which matches whole
-  `+`-separated parts of `occupancy_type_source`.
-- `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
-  `order_columns`)
-- `filters.py` — (stub) remove records that do not belong in the canonical
-  dataset
-- `transactions.py` — steps for the transaction entity, which **grade and
-  flag and never drop**: `derive_document_id` (the deed behind a row, spelled
-  per source; a part that is empty or all zeros names no document, since
-  Florida's roll writes a single space for book and page and that once folded
-  1,333 sales of one county into a single "deed"; scoped by record kind, so a
-  deed and the last-sale row citing its book and page are never aggregated as
-  one sale of two parcels), `count_parcels_per_document`,
-  `aggregate_multi_parcel_sales`, `collapse_double_closings` (compared within
-  one record kind) and `flag_sales_matching_other_kind`
-  (`sale_matches_deed`: exact equality of parcel, year, month and price, no
-  tolerance and no score). `sale_arms_length_confidence` is graded per source
-  in the recipe: Florida from the state's qualification codes (labels and the
-  raw two-digit codes alike, because last-sale rows read from the parcel
-  layer are undecoded), Wisconsin as the lower of two grades, the conveyance
-  type and the relationship the parties themselves state on the RETR form
-  (`sale_party_relationship`; about 20% of transfers are `Family`), through
-  the `minimum` indicator type and `fill_only`.
-  `join_temporal_snapshot` is the one as-of join in the repo (the only
-  `pd.merge_asof`), attaching **the property as it was when it sold**: a
-  hedonic model wants the sale-date values, and where a county renumbered
-  its parcels the panel is the only thing that reaches its older sales at
-  all (Pasco and Volusia FL went from 0.03 to 0.998 of pre-2017 sales
-  carrying a land value). `require_panel` makes it a no-op where a county
-  has no roll or **only one vintage**, which is nearly everywhere: Florida's
-  DOR roll keeps 24 yearly vintages and the other 104 assessor sources are
-  one each. One vintage is deliberately not a panel, since joining a sale to
-  the only year on file reads as a temporal match while adding nothing the
-  cross-sectional spine did not have. Its `match_type_column` is written on
-  **every** row, not only matched ones (`exact`, `backward_fallback`,
-  `forward_fallback`, `not_in_panel`, `single_vintage`, `no_panel`,
-  `no_sale_date`): a missing value cannot separate "no panel in this county"
-  from "the panel does not know this sale", and the two mean different
-  things to anyone modeling with it. It tolerates what varies between
-  counties rather than failing the curate, since one nationwide recipe names
-  one column list and one restriction: a column the roll lacks is skipped
-  (Lake FL has no `land_area_sqft`), a `restrict_to` on an absent column
-  selects nothing (`sale_vacant` is Florida's word), and a sale with no year
-  is set aside as `no_sale_date` because `merge_asof` refuses null keys.
-
-Alongside the step modules sit support modules that register no steps of their
-own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),
-`provenance.py` (`{col}_source` sidecars), `land_value.py` (land-value
-estimation, split out because it is expected to grow), `diagnostics.py`
-(cache-written conflict reports), and `validation.py` — scoring a curated
-classification against hand-labelled points. `validation.py`'s
-`link_points_to_entities` links by address first and distance only as a
-fallback; because a house and its shed share one address, callers break the
-resulting ties with `prefer_column`/`prefer_values` (e.g. rank
-`priority_on_parcel == 'primary'` first) rather than letting row order decide.
-
-**Every validation step writes a confusion matrix.** `confusion_matrix` keeps
-reference classes as rows and predictions as columns, then `Secondary`,
-`Non-residential` (any other asserted class; `(other class)` for a recipe
-declaring no residential classes) and `No class`, so no row is dropped and
-"said nothing" stays apart from "said something else". NSI and FEMA derived
-sources set `keep_unmapped: true`, keeping a raw class their residential-only
-class map does not cover instead of scoring it as no prediction;
-`accuracy_from_matrix` derives producer's (recall) and consumer's (precision)
-accuracy, kappa and the abstention rate, and `score_classification` is
-computed from the same matrix. `write_confusion_report` (and
-`write_year_agreement_report`, whose "matrix" is one reference row of
-exact/within 1/within 5/more than 5 years bins) writes
-`{name}_confusion.csv` (long form, pooled plus strata),
-`{name}_accuracy.csv` and a JSON sidecar into the delivery's `accuracies/`
-folder, refusing any stratum under 10 rows so no cell points at one building.
-`ValidationContext.score_sources(linked, out_dir)` writes them for every
-survey source; the permit notebooks call the writer directly. Only these
-aggregates may leave memory: permit modes per footprint are restricted
-row-level data.
-
-`provenance.py` carries one invariant worth knowing before writing any step
-that produces a value: **a cell openplaces itself filled must say so**, by
-carrying the `imputed` marker in its `{col}_source`. Tokens are therefore
-composite, joined by `+` (`parcel+imputed`, and the harmonize stage's
-`parcel+usaddress`) — never assume a token equals a bare source name.
-`mark_imputed` is the only place the marker is written and `is_imputed` the
-only place it is read (it matches whole `+`-separated parts, so a source named
-`imputed_rates` is not swept up); `record_sources` writes a per-row token
-series, which is what a step carrying an upstream sidecar forward needs rather
-than `record_source`'s one-token-per-mask.
-
-**The marker means openplaces filled the cell, not that the number is
-modeled.** A value read from a dataset keeps that dataset's name even when the
-dataset is a model: `nsi` is a FEMA-modeled structure value and stays plain
-`nsi`, because the token already names what produced it. So classification
-votes are not marked (`nsi`/`keyword`/`classifier` each name the winning
-evidence), and neither is apportioning a reference's value across the entities
-on it — the parcel's total is a real assessed figure being divided, not a value
-invented where none existed. Only estimation of a genuinely missing value
-counts.
-
-The hard part is propagation, not the decision: `impute_land_value` knows which
-rows it estimated, and the marker has to survive `apportion_curated_values`
-(which crosses parcel → footprint) and `select_value_source_by_admin_unit`
-(whose `output` and `parcel_column` are commonly the *same* column, so they
-share one sidecar) to reach the delivered `structure_value_source`. All three
-dropped or flattened it before 2026-08-21.
-
-These concern-based modules mirror the processor categories used by related
-inventory systems, while remaining native to the openplaces recipe and state
-architecture. Value selection, gap-filling, and occupancy inference were
-migrated here from the harmonize stage; the harmonized spine
-(`US_footprint-spine-2026`) is now an evidence-only table. Curation outputs are
-full entity recipes, not sidecar evidence tables.
-
+**Stage 4 - Curate** (`io/curator/`, reference in
+`src/openplaces/io/curator/README.md`): builds one canonical dataset
+per entity type from harmonized evidence and enrichment, through
+registered steps over `CurateState`. One invariant binds every step
+that writes a value: **a cell openplaces itself filled must say so**,
+through the `imputed` marker in its `{col}_source`
+(`provenance.mark_imputed` writes it, `is_imputed` reads it).
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
-
 
 ### Data access (public API, `api.py`)
 
@@ -1155,157 +671,23 @@ op.aggregate(recipe, admin_level, ...)
 op.export_delivery(recipe, admin_id, ...)     # split a curated region into a shareable bundle
 ```
 
-### Named regions (`_all/admin/regions/2026/admin-regions-2026.csv`)
+### Named regions and delivery bundles (`io/delivery/`)
 
-A **region** is any named group of admin units the hierarchy cannot express: a
-study area, a delivery footprint, a funder's geography. The registry is a flat
-1:n CSV (`region_id`, `name`, `region_admin_id`, `admin_id`, one row per member)
-read by `op.get_regions()` and `op.get_region_admin_ids(region_id)`, loaded
-through `get_recipe_by_id` exactly like the admin spine CSVs beside it.
-
-It exists because the same county list is wanted by delivery, by mapping, and
-by ad-hoc analysis, and three copies drift. Anything needing "the CHEER Texas
-counties" asks the registry rather than restating 42 ids. A grouping used in
-exactly one place need not be registered -- `share: delivery: admin_ids:` still
-takes an inline list. `region_admin_id` is the unit a region rolls up to
-(`US-TX`); blank means callers derive it, which is what delivery does.
-
-### Delivery bundles (`io/delivery/`, with `terms.py` and `redaction.py` beside the package file)
-
-`export_delivery` pools a curation recipe's per-process-unit files into a
-region-wide, shareable set of four files sharing one index: the canonical
-attributes as a plain table, the same attributes on centroid points, the
-boundary polygons alone, and an `_evidence` supplement holding every remaining
-column. Which columns are canonical is declared per recipe in a `share:` block
-(`columns`, plus `point_columns` for the point file only) -- not inferred, because
-the curated schema holds far more technically-canonical columns than belong in a
-compact delivery. Each canonical column's `{col}_source` sidecar is appended
-automatically and written into *both* the canonical and the evidence file, so
-either reads on its own.
-
-**Four files, unless the entity is not a place.** The point file is built from
-`long` and `lat`, which `_share_spec` therefore requires in `share: columns:`,
-so a geometry-less entity could not be delivered at all until
-`share: geometry: false`. A recipe declaring it ships the canonical table and
-its evidence supplement only, and `delivery_paths` omits the `point` and `geo`
-keys -- that dict is also the orchestrator's output declaration, so a delivery
-job then waits on nothing that is never written. It is opt-in and defaults to
-the four-file behavior. The transaction curation recipe is the case it exists
-for: a sale is an event whose location belongs to the parcel it names (carried
-as `parcel_id_local`, so a consumer joins geometry itself), and a deed covering
-several parcels has no single point to put it on.
-
-A `share: delivery:` block names the regions: `admin_level` (a bundle's own
-level) plus either `admin_ids` (one grouping, listed inline) or `regions` (a
-list of ids from the shared region registry, below). The declared member list
-wins over walking the admin hierarchy, because a region is rarely all of a
-state's children -- the CHEER regions are 45 of North Carolina's 100 counties
-and 42 of Texas's 254.
-
-One recipe ships as many regions as it declares: `US_footprint-cheer-2026`
-produces a Carolina bundle and a Texas bundle from identical curation logic, so
-the membership is data in the registry rather than structure in the YAML.
-`delivery_regions(recipe)` is the resolver; `delivery_spec`, `delivery_members`,
-`delivery_paths`, `delivery_admin_id` and `export_delivery` all take a `region=`
-selector, and **raise rather than guess** when a multi-region recipe is asked
-for "the" region -- silently picking one would ship a region's rows under
-another's filename. A single-region recipe needs no selector, so
-`export_delivery(recipe_id)` still works unchanged.
-
-Sibling regions are told apart by containment, not by level: both CHEER bundles
-sit at admin level 2, so `RecipeDAG._delivery_in_scope` asks whether a requested
-unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
-whether it is coarse enough. `--config deliver=true` likewise only forces the
-regions the run actually touches.
-
-**It withholds what restricted sources supplied, and ships the rest.** A
-source recording `redistribution_restricted: true` or a `usage_requirement`
-may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
-walked per pooled unit because county parcel and property recipes reach a
-spine only through auto-discovery, which resolves per admin unit (an unscoped
-walk never saw Edgecombe's parcels feeding the NC bundle).
-`io.delivery.redaction.withhold` then removes that source's values from both read
-passes: a row whose `geometry_source` names it is left out, a cell whose
-`{col}_source` names it is emptied, and inside the source's county, columns
-named after an attribute its recipe maps (or with its entity suffix), or whose
-sidecar names only its layer (`parcel`), are emptied unless a sidecar names
-another specific source. Emptied cells' sidecars read `withheld`, and the
-notice lists each source's counts. `RestrictedInputError` is only the
-backstop: it fires if restricted values are still in the frames about to be
-written, never because a source merely feeds the recipe, so one county's
-terms cannot hold the rest of a bundle hostage. The rules over-withhold where
-a layer's sidecar cannot say which source filled it; that costs values, not
-a leak. A no-resale clause withholds nothing; the notice reports it.
-**Team bundles are the one exception, and never published.** A region listed
-under `share: delivery: team_regions:` also ships as `<region>.team`, in a
-`team/` subdirectory beside the region's own bundle (whose path does not
-move). A team bundle keeps the values of sources a person has cleared with
-`team_sharing_permitted: true` (Edgecombe's parcels, decided by the user
-2026-09-13), and its notice opens "TEAM-INTERNAL BUNDLE"; every other bundle
-withholds them, and uncleared sources are withheld from team bundles too.
-Asked for a delivery by admin unit alone, the DAG and `delivery_node` resolve
-to the public bundle: a team twin is only ever shipped by naming it.
-
-Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
-then evidence) so the wide evidence columns are never in memory alongside the
-polygons. It deduplicates the index: an entity on a county line is curated by
-both neighbors and the two copies share an Open Location Code, so the
-better-covered copy wins, ties broken on admin id. And it leaves its four
-outputs read-only, unlocking them itself on the next run -- deliberately not
-Snakemake's `protected()`, which additionally refuses to ever regenerate a file
-and would abort the workflow on every reship.
-
-The QGIS side is `qgis/load_joined_parquet.py`, which resolves the whole set from
-any one of its files. It picks the join key at load time (`_join_id`, then
-`geo_id`, then whichever entity id the two files share), so one algorithm reads
-both a core split-layout file and a delivery bundle -- the only difference
-between them is that key.
-
-`viz/qgis_map` renders a delivery as a project rather than a layer. Asked for
-the admin unit a recipe delivers, `resolve_layers` returns two standalone
-output layers instead of the per-unit curated file: the `_point` centroids
-carrying the canonical attributes (`RENDER_POINTS`, template fills rewritten as
-markers) and the `_geo` polygons as plain outlines (`RENDER_OUTLINE`). Neither
-joins -- classifying millions of polygons to color them costs far more than
-reading the centroids. `include_inputs=False` drops the ingest-stage layers for
-a map of the product rather than of how it was built, and a style variant whose
-classifying column is absent from the data is skipped rather than shipped
-empty.
+A **region** is a named group of admin units the hierarchy cannot
+express, listed in `_all/admin/regions/2026/admin-regions-2026.csv`
+(`op.get_regions()`, `op.get_region_admin_ids()`). `export_delivery`
+pools a curation recipe's per-unit files into a region-wide bundle
+(canonical table, centroid points, polygons, evidence supplement).
+**It withholds what restricted sources supplied, and ships the rest**;
+team bundles (`<region>.team`) are the one exception and are never
+published. Full reference: `src/openplaces/io/delivery/README.md`.
 
 ### Orchestration (`flow/dag.py`, `workflow/Snakefile`)
 
-`RecipeDAG` derives one job per (stage, recipe, admin unit) from the recipe tree,
-plus one terminal **`deliver`** job per delivery region the target recipe
-declares (`dag.delivery_nodes`; the older `dag.delivery_node` still returns the
-single node when there is exactly one, and raises when there are several).
-`deliver` is not a recipe stage -- recipe stages are ranked
-(`ingest < harmonize < enrich < curate`) and drive `find_entity_recipe_id`, so a
-fifth would ripple into recipe resolution for nothing. It is a node kind this
-graph derives, the way `extra_outputs` derives link sidecars from `save_link`.
-An image recipe is the opposite case: it is configuration only (its imagery
-is fetched in memory during enrichment and never written), so
-`dag.writes_nothing` keeps it out of the graph's jobs and out of every
-enrich job's inputs, while `exclude_recipe_ids` still prunes it through the
-`image_recipe` edge. Until 2026-09-23 it got an ingest job whose output no
-run could produce.
-
-Scope decides whether each runs: an unscoped run builds and ships every declared
-region, a run naming a region (or covering every member of it) ships that one,
-and a narrower debug run stops at curate so a one-county rebuild cannot
-overwrite a shipped regional file. `--config deliver=true|false` overrides
-either way, `true` still limited to the regions the run touches.
-
-A **`validate`** job follows each delivery, one per shipped region whose
-recipe lists notebooks for it (`validation: notebooks:`, each naming the
-reference it scores; `ground_truth` or a sidecar `references:` key resolves to
-a region). It shares the delivery's recipe, unit and region, so `node_key`
-adds the stage as a fourth part. `run_stage validate <recipe> <region>`
-executes the notebooks with `jupyter nbconvert --execute`, passing arguments
-through `OPENPLACES_NOTEBOOK_ARGS` (read in each notebook's test-arguments
-cell), writes executed copies to the cache `_logs/validate/` tree, runs
-`docs/_ext/generate_validation_tables.py`, and records a
-`{recipe}_validation-run.json` manifest as its output. It follows `deliver`'s
-scope; `--config validate=false|true` overrides it.
+`RecipeDAG` derives one job per (stage, recipe, admin unit), plus a
+`deliver` and a `validate` job per shipped region. A narrow debug run
+stops at curate, so a one-county rebuild cannot overwrite a shipped
+regional file. Full reference: `src/openplaces/flow/README.md`.
 
 ### File layout on disk
 
