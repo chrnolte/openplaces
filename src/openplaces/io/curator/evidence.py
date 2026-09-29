@@ -19,7 +19,7 @@ def _field(obj, name):
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
 
 
-@_register('link_curated_entity')
+@_register('link_curated_entity', phase='gather')
 def link_curated_entity(
     state: CurateState,
     recipe_id: str,
@@ -184,7 +184,7 @@ def _apportioned_sources(
     return out
 
 
-@_register('apportion_curated_values')
+@_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
     recipe_id: str,
@@ -430,7 +430,7 @@ def apportion_curated_values(
     return state
 
 
-@_register('collect_link_ids')
+@_register('collect_link_ids', phase='gather')
 def collect_link_ids(
     state: CurateState,
     entity_type: str | None = None,
@@ -552,7 +552,7 @@ def collect_link_ids(
     return state
 
 
-@_register('merge_enrichments')
+@_register('merge_enrichments', phase='gather')
 def merge_enrichments(
     state: CurateState,
     recipes: list[dict],
@@ -684,4 +684,136 @@ def merge_enrichments(
         curated = pd.concat([curated, new_cols], axis=1)
 
     state.curated = curated
+    return state
+
+
+@_register('derive_admin_attribute', phase='gather')
+def derive_admin_attribute(
+    state: CurateState,
+    output: str,
+    attribute: str | None = None,
+    segment: str | None = None,
+    scheme: str = 'us-census-geoid',
+    admin_id_column: str = 'admin3_id',
+    admin_level: int | None = None,
+) -> CurateState:
+    """Copy a column from the admin spine onto every entity in its unit.
+
+    The admin spine already knows things about a unit that an entity in it
+    cannot state for itself -- its name, its type, the code some other
+    authority assigns it. This joins one such column on, keyed by the
+    admin id the entity already carries.
+
+    The motivating use is a **stable external identifier**. openplaces'
+    own ``admin3_id`` is internal and can be re-minted: a re-mint may hand
+    ``US-NC-CM`` to a different county than it named before, so an id
+    written into a shipped file is only as durable as the mint behind it.
+    A federal county FIPS code is not openplaces' to change, so an
+    inventory that carries one stays joinable to Census, FEMA and every
+    other federal product across a re-mint that renames everything else.
+
+    Reads the spine through :func:`~openplaces.io.readers.get_admin`
+    rather than any hard-coded table, so which attribute is surfaced is a
+    recipe's decision and no geography lives in this function.
+
+    Two ways to name what to copy, and only one of them is safe for a
+    code whose meaning varies by geography. Pass *attribute* to copy a
+    spine column verbatim. Pass *segment* to take one named part of the
+    unit's national code, resolved through
+    :mod:`~openplaces.io.admin_codes.segments`, which is what a federal
+    identifier needs: ``admin3_id_admin1`` holds a 5-digit county FIPS
+    in 44 states and a 10-digit county-subdivision GEOID in the six New
+    England states, so copying it verbatim writes two different things
+    into one column. ``segment='county'`` returns the county FIPS in
+    both.
+
+    Parameters
+    ----------
+    output : str
+        Column to write onto the entity.
+    attribute : str, optional
+        Column on the admin spine to copy verbatim. Mutually exclusive
+        with *segment*; exactly one of the two is required.
+    segment : str, optional
+        Name of a part of the unit's own national code, in the source's
+        vocabulary (e.g. ``'county'``, ``'state'``). Mutually exclusive
+        with *attribute*.
+    scheme : str, optional
+        Coding scheme *segment* belongs to, default
+        ``'us-census-geoid'``.
+    admin_id_column : str, optional
+        Entity column holding the admin id to look up (default
+        ``admin3_id``).
+    admin_level : int, optional
+        Spine level to read. Inferred from *admin_id_column* when it is
+        named ``admin{N}_id``; required otherwise.
+    """
+    from openplaces.io.readers import get_admin
+
+    if (attribute is None) == (segment is None):
+        raise ValueError(
+            'derive_admin_attribute: pass exactly one of attribute= or '
+            'segment=. Use segment= for a federal code whose width varies '
+            "by geography (e.g. segment='county')."
+        )
+
+    curated = state.curated
+    if admin_id_column not in curated.columns:
+        if state.verbose:
+            print(
+                f'  derive_admin_attribute: {admin_id_column} absent, '
+                f'{output} not derived.'
+            )
+        return state
+
+    if admin_level is None:
+        import re
+
+        match = re.fullmatch(r'admin(\d+)_id', admin_id_column)
+        if match is None:
+            raise ValueError(
+                f'derive_admin_attribute: cannot infer admin_level from '
+                f'{admin_id_column!r}; pass admin_level explicitly.'
+            )
+        admin_level = int(match.group(1))
+
+    try:
+        spine = get_admin(state.admin_id, level=admin_level)
+    except Exception as exc:  # noqa: BLE001 - a missing spine is not fatal
+        if state.verbose:
+            print(f'  derive_admin_attribute: no admin level {admin_level}: {exc}')
+        return state
+    if spine is None or not len(spine):
+        return state
+
+    spine = spine.reset_index()
+    wanted = attribute if attribute is not None else f'{admin_id_column}_admin1'
+    if admin_id_column not in spine.columns or wanted not in spine.columns:
+        if state.verbose:
+            print(
+                f'  derive_admin_attribute: spine has no '
+                f'{wanted!r}/{admin_id_column!r}; {output} not derived.'
+            )
+        return state
+
+    lookup = (
+        spine.dropna(subset=[admin_id_column])
+        .drop_duplicates(admin_id_column)
+        .set_index(admin_id_column)[wanted]
+    )
+    if segment is not None:
+        from openplaces.io.admin_codes.segments import slice_segment
+
+        # Not strict: the spine is global and a curate run may cover
+        # units whose national code belongs to another scheme entirely.
+        # Those come back missing rather than aborting the recipe.
+        lookup = slice_segment(lookup, segment=segment, scheme=scheme, strict=False)
+    curated[output] = (
+        curated[admin_id_column].astype(object).map(lookup).astype('string')
+    )
+    state.curated = curated
+
+    if state.verbose:
+        n = int(curated[output].notna().sum())
+        print(f'  derive_admin_attribute: {output} set for {n:,} rows.')
     return state

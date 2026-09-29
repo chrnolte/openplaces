@@ -7,7 +7,7 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('exclude_by_value')
+@_register('exclude_by_value', phase='standardize')
 def exclude_by_value(state: CurateState, column: str, values: list) -> CurateState:
     """Drop rows whose *column* value is in *values*.
 
@@ -38,7 +38,7 @@ def exclude_by_value(state: CurateState, column: str, values: list) -> CurateSta
     return state
 
 
-@_register('keep_by_value')
+@_register('keep_by_value', phase='standardize')
 def keep_by_value(state: CurateState, column: str, values: list) -> CurateState:
     """Keep only rows whose *column* value is in *values*.
 
@@ -68,7 +68,7 @@ def keep_by_value(state: CurateState, column: str, values: list) -> CurateState:
     return state
 
 
-@_register('filter_numeric_at_least')
+@_register('filter_numeric_at_least', phase='standardize')
 def filter_numeric_at_least(state: CurateState, column: str, min: float) -> CurateState:
     """Keep rows where *column*, read as numeric, is at least *min*.
 
@@ -97,7 +97,7 @@ def filter_numeric_at_least(state: CurateState, column: str, min: float) -> Cura
     return state
 
 
-@_register('exclude_numeric_above')
+@_register('exclude_numeric_above', phase='standardize')
 def exclude_numeric_above(state: CurateState, column: str, max: float) -> CurateState:
     """Drop rows where *column*, read as numeric, is known to exceed *max*.
 
@@ -127,7 +127,7 @@ def exclude_numeric_above(state: CurateState, column: str, max: float) -> Curate
     return state
 
 
-@_register('normalize_id_column')
+@_register('normalize_id_column', phase='standardize')
 def normalize_id_column(state: CurateState, column: str) -> CurateState:
     """Strip non-alphanumeric characters from *column*, in place.
 

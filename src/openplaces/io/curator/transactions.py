@@ -18,7 +18,7 @@ def _normalized(series: pd.Series) -> pd.Series:
     return series.astype(str).str.replace(_NON_ALNUM, '', regex=True)
 
 
-@_register('dedup_transactions')
+@_register('dedup_transactions', phase='standardize')
 def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     """Drop rows that are the same recorded document, kept once.
 
@@ -38,12 +38,11 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
         Florida and nowhere else.
     """
     curated = state.curated
-    key = (
-        curated.reindex(columns=key_columns)
-        .astype('string')
-        .fillna('NA')
-        .agg('|'.join, axis=1)
-    )
+    # Compared as strings with one placeholder for missing, exactly as
+    # the former per-row '|'.join key did, but through the frame's own
+    # hashed duplicated(), which is vectorized: the row-wise join took
+    # 83 of Lake County FL's 111 s transaction curate (2026-09-29).
+    key = curated.reindex(columns=key_columns).astype('string').fillna('NA')
     mask = ~key.duplicated(keep='first')
     n_dropped = int((~mask).sum())
     state.curated = curated.loc[mask].copy()
@@ -52,7 +51,7 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     return state
 
 
-@_register('derive_sale_period')
+@_register('derive_sale_period', phase='standardize')
 def derive_sale_period(
     state: CurateState, date_column: str = 'recorded_date'
 ) -> CurateState:
@@ -83,7 +82,7 @@ def derive_sale_period(
     return state
 
 
-@_register('flag_sales_matching_other_kind')
+@_register('flag_sales_matching_other_kind', phase='standardize')
 def flag_sales_matching_other_kind(
     state: CurateState,
     key_column: str | list[str],
@@ -166,7 +165,7 @@ def flag_sales_matching_other_kind(
     return state
 
 
-@_register('collapse_double_closings')
+@_register('collapse_double_closings', phase='standardize')
 def collapse_double_closings(
     state: CurateState,
     key_column: str,
@@ -269,7 +268,7 @@ def collapse_double_closings(
     return state
 
 
-@_register('join_temporal_snapshot')
+@_register('join_temporal_snapshot', phase='gather')
 def join_temporal_snapshot(
     state: CurateState,
     recipe_id: str,
@@ -372,6 +371,26 @@ def join_temporal_snapshot(
             return state
         active_mask &= curated[restrict_to['column']] == restrict_to['equals']
     if not active_mask.any():
+        return state
+
+    # A source without the join key cannot reach any panel: Massachusetts
+    # registry deeds carry no parcel_id_assessor at all, and the national
+    # recipe runs this step there too. Under require_panel that is "no
+    # panel here" for every active row, written as such so the column
+    # still says why; without it the missing column is a recipe error.
+    # Before 2026-09-29 this raised KeyError and Somerville's transaction
+    # curate died here.
+    if join_key not in curated.columns or date_column not in curated.columns:
+        if not require_panel:
+            raise KeyError(
+                f'join_temporal_snapshot: {join_key!r} or {date_column!r} is not '
+                'a column of the curated table.'
+            )
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active_mask, match_type_column] = no_panel_value
+        state.curated = curated
         return state
 
     active = curated.loc[active_mask, [join_key, date_column]].copy()
@@ -504,7 +523,7 @@ def join_temporal_snapshot(
     return state
 
 
-@_register('derive_document_id')
+@_register('derive_document_id', phase='standardize')
 def derive_document_id(
     state: CurateState,
     candidates: list,
@@ -586,7 +605,7 @@ def derive_document_id(
     return state
 
 
-@_register('count_parcels_per_document')
+@_register('count_parcels_per_document', phase='standardize')
 def count_parcels_per_document(
     state: CurateState,
     parcel_column: str,
@@ -620,7 +639,7 @@ def count_parcels_per_document(
     return state
 
 
-@_register('aggregate_multi_parcel_sales')
+@_register('aggregate_multi_parcel_sales', phase='standardize')
 def aggregate_multi_parcel_sales(
     state: CurateState,
     document_column: str = 'sale_document_id',
@@ -716,7 +735,7 @@ TRANSACTION_FINGERPRINT_TIERS = (
 REPEATED_DOCUMENT_SHARE = 0.02
 
 
-@_register('assign_transaction_ids')
+@_register('assign_transaction_ids', phase='infer')
 def assign_transaction_ids(
     state: CurateState,
     document_column: str = 'sale_document_id',

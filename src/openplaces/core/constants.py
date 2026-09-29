@@ -121,6 +121,17 @@ NEVER_DELETE = frozenset({'share', 'raw'})
 # orchestrator derives, never a recipe's own stage.
 RECIPE_STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
 
+# The phases of a curate step, in pipeline order
+# (plans/core-schema-and-stage-contracts-review.md, 2026-09-29). A
+# recipe's pipeline reads as gather, reconcile, standardize, infer,
+# format when its phases never decrease; io/curator checks that. A
+# separate assemble stage for the gather phase was measured and
+# rejected: gathering is 7% to 35% of a county's curate time (Galveston
+# footprints 21 of 99 s, Lake transactions 8 of 111 s), so a stage,
+# a package and a second output per unit would save at most a third of
+# reruns that already take seconds to two minutes.
+CURATE_PHASES = ('gather', 'reconcile', 'standardize', 'infer', 'format')
+
 
 # FILE HANDLING
 

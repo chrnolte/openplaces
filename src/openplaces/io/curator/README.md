@@ -13,6 +13,28 @@ recipe steps that select values, fill gaps, infer canonical attributes, format
 the output, and remove records. Each step is a registered function operating on
 a shared `CurateState` (canonical GeoDataFrame in `state.curated`).
 
+**Every step declares a phase, and a recipe runs its phases in order.**
+`_register('name', phase=...)` takes one of `core.constants.CURATE_PHASES`
+(gather, reconcile, standardize, infer, format) and refuses a step without
+one, so a curate recipe reads top to bottom as: bring every source's value
+onto the entity (gather: reductions over links, apportionments, evidence
+tables, admin attributes); choose one where sources disagree and gate
+invalid evidence (reconcile); put the source's vocabularies, ids and row
+definitions into the schema's by reviewed rules (standardize: translation
+tables, placeholder-row filters, one sale per deed); vote, impute and
+estimate what remains, marking every cell openplaces filled (infer); shape
+the output (format). `phase_order_violations(recipe)` lists steps that run
+after a later phase, and `tests/recipe/test_curate_phase_order.py` runs it
+over every curate recipe. A step that has to run out of order for a
+dependency reason declares `phase_override: <reason>` in the recipe (a
+control key like `enabled`, never passed to the step): the footprint
+recipe's `year_built` and `n_stories` reconciles stay after the first
+votes because the indicators read those columns as they stand, and the
+transaction recipe's temporal joins need `sale_year` and the folded deed
+rows. A separate assemble stage for the gather phase was measured and
+rejected on 2026-09-29: gathering is 7% to 35% of a county's curate time
+(Galveston footprints 21 of 99 s, Lake transactions 8 of 111 s).
+
 Steps are organized by the nature of the transformation:
 
 - `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
@@ -63,6 +85,16 @@ Steps are organized by the nature of the transformation:
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
+  Until 2026-09-29 it also held the group-context steps, the
+  manufactured-home classifier, the occupancy and story estimators and
+  `derive_admin_attribute` (1,707 lines); those now live in
+  `group_context.py`, `estimators/` (one module per attribute:
+  `manufactured_homes.py`, `occupancy.py`, `stories.py`; the package
+  file imports them because the shared step loader skips sub-packages)
+  and `evidence.py`. `inferers.py` still re-exports every moved step
+  name, so `from openplaces.io.curator.inferers import ...` keeps
+  working in the tests and the docs.
+- `group_context.py` —
   `derive_group_class_share` adds the context an entity cannot supply about
   itself: the share of its group (any id column it already carries, e.g.
   `census_block_id`) whose evidence reads as a given class, excluding the

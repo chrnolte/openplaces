@@ -121,20 +121,65 @@ pipeline:
       - n_residential_buildings
       - has_homestead_exemption
 
-  # These parcel_id_assessor values are non-taxable placeholders, not real
-  # parcels (found empirically in Carteret County, NC): WATER (water
-  # bodies), ROW (road rights-of-way). Confirmed via direct data checks
-  # that these rows carry no use code and no value -- unlike e.g. STATE
-  # LAND or CALO (Cape Lookout National Seashore), which are real,
-  # valuable land despite unusual assessor IDs, and must not be swept in
-  # here. Idiosyncratic per source -- see
-  # notebooks/01_setup/04_detect_phantom_parcel_ids.ipynb to find
-  # candidates in newly ingested counties before adding them. Runs first
-  # so these rows never pollute impute_from_group_statistic's cohort
-  # statistics.
-  - step: exclude_by_value
-    column: parcel_id_assessor
-    values: [WATER, ROW]
+  # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
+  # physical predictors (area-weighted crosswalk from the legacy reference
+  # parcel dataset). Canonical column names drop the `_fmv2026` product
+  # suffix (value suffixes like radius/year/model variant are kept, so e.g.
+  # the 2500m/50m coastal-water-share variants stay distinct); land_value
+  # additionally drops its `_2010` vintage suffix, landing on the plain
+  # registered name. A gather step, so it runs with the other gathers
+  # before any decision (moved up from after the votes 2026-09-29; no
+  # vote reads these columns, checked against the oracle counties).
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: US_parcel_parcel-placeslab-fmv2026
+        columns:
+          census_tract_id_2016_fmv2026: census_tract_id_2016
+          census_blockgroup_id_2016_fmv2026: census_blockgroup_id_2016
+          postal_code_2016_fmv2026: postal_code_2016
+          precipitation_summer_fmv2026: precipitation_summer
+          precipitation_winter_fmv2026: precipitation_winter
+          temperature_mean_summer_fmv2026: temperature_mean_summer
+          temperature_mean_winter_fmv2026: temperature_mean_winter
+          slope_fmv2026: slope
+          elevation_fmv2026: elevation
+          soil_farmland_local_share_fmv2026: soil_farmland_local_share
+          soil_farmland_prime_share_fmv2026: soil_farmland_prime_share
+          soil_farmland_statewide_share_fmv2026: soil_farmland_statewide_share
+          travel_time_to_city_fmv2026: travel_time_to_city
+          land_cover_barren_share_fmv2026: land_cover_barren_share
+          land_cover_forest_deciduous_share_fmv2026: land_cover_forest_deciduous_share
+          land_cover_forest_evergreen_share_fmv2026: land_cover_forest_evergreen_share
+          land_cover_forest_mixed_share_fmv2026: land_cover_forest_mixed_share
+          land_cover_shrubland_share_fmv2026: land_cover_shrubland_share
+          land_cover_grassland_share_fmv2026: land_cover_grassland_share
+          land_cover_pasture_share_fmv2026: land_cover_pasture_share
+          land_cover_cropland_share_fmv2026: land_cover_cropland_share
+          population_gravity_index_exp_c4_fmv2026: population_gravity_index_exp_c4
+          wetland_share_fmv2026: wetland_share
+          coastal_water_share_2500m_fmv2026: coastal_water_share_2500m
+          coastal_water_share_50m_fmv2026: coastal_water_share_50m
+          lake_frontage_fmv2026: lake_frontage
+          river_frontage_fmv2026: river_frontage
+          lake_distance_fmv2026: lake_distance
+          highway_distance_fmv2026: highway_distance
+          paved_road_distance_fmv2026: paved_road_distance
+          building_footprint_share_1000m_fmv2026: building_footprint_share_1000m
+          building_footprint_share_500m_fmv2026: building_footprint_share_500m
+          building_footprint_share_5000m_fmv2026: building_footprint_share_5000m
+          conservation_easement_share_fmv2026: conservation_easement_share
+          protected_land_share_2010_5000m_fmv2026: protected_land_share_2010_5000m
+          household_income_median_block_group_2012_2016_fmv2026: household_income_median_block_group_2012_2016
+          population_black_share_block_group_2012_2016_fmv2026: population_black_share_block_group_2012_2016
+          population_native_american_share_block_group_2012_2016_fmv2026: population_native_american_share_block_group_2012_2016
+          population_asian_share_block_group_2012_2016_fmv2026: population_asian_share_block_group_2012_2016
+          population_pacific_islander_share_block_group_2012_2016_fmv2026: population_pacific_islander_share_block_group_2012_2016
+          population_mixed_race_share_block_group_2012_2016_fmv2026: population_mixed_race_share_block_group_2012_2016
+          population_hispanic_share_block_group_2012_2016_fmv2026: population_hispanic_share_block_group_2012_2016
+          land_value_per_ha_log_region_nb_2010_fmv2026: land_value_per_ha_log_region_nb
+          land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
+          aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
+          aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
 
   # An assessed value is never negative. NC OneMap computes improvement
   # as total minus land, which goes negative wherever assessed land
@@ -146,6 +191,21 @@ pipeline:
   - step: null_out_of_range
     columns: [improvement_value, land_value, total_value]
     minimum: 0
+
+  # These parcel_id_assessor values are non-taxable placeholders, not real
+  # parcels (found empirically in Carteret County, NC): WATER (water
+  # bodies), ROW (road rights-of-way). Confirmed via direct data checks
+  # that these rows carry no use code and no value -- unlike e.g. STATE
+  # LAND or CALO (Cape Lookout National Seashore), which are real,
+  # valuable land despite unusual assessor IDs, and must not be swept in
+  # here. Idiosyncratic per source -- see
+  # notebooks/01_setup/04_detect_phantom_parcel_ids.ipynb to find
+  # candidates in newly ingested counties before adding them. Runs
+  # before impute_from_group_statistic so these rows never pollute its
+  # cohort statistics.
+  - step: exclude_by_value
+    column: parcel_id_assessor
+    values: [WATER, ROW]
 
   # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
@@ -585,64 +645,6 @@ pipeline:
 
   # Derive stories from FEMA LiDAR height.
   - step: derive_stories_from_height
-
-  # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
-  # physical predictors (area-weighted crosswalk from the legacy reference
-  # parcel dataset). Canonical column names drop the `_fmv2026` product
-  # suffix (value suffixes like radius/year/model variant are kept, so e.g.
-  # the 2500m/50m coastal-water-share variants stay distinct); land_value
-  # additionally drops its `_2010` vintage suffix, landing on the plain
-  # registered name.
-  - step: merge_enrichments
-    recipes:
-      - recipe_id: US_parcel_parcel-placeslab-fmv2026
-        columns:
-          census_tract_id_2016_fmv2026: census_tract_id_2016
-          census_blockgroup_id_2016_fmv2026: census_blockgroup_id_2016
-          postal_code_2016_fmv2026: postal_code_2016
-          precipitation_summer_fmv2026: precipitation_summer
-          precipitation_winter_fmv2026: precipitation_winter
-          temperature_mean_summer_fmv2026: temperature_mean_summer
-          temperature_mean_winter_fmv2026: temperature_mean_winter
-          slope_fmv2026: slope
-          elevation_fmv2026: elevation
-          soil_farmland_local_share_fmv2026: soil_farmland_local_share
-          soil_farmland_prime_share_fmv2026: soil_farmland_prime_share
-          soil_farmland_statewide_share_fmv2026: soil_farmland_statewide_share
-          travel_time_to_city_fmv2026: travel_time_to_city
-          land_cover_barren_share_fmv2026: land_cover_barren_share
-          land_cover_forest_deciduous_share_fmv2026: land_cover_forest_deciduous_share
-          land_cover_forest_evergreen_share_fmv2026: land_cover_forest_evergreen_share
-          land_cover_forest_mixed_share_fmv2026: land_cover_forest_mixed_share
-          land_cover_shrubland_share_fmv2026: land_cover_shrubland_share
-          land_cover_grassland_share_fmv2026: land_cover_grassland_share
-          land_cover_pasture_share_fmv2026: land_cover_pasture_share
-          land_cover_cropland_share_fmv2026: land_cover_cropland_share
-          population_gravity_index_exp_c4_fmv2026: population_gravity_index_exp_c4
-          wetland_share_fmv2026: wetland_share
-          coastal_water_share_2500m_fmv2026: coastal_water_share_2500m
-          coastal_water_share_50m_fmv2026: coastal_water_share_50m
-          lake_frontage_fmv2026: lake_frontage
-          river_frontage_fmv2026: river_frontage
-          lake_distance_fmv2026: lake_distance
-          highway_distance_fmv2026: highway_distance
-          paved_road_distance_fmv2026: paved_road_distance
-          building_footprint_share_1000m_fmv2026: building_footprint_share_1000m
-          building_footprint_share_500m_fmv2026: building_footprint_share_500m
-          building_footprint_share_5000m_fmv2026: building_footprint_share_5000m
-          conservation_easement_share_fmv2026: conservation_easement_share
-          protected_land_share_2010_5000m_fmv2026: protected_land_share_2010_5000m
-          household_income_median_block_group_2012_2016_fmv2026: household_income_median_block_group_2012_2016
-          population_black_share_block_group_2012_2016_fmv2026: population_black_share_block_group_2012_2016
-          population_native_american_share_block_group_2012_2016_fmv2026: population_native_american_share_block_group_2012_2016
-          population_asian_share_block_group_2012_2016_fmv2026: population_asian_share_block_group_2012_2016
-          population_pacific_islander_share_block_group_2012_2016_fmv2026: population_pacific_islander_share_block_group_2012_2016
-          population_mixed_race_share_block_group_2012_2016_fmv2026: population_mixed_race_share_block_group_2012_2016
-          population_hispanic_share_block_group_2012_2016_fmv2026: population_hispanic_share_block_group_2012_2016
-          land_value_per_ha_log_region_nb_2010_fmv2026: land_value_per_ha_log_region_nb
-          land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
-          aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
-          aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
 
   # Calculate parcel lot area (ha) based on parcel geometry.
   - step: derive_metrics
