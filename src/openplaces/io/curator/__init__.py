@@ -299,10 +299,13 @@ class Curator:
                     f"Unknown curate step: '{step_name}'. "
                     f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
                 )
+            # `phase_override` is a control key like `enabled`: it tells
+            # the phase-order check why this step runs out of order and
+            # is never a step argument.
             params = {
                 key: value
                 for key, value in step_cfg.items()
-                if key not in ('step', 'enabled')
+                if key not in ('step', 'enabled', 'phase_override')
             }
             state = fn(state, **params)
 

@@ -38,12 +38,11 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
         Florida and nowhere else.
     """
     curated = state.curated
-    key = (
-        curated.reindex(columns=key_columns)
-        .astype('string')
-        .fillna('NA')
-        .agg('|'.join, axis=1)
-    )
+    # Compared as strings with one placeholder for missing, exactly as
+    # the former per-row '|'.join key did, but through the frame's own
+    # hashed duplicated(), which is vectorized: the row-wise join took
+    # 83 of Lake County FL's 111 s transaction curate (2026-09-29).
+    key = curated.reindex(columns=key_columns).astype('string').fillna('NA')
     mask = ~key.duplicated(keep='first')
     n_dropped = int((~mask).sum())
     state.curated = curated.loc[mask].copy()
@@ -372,6 +371,26 @@ def join_temporal_snapshot(
             return state
         active_mask &= curated[restrict_to['column']] == restrict_to['equals']
     if not active_mask.any():
+        return state
+
+    # A source without the join key cannot reach any panel: Massachusetts
+    # registry deeds carry no parcel_id_assessor at all, and the national
+    # recipe runs this step there too. Under require_panel that is "no
+    # panel here" for every active row, written as such so the column
+    # still says why; without it the missing column is a recipe error.
+    # Before 2026-09-29 this raised KeyError and Somerville's transaction
+    # curate died here.
+    if join_key not in curated.columns or date_column not in curated.columns:
+        if not require_panel:
+            raise KeyError(
+                f'join_temporal_snapshot: {join_key!r} or {date_column!r} is not '
+                'a column of the curated table.'
+            )
+        if match_type_column:
+            if match_type_column not in curated.columns:
+                curated[match_type_column] = pd.NA
+            curated.loc[active_mask, match_type_column] = no_panel_value
+        state.curated = curated
         return state
 
     active = curated.loc[active_mask, [join_key, date_column]].copy()

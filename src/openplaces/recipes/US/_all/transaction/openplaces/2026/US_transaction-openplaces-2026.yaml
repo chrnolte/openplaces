@@ -100,6 +100,40 @@ pipeline:
   - step: count_parcels_per_document
     parcel_column: parcel_id_assessor
 
+  # A second document for the same parcel at the same price within a
+  # month is usually the other leg of a double closing. Whether to
+  # count it is a consumer's call, so the earlier leg is flagged here
+  # and dropped only in a filtered product. Standardize phase, so it
+  # runs before the indicators (moved up 2026-09-29; it reads the
+  # spine's own record kind, year, month and price).
+  - step: collapse_double_closings
+    key_column: parcel_id_assessor
+    max_gap_months: 1
+    output: sale_double_closing_earlier_leg
+    within: [sale_record_kind]
+
+  # A county with a recorder's table and a roll reports its latest
+  # sales twice. Both rows stay; the last-sale row that repeats a deed
+  # (same parcel, year, month and price, exactly) is flagged so that a
+  # consumer can keep the deed and drop its echo. On Pitt County NC
+  # that is 89.9% of last-sale rows whose parcel has any deed.
+  - step: flag_sales_matching_other_kind
+    key_column: parcel_id_local
+
+  # Where neither kind carries a parcel id, the document itself is the
+  # thing both rows name. Massachusetts is that case: its registry
+  # deeds have no `parcel_id_local` at all, so the pass above leaves
+  # every MA row unflagged and a consumer cannot tell a MassGIS
+  # last-sale row from the registry deed it repeats. Book and page are
+  # on both kinds, and `derive_document_id` above already treats a
+  # blank or all-zero part as naming no document, so a placeholder
+  # cannot fold a county's sales together here either.
+  # `fill_only`, so this reaches only what the parcel key could not and
+  # never overrules it.
+  - step: flag_sales_matching_other_kind
+    key_column: [book, page]
+    fill_only: true
+
   # Graded values, never booleans. The arm's-length confidence carries
   # only the resolution the source does: Florida's 34 labels are two
   # "Qualified arm's length" (differing in how qualification was
@@ -349,38 +383,6 @@ pipeline:
           assessor_last_sale: assessor_last_sale
         default: deed
 
-  # A second document for the same parcel at the same price within a
-  # month is usually the other leg of a double closing. Whether to
-  # count it is a consumer's call, so the earlier leg is flagged here
-  # and dropped only in a filtered product.
-  - step: collapse_double_closings
-    key_column: parcel_id_assessor
-    max_gap_months: 1
-    output: sale_double_closing_earlier_leg
-    within: [sale_record_kind]
-
-  # A county with a recorder's table and a roll reports its latest
-  # sales twice. Both rows stay; the last-sale row that repeats a deed
-  # (same parcel, year, month and price, exactly) is flagged so that a
-  # consumer can keep the deed and drop its echo. On Pitt County NC
-  # that is 89.9% of last-sale rows whose parcel has any deed.
-  - step: flag_sales_matching_other_kind
-    key_column: parcel_id_local
-
-  # Where neither kind carries a parcel id, the document itself is the
-  # thing both rows name. Massachusetts is that case: its registry
-  # deeds have no `parcel_id_local` at all, so the pass above leaves
-  # every MA row unflagged and a consumer cannot tell a MassGIS
-  # last-sale row from the registry deed it repeats. Book and page are
-  # on both kinds, and `derive_document_id` above already treats a
-  # blank or all-zero part as naming no document, so a placeholder
-  # cannot fold a county's sales together here either.
-  # `fill_only`, so this reaches only what the parcel key could not and
-  # never overrules it.
-  - step: flag_sales_matching_other_kind
-    key_column: [book, page]
-    fill_only: true
-
   # A recorder's nominal consideration is not a price, and which value
   # it uses is the recorder's choice: Florida stamps 100 dollars on a
   # non-market transfer, North Carolina and Wisconsin record 0. The
@@ -422,6 +424,10 @@ pipeline:
   # taken from the representative parcel, per the registry's rule for
   # each column; the price was never wrong, the denominator was.
   - step: aggregate_multi_parcel_sales
+    phase_override: >-
+      the nominal floor and disclosure share above are measured over the
+      deed rows before multi-parcel deeds are folded; folding first
+      changes both
 
 
   # Price over the assessed value of everything the deed conveyed, so
@@ -458,6 +464,9 @@ pipeline:
   # sale year from one taken from a neighboring year, from a county with
   # no panel at all. `tax_year` rides along as the vintage actually used.
   - step: join_temporal_snapshot
+    phase_override: >-
+      a gather that needs sale_year from derive_sale_period and the
+      folded deed rows from aggregate_multi_parcel_sales
     recipe_id: US-FL_property-fldor-2026
     require_panel: true
     join_key: parcel_id_assessor
@@ -477,6 +486,7 @@ pipeline:
   # column: after this pass, an empty value would be indistinguishable
   # from a county the step skipped.
   - step: join_temporal_snapshot
+    phase_override: the forward pass of the gather above, same reason
     recipe_id: US-FL_property-fldor-2026
     require_panel: true
     join_key: parcel_id_assessor

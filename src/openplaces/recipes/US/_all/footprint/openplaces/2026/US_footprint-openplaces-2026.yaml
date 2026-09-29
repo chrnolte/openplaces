@@ -385,6 +385,80 @@ pipeline:
       improvement_value: improvement_value_parcel_whole
       land_value: land_value_parcel_whole
 
+  # Store the pipe-separated list of all overlapping parcels (dominant first),
+  # loaded from the persisted spatial overlay link sidecar.
+  - step: collect_link_ids
+    entity_type: parcel
+    column: parcel_id_all
+
+  # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
+  # roof_shape is a direct, non-reconciled canonical column, so it keeps a
+  # provenance sidecar; n_stories_brails is only an intermediate evidence
+  # column reconciled into canonical n_stories below (which records its
+  # own provenance there), so its own sidecar would be dead weight.
+  # A gather step, so it runs with the other gathers before any decision
+  # (moved up from after the occupancy resolution 2026-09-29).
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: US_footprint_built-roof-shape-brails-2026
+        record_source: true
+        columns:
+          roof_shape_brails: roof_shape
+      - recipe_id: US_footprint_built-n-stories-brails-2026
+        columns:
+          n_stories_brails: n_stories_brails
+      # CHEER Inventory v0: the same BRAILS attributes, already computed
+      # statewide for North Carolina. Absent elsewhere, and merge_enrichments
+      # skips a recipe with no evidence for the admin unit, so this changes
+      # nothing outside NC. Kept as evidence rather than merged straight onto
+      # the canonical names: roof shape has a competing source reconciled
+      # below, and the rest are single-source (record_source would be
+      # bookkeeping with nothing to reconcile against).
+      - recipe_id: US-NC_footprint_building-cheer-v0
+        columns:
+          roof_shape_building_cheer: roof_shape_building_cheer
+          roof_shape_confidence_building_cheer: roof_shape_confidence
+          roof_shape_2_building_cheer: roof_shape_2
+          roof_shape_confidence_2_building_cheer: roof_shape_confidence_2
+          roof_shape_3_building_cheer: roof_shape_3
+          roof_shape_confidence_3_building_cheer: roof_shape_confidence_3
+          # Kept as evidence like foundation above: canonical
+          # construction_type is reconciled against NSI below, and
+          # reconcile_values reads evidence columns, not values a
+          # merge already folded into the canonical name.
+          construction_type_building_cheer: construction_type_building_cheer
+          has_garage_building_cheer: has_garage
+          n_stories_building_cheer: n_stories_building_cheer
+          # Kept as evidence, not merged onto canonical foundation_type:
+          # it is reconciled behind NSI below.
+          foundation_type_building_cheer: foundation_type_building_cheer
+      # NCDPS 2020 original per-building construction years (validated
+      # against block-level variance 2026-08-25: real records, not a
+      # broadcast statistic). NC-only; skipped where absent.
+      - recipe_id: US-NC_footprint_footprint-ncdps-2023
+        columns:
+          year_built_footprint_ncdps: year_built_footprint_ncdps
+          year_built_source_footprint_ncdps: year_built_source_footprint_ncdps
+
+  # Carry the county's federal FIPS code alongside openplaces' own
+  # admin3_id. Only one of the two is ours to change: an admin-id re-mint
+  # can hand `US-NC-CAL` to a different county than it named before, while
+  # 37029 is Camden's for good. A delivered inventory that carries the
+  # FIPS stays joinable to Census, FEMA and other federal products across
+  # a re-mint, and a recipient can tell which county a row came from
+  # without the openplaces spine.
+  #
+  # `segment: county` rather than a copy of `admin3_id_admin1`, because
+  # that column is the county FIPS only where level 3 is counties. In the
+  # six New England states level 3 is towns and it holds a ten-digit
+  # county-subdivision GEOID, so copying it verbatim would put two
+  # different codes in one delivered column. A gather step (moved up
+  # from the end of the recipe 2026-09-29; nothing reads it).
+  - step: derive_admin_attribute
+    segment: county
+    output: county_fips
+    admin_id_column: admin3_id
+
   # Decide, per admin unit (town), whether the local parcel data has usable
   # improvement values for most of its buildings. A well-covered town keeps
   # its apportioned parcel value everywhere (even for its few individually
@@ -397,18 +471,22 @@ pipeline:
     parcel_column: structure_value
     other_column: structure_value_building_nsi
 
-  # Store the pipe-separated list of all overlapping parcels (dominant first),
-  # loaded from the persisted spatial overlay link sidecar.
-  - step: collect_link_ids
-    entity_type: parcel
-    column: parcel_id_all
-
   # Suppress Overture dwelling counts on parcels that have been curated
   # as vacant (trusting the multi-source parcel land-use classification).
   - step: suppress_where
     column: n_dwellings_overture
     condition_column: land_use_class_parcel
     condition_value: Vacant
+
+  # Reconcile remaining per-row values from competing sources:
+  # - land_value is pre-written by apportionment and needs no reconciliation.
+  # - structure_value was already decided per admin unit above, not here.
+  # Reconcile phase: runs before any vote (moved ahead of the Overture
+  # vote 2026-09-29; neither reads the other's output).
+  - step: reconcile_values
+    priority:
+      n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
+      postal_code: [postal_code_dwelling_overture]
 
   # Vote a single-source occupancy class from Overture counts (>=2 is Multi-Family,
   # <=1 is Single-Family) to serve as a low-weight fallback or tiebreaker.
@@ -429,17 +507,6 @@ pipeline:
           - type: numeric_at_most
             column: n_dwellings_overture
             max: &single_dwelling_max 1
-
-  # Reconcile remaining per-row values from competing sources:
-  # - land_value is pre-written by apportionment and needs no reconciliation.
-  # - structure_value was already decided per admin unit above, not here.
-  - step: reconcile_values
-    priority:
-      n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
-      postal_code: [postal_code_dwelling_overture]
-    # year_built is deliberately NOT reconciled here: its NCDPS lane is
-    # enrichment evidence that merge_enrichments only attaches further
-    # down, so its reconcile runs after that step.
 
   # Address reconciliation and postal-city imputation are handled at the
   # harmonization stage on the input spine (reconcile_addresses /
@@ -463,6 +530,7 @@ pipeline:
   # in the cluster detection) belongs to the next geospine rerun. After
   # derive_metrics, which computes both area_m2 and the ratio.
   - step: suppress_where
+    phase_override: reads area_m2 and the ratio derive_metrics computes
     column: [structure_value, structure_value_per_area]
     indicators:
       - {type: keyword, column: geometry_source, pattern: '^condo_cluster\.'}
@@ -600,58 +668,16 @@ pipeline:
   - step: resolve_occupancy
     ruleset: parcel-occupancy-keywords.csv
 
-  # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
-  # roof_shape is a direct, non-reconciled canonical column, so it keeps a
-  # provenance sidecar; n_stories_brails is only an intermediate evidence
-  # column reconciled into canonical n_stories below (which records its
-  # own provenance there), so its own sidecar would be dead weight.
-  - step: merge_enrichments
-    recipes:
-      - recipe_id: US_footprint_built-roof-shape-brails-2026
-        record_source: true
-        columns:
-          roof_shape_brails: roof_shape
-      - recipe_id: US_footprint_built-n-stories-brails-2026
-        columns:
-          n_stories_brails: n_stories_brails
-      # CHEER Inventory v0: the same BRAILS attributes, already computed
-      # statewide for North Carolina. Absent elsewhere, and merge_enrichments
-      # skips a recipe with no evidence for the admin unit, so this changes
-      # nothing outside NC. Kept as evidence rather than merged straight onto
-      # the canonical names: roof shape has a competing source reconciled
-      # below, and the rest are single-source (record_source would be
-      # bookkeeping with nothing to reconcile against).
-      - recipe_id: US-NC_footprint_building-cheer-v0
-        columns:
-          roof_shape_building_cheer: roof_shape_building_cheer
-          roof_shape_confidence_building_cheer: roof_shape_confidence
-          roof_shape_2_building_cheer: roof_shape_2
-          roof_shape_confidence_2_building_cheer: roof_shape_confidence_2
-          roof_shape_3_building_cheer: roof_shape_3
-          roof_shape_confidence_3_building_cheer: roof_shape_confidence_3
-          # Kept as evidence like foundation above: canonical
-          # construction_type is reconciled against NSI below, and
-          # reconcile_values reads evidence columns, not values a
-          # merge already folded into the canonical name.
-          construction_type_building_cheer: construction_type_building_cheer
-          has_garage_building_cheer: has_garage
-          n_stories_building_cheer: n_stories_building_cheer
-          # Kept as evidence, not merged onto canonical foundation_type:
-          # it is reconciled behind NSI below.
-          foundation_type_building_cheer: foundation_type_building_cheer
-      # NCDPS 2020 original per-building construction years (validated
-      # against block-level variance 2026-08-25: real records, not a
-      # broadcast statistic). NC-only; skipped where absent.
-      - recipe_id: US-NC_footprint_footprint-ncdps-2023
-        columns:
-          year_built_footprint_ncdps: year_built_footprint_ncdps
-          year_built_source_footprint_ncdps: year_built_source_footprint_ncdps
-
-  # Reconcile year_built after the enrichment merge so the NCDPS lane
-  # exists when its turn comes: the assessor's own value wins, NCDPS's
+  # Reconcile year_built: the assessor's own value wins, NCDPS's
   # original per-building year (validated against block-level variance
-  # 2026-08-25) outranks NSI's block median, which is a statistic.
+  # 2026-08-25) outranks NSI's block median, which is a statistic. A
+  # reconcile step kept here, after the first votes, because the
+  # indicators above read year_built and n_stories as they stand at that
+  # point; moving these two reconciles up changes what the votes see.
   - step: reconcile_values
+    phase_override: >-
+      the indicators derived above read year_built and n_stories before
+      these lanes are reconciled; moving the step changes the vote
     priority:
       year_built: [year_built_parcel, year_built_footprint_ncdps,
                    year_built_block_median_building_nsi]
@@ -665,6 +691,9 @@ pipeline:
   # modeled count, then CHEER's -- last because it is the same modeled
   # lineage as NSI rather than an independent observation.
   - step: reconcile_values
+    phase_override: >-
+      the indicators derived above read n_stories before this lane is
+      reconciled; moving the step changes the vote
     priority:
       n_stories: [n_stories_brails, n_stories_building_nsi, n_stories_building_cheer]
       # The roll's story count is not a lane here: rolls define stories
@@ -1551,24 +1580,6 @@ pipeline:
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
     min_homes: 3
-
-  # Carry the county's federal FIPS code alongside openplaces' own
-  # admin3_id. Only one of the two is ours to change: an admin-id re-mint
-  # can hand `US-NC-CAL` to a different county than it named before, while
-  # 37029 is Camden's for good. A delivered inventory that carries the
-  # FIPS stays joinable to Census, FEMA and other federal products across
-  # a re-mint, and a recipient can tell which county a row came from
-  # without the openplaces spine.
-  #
-  # `segment: county` rather than a copy of `admin3_id_admin1`, because
-  # that column is the county FIPS only where level 3 is counties. In the
-  # six New England states level 3 is towns and it holds a ten-digit
-  # county-subdivision GEOID, so copying it verbatim would put two
-  # different codes in one delivered column.
-  - step: derive_admin_attribute
-    segment: county
-    output: county_fips
-    admin_id_column: admin3_id
 
   # Format: dtypes, then deterministic column order.
   - step: cast_categoricals
