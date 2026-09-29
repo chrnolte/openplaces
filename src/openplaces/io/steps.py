@@ -30,7 +30,10 @@ PHASES = ('geometry', 'attributes')
 
 
 def make_register(
-    registry: dict[str, Callable], phases: dict[str, str] | None = None
+    registry: dict[str, Callable],
+    phases: dict[str, str] | None = None,
+    vocabulary: tuple[str, ...] = PHASES,
+    default_phase: str | None = 'attributes',
 ) -> Callable:
     """Return a decorator that registers a step under one or more names.
 
@@ -39,11 +42,19 @@ def make_register(
     registry : dict
         The stage's own name-to-function mapping, filled in place.
     phases : dict, optional
-        Where given, the returned decorator also accepts ``phase``
-        (``'geometry'`` or ``'attributes'``, default ``'attributes'``)
-        and records it here per name. Without it the decorator refuses a
+        Where given, the returned decorator also accepts ``phase`` and
+        records it here per name. Without it the decorator refuses a
         phase, so a stage that has no phases cannot be handed one by
         mistake.
+    vocabulary : tuple of str
+        The phases this stage's steps may declare. The harmonizer's
+        two (geometry, attributes) are the default; the curator passes
+        its own five, in pipeline order.
+    default_phase : str or None
+        The phase a step gets when it declares none. None makes the
+        phase mandatory, which is what a stage whose recipes are
+        checked for phase order wants: an untagged step there is a
+        step nobody has placed.
 
     Returns
     -------
@@ -56,10 +67,16 @@ def make_register(
             if phase is not None:
                 raise TypeError('this stage has no step phases')
         else:
-            phase = 'attributes' if phase is None else phase
-            if phase not in PHASES:
+            if phase is None:
+                if default_phase is None:
+                    raise TypeError(
+                        f'{names[0]!r}: this stage requires a phase, one of '
+                        f'{", ".join(vocabulary)}'
+                    )
+                phase = default_phase
+            if phase not in vocabulary:
                 raise ValueError(
-                    f"phase must be 'geometry' or 'attributes', got {phase!r}"
+                    f'phase must be one of {", ".join(vocabulary)}, got {phase!r}'
                 )
 
         def decorator(fn: Callable) -> Callable:

@@ -18,7 +18,7 @@ from openplaces.recipe import resolve_attribute_name
 from openplaces.recipe import split_provenance_suffix as _split_source
 
 
-@_register('declare_columns')
+@_register('declare_columns', phase='gather')
 def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
     """Ensure the listed columns exist, writing missing ones as all-null.
 
@@ -52,7 +52,7 @@ def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
     return state
 
 
-@_register('keep_registered_columns')
+@_register('keep_registered_columns', phase='format')
 def keep_registered_columns(
     state: CurateState,
     exclude: list[str] | None = None,
@@ -119,7 +119,7 @@ def keep_registered_columns(
     return state
 
 
-@_register('cast_categoricals')
+@_register('cast_categoricals', phase='format')
 def cast_categoricals(state: CurateState) -> CurateState:
     """Cast registry-defined categoricals and provenance sidecars to Categorical.
 
@@ -154,7 +154,7 @@ def cast_categoricals(state: CurateState) -> CurateState:
     return state
 
 
-@_register('cast_integers')
+@_register('cast_integers', phase='format')
 def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
     """Cast numeric columns to a nullable integer dtype.
 
@@ -318,7 +318,7 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     return (float(fields[0]), fields, index_of[col])
 
 
-@_register('sort_rows')
+@_register('sort_rows', phase='format')
 def sort_rows(state: CurateState, by: list[str]) -> CurateState:
     """Sort rows by *by*, ascending.
 
@@ -335,7 +335,7 @@ def sort_rows(state: CurateState, by: list[str]) -> CurateState:
     return state
 
 
-@_register('order_columns')
+@_register('order_columns', phase='format')
 def order_columns(
     state: CurateState,
     overrides: list[str] | None = None,

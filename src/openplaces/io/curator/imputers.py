@@ -8,7 +8,7 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('fill_missing_numeric')
+@_register('fill_missing_numeric', phase='infer')
 def fill_missing_numeric(
     state: CurateState,
     columns: list[str],
@@ -61,7 +61,7 @@ _DWELLING_CLASS_COLUMNS = (
 )
 
 
-@_register('impute_n_dwellings')
+@_register('impute_n_dwellings', phase='infer')
 def impute_n_dwellings(state: CurateState, column: str | None = None) -> CurateState:
     """Fill missing ``n_dwellings`` from an occupancy-class lookup.
 
@@ -117,7 +117,7 @@ _GROUP_STATISTICS = {
 }
 
 
-@_register('impute_from_group_statistic')
+@_register('impute_from_group_statistic', phase='infer')
 def impute_from_group_statistic(
     state: CurateState,
     group_column: str,

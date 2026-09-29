@@ -169,7 +169,7 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
     return tokens.groupby(group_key[stating]).agg(union)
 
 
-@_register('aggregate_from_entities')
+@_register('aggregate_from_entities', phase='gather')
 def aggregate_from_entities(
     state: CurateState,
     recipe_id: str,

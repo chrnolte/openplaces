@@ -285,7 +285,7 @@ def _decide(
     return None, None
 
 
-@_register('translate_descriptions')
+@_register('translate_descriptions', phase='standardize')
 def translate_descriptions(
     state: CurateState,
     output: str,

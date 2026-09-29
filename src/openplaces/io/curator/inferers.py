@@ -10,7 +10,7 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('derive_metrics')
+@_register('derive_metrics', phase='infer')
 def derive_metrics(state: CurateState) -> CurateState:
     """Compute polygon area and per-area value ratios.
 
@@ -446,7 +446,7 @@ _INDICATOR_DERIVATIONS = {
 }
 
 
-@_register('derive_indicators')
+@_register('derive_indicators', phase='infer')
 def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState:
     """Compute the named precursor columns the voting steps score against.
 
@@ -550,7 +550,7 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     return state
 
 
-@_register('derive_stories_from_height')
+@_register('derive_stories_from_height', phase='infer')
 def derive_stories_from_height(
     state: CurateState,
     column: str = 'n_stories_footprint_fema',
@@ -628,7 +628,7 @@ def _vote_evidence_class(
     return vote_dynamic_values(values, weights, buckets=buckets)
 
 
-@_register('impute_occupancy_type')
+@_register('impute_occupancy_type', phase='infer')
 def impute_occupancy_type(state: CurateState) -> CurateState:
     """Impute ``occupancy_type`` from ordered evidence, then dwellings.
 
@@ -722,7 +722,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     return state
 
 
-@_register('flag_manufactured_home_communities')
+@_register('flag_manufactured_home_communities', phase='infer')
 def flag_manufactured_home_communities(
     state: CurateState,
     min_homes: int = 3,
@@ -1092,7 +1092,7 @@ def _score_manufactured_home_candidates(
     }
 
 
-@_register('classify_manufactured_homes')
+@_register('classify_manufactured_homes', phase='infer')
 def classify_manufactured_homes(
     state: CurateState,
     ruleset: str | None = None,
@@ -1289,7 +1289,7 @@ def classify_manufactured_homes(
     return state
 
 
-@_register('derive_group_class_share')
+@_register('derive_group_class_share', phase='infer')
 def derive_group_class_share(
     state: CurateState,
     group_column: str,
@@ -1425,7 +1425,7 @@ def _rows_where(curated: pd.DataFrame, where: list[dict] | None) -> pd.Series:
     return matched.fillna(False).astype(bool)
 
 
-@_register('derive_group_count')
+@_register('derive_group_count', phase='infer')
 def derive_group_count(
     state: CurateState,
     group_column: str,
@@ -1488,7 +1488,7 @@ def derive_group_count(
     return state
 
 
-@_register('derive_group_rank')
+@_register('derive_group_rank', phase='infer')
 def derive_group_rank(
     state: CurateState,
     group_column: str,
@@ -1575,7 +1575,7 @@ def derive_group_rank(
     return state
 
 
-@_register('derive_admin_attribute')
+@_register('derive_admin_attribute', phase='gather')
 def derive_admin_attribute(
     state: CurateState,
     output: str,

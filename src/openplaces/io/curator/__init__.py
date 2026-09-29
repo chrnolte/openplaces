@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+from openplaces.core.constants import CURATE_PHASES
 from openplaces.core.schema import AdminId
 from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
@@ -49,8 +50,46 @@ class CurateState:
 #: submodules are imported by ``_load_steps`` when a step is first
 #: dispatched (see ``io.steps``).
 _STEP_REGISTRY: dict[str, Callable] = {}
-_register = make_register(_STEP_REGISTRY)
+#: Each step's phase (core.constants.CURATE_PHASES), which places it in
+#: the assemble or the infer stage (CURATE_PHASE_STAGE). Every step
+#: declares one; the recipe order test reads this dict.
+_STEP_PHASES: dict[str, str] = {}
+_register = make_register(
+    _STEP_REGISTRY, _STEP_PHASES, vocabulary=CURATE_PHASES, default_phase=None
+)
 _load_steps = make_loader(__name__, __path__)
+
+
+def step_phase(step_name: str) -> str:
+    """The phase a registered curate step declares (CURATE_PHASES)."""
+    if step_name not in _STEP_PHASES:
+        _load_steps()
+    return _STEP_PHASES[step_name]
+
+
+def phase_order_violations(recipe: dict) -> list[str]:
+    """Steps of *recipe* that run before a step of an earlier phase.
+
+    A pipeline reads as gather, reconcile, standardize, infer, format
+    when its phases never decrease. A step may declare
+    ``phase_override: <reason>`` in the recipe to run out of order for a
+    dependency reason (the footprint recipe's second occupancy pass
+    reads the first); it is then not reported, and the reason stays
+    visible in the YAML rather than in a test's allowlist.
+    """
+    violations = []
+    highest = -1
+    for step_cfg in recipe.get('pipeline') or []:
+        name = step_cfg.get('step')
+        if not name or step_cfg.get('enabled', True) is False:
+            continue
+        rank = CURATE_PHASES.index(step_phase(name))
+        if rank < highest and not step_cfg.get('phase_override'):
+            violations.append(
+                f'{name} ({step_phase(name)}) runs after {CURATE_PHASES[highest]} steps'
+            )
+        highest = max(highest, rank)
+    return violations
 
 
 def _coerce_registry_numerics(curated):
@@ -319,6 +358,9 @@ __all__ = [
     'CurateState',
     'Curator',
     'curate',
+    'phase_order_violations',
+    'step_phase',
     '_STEP_REGISTRY',
+    '_STEP_PHASES',
     '_register',
 ]

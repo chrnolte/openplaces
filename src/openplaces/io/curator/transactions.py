@@ -18,7 +18,7 @@ def _normalized(series: pd.Series) -> pd.Series:
     return series.astype(str).str.replace(_NON_ALNUM, '', regex=True)
 
 
-@_register('dedup_transactions')
+@_register('dedup_transactions', phase='standardize')
 def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     """Drop rows that are the same recorded document, kept once.
 
@@ -52,7 +52,7 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     return state
 
 
-@_register('derive_sale_period')
+@_register('derive_sale_period', phase='standardize')
 def derive_sale_period(
     state: CurateState, date_column: str = 'recorded_date'
 ) -> CurateState:
@@ -83,7 +83,7 @@ def derive_sale_period(
     return state
 
 
-@_register('flag_sales_matching_other_kind')
+@_register('flag_sales_matching_other_kind', phase='standardize')
 def flag_sales_matching_other_kind(
     state: CurateState,
     key_column: str | list[str],
@@ -166,7 +166,7 @@ def flag_sales_matching_other_kind(
     return state
 
 
-@_register('collapse_double_closings')
+@_register('collapse_double_closings', phase='standardize')
 def collapse_double_closings(
     state: CurateState,
     key_column: str,
@@ -269,7 +269,7 @@ def collapse_double_closings(
     return state
 
 
-@_register('join_temporal_snapshot')
+@_register('join_temporal_snapshot', phase='gather')
 def join_temporal_snapshot(
     state: CurateState,
     recipe_id: str,
@@ -504,7 +504,7 @@ def join_temporal_snapshot(
     return state
 
 
-@_register('derive_document_id')
+@_register('derive_document_id', phase='standardize')
 def derive_document_id(
     state: CurateState,
     candidates: list,
@@ -586,7 +586,7 @@ def derive_document_id(
     return state
 
 
-@_register('count_parcels_per_document')
+@_register('count_parcels_per_document', phase='standardize')
 def count_parcels_per_document(
     state: CurateState,
     parcel_column: str,
@@ -620,7 +620,7 @@ def count_parcels_per_document(
     return state
 
 
-@_register('aggregate_multi_parcel_sales')
+@_register('aggregate_multi_parcel_sales', phase='standardize')
 def aggregate_multi_parcel_sales(
     state: CurateState,
     document_column: str = 'sale_document_id',
@@ -716,7 +716,7 @@ TRANSACTION_FINGERPRINT_TIERS = (
 REPEATED_DOCUMENT_SHARE = 0.02
 
 
-@_register('assign_transaction_ids')
+@_register('assign_transaction_ids', phase='infer')
 def assign_transaction_ids(
     state: CurateState,
     document_column: str = 'sale_document_id',

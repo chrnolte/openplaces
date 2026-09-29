@@ -181,7 +181,7 @@ def _resolve_rate_exponent(
     return out.fillna(chunk if chunk is not None else 1.0)
 
 
-@_register('impute_land_value')
+@_register('impute_land_value', phase='infer')
 def impute_land_value(
     state: CurateState,
     land_value_column: str = 'land_value',

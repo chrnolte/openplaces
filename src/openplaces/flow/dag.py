@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from openplaces.core.constants import RECIPE_STAGES
 from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.cleanup import _relative_posix, _walk_dag
@@ -31,13 +32,14 @@ from openplaces.recipe import (
 )
 
 # 'deliver' is not a recipe stage (recipes rank ingest < harmonize <
-# enrich < curate). It is a job this graph derives from the target
-# recipe's own `share: delivery:` block: pool the region's curated
-# files into the shareable bundle, once, after every county is built.
-# 'validate' follows it the same way: it re-scores a shipped region by
-# executing the validation notebooks the recipe's `validation:` block
-# declares for that region, then regenerates the docs tables.
-STAGES = ('ingest', 'harmonize', 'enrich', 'curate', 'deliver', 'validate')
+# enrich < curate, core.constants.RECIPE_STAGES). It is a job this
+# graph derives from the target recipe's own `share: delivery:` block:
+# pool the region's curated files into the shareable bundle, once,
+# after every county is built. 'validate' follows it the same way: it
+# re-scores a shipped region by executing the validation notebooks the
+# recipe's `validation:` block declares for that region, then
+# regenerates the docs tables.
+STAGES = (*RECIPE_STAGES, 'deliver', 'validate')
 
 # Node fill colors per stage in to_mermaid() (pastel, dark text)
 _STAGE_COLORS = {

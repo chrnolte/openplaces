@@ -44,7 +44,7 @@ def _source_token(col: str, default: str | None = None) -> str:
     return col if default is None else default
 
 
-@_register('reconcile_values')
+@_register('reconcile_values', phase='reconcile')
 def reconcile_values(
     state: CurateState,
     priority: dict[str, list[str]],
@@ -162,7 +162,7 @@ def _resolve_admin_group(
     return joined[id_col].reindex(curated.index)
 
 
-@_register('select_value_source_by_admin_unit')
+@_register('select_value_source_by_admin_unit', phase='reconcile')
 def select_value_source_by_admin_unit(
     state: CurateState,
     output: str,
@@ -328,7 +328,7 @@ def select_value_source_by_admin_unit(
     return state
 
 
-@_register('adopt_stories_by_floor_area_fit')
+@_register('adopt_stories_by_floor_area_fit', phase='infer')
 def adopt_stories_by_floor_area_fit(
     state: CurateState,
     output: str = 'n_stories',
@@ -492,7 +492,7 @@ def adopt_stories_by_floor_area_fit(
     return state
 
 
-@_register('suppress_where')
+@_register('suppress_where', phase='reconcile')
 def suppress_where(
     state: CurateState,
     column: str | list[str],
@@ -570,7 +570,7 @@ def suppress_where(
     return state
 
 
-@_register('null_out_of_range')
+@_register('null_out_of_range', phase='reconcile')
 def null_out_of_range(
     state: CurateState,
     columns: str | list[str],
@@ -634,7 +634,7 @@ def null_out_of_range(
     return state
 
 
-@_register('resolve_occupancy')
+@_register('resolve_occupancy', phase='infer')
 def resolve_occupancy(
     state: CurateState,
     ruleset: str,
@@ -803,7 +803,7 @@ def resolve_occupancy(
     return state
 
 
-@_register('reconcile_land_use')
+@_register('reconcile_land_use', phase='infer')
 def reconcile_land_use(
     state: CurateState,
     columns: list[dict],
@@ -939,7 +939,7 @@ def reconcile_land_use(
     return state
 
 
-@_register('resolve_by_vote')
+@_register('resolve_by_vote', phase='infer')
 def resolve_by_vote(
     state: CurateState,
     target: str,
@@ -1089,7 +1089,7 @@ def resolve_by_vote(
 # Recipe role keys accepted by reconcile_addresses: address_full is a
 # one-line string to parse; the rest are the component keys of
 # openplaces.geo.address.ADDRESS_COMPONENTS, used verbatim.
-@_register('reconcile_addresses')
+@_register('reconcile_addresses', phase='reconcile')
 def reconcile_addresses(state: CurateState, **kwargs) -> CurateState:
     """Curate-stage wrapper: reconcile addresses on ``state.curated``.
 

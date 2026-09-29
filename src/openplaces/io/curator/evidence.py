@@ -19,7 +19,7 @@ def _field(obj, name):
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
 
 
-@_register('link_curated_entity')
+@_register('link_curated_entity', phase='gather')
 def link_curated_entity(
     state: CurateState,
     recipe_id: str,
@@ -184,7 +184,7 @@ def _apportioned_sources(
     return out
 
 
-@_register('apportion_curated_values')
+@_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
     recipe_id: str,
@@ -430,7 +430,7 @@ def apportion_curated_values(
     return state
 
 
-@_register('collect_link_ids')
+@_register('collect_link_ids', phase='gather')
 def collect_link_ids(
     state: CurateState,
     entity_type: str | None = None,
@@ -552,7 +552,7 @@ def collect_link_ids(
     return state
 
 
-@_register('merge_enrichments')
+@_register('merge_enrichments', phase='gather')
 def merge_enrichments(
     state: CurateState,
     recipes: list[dict],
