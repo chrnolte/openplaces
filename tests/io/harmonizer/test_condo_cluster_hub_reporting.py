@@ -32,8 +32,13 @@ def _component(labels, values):
 
 
 def _run(monkeypatch, component, verbose=True):
+    # Patched on the module the step lives in (attributes/condo_clusters.py):
+    # the step looks the helper up in its own globals, so a patch on the
+    # attributes package would not reach it (AGENTS.md, layer hierarchy).
     monkeypatch.setattr(
-        attributes, '_cluster_condo_parcels', lambda *a, **k: (component, {'hub'})
+        attributes.condo_clusters,
+        '_cluster_condo_parcels',
+        lambda *a, **k: (component, {'hub'}),
     )
     return attributes.detect_condo_building_clusters(_state(verbose))
 

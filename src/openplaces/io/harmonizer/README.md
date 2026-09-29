@@ -201,7 +201,7 @@ Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{sou
 
 ---
 
-#### `classify_footprint_priority` (attributes.py)
+#### `classify_footprint_priority` (attributes/priority.py)
 Assign `priority_on_parcel` (primary / secondary / unknown) per parcel.
 
 **Seed**: all parcel-linked footprints → `'primary'`; unlinked → `'unknown'`.
@@ -218,7 +218,7 @@ Writes: `spine['priority_on_parcel']` (Categorical).
 
 ### C. ATTRIBUTE EVIDENCE (no value selection)
 
-#### `reconcile_attributes` (attributes.py)
+#### `reconcile_attributes` (attributes/reconcile.py)
 Aggregate reference columns to the spine as source-suffixed evidence columns.
 Attribution only — between-source value selection moved to the curate stage
 (`reconcile_values` in `openplaces.io.curator.reconcilers`).
@@ -241,7 +241,7 @@ from the reference geometry and cannot be named without loading it.
 
 ---
 
-##### `_attribute_polygon_reference` (attributes.py)
+##### `_attribute_polygon_reference` (attributes/polygon.py)
 
 Key computed columns (suffix = e.g. `_parcel`):
 
@@ -277,7 +277,7 @@ with direct column assignment (no area weighting).
 
 ---
 
-##### `_attribute_point_reference` (attributes.py)
+##### `_attribute_point_reference` (attributes/point.py)
 
 Key columns (suffix = e.g. `_building_nsi`):
 `n_{entity_type}s_{source_id}` (e.g. `n_buildings_nsi`; for dwelling/overture the
@@ -297,7 +297,7 @@ Gap-filling, derived metrics, and occupancy inference no longer run in harmonize
 They are curate steps now (`openplaces.io.curator`): `derive_metrics` (m2,
 `*_per_area`), `infer_group_combined` (→ `group_parcel_building_nsi_inferred`),
 `impute_n_dwelling_units`, `infer_occupancy_type`. `_OCC_UNITS`/`reverse_occ_units`
-remain in `attributes.py` (still used by `links/points.py` `_aggregate_multipoint`); the
+remain in `attributes/_shared.py` (still used by `links/points.py` `_aggregate_multipoint`); the
 curate `impute_n_dwelling_units` imports `_OCC_UNITS` from there.
 
 ---
@@ -428,10 +428,17 @@ The step sub-modules:
   prepared references from its persisted output and link sidecars
   (`load_geospine`); which links to restore is read from the geospine
   recipe's own pipeline, so the two YAMLs cannot drift
-- `attributes.py` — attribute source columns to the spine as suffixed evidence
-  columns (`reconcile_attributes`), assign each footprint's parcel priority
-  (`classify_footprint_priority`), and build the combined land-use label the
-  parcel classifier votes on (`derive_use_classes`). Its `columns` list is
+- `attributes/` — attribute source columns to the spine as suffixed evidence
+  columns (`reconcile_attributes`, in `reconcile.py` with the polygon and
+  point attribution in `polygon.py` and `point.py`), assign each
+  footprint's parcel priority (`classify_footprint_priority`,
+  `priority.py`), build the combined land-use label the parcel classifier
+  votes on (`derive_use_classes`, `use_classes.py`), summarize footprint
+  morphology (`morphology.py`), detect shared-land and condo clusters
+  (`shared_land.py`, `condo_clusters.py`), estimate property counts and
+  attribute dwelling addresses; one package since 2026-09-29 (until then
+  a 2,615-line module), every name re-exported by the package file, the
+  step loader importing it explicitly. `reconcile_attributes`'s `columns` list is
   ordered, and each entry is either a column or a list of alternatives
   **coalesced per row** — the default is `[use_group, use_group_code]` then
   `[use_subgroup, use_subgroup_code]`, so a source whose raw code has no

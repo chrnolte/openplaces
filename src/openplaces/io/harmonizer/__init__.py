@@ -504,11 +504,11 @@ _load_top_level_steps = make_loader(__name__, __path__)
 
 def _load_steps() -> None:
     """Import every step module once: the top-level modules and the
-    `links` sub-package, which the shared loader skips by design (it
-    keeps the enricher's detectors out of the import) and whose package
-    file imports its own modules."""
+    `attributes` and `links` sub-packages, which the shared loader skips
+    by design (it keeps the enricher's detectors out of the import) and
+    whose package files import their own modules."""
     _load_top_level_steps()
-    from openplaces.io.harmonizer import links  # noqa: F401
+    from openplaces.io.harmonizer import attributes, links  # noqa: F401
 
 
 def _missing_link_sidecars(recipe, admin_id) -> list[Path]:
