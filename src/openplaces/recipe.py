@@ -1047,7 +1047,15 @@ def apply_recipe_patches(recipe: dict, admin_id, patches=None) -> tuple[dict, li
 
     if not recipe.get('pipeline'):
         return recipe, []
-    recipe_id = get_recipe_id(recipe)
+    recipe_id = recipe.get('recipe_id')
+    if recipe_id is None:
+        try:
+            recipe_id = get_recipe_id(recipe)
+        except ValueError:
+            # A bare recipe dict with neither entity nor dataset (the
+            # curator's unit tests build these): nothing can name it in
+            # `patches:`, so nothing applies.
+            return recipe, []
     if patches is None:
         patches = [
             get_recipe_by_id(pid) for pid in find_recipe_patches(recipe_id, admin_id)

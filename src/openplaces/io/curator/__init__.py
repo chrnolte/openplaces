@@ -326,14 +326,13 @@ class Curator:
             state = fn(state, **params)
 
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
-        file_metadata = None
+        save_kwargs = {'combined': combined}
         if applied_patches:
-            file_metadata = {RECIPE_PATCHES_METADATA_KEY: json.dumps(applied_patches)}
+            save_kwargs['file_metadata'] = {
+                RECIPE_PATCHES_METADATA_KEY: json.dumps(applied_patches)
+            }
         save_parquet(
-            state.curated,
-            get_output_path(self.recipe, admin_id),
-            combined=combined,
-            file_metadata=file_metadata,
+            state.curated, get_output_path(self.recipe, admin_id), **save_kwargs
         )
 
     def show_random_entity(self):
