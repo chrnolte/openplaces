@@ -65,7 +65,8 @@ def _reference():
 @pytest.fixture
 def linked(monkeypatch):
     monkeypatch.setattr(
-        'openplaces.io.harmonizer.links.get_entities', lambda *a, **k: _reference()
+        'openplaces.io.harmonizer.links.by_id.get_entities',
+        lambda *a, **k: _reference(),
     )
 
     def run(**overrides):
@@ -131,7 +132,7 @@ def test_a_value_that_was_not_summed_is_stamped_on_every_sale_of_its_parcel(
         index=pd.Index(['p1', 'p2'], name='parcel_id'),
     )
     monkeypatch.setattr(
-        'openplaces.io.harmonizer.links.get_entities', lambda *a, **k: parcels
+        'openplaces.io.harmonizer.links.by_id.get_entities', lambda *a, **k: parcels
     )
     state = _State(sales)
     state.recipe = {'recipe_id': 'US_transaction-spine-2026', 'admin_id': AdminId('US')}

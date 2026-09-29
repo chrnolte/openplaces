@@ -80,7 +80,8 @@ def test_a_link_skips_the_empty_table_instead_of_raising(monkeypatch):
 
     state = _State()
     monkeypatch.setattr(
-        'openplaces.io.harmonizer.links.get_entities', lambda *a, **k: pd.DataFrame()
+        'openplaces.io.harmonizer.links.by_id.get_entities',
+        lambda *a, **k: pd.DataFrame(),
     )
 
     with pytest.warns(UserWarning):

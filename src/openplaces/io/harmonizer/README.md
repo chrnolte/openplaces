@@ -121,7 +121,7 @@ Build the spine from prioritized sources via IoU deduplication.
 
 ### B. ATTRIBUTE SOURCES TO SPINE
 
-#### `link_to_reference` (links.py)
+#### `link_to_reference` (links/spatial.py, points.py, sidecars.py)
 Load a reference dataset and build a spine ↔ reference crosswalk.
 
 **join modes**:
@@ -185,7 +185,7 @@ its fingerprint matches, skipping every pass below):
 
 ---
 
-#### `infer_spine_additions` (links.py)
+#### `infer_spine_additions` (links/additions.py)
 Add spine entries from parcel-only coverage (no linked footprint, high improvement value).
 
 Thresholds: `n_per_group_min` (mean footprints/parcel ≥ this), `value_per_ha_quantile`
@@ -196,7 +196,7 @@ Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{sou
 
 ---
 
-#### `resolve_overlaps` (links.py)
+#### `resolve_overlaps` (links/overlaps.py)
 `clean_polygons()` then `resolve_overlapping_polygons()`. Writes: `spine`.
 
 ---
@@ -297,7 +297,7 @@ Gap-filling, derived metrics, and occupancy inference no longer run in harmonize
 They are curate steps now (`openplaces.io.curator`): `derive_metrics` (m2,
 `*_per_area`), `infer_group_combined` (→ `group_parcel_building_nsi_inferred`),
 `impute_n_dwelling_units`, `infer_occupancy_type`. `_OCC_UNITS`/`reverse_occ_units`
-remain in `attributes.py` (still used by `links.py` `aggregate_multipoint`); the
+remain in `attributes.py` (still used by `links/points.py` `_aggregate_multipoint`); the
 curate `impute_n_dwelling_units` imports `_OCC_UNITS` from there.
 
 ---
@@ -410,8 +410,20 @@ The step sub-modules:
   (e.g. a parcel spine inheriting from its footprint spine, which runs
   first) wherever every row in the group agrees, so the direct spatial join
   only runs on the residual.
-- `links.py` — join to reference datasets spatially or via crosswalks
-  (`link_to_reference`)
+- `links/` — join to reference datasets, one module per concern since
+  2026-09-29 (until then one 4,259-line `links.py`): `spatial.py`
+  (`link_to_reference`, the overlay crosswalk), `points.py` (the point
+  join), `sidecars.py` (fingerprints and sidecar files), `by_id.py`
+  (`link_by_id`), `discovery.py` (auto-discovered sources and remap
+  sidecars), `combine.py` (prioritized writes onto the spine),
+  `address_ranges.py`, `additions.py` (`infer_spine_additions`),
+  `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
+  (constants). The package file re-exports every name, private ones
+  included, and forwards attribute assignments to the submodule that
+  defines the name, so the tests' patches on `links` still reach the
+  steps; the debt of moving those patches to the submodules is recorded
+  in `plans/stage-contract-audit.md`. The step loader imports the
+  package explicitly, because the shared loader skips sub-packages.
 - `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
   prepared references from its persisted output and link sidecars
   (`load_geospine`); which links to restore is read from the geospine

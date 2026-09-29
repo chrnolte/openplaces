@@ -46,7 +46,7 @@ def test_an_all_missing_group_sums_to_missing(monkeypatch):
         index=pd.Index(['r1', 'r2', 'r3', 'r4'], name='property_id'),
     )
     monkeypatch.setattr(
-        'openplaces.io.harmonizer.links.get_entities', lambda *a, **k: reference
+        'openplaces.io.harmonizer.links.by_id.get_entities', lambda *a, **k: reference
     )
     out = link_by_id(
         _State(spine),
