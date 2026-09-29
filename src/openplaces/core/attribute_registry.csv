@@ -1,59 +1,59 @@
 name,description,unit,data_type,aggregation,sort,entity_type,stage,null_placeholder
-use_group,What the parcel or building is used for: current occupancy or taxation grouping (land and buildings),,categorical,join_nonnull,10,,
-use_subgroup,OpenPlaces use subgroup,,categorical,join_nonnull,11,,
+use_group,What the parcel or building is used for: current occupancy or taxation grouping (land and buildings),,categorical,join_nonnull,10,,ingest
+use_subgroup,OpenPlaces use subgroup,,categorical,join_nonnull,11,,ingest
 use_group_combined,Combined use group and subgroup label,,categorical,join_nonnull,12,,curate
-purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,
+purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,ingest
 purpose_subgroup,Building construction-purpose subgroup,,categorical,join_nonnull,11,building,
 purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull,12,footprint,curate
 occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / RV Dwelling / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
-group,OpenPlaces top-level group,,categorical,first,14,,
-land_value,Assessed land value,USD,float,sum,20,,
+group,OpenPlaces top-level group,,categorical,first,14,,ingest
+land_value,Assessed land value,USD,float,sum,20,,ingest
 land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, then city-scoped, falling back to a county-wide residential-vs-non-residential average) times the parcel's own lot area",USD,float,sum,20.5,parcel,curate
-improvement_value,Assessed improvement value,USD,float,sum,21,,
+improvement_value,Assessed improvement value,USD,float,sum,21,,ingest
 improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
-land_value_exempt,Assessed land value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,20.1,parcel,
-land_value_taxable,Assessed land value actually subject to taxation,USD,float,sum,20.2,parcel,
-land_value_preferential,"Land value under a preferential-use assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"" agricultural/forest land)",USD,float,sum,20.3,parcel,
-improvement_value_exempt,Assessed improvement value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,21.1,parcel,
-improvement_value_taxable,Assessed improvement value actually subject to taxation,USD,float,sum,21.2,parcel,
-structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
-year_built,Year building was built,,float,mean,30,,,0
-address,Street address,,string,join_nonnull,40,,
-address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
+land_value_exempt,Assessed land value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,20.1,parcel,ingest
+land_value_taxable,Assessed land value actually subject to taxation,USD,float,sum,20.2,parcel,ingest
+land_value_preferential,"Land value under a preferential-use assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"" agricultural/forest land)",USD,float,sum,20.3,parcel,ingest
+improvement_value_exempt,Assessed improvement value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,21.1,parcel,ingest
+improvement_value_taxable,Assessed improvement value actually subject to taxation,USD,float,sum,21.2,parcel,ingest
+structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,ingest
+year_built,Year building was built,,float,mean,30,,ingest,0
+address,Street address,,string,join_nonnull,40,,ingest
+address_conflict,Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree,,string,first,41,,curate
 postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,harmonize
 postal_city,USPS-preferred city name for postal_zip5,,string,first,,,harmonize
 postal_city_acceptable,USPS-acceptable alternate city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
 postal_city_unacceptable,USPS-unacceptable city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
-land_area_sqft,"Land area as the source states it (the lot, a condominium unit's stated land share, or its development's land), in sqft, as opposed to the geometry's own area_* columns",sqft,float,mean,,,
-land_area_ac,"Land area as the source states it (the assessor's record of the lot, a condominium unit's stated land share, or its development's land), in acres, as opposed to the deed's (area_deed_ac) or the geometry's own area_* columns",ac,float,mean,,,
-area_deed_ac,Parcel area per the recorded deed (as opposed to the assessor's record or computed geometry),ac,float,mean,,,
+land_area_sqft,"Land area as the source states it (the lot, a condominium unit's stated land share, or its development's land), in sqft, as opposed to the geometry's own area_* columns",sqft,float,mean,,,ingest
+land_area_ac,"Land area as the source states it (the assessor's record of the lot, a condominium unit's stated land share, or its development's land), in acres, as opposed to the deed's (area_deed_ac) or the geometry's own area_* columns",ac,float,mean,,,ingest
+area_deed_ac,Parcel area per the recorded deed (as opposed to the assessor's record or computed geometry),ac,float,mean,,,ingest
 area_sqft,"Own 2D area of the row's entity seen from above, in sqft (lot for a parcel, outline for a footprint)",sqft,float,sum,50,,
-n_stories,Number of stories,,float,mean,51,,
-n_dwellings,Number of dwelling units in the building,,float,sum,52,,
-height,Building height,m,float,max,53,,,-1
+n_stories,Number of stories,,float,mean,51,,ingest
+n_dwellings,Number of dwelling units in the building,,float,sum,52,,ingest
+height,Building height,m,float,max,53,,ingest,-1
 n_sections,"Number of factory-built sections joined on site to form the structure (1 single-wide, 2 double-wide, 3 triple-wide). Meaningful only for manufactured homes; missing for site-built structures",,float,max,54,,curate
-foundation_type,Foundation type code (B basement; C crawl; F fill; I pile; P pier; S slab; W solid wall),,categorical,first,56,,
-construction_type,"Structural construction material code (C concrete; H manufactured; M masonry; S steel; W wood)",,categorical,first,57,,
+foundation_type,Foundation type code (B basement; C crawl; F fill; I pile; P pier; S slab; W solid wall),,categorical,first,56,,ingest
+construction_type,Structural construction material code (C concrete; H manufactured; M masonry; S steel; W wood),,categorical,first,57,,ingest
 roof_shape,Roof shape classification,,categorical,first,60,,enrich
 roof_shape_confidence,Classifier confidence in roof_shape,,float,mean,61,,enrich
 roof_shape_2,"Roof shape classification, second-ranked alternative",,categorical,first,62,,enrich
 roof_shape_confidence_2,Classifier confidence in roof_shape_2,,float,mean,63,,enrich
 roof_shape_3,"Roof shape classification, third-ranked alternative",,categorical,first,64,,enrich
 roof_shape_confidence_3,Classifier confidence in roof_shape_3,,float,mean,65,,enrich
-has_garage,Whether the building has a garage,,bool,first,66,,
-occupancy_type_base,"Occupancy class before Multi-Family is split into height bands (pre-refinement occupancy_type)",,categorical,first,14,,curate
-occupancy_type_conflict,"Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree",,categorical,first,71,,curate
+has_garage,Whether the building has a garage,,bool,first,66,,ingest
+occupancy_type_base,Occupancy class before Multi-Family is split into height bands (pre-refinement occupancy_type),,categorical,first,14,,curate
+occupancy_type_conflict,Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree,,categorical,first,71,,curate
 occupancy_type_review,Flag where improvement value is a small nonzero share of total value (possible manufactured home for review),,bool,first,71,footprint,curate
 p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
 manufactured_home_community,"Flag where the parcel is classified as a manufactured-home community/park; footprints get the same-named, richer refinement of it (a parcel with more than the threshold count of manufactured-home footprints, per the final footprint occupancy)",,bool,first,82,,curate
 n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
-n_primary_manufactured_homes_per_parcel,"Number of footprints on the footprint's parcel that are primary on it and that the first occupancy vote classed Manufactured Home; read by the second pass on small secondary footprints",,float,first,,footprint,curate
+n_primary_manufactured_homes_per_parcel,Number of footprints on the footprint's parcel that are primary on it and that the first occupancy vote classed Manufactured Home; read by the second pass on small secondary footprints,,float,first,,footprint,curate
 manufactured_home_rank_on_parcel,"Rank of a footprint the first occupancy vote classed Manufactured Home among its parcel's such footprints, 1 for the largest by area_m2 (ties by footprint id); missing on every other footprint",,float,first,,footprint,curate
-n_manufactured_home_units,"Number of mobile or manufactured home units the appraisal roll or building record lists for the property (one per improvement or building of a mobile-home type); 0 where the record lists buildings but none of that type, missing where the source records no unit types",,float,sum,52.1,,
-n_travel_trailers,"Number of travel trailers the appraisal roll lists as improvements of the property (a towable RV assessed as a dwelling unit); 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.2,,
-n_park_models,"Number of park-model RVs the appraisal roll lists as improvements of the property; 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.3,,
-n_residential_buildings,"Number of residential buildings (main-area improvements of a residential class, mobile homes and RVs included) the appraisal roll lists for the property; a structure count, not a dwelling-unit count",,float,sum,52.4,,
-has_homestead_exemption,"Whether the property carries a residence homestead exemption as the appraisal roll records it (Texas: the owner's principal residence)",,bool,max,52.6,,
+n_manufactured_home_units,"Number of mobile or manufactured home units the appraisal roll or building record lists for the property (one per improvement or building of a mobile-home type); 0 where the record lists buildings but none of that type, missing where the source records no unit types",,float,sum,52.1,,ingest
+n_travel_trailers,"Number of travel trailers the appraisal roll lists as improvements of the property (a towable RV assessed as a dwelling unit); 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.2,,ingest
+n_park_models,"Number of park-model RVs the appraisal roll lists as improvements of the property; 0 where the roll lists other units, missing where the source records no such class",,float,sum,52.3,,ingest
+n_residential_buildings,"Number of residential buildings (main-area improvements of a residential class, mobile homes and RVs included) the appraisal roll lists for the property; a structure count, not a dwelling-unit count",,float,sum,52.4,,ingest
+has_homestead_exemption,Whether the property carries a residence homestead exemption as the appraisal roll records it (Texas: the owner's principal residence),,bool,max,52.6,,ingest
 land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
@@ -63,34 +63,34 @@ footprint_area_m2_dominant,"Total real (non-synthetic) footprint area on the par
 footprint_area_m2_in_parcel,"Real footprint area actually inside this parcel's own boundary: sum, per touching footprint, of its geometry clipped to this parcel (a real geometric intersection), across all footprints -- including non-dominant spillovers -- clearing min_overlap_m2 against this parcel. Bounded by the parcel's own area.",m2,float,sum,,parcel,harmonize
 footprint_area_m2_primary,"Total real (non-synthetic) footprint area on the parcel among non-secondary footprints, summed from footprints for which this parcel is the dominant parcel -- same unclipped-area caveat as footprint_area_m2_dominant.",m2,float,sum,,parcel,harmonize
 footprint_area_share,Total footprint area as a share of the parcel's own total area,,float,mean,,parcel,curate
-footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- footprint_area_m2_primary is unclipped)",,float,mean,,parcel,curate
+footprint_primary_area_share,Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- footprint_area_m2_primary is unclipped),,float,mean,,parcel,curate
 max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
-max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
+max_dwellings_per_footprint,Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel,,float,max,,parcel,harmonize
 n_properties_per_parcel,"Number of individual property/unit records grouped under this parcel, keyed by parcel_id_admin2. Exact where a native property-spine source exists (property_source='source' or 'shared_land_group'); estimated from confirmed footprint/dwelling multiplicity where none does (property_source='estimated')",,float,first,,parcel,harmonize
 property_source,"Provenance of this parcel's property/unit count: 'source' (a real per-unit source table, e.g. MassGIS L3_ASSESS), 'shared_land_group' (geometrically inferred from a shared-land parcel group), 'estimated' (no per-unit source, but internal multiplicity evidence exists), or 'none'",,categorical,first,,parcel,harmonize
 shared_land_parcel_id,"Index value of this parcel's shared-land group parcel (a near-zero-land-value parcel this one is entirely enclosed by, alongside >=1 other unit), where detect_shared_land_groups found one",,string,first,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
-recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,
-doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first,,transaction,
-instrument_number,Registry instrument number,,string,first,,transaction,
-book,Registry book number,,string,first,,transaction,
-page,Registry page number,,string,first,,transaction,
-grantor,Grantor (seller) name as recorded,,string,first,,transaction,
-grantee,Grantee (buyer) name as recorded,,string,first,,transaction,
-price,Transaction price,USD,float,first,,transaction,
-price_raw,Transaction price as provided by the source,,string,first,,transaction,
-sale_year,Year of the recorded sale,,float,first,,transaction,
-sale_month,Month of the recorded sale,,float,first,,transaction,
-sale_book,Official-record book of the recorded sale,,string,first,,transaction,
-sale_page,Official-record page of the recorded sale,,string,first,,transaction,
-sale_clerk_instrument,Clerk instrument number of the recorded sale,,string,first,,transaction,
-sale_qualification_code,The source's qualification of the sale (arm's length or a disqualification reason),,categorical,first,,transaction,
-sale_multi_parcel,The source's flag that the sale covered several parcels,,categorical,first,,transaction,
-sale_vacant,Vacant or improved indicator at the sale,,categorical,first,,transaction,
-parcel_link_method,"Which rule linked the sale to its parcel: parcel_id_local (the standardized parcel number, tried first), then address_id_local_city or address_id_local (an exact address key, tried only where the number found nothing); missing where no rule did. The name of a rule, never a score",,categorical,first,,transaction,
-sale_party_relationship,"How the source says seller and buyer are related (e.g. Wisconsin RETR: No relationship, Financial, Shareholder/partner/member, Family, Other); a source field, never derived from names",,categorical,first,,transaction,
-sale_change_code,The source's code for a change to the sale record,,categorical,first,,transaction,
-transaction_id_source,The source's own identifier for the sale record,,string,first,,transaction,
+recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,ingest
+doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first,,transaction,ingest
+instrument_number,Registry instrument number,,string,first,,transaction,ingest
+book,Registry book number,,string,first,,transaction,ingest
+page,Registry page number,,string,first,,transaction,ingest
+grantor,Grantor (seller) name as recorded,,string,first,,transaction,ingest
+grantee,Grantee (buyer) name as recorded,,string,first,,transaction,ingest
+price,Transaction price,USD,float,first,,transaction,ingest
+price_raw,Transaction price as provided by the source,,string,first,,transaction,ingest
+sale_year,Year of the recorded sale,,float,first,,transaction,ingest
+sale_month,Month of the recorded sale,,float,first,,transaction,ingest
+sale_book,Official-record book of the recorded sale,,string,first,,transaction,ingest
+sale_page,Official-record page of the recorded sale,,string,first,,transaction,ingest
+sale_clerk_instrument,Clerk instrument number of the recorded sale,,string,first,,transaction,ingest
+sale_qualification_code,The source's qualification of the sale (arm's length or a disqualification reason),,categorical,first,,transaction,ingest
+sale_multi_parcel,The source's flag that the sale covered several parcels,,categorical,first,,transaction,ingest
+sale_vacant,Vacant or improved indicator at the sale,,categorical,first,,transaction,ingest
+parcel_link_method,"Which rule linked the sale to its parcel: parcel_id_local (the standardized parcel number, tried first), then address_id_local_city or address_id_local (an exact address key, tried only where the number found nothing); missing where no rule did. The name of a rule, never a score",,categorical,first,,transaction,harmonize
+sale_party_relationship,"How the source says seller and buyer are related (e.g. Wisconsin RETR: No relationship, Financial, Shareholder/partner/member, Family, Other); a source field, never derived from names",,categorical,first,,transaction,ingest
+sale_change_code,The source's code for a change to the sale record,,categorical,first,,transaction,ingest
+transaction_id_source,The source's own identifier for the sale record,,string,first,,transaction,ingest
 sale_document_id,"Identifier of the recorded document (deed) behind the sale, spelled per source: a clerk instrument number, else book and page. Rows sharing it are one sale.",,string,first,,transaction,curate
 n_parcels_per_sale,Number of parcels the recorded document covered,,float,first,,transaction,curate
 sale_arms_length_confidence,"Graded confidence that the sale was at arm's length, 0 to 1, from the signals the source supplies; a consumer sets its own cutoff",fraction (0-1),float,first,,transaction,curate
@@ -101,82 +101,82 @@ sale_matches_deed,"1 where an assessor last-sale row has the same parcel, sale y
 sale_price_to_assessed_ratio,Sale price over the assessed total value at the time of sale,,float,first,,transaction,curate
 sale_nominal_price_floor,"The price at or below which this source records a nominal consideration rather than a price (Florida 100, North Carolina 0), read off the data as its largest low-price mass point",USD,float,first,,transaction,curate
 single_family_sales_disclosure_share,"Share of single-family sales in the entity's admin unit with a disclosed price, a value for a consumer to threshold",fraction (0-1),float,first,,transaction,curate
-parcel_id,Parcel identifier,,string,first,,parcel,
+parcel_id,Parcel identifier,,string,first,,parcel,ingest
 parcel_id_all,All overlapping parcel identifiers (pipe-joined; dominant parcel first by descending intersection area; missing when identical to parcel_id),,string,first,,parcel,curate
-parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
-parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,
-parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,
-parcel_id_map,"Parcel identifier from a secondary map/plat-based numbering system (e.g. VT's Grand List MAPID)",,string,first,,parcel,
-parcel_id_upi,"Parcel's Uniform Parcel Identifier (UPI), where the source assigns one separately from its primary parcel id",,string,first,,parcel,
-parcel_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the parcel record,,string,first,,parcel,
-parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,
-parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,
-parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
-property_id_assessor,Raw property/unit identifier as provided by the source,,string,first,,property,
-property_id_admin2,Property/unit identifier unique within its admin-2 unit,,string,first,,property,
-lot_id_local,"parcel_id_local of the lot a unit sits on, on property rows split off a parcel table at ingest; the row's own parcel_id_local stays the unit's",,string,first,,property,
-property_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the property/unit record,,string,first,,property,
-address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,
-address_id_local_city,"Standardized address matching key including city (only where city is available)",,string,first,,,
+parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,ingest
+parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,ingest
+parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,ingest
+parcel_id_map,Parcel identifier from a secondary map/plat-based numbering system (e.g. VT's Grand List MAPID),,string,first,,parcel,ingest
+parcel_id_upi,"Parcel's Uniform Parcel Identifier (UPI), where the source assigns one separately from its primary parcel id",,string,first,,parcel,ingest
+parcel_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the parcel record,,string,first,,parcel,ingest
+parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,ingest
+parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,ingest
+parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,ingest
+property_id_assessor,Raw property/unit identifier as provided by the source,,string,first,,property,ingest
+property_id_admin2,Property/unit identifier unique within its admin-2 unit,,string,first,,property,ingest
+lot_id_local,"parcel_id_local of the lot a unit sits on, on property rows split off a parcel table at ingest; the row's own parcel_id_local stays the unit's",,string,first,,property,harmonize
+property_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the property/unit record,,string,first,,property,ingest
+address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,harmonize
+address_id_local_city,Standardized address matching key including city (only where city is available),,string,first,,,harmonize
 n_transactions,Number of recorded transactions on the parcel,,float,sum,,parcel,harmonize
-type,Record or unit type or class,,categorical,first,,
-address_number,Street address number,,string,first,,,
-address_street_name,Street name,,string,first,,,
-address_street_type,Street type (St Ave Rd etc.),,string,first,,,
-address_street_directional,Street directional prefix or suffix (N S E W),,string,first,,,
-address_street,Street name with type and directional,,string,first,,,
-address_unit_type,Address unit type (Apt Suite Unit etc.),,string,first,,,
-address_unit,Address unit or suite,,string,first,,,
-city,City or place name,,string,first,,,
-admin3_name,Raw admin-3 (county) name as given by the source,,string,first,,,
-school_district_name,School district name,,string,first,,,
-school_district_id,School district identifier or code,,string,first,,,
-postal_code,Postal (ZIP) code,,string,first,,,
-legal_description,Legal description of the property,,string,first,,,
-subdivision,Subdivision name,,string,first,,parcel,
-subdivision_code,Subdivision code,,string,first,,parcel,
-owner_name,Owner name as recorded,,string,first,,parcel,
-owner_name_2,Second owner name as recorded,,string,first,,parcel,
+type,Record or unit type or class,,categorical,first,,,ingest
+address_number,Street address number,,string,first,,,ingest
+address_street_name,Street name,,string,first,,,ingest
+address_street_type,Street type (St Ave Rd etc.),,string,first,,,ingest
+address_street_directional,Street directional prefix or suffix (N S E W),,string,first,,,ingest
+address_street,Street name with type and directional,,string,first,,,ingest
+address_unit_type,Address unit type (Apt Suite Unit etc.),,string,first,,,ingest
+address_unit,Address unit or suite,,string,first,,,ingest
+city,City or place name,,string,first,,,ingest
+admin3_name,Raw admin-3 (county) name as given by the source,,string,first,,,ingest
+school_district_name,School district name,,string,first,,,ingest
+school_district_id,School district identifier or code,,string,first,,,ingest
+postal_code,Postal (ZIP) code,,string,first,,,ingest
+legal_description,Legal description of the property,,string,first,,,ingest
+subdivision,Subdivision name,,string,first,,parcel,ingest
+subdivision_code,Subdivision code,,string,first,,parcel,ingest
+owner_name,Owner name as recorded,,string,first,,parcel,ingest
+owner_name_2,Second owner name as recorded,,string,first,,parcel,ingest
 owner_name_january_1,Owner of record as of January 1 (the tax-roll assessment date),,string,first,,parcel,
-owner_address,Owner mailing street address,,string,first,,parcel,
-owner_address_2,Owner mailing street address continuation line,,string,first,,parcel,
-owner_city,Owner mailing city,,string,first,,parcel,
-owner_state,Owner mailing state or region (raw; use owner_admin2_id_admin1 when resolvable),,string,first,,parcel,
-owner_admin2_id_admin1,Owner mailing state/region as the level-2 admin id coded within admin1 (in-country),,string,first,,parcel,
-owner_postal_code,Owner mailing postal (ZIP) code,,string,first,,parcel,
-owner_relationship,"Owner's relationship to the property as coded by the source (e.g. joint owner, trustee); explains multiple ownership rows per parcel in a property-entity source",,categorical,first,,property,
-clean_and_green,"Flag/code for enrollment in a preferential-use farm/forest assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"")",,categorical,first,,property,
-zoning_code,Zoning classification code,,categorical,first,,parcel,
-tax_district,Tax district code,,categorical,first,,parcel,
-tax_year,Assessment or tax year,,float,first,,parcel,
-tax_neighborhood_code,Assessor neighborhood or market-area code,,categorical,first,,,
-deed_reference,Recorder of Deeds reference number for the parcel's governing deed,,string,first,,parcel,
-use_group_code,Source land-use code paired with use_group,,categorical,first,,,
-use_subgroup_code,Source land-use code paired with use_subgroup,,categorical,first,,,
-land_use_group,Source land-use group classification,,categorical,first,,parcel,
-total_value,"Total assessed value: land plus structures. Named in full because a bare `value` reads as ambiguous on an entity that also carries land_value, improvement_value and structure_value",USD,float,sum,23,,
-tax_value_gross,Gross property tax amount billed before credits/reductions (a tax bill amount not an assessed value),USD,float,sum,,,
-tax_value_net,Net property tax amount billed after credits/reductions (a tax bill amount not an assessed value),USD,float,sum,,,
-market_value,Market (just) value,USD,float,sum,,parcel,
-special_feature_value,Assessed value of special features,USD,float,sum,,parcel,
-current_use_value,Current-use (present-use) assessed value,USD,float,sum,,parcel,
+owner_address,Owner mailing street address,,string,first,,parcel,ingest
+owner_address_2,Owner mailing street address continuation line,,string,first,,parcel,ingest
+owner_city,Owner mailing city,,string,first,,parcel,ingest
+owner_state,Owner mailing state or region (raw; use owner_admin2_id_admin1 when resolvable),,string,first,,parcel,ingest
+owner_admin2_id_admin1,Owner mailing state/region as the level-2 admin id coded within admin1 (in-country),,string,first,,parcel,ingest
+owner_postal_code,Owner mailing postal (ZIP) code,,string,first,,parcel,ingest
+owner_relationship,"Owner's relationship to the property as coded by the source (e.g. joint owner, trustee); explains multiple ownership rows per parcel in a property-entity source",,categorical,first,,property,ingest
+clean_and_green,"Flag/code for enrollment in a preferential-use farm/forest assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"")",,categorical,first,,property,ingest
+zoning_code,Zoning classification code,,categorical,first,,parcel,ingest
+tax_district,Tax district code,,categorical,first,,parcel,ingest
+tax_year,Assessment or tax year,,float,first,,parcel,ingest
+tax_neighborhood_code,Assessor neighborhood or market-area code,,categorical,first,,,ingest
+deed_reference,Recorder of Deeds reference number for the parcel's governing deed,,string,first,,parcel,ingest
+use_group_code,Source land-use code paired with use_group,,categorical,first,,,ingest
+use_subgroup_code,Source land-use code paired with use_subgroup,,categorical,first,,,ingest
+land_use_group,Source land-use group classification,,categorical,first,,parcel,ingest
+total_value,"Total assessed value: land plus structures. Named in full because a bare `value` reads as ambiguous on an entity that also carries land_value, improvement_value and structure_value",USD,float,sum,23,,ingest
+tax_value_gross,Gross property tax amount billed before credits/reductions (a tax bill amount not an assessed value),USD,float,sum,,,ingest
+tax_value_net,Net property tax amount billed after credits/reductions (a tax bill amount not an assessed value),USD,float,sum,,,ingest
+market_value,Market (just) value,USD,float,sum,,parcel,ingest
+special_feature_value,Assessed value of special features,USD,float,sum,,parcel,ingest
+current_use_value,Current-use (present-use) assessed value,USD,float,sum,,parcel,ingest
 personal_property_value,Assessed value of taxable personal property,USD,float,sum,,parcel,
 classified_market_value,Classified (present-use) market value,USD,float,sum,,parcel,
-last_sale_price,Price of the most recent recorded sale,USD,float,first,,parcel,
-last_sale_year,Year of the most recent recorded sale,,float,first,,parcel,
-last_sale_month,Month of the most recent recorded sale,,float,first,,parcel,
-last_sale_date,Date of the most recent recorded sale,,datetime,first,,parcel,
-last_sale_qualification_code,Qualification code of the most recent recorded sale,,categorical,first,,parcel,
-last_sale_vacant,Vacant or improved indicator at the most recent sale,,categorical,first,,parcel,
-last_sale_doc_type,Deed or instrument type of the most recent sale,,categorical,first,,parcel,
-last_sale_book_page,Registry book and page of the most recent sale,,string,first,,parcel,
+last_sale_price,Price of the most recent recorded sale,USD,float,first,,parcel,ingest
+last_sale_year,Year of the most recent recorded sale,,float,first,,parcel,ingest
+last_sale_month,Month of the most recent recorded sale,,float,first,,parcel,ingest
+last_sale_date,Date of the most recent recorded sale,,datetime,first,,parcel,ingest
+last_sale_qualification_code,Qualification code of the most recent recorded sale,,categorical,first,,parcel,ingest
+last_sale_vacant,Vacant or improved indicator at the most recent sale,,categorical,first,,parcel,ingest
+last_sale_doc_type,Deed or instrument type of the most recent sale,,categorical,first,,parcel,ingest
+last_sale_book_page,Registry book and page of the most recent sale,,string,first,,parcel,ingest
 n_sales,Number of recorded sales,,float,sum,,parcel,
-n_buildings,Number of buildings on the parcel,,float,sum,,parcel,
-n_land_units,Number of land units,,float,sum,,parcel,
-has_structure,Whether the parcel has a structure,,bool,first,,parcel,
-geometry_source,Dataset the footprint or parcel geometry came from,,categorical,first,,,
-geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,
-source_date,Source last-update date,,datetime,first,,,
+n_buildings,Number of buildings on the parcel,,float,sum,,parcel,ingest
+n_land_units,Number of land units,,float,sum,,parcel,ingest
+has_structure,Whether the parcel has a structure,,bool,first,,parcel,ingest
+geometry_source,Dataset the footprint or parcel geometry came from,,categorical,first,,,harmonize
+geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,harmonize
+source_date,Source last-update date,,datetime,first,,,ingest
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
 area_m2,Footprint area,m2,float,sum,,,curate
 area_ha,Parcel lot area,ha,float,sum,,,harmonize
@@ -231,58 +231,58 @@ population_hispanic_share,Population share: Hispanic,fraction (0-1),float,mean,,
 population_mixed_race_share,Population share: mixed race,fraction (0-1),float,mean,,,enrich
 population_native_american_share,Population share: American Indian/Alaska Native,fraction (0-1),float,mean,,,enrich
 population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
-population_gravity_index,"Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster",,float,mean,,,enrich
+population_gravity_index,Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster,,float,mean,,,enrich
 census_tract_id,Census tract identifier,,string,first,,,harmonize
 county_fips,"County FIPS code (5-digit state+county), read as the `county` segment of the unit's own national code rather than stored anywhere: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
 census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
 census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
 zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical approximation of ZIP code service areas, not the authoritative ZIP code (see postal_zip5)",,string,first,,,harmonize
-postal_code_conflict,"ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree",,string,first,,,harmonize
+postal_code_conflict,ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree,,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
-land_value_per_ha_log_region_nb2,"Same; 'region-nb2' model (alternate neighborhood-region spec)",ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb2,Same; 'region-nb2' model (alternate neighborhood-region spec),ln(USD/ha),float,mean,,parcel,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich
-effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,,0
-renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,,0
-n_rooms,Number of rooms in the building,,float,mean,54,,,
-n_bedrooms,Number of bedrooms in the building,,float,mean,55,,,
-n_bathrooms,"Number of bathrooms, each half bath counted as 0.5 (two full baths and one half bath read 2.5). A source that records quarter or three-quarter baths keeps them as 0.25 and 0.75. Where a source publishes full baths only, this is the full count; n_half_bathrooms carries the half count where the source separates it",,float,mean,58,,,
-n_half_bathrooms,"Number of half bathrooms (a toilet and sink, no bath or shower), where the source records them separately. Each is already counted as 0.5 in n_bathrooms",,float,mean,58,,,
-heating_type,Heating system type as described by the source,,categorical,first,59,,,
-has_basement,Whether the building has a basement,,bool,max,67,,,
-building_style,"Architectural or construction style of the building as described by the source (e.g. ranch, conventional, double-wide). A structure descriptor, not a land use: do not map it to use_group",,categorical,join_nonnull,68,,,
-conveyance_type,"What a recorded sale conveyed (e.g. land only vs land plus improvements). Distinct from doc_type, which is the instrument; the transaction-side counterpart of the parcel attribute last_sale_vacant",,categorical,first,,transaction,,
-living_area_sqft,"Finished, heated living area of the building as the assessor reports it (living, heated or finished area). Excludes garages, unfinished basements, porches and decks. Distinct from gross_floor_area_sqft (all enclosed floor area) and from area_sqft (the row's own 2D area seen from above, not a floor area)",sqft,float,sum,49,,,
-gross_floor_area_sqft,"Gross floor area: all enclosed floor area on all floors, including unfinished and non-living space (garage, unfinished basement), as the source reports it",sqft,float,sum,49.5,,,
-quality_grade,"Assessor's construction quality grade in the source's own codes (a letter or numeric class, e.g. 'C+' or '4'); not harmonized across sources",,categorical,first,62,,,
-condition,"Assessor's rating of the building's physical condition in the source's own codes (e.g. poor, fair, average, good); not harmonized across sources",,categorical,first,63,,,
-exterior_wall,"Exterior wall material as described by the source (e.g. brick, vinyl siding, stucco, frame)",,categorical,first,57.5,,,
-roof_material,"Roof covering material as described by the source (e.g. asphalt shingle, metal, tile); distinct from roof_shape",,categorical,first,60.5,,,
-heating_fuel,"Heating fuel as described by the source (e.g. gas, electric, oil, wood); distinct from heating_type, the system",,categorical,first,59.1,,,
-has_central_air,Whether the building has central air conditioning,,bool,max,59.2,,,
-garage_type,"Garage type as described by the source (e.g. attached, detached, built-in, basement)",,categorical,first,66.1,,,
-n_garage_spaces,Number of garage parking spaces (car capacity),,float,sum,66.2,,,
-garage_area_sqft,Garage floor area,sqft,float,sum,66.3,,,
-detached_garage_area_sqft,"Floor area of detached garages, kept out of gross_floor_area_sqft (a detached garage is usually its own footprint) so curate can add it back where no separate footprint exists for it",sqft,float,sum,66.35,,,
-has_carport,Whether the property has a carport,,bool,max,66.4,,,
-n_parking_spaces,"Number of off-street parking spaces as the source reports them (garage, carport, driveway or deeded spaces); common for urban lots and condominium units",,float,sum,66.5,,,
-basement_area_sqft,"Basement floor area, finished and unfinished",sqft,float,sum,67.1,,,
-basement_finished_area_sqft,Finished part of the basement floor area,sqft,float,sum,67.2,,,
-has_pool,Whether the property has a swimming pool as the source records it,,bool,max,69,,,
-n_fireplaces,"Number of fireplaces as the source counts them (openings or stacks)",,float,sum,69.1,,,
-porch_area_sqft,"Porch floor area, open and enclosed",sqft,float,sum,69.2,,,
-deck_area_sqft,"Deck and patio area",sqft,float,sum,69.3,,,
-has_elevator,Whether the building has a passenger elevator,,bool,max,69.4,,,
-n_outbuildings,"Number of detached accessory structures the source records (sheds, barns, detached garages)",,float,sum,69.5,,,
-has_solar,Whether the property has solar panels as the source records it,,bool,max,69.6,,,
-has_accessory_dwelling,"Whether the property has a secondary dwelling unit (accessory dwelling, in-law unit, garage apartment)",,bool,max,52.5,,,
-unit_floor,"Floor a condominium or apartment unit sits on, numbered as the source numbers it",,float,first,53,,,
-sewer_type,"Sewage disposal as described by the source (e.g. public sewer, septic)",,categorical,first,,,,
-water_source,"Water supply as described by the source (e.g. public, private well)",,categorical,first,,,,
-frontage_ft,Lot frontage along the street,ft,float,first,,,,
-has_waterfront,Whether the lot fronts on a water body as the source records it,,bool,max,,,,
-view_rating,"Assessor's view rating in the source's own codes (for a condominium unit, the unit's view); not harmonized across sources",,categorical,first,,,,
-topography,"Lot topography as described by the source (e.g. level, rolling, steep)",,categorical,first,,,,
-construction_description,"Structural construction or frame type in the source's own words or codes (e.g. frame, masonry, wood; a county's class letters). Kept as the county defines it; curate translates it into construction_type",,categorical,first,57.1,,,
-foundation_description,"Foundation type in the source's own words or codes (e.g. slab, crawl space, full basement). Kept as the county defines it; curate translates it into foundation_type",,categorical,first,56.1,,,
-dwelling_type_description,"Dwelling or unit type in the source's own words or codes (e.g. standard, end unit, garden condo, mobile home, parking space). Kept as the county defines it; curate translates it into occupancy and attachment indicators",,categorical,first,68.1,,,
+effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,ingest,0
+renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,ingest,0
+n_rooms,Number of rooms in the building,,float,mean,54,,ingest,
+n_bedrooms,Number of bedrooms in the building,,float,mean,55,,ingest,
+n_bathrooms,"Number of bathrooms, each half bath counted as 0.5 (two full baths and one half bath read 2.5). A source that records quarter or three-quarter baths keeps them as 0.25 and 0.75. Where a source publishes full baths only, this is the full count; n_half_bathrooms carries the half count where the source separates it",,float,mean,58,,ingest,
+n_half_bathrooms,"Number of half bathrooms (a toilet and sink, no bath or shower), where the source records them separately. Each is already counted as 0.5 in n_bathrooms",,float,mean,58,,ingest,
+heating_type,Heating system type as described by the source,,categorical,first,59,,ingest,
+has_basement,Whether the building has a basement,,bool,max,67,,ingest,
+building_style,"Architectural or construction style of the building as described by the source (e.g. ranch, conventional, double-wide). A structure descriptor, not a land use: do not map it to use_group",,categorical,join_nonnull,68,,ingest,
+conveyance_type,"What a recorded sale conveyed (e.g. land only vs land plus improvements). Distinct from doc_type, which is the instrument; the transaction-side counterpart of the parcel attribute last_sale_vacant",,categorical,first,,transaction,ingest,
+living_area_sqft,"Finished, heated living area of the building as the assessor reports it (living, heated or finished area). Excludes garages, unfinished basements, porches and decks. Distinct from gross_floor_area_sqft (all enclosed floor area) and from area_sqft (the row's own 2D area seen from above, not a floor area)",sqft,float,sum,49,,ingest,
+gross_floor_area_sqft,"Gross floor area: all enclosed floor area on all floors, including unfinished and non-living space (garage, unfinished basement), as the source reports it",sqft,float,sum,49.5,,ingest,
+quality_grade,"Assessor's construction quality grade in the source's own codes (a letter or numeric class, e.g. 'C+' or '4'); not harmonized across sources",,categorical,first,62,,ingest,
+condition,"Assessor's rating of the building's physical condition in the source's own codes (e.g. poor, fair, average, good); not harmonized across sources",,categorical,first,63,,ingest,
+exterior_wall,"Exterior wall material as described by the source (e.g. brick, vinyl siding, stucco, frame)",,categorical,first,57.5,,ingest,
+roof_material,"Roof covering material as described by the source (e.g. asphalt shingle, metal, tile); distinct from roof_shape",,categorical,first,60.5,,ingest,
+heating_fuel,"Heating fuel as described by the source (e.g. gas, electric, oil, wood); distinct from heating_type, the system",,categorical,first,59.1,,ingest,
+has_central_air,Whether the building has central air conditioning,,bool,max,59.2,,ingest,
+garage_type,"Garage type as described by the source (e.g. attached, detached, built-in, basement)",,categorical,first,66.1,,ingest,
+n_garage_spaces,Number of garage parking spaces (car capacity),,float,sum,66.2,,ingest,
+garage_area_sqft,Garage floor area,sqft,float,sum,66.3,,ingest,
+detached_garage_area_sqft,"Floor area of detached garages, kept out of gross_floor_area_sqft (a detached garage is usually its own footprint) so curate can add it back where no separate footprint exists for it",sqft,float,sum,66.35,,ingest,
+has_carport,Whether the property has a carport,,bool,max,66.4,,ingest,
+n_parking_spaces,"Number of off-street parking spaces as the source reports them (garage, carport, driveway or deeded spaces); common for urban lots and condominium units",,float,sum,66.5,,ingest,
+basement_area_sqft,"Basement floor area, finished and unfinished",sqft,float,sum,67.1,,ingest,
+basement_finished_area_sqft,Finished part of the basement floor area,sqft,float,sum,67.2,,ingest,
+has_pool,Whether the property has a swimming pool as the source records it,,bool,max,69,,ingest,
+n_fireplaces,Number of fireplaces as the source counts them (openings or stacks),,float,sum,69.1,,ingest,
+porch_area_sqft,"Porch floor area, open and enclosed",sqft,float,sum,69.2,,ingest,
+deck_area_sqft,Deck and patio area,sqft,float,sum,69.3,,ingest,
+has_elevator,Whether the building has a passenger elevator,,bool,max,69.4,,ingest,
+n_outbuildings,"Number of detached accessory structures the source records (sheds, barns, detached garages)",,float,sum,69.5,,ingest,
+has_solar,Whether the property has solar panels as the source records it,,bool,max,69.6,,ingest,
+has_accessory_dwelling,"Whether the property has a secondary dwelling unit (accessory dwelling, in-law unit, garage apartment)",,bool,max,52.5,,ingest,
+unit_floor,"Floor a condominium or apartment unit sits on, numbered as the source numbers it",,float,first,53,,ingest,
+sewer_type,"Sewage disposal as described by the source (e.g. public sewer, septic)",,categorical,first,,,ingest,
+water_source,"Water supply as described by the source (e.g. public, private well)",,categorical,first,,,ingest,
+frontage_ft,Lot frontage along the street,ft,float,first,,,ingest,
+has_waterfront,Whether the lot fronts on a water body as the source records it,,bool,max,,,ingest,
+view_rating,"Assessor's view rating in the source's own codes (for a condominium unit, the unit's view); not harmonized across sources",,categorical,first,,,ingest,
+topography,"Lot topography as described by the source (e.g. level, rolling, steep)",,categorical,first,,,ingest,
+construction_description,"Structural construction or frame type in the source's own words or codes (e.g. frame, masonry, wood; a county's class letters). Kept as the county defines it; curate translates it into construction_type",,categorical,first,57.1,,ingest,
+foundation_description,"Foundation type in the source's own words or codes (e.g. slab, crawl space, full basement). Kept as the county defines it; curate translates it into foundation_type",,categorical,first,56.1,,ingest,
+dwelling_type_description,"Dwelling or unit type in the source's own words or codes (e.g. standard, end unit, garden condo, mobile home, parking space). Kept as the county defines it; curate translates it into occupancy and attachment indicators",,categorical,first,68.1,,ingest,
