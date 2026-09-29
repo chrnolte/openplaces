@@ -85,6 +85,16 @@ Steps are organized by the nature of the transformation:
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
+  Until 2026-09-29 it also held the group-context steps, the
+  manufactured-home classifier, the occupancy and story estimators and
+  `derive_admin_attribute` (1,707 lines); those now live in
+  `group_context.py`, `estimators/` (one module per attribute:
+  `manufactured_homes.py`, `occupancy.py`, `stories.py`; the package
+  file imports them because the shared step loader skips sub-packages)
+  and `evidence.py`. `inferers.py` still re-exports every moved step
+  name, so `from openplaces.io.curator.inferers import ...` keeps
+  working in the tests and the docs.
+- `group_context.py` —
   `derive_group_class_share` adds the context an entity cannot supply about
   itself: the share of its group (any id column it already carries, e.g.
   `census_block_id`) whose evidence reads as a given class, excluding the

@@ -50,14 +50,23 @@ class CurateState:
 #: submodules are imported by ``_load_steps`` when a step is first
 #: dispatched (see ``io.steps``).
 _STEP_REGISTRY: dict[str, Callable] = {}
-#: Each step's phase (core.constants.CURATE_PHASES), which places it in
-#: the assemble or the infer stage (CURATE_PHASE_STAGE). Every step
+#: Each step's phase (core.constants.CURATE_PHASES): the contract
+#: sentence it answers to and its place in a recipe's order. Every step
 #: declares one; the recipe order test reads this dict.
 _STEP_PHASES: dict[str, str] = {}
 _register = make_register(
     _STEP_REGISTRY, _STEP_PHASES, vocabulary=CURATE_PHASES, default_phase=None
 )
-_load_steps = make_loader(__name__, __path__)
+_load_top_level_steps = make_loader(__name__, __path__)
+
+
+def _load_steps() -> None:
+    """Import every step module once: the top-level modules and the
+    `estimators` sub-package, which the shared loader skips by design
+    (it keeps the enricher's detectors out of the import) and whose
+    package file imports its own modules."""
+    _load_top_level_steps()
+    from openplaces.io.curator import estimators  # noqa: F401
 
 
 def step_phase(step_name: str) -> str:
