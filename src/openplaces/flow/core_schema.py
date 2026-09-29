@@ -57,6 +57,10 @@ def entity_table() -> pd.DataFrame:
     rows = []
     for entity_type in ENTITY_TYPES:
         recipes = find_recipes(entity_type)
+        if 'patches' in recipes.columns:
+            # A patch recipe amends another recipe's pipeline for its
+            # scope; it is not a recipe of the entity in its own right.
+            recipes = recipes[recipes['patches'] == '']
         spines = sorted(
             r
             for r in recipes.loc[recipes['stage'] == 'harmonize', 'recipe_id']

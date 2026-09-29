@@ -40,6 +40,47 @@ Sidecar CSVs (crosswalks, keyword tables, id overrides) sit beside their
 recipe and are named for it, e.g.
 `US_parcel-openplaces-2026_land-use-keywords.csv`.
 
+## A county's rules live in a patch recipe, not in the national recipe
+
+A national harmonize or curate recipe is the generic pipeline. A rule
+that holds for one county or state (a placeholder id to drop, a
+threshold a county's roll needs, a step that county must skip) goes in a
+**patch recipe** at that scope: the same entity, source and version as
+the recipe it amends, so it sits where the county's other recipes sit,
+with `patches:` naming the recipe and `pipeline_patch:` listing the
+operations. It has no `pipeline` of its own.
+
+```yaml
+# US/XX/YY/_all/parcel/openplaces/2026/US-XX-YY_parcel-openplaces-2026.yaml
+admin_id: US-XX-YY
+stage: curate
+entity: {entity_type: parcel, source: {source_id: openplaces}, version: "2026"}
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - extend: exclude_by_value          # append to a list parameter
+    key: values
+    values: [CALO]
+  - set: impute_land_value             # override parameters
+    params: {min_rows: 50}
+  - insert_after: derive_indicators    # add a step (insert_before too)
+    step: {step: exclude_by_value, column: use_group_code, values: ["000"]}
+  - replace: order_columns             # swap a step's whole config
+    step: {step: order_columns}
+  - remove: derive_group_count         # drop a step
+    occurrence: 2                      # when the name repeats, say which
+```
+
+`recipe.apply_recipe_patches` applies the patches whose scope covers the
+unit, coarse to fine (a state's before a county's), once per unit inside
+the harmonizer and the curator; the output's parquet footer records
+them under `openplaces:recipe_patches`. Auto-discovery never picks a
+patch recipe as an entity's recipe, and the DAG keeps one recipe id per
+job. Say in the patch file's header comment what was measured that
+makes the rule the county's and not everyone's: the WATER and ROW
+placeholder ids once thought to be Carteret's turned out to occur in
+nine counties, Vilas WI among them (measured 2026-09-29), so they stay
+in the national recipe.
+
 ## `source_id`
 
 Name the **publisher**, not the geography, and default to `{county}county`

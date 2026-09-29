@@ -603,6 +603,17 @@ Key recipe fields:
 - `additional_layers` — list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
 - `entity_recipe` — predecessor entity recipe used by enrichment or curation
 - `pipeline` — ordered named steps for harmonization, enrichment, or curation
+- `patches` / `pipeline_patch` — a patch recipe: a file at a county's or
+  state's scope that names a national harmonize or curate recipe and
+  lists operations on its pipeline (`set`, `extend`, `insert_before`,
+  `insert_after`, `replace`, `remove`, each addressing a step by name,
+  `occurrence` when the name repeats). `recipe.apply_recipe_patches`
+  applies the patches whose scope covers the unit, coarse to fine, once
+  per unit inside the harmonizer and the curator; the output footer
+  records them (`openplaces:recipe_patches`). Auto-discovery never picks
+  a patch recipe as an entity's recipe and the DAG keeps one recipe id
+  per job. A county's rule goes there, never into a branch on a place
+  in the national recipe or in `src/` (`recipes/README.md`).
 
 Key recipe functions (`recipe.py`):
 - `get_recipe(admin_id, entity, ...)` / `get_recipe_by_id(recipe_id)` — load a recipe dict
