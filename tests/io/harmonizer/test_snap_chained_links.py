@@ -19,6 +19,7 @@ from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import links as links_mod
 from openplaces.io.harmonizer.links import snap_chained_links
 from openplaces.recipe import get_recipe_by_id
+from tests.links_patching import patch_links
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
@@ -166,7 +167,7 @@ def _parcels_gdf():
 
 @pytest.fixture
 def state(data_root, monkeypatch):
-    monkeypatch.setattr(links_mod, 'get_entities', lambda *a, **k: _parcels_gdf())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _parcels_gdf())
     return HarmonizeState(
         recipe=get_recipe_by_id(SPINE),
         admin_id=AdminId(COUNTY),
@@ -242,13 +243,13 @@ def test_reload_reapplies_snap_without_overlay(state, monkeypatch):
     crosswalk_fresh = state.crosswalks[PARCEL]
 
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
     state2 = _run_overlay(_fresh_state(state))
     assert calls['n'] == 0, 'sidecar reload must skip the overlay'
     crosswalk_reloaded = state2.crosswalks[PARCEL]
@@ -276,13 +277,13 @@ def test_enabling_snap_on_existing_sidecar_needs_no_recompute(state, monkeypatch
         thresholds={'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
     )
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
     state2 = _run_overlay(_fresh_state(state), thresholds=SNAP_THRESHOLDS)
     assert calls['n'] == 0, 'snap settings must not invalidate the raw overlay'
     crosswalk = state2.crosswalks[PARCEL]

@@ -19,6 +19,7 @@ from shapely.geometry import box
 
 import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 CRS = 32617  # UTM 17N (metric)
 
@@ -46,7 +47,7 @@ def _empty_points():
 def test_spatial_point_skips_uncovered_admin_unit(monkeypatch, reference):
     """A missing or empty reference leaves the spine untouched, no raise."""
     ref = None if reference is None else _empty_points()
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = _state()
     before = len(state.spine)
@@ -65,7 +66,7 @@ def test_spatial_point_skips_uncovered_admin_unit(monkeypatch, reference):
 def test_spatial_overlay_skips_uncovered_admin_unit(monkeypatch, reference):
     """The overlay route needs the same guard as the point route."""
     ref = None if reference is None else _empty_points()
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = _state()
     before = len(state.spine)

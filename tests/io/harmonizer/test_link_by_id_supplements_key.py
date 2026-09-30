@@ -14,6 +14,7 @@ import pytest
 import openplaces.io.harmonizer.links as links
 from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 _ROLL = 'US-XX-YY_property-roll-2026'
 _DETAIL = f'{_ROLL}_bedrooms'
@@ -72,10 +73,10 @@ def _patch(monkeypatch, frames):
         assert recipe_id in frames, f'{recipe_id} should not be loaded'
         return frames[recipe_id]
 
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: _matches())
-    monkeypatch.setattr(links, 'get_entities', _get_entities)
-    monkeypatch.setattr(links, 'restrict_to_admin_by_name', lambda df, *a: df)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: _matches())
+    patch_links(monkeypatch, 'get_entities', _get_entities)
+    patch_links(monkeypatch, 'restrict_to_admin_by_name', lambda df, *a: df)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
 
 def test_supplement_joins_the_roll_on_its_supplements_key(monkeypatch):
@@ -190,8 +191,8 @@ def test_discover_link_sources_reads_the_key_off_the_recipe(monkeypatch):
             'transformations': [{'input': 'ACCT', 'output': _KEY}],
         },
     }
-    monkeypatch.setattr(
-        links, '_find_admin_scoped_recipe_ids', lambda *a, **k: list(recipes)
+    patch_links(
+        monkeypatch, '_find_admin_scoped_recipe_ids', lambda *a, **k: list(recipes)
     )
     monkeypatch.setattr(
         'openplaces.recipe.get_recipe_by_id', lambda rid, **k: recipes[rid]

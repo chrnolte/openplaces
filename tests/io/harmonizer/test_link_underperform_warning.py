@@ -10,6 +10,7 @@ import pytest
 
 from openplaces.core.schema import Entity
 from openplaces.io.harmonizer import HarmonizeState, links
+from tests.links_patching import patch_links
 
 
 def _state(spine):
@@ -34,7 +35,7 @@ def test_link_by_id_actually_reaches_the_guard(monkeypatch, mode, key):
     """
     spine = pd.DataFrame({key: [f'k{i}' for i in range(100)]})
     ref = pd.DataFrame({'parcel_id_local': ['k0'], 'land_value': [1]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     with pytest.warns(UserWarning, match='matched only'):
         links.link_by_id(
             _state(spine),

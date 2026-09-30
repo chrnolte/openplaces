@@ -444,11 +444,12 @@ The step sub-modules:
   `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones
-  included, and forwards attribute assignments to the submodule that
-  defines the name, so the tests' patches on `links` still reach the
-  steps; the debt of moving those patches to the submodules is recorded
-  in `plans/stage-contract-audit.md`. The step loader imports the
-  package explicitly, because the shared loader skips sub-packages.
+  included, and is a plain package: a test patches the submodule a step
+  lives in, or every submodule binding the name through
+  `tests/links_patching.patch_links` (the forwarding class that stood in
+  for that between 2026-09-29 and 2026-09-30 is gone). The step loader
+  imports the package explicitly, because the shared loader skips
+  sub-packages.
 - `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
   prepared references from its persisted output and link sidecars
   (`load_geospine`); which links to restore is read from the geospine

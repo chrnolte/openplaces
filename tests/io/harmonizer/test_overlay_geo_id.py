@@ -13,6 +13,7 @@ from shapely.geometry import box
 import openplaces.io.harmonizer.links as links
 import openplaces.io.harmonizer.spine as spine_mod
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 class _StopAtOverlay(Exception):
@@ -28,7 +29,7 @@ def test_overlay_generates_geo_id_for_reference_without_it(monkeypatch):
         crs='EPSG:4326',
     )
     assert 'geo_id' not in ref.columns
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     captured = {}
 
@@ -37,7 +38,7 @@ def test_overlay_generates_geo_id_for_reference_without_it(monkeypatch):
         captured['ref_polys'] = ref_polys
         raise _StopAtOverlay
 
-    monkeypatch.setattr(links, 'overlay_polygons', _fake_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _fake_overlay)
 
     spine = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)], crs='EPSG:4326')
     spine.index.name = 'footprint_id'
@@ -83,7 +84,7 @@ def test_parcel_spine_overlay_does_not_collide_with_ref_level(monkeypatch):
         geometry=[box(1, 1, 3, 3), box(11, 1, 13, 3)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'US_footprint-fema-2023', 'footprint', {'area_intersection_m2_min': 0}
     )

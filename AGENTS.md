@@ -558,7 +558,7 @@ fixed label, never a score, and no link is removed once written (patent
 shape 4). Both are described in full in
 `src/openplaces/io/harmonizer/README.md`.
 
-### Recipes (`recipe.py`, `src/openplaces/recipes/`)
+### Recipes (`recipe/`, `src/openplaces/recipes/`)
 
 Recipes are YAML files that define how to ingest, harmonize, enrich, or curate
 a dataset. They are stored in a path-encoded directory structure:
@@ -620,7 +620,11 @@ Key recipe fields:
   per job. A county's rule goes there, never into a branch on a place
   in the national recipe or in `src/` (`recipes/README.md`).
 
-Key recipe functions (`recipe.py`):
+Key recipe functions (the `recipe/` package, one module per concern
+since 2026-09-30: `loading`, `tables`, `naming`, `discovery`, `patches`,
+`dependencies`, `output`; every name is re-exported by the package, and
+a test that patches `openplaces.recipe.<name>` reaches a caller that
+imports it from the package at call time):
 - `get_recipe(admin_id, entity, ...)` / `get_recipe_by_id(recipe_id)` — load a recipe dict
 - `find_entity_recipe_id(...)` — select by stage rank
   `ingest < harmonize < enrich < curate`; pass `stage=` when a caller needs
@@ -737,7 +741,16 @@ interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
 (`n_parcels_per_footprint`). Final output order is computed from the suffix + registry
 `sort` rank, so no explicit per-recipe column list is needed.
 
-### Configuration (`config.py`)
+### Configuration (`config/`)
+
+A package since 2026-09-30: `identity` (User-Agent, identity prompt),
+`user_config` (the user's own file, the prompts that fill it, agent
+detection), `settings` (`OpenPlacesConfig`), and the package file, which
+keeps `cfg`, `_cfg`, `get_config`, `reload_config` and every setter that
+reads or rebinds them (consent, personal columns, identity, usage
+profile), because the tests patch those names on `openplaces.config` and
+the callers look them up there. `python -m openplaces.config` still runs
+the command line (`__main__.py`).
 
 `cfg` (singleton `OpenPlacesConfig`) holds directory paths (`data_root`, `dir_core`,
 `dir_external`, `dir_heap`, etc.), CRS, and the installation's `identity`.
