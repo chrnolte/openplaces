@@ -15,6 +15,7 @@ import pytest
 from shapely.geometry import box
 
 import openplaces.io.ingester as ingester_module
+import openplaces.io.ingester.outputs as ingester_outputs
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, save_parquet
 
@@ -24,7 +25,7 @@ ADMIN_IDS = [AdminId('US-NC-TYR'), AdminId('US-NC-CAM')]
 def _ingester(monkeypatch, tmp_path, admin_ids):
     """An Ingester stub whose outputs land in tmp_path."""
     monkeypatch.setattr(
-        ingester_module,
+        ingester_outputs,
         'get_output_path',
         lambda recipe, admin_id, *a, **k: tmp_path / f'{admin_id}.parquet',
     )

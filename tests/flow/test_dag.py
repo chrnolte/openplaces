@@ -131,6 +131,42 @@ def test_property_parcel_link_is_written_after_both_of_its_sides(dag):
     assert link not in dag.extra_outputs('harmonize', 'US_property-spine-2026', COUNTY)
 
 
+def test_the_building_spine_sits_between_the_footprint_geospine_and_spine(dag):
+    # Slice b2: the footprint geospine feeds the building geospine, the
+    # building spine reads both (its own geospine and the footprint
+    # geospine's links) and writes the footprint-to-building link, and
+    # the footprint spine projects the building spine, so the parcel
+    # geospine, which reads the footprint spine, comes after all of them.
+    footprint_geospine = get_output_path('US_footprint-geospine-2026', admin_id=COUNTY)
+    building_geospine = get_output_path('US_building-geospine-2026', admin_id=COUNTY)
+    building_spine = get_output_path('US_building-spine-2026', admin_id=COUNTY)
+    footprint_spine = get_output_path('US_footprint-spine-2026', admin_id=COUNTY)
+    assert footprint_geospine in dag.input_paths(
+        'harmonize', 'US_building-geospine-2026', COUNTY
+    )
+    building_spine_inputs = dag.input_paths(
+        'harmonize', 'US_building-spine-2026', COUNTY
+    )
+    assert building_geospine in building_spine_inputs
+    assert footprint_geospine in building_spine_inputs
+    assert footprint_spine not in building_spine_inputs
+    footprint_spine_inputs = dag.input_paths(
+        'harmonize', 'US_footprint-spine-2026', COUNTY
+    )
+    assert building_spine in footprint_spine_inputs
+    assert footprint_geospine in footprint_spine_inputs
+    assert footprint_spine in dag.input_paths(
+        'harmonize', 'US_parcel-geospine-2026', COUNTY
+    )
+
+    link = get_entity_link_path(
+        'US_footprint-geospine-2026', 'US_building-geospine-2026', COUNTY
+    )
+    # Beside the finer entity's output, the building geospine's.
+    assert link.parent == building_geospine.parent
+    assert link in dag.extra_outputs('harmonize', 'US_building-spine-2026', COUNTY)
+
+
 def test_curated_properties_sit_between_the_property_spine_and_parcels(dag):
     # Translation runs on property rows (each names its roll, whose
     # override is read first), and curated parcels reduce the result

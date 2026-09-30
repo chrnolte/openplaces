@@ -85,6 +85,20 @@ def _entity_type_of(recipe) -> str:
     return str(entity.entity_type)
 
 
+def _key_values(frame: pd.DataFrame, key: str):
+    """The key as strings: a column, or the index when *key* names it.
+
+    An entity's own id is its row index, not a column (the footprint
+    spine is indexed by `footprint_id`), so a link whose key on one side
+    is that id reads the index. None when the frame has neither.
+    """
+    if key in frame.columns:
+        return frame[key].astype('string').to_numpy()
+    if frame.index.name == key:
+        return pd.Index(frame.index).astype('string').to_numpy()
+    return None
+
+
 def build_id_links(
     finer: pd.DataFrame,
     coarser: pd.DataFrame,
@@ -127,14 +141,16 @@ def build_id_links(
     from openplaces.io.harmonizer.links import _placeholder_key_mask
 
     columns = [finer_id, coarser_id, *LINK_COLUMNS_TAIL]
-    if finer_key not in finer.columns or coarser_key not in coarser.columns:
+    finer_keys = _key_values(finer, finer_key)
+    coarser_keys = _key_values(coarser, coarser_key)
+    if finer_keys is None or coarser_keys is None:
         return pd.DataFrame(columns=columns)
 
     has_source = source_column is not None and source_column in finer.columns
     left = pd.DataFrame(
         {
             finer_id: finer.index,
-            'key': finer[finer_key].astype('string').to_numpy(),
+            'key': finer_keys,
             'link_source': (
                 finer[source_column].astype('string').to_numpy()
                 if has_source
@@ -146,7 +162,7 @@ def build_id_links(
     right = pd.DataFrame(
         {
             coarser_id: coarser.index,
-            'key': coarser[coarser_key].astype('string').to_numpy(),
+            'key': coarser_keys,
         }
     )
     # A key on more rows than link_by_id's cutoff, judged within each

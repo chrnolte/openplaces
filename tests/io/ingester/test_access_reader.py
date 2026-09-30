@@ -34,7 +34,7 @@ def test_the_flat_table_reader_routes_access_files(tmp_path, monkeypatch):
         calls.update(path=path, table=table, columns=columns)
         return pd.DataFrame({'AssrNo': ['0001'], 'BedRms': [3]})
 
-    monkeypatch.setattr('openplaces.io.ingester.table_ingester.read_access_table', fake)
+    monkeypatch.setattr('openplaces.io.ingester.table_read.read_access_table', fake)
     path = tmp_path / 'Fabricated.MDB'
     path.write_bytes(b'')
 
@@ -49,7 +49,7 @@ def test_the_flat_table_reader_routes_access_files(tmp_path, monkeypatch):
 
 def test_text_dtype_is_applied_when_asked(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        'openplaces.io.ingester.table_ingester.read_access_table',
+        'openplaces.io.ingester.table_read.read_access_table',
         lambda path, table, columns=None: pd.DataFrame({'AssrNo': [1]}),
     )
     path = tmp_path / 'Fabricated.accdb'

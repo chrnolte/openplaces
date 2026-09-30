@@ -13,8 +13,8 @@ import pytest
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
+from openplaces.io.curator.group_context import derive_group_count, derive_group_rank
 from openplaces.io.curator.indicators import evaluate_indicator
-from openplaces.io.curator.inferers import derive_group_count, derive_group_rank
 
 
 def _state(frame: pd.DataFrame) -> CurateState:

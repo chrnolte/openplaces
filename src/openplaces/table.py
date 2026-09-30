@@ -97,6 +97,34 @@ def add_unique_suffix(s):
     return s
 
 
+def normalize_issued_id(values: pd.Series) -> pd.Series:
+    """Reduce an issued number to what two publications of it agree on.
+
+    Folds case and turns every run of separators into one hyphen, so
+    `12_a  3`, `12-A-3` and `12 A 3` converge. The separators' positions
+    are kept, unlike in `geo.ids.add_parcel_id_alnum`: an id is not a
+    fallback match key, and in a map-block-lot number the positions
+    carry meaning. Measured on Somerville MA, 2026-09-20: dropping
+    separators made 426 of 19,013 account numbers collide (`12_A_1_2`
+    with `12_A_12`) where 24 repeat as published. The cost is that a
+    source publishing the same number with no separators at all does
+    not converge; Boston's two sources needed no help.
+
+    Blank and all-zero values become missing: they are placeholders,
+    not numbers anyone issued. Lives here, below the stages, because the
+    property spine (harmonize) and the transaction steps (harmonize and
+    curate) all mint ids from an issued number.
+    """
+    text = (
+        values.astype('string')
+        .str.upper()
+        .str.replace(r'[^A-Z0-9]+', '-', regex=True)
+        .str.strip('-')
+    )
+    usable = text.notna() & text.str.replace('-', '').str.strip('0').ne('')
+    return text.where(usable)
+
+
 def require_unique_index(df, context: str, max_labels: int = 5) -> None:
     """Raise when the index of *df* carries repeated labels.
 

@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from openplaces.io import ingester as ingester_module
+import openplaces.io.ingester.outputs as ingester_outputs
 from openplaces.io import read_parquet, save_parquet
 from openplaces.io.ingester import Ingester
 from openplaces.timing import Timer
@@ -50,7 +50,7 @@ def tiled_ingester(tmp_path, monkeypatch):
         't2': tmp_path / 'XX-AA-AA_footprint_t2.parquet',
     }
     monkeypatch.setattr(
-        ingester_module,
+        ingester_outputs,
         'get_output_path',
         lambda _recipe, _admin_id, partition_id=None, **kwargs: paths[partition_id],
     )

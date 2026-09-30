@@ -74,13 +74,18 @@ def test_download_url_source_without_download_by_explains_itself():
 
 def test_no_download_url_does_not_crash_path_resolution(tmp_path, monkeypatch):
     from openplaces.core.schema import Entity, Source
-    from openplaces.io import ingester as ingester_module
+
+    # The path resolution lives in the download mixin since the
+    # 2026-09-29 split, which is where it looks these names up.
+    from openplaces.io.ingester import download as ingester_download
 
     source = Source(source_id='fabricated', portal_url='https://example.invalid')
     entity = Entity('parcel', source, '2026')
-    monkeypatch.setattr(ingester_module, 'heap_dir', lambda *a, **k: tmp_path / 'heap')
     monkeypatch.setattr(
-        ingester_module, 'external_dir', lambda *a, **k: tmp_path / 'external'
+        ingester_download, 'heap_dir', lambda *a, **k: tmp_path / 'heap'
+    )
+    monkeypatch.setattr(
+        ingester_download, 'external_dir', lambda *a, **k: tmp_path / 'external'
     )
     ingester = _bare({'admin_id': AdminId('US'), 'entity': entity})
     ingester.download_partition = {

@@ -36,6 +36,10 @@ from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.stacked_units import LOT_LINK_KEY, STACKED_UNITS_LABEL_SUFFIX
 from openplaces.recipe import get_recipe_by_id
 
+# Defined in `table` since 2026-09-29, so the transaction steps of both
+# stages can share it; kept importable from here.
+from openplaces.table import normalize_issued_id  # noqa: F401
+
 # Tried in order when a recipe names no `entity_id` column. The raw
 # assessor columns only: `parcel_id_local` and the other standardized
 # keys name the lot, which is the one thing a property id must not do.
@@ -98,32 +102,6 @@ def choose_id_column(rows: pd.DataFrame, candidates) -> str | None:
         if best_repeats is None or repeats < best_repeats:
             best, best_repeats = column, repeats
     return best
-
-
-def normalize_issued_id(values: pd.Series) -> pd.Series:
-    """Reduce an issued number to what two publications of it agree on.
-
-    Folds case and turns every run of separators into one hyphen, so
-    `12_a  3`, `12-A-3` and `12 A 3` converge. The separators' positions
-    are kept, unlike in `geo.ids.add_parcel_id_alnum`: an id is not a
-    fallback match key, and in a map-block-lot number the positions
-    carry meaning. Measured on Somerville MA, 2026-09-20: dropping
-    separators made 426 of 19,013 account numbers collide (`12_A_1_2`
-    with `12_A_12`) where 24 repeat as published. The cost is that a
-    source publishing the same number with no separators at all does
-    not converge; Boston's two sources needed no help.
-
-    Blank and all-zero values become missing: they are placeholders,
-    not numbers anyone issued.
-    """
-    text = (
-        values.astype('string')
-        .str.upper()
-        .str.replace(r'[^A-Z0-9]+', '-', regex=True)
-        .str.strip('-')
-    )
-    usable = text.notna() & text.str.replace('-', '').str.strip('0').ne('')
-    return text.where(usable)
 
 
 def _content_hash(rows: pd.DataFrame) -> pd.Series:

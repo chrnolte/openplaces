@@ -13,7 +13,7 @@ import pandas as pd
 from shapely.geometry import box
 
 from openplaces.core.schema import AdminId
-from openplaces.io.ingester import table_ingester as ti_module
+from openplaces.io.ingester import table_preprocess
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.timing import Timer
 
@@ -47,7 +47,7 @@ def _ingester(recipe, admin_geometries, monkeypatch):
         ).where(inside)
         return gdf
 
-    monkeypatch.setattr(ti_module, 'overlay_admin_ids', fake_overlay)
+    monkeypatch.setattr(table_preprocess, 'overlay_admin_ids', fake_overlay)
 
     ingester = TableIngester.__new__(TableIngester)
     ingester.recipe = recipe

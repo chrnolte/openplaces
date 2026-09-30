@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import derive_group_class_share
+from openplaces.io.curator.group_context import derive_group_class_share
 
 
 def _state(frame):

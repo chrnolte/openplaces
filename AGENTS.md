@@ -416,7 +416,7 @@ Layer 2  recipe
 Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/sale_records (the frame operations that put recorded sales into the transaction entity's terms and mint their ids; the harmonize and curate steps of the same names both call them), io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -535,7 +535,12 @@ geometry rerun, which is why the curate step fills only what is empty.
 properties together is separated at ingest (an `additional_layers` entry
 writes its own property table), so by harmonize every property table exists
 independently of any parcel spine. Per admin unit the order is: every
-ingest; `US_property-spine-2026`; the footprint geospine and spine; the
+ingest; `US_property-spine-2026`; the footprint geospine; the building
+geospine (one building per outline) and the building spine, which runs
+the evidence, address and permit steps against the footprint geospine's
+links re-keyed to building ids; the footprint spine, a projection of the
+building spine onto the outlines (`adopt_entity_attributes`, so its
+consumers read unchanged values until they read the building spine); the
 parcel geospine, which reads the ingest-level property tables for
 parcel-level values and the property spine for a count; the parcel spine;
 enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
