@@ -62,7 +62,7 @@ def _patch_style_registry(monkeypatch, fixture_registry):
 class TestExportQgisMap:
     def test_returns_valid_qgz_when_nothing_exists_on_disk(self, mock_data_root):
         # filter_existing defaults to True; an empty data root means every
-        # resolved layer is dropped, leaving only always-kept static/basemap
+        # resolved layer is dropped, leaving only always-kept static
         # template layers -- still a valid, openable project.
         out = export_qgis_map(
             PARCEL_RECIPE,

@@ -955,6 +955,60 @@ def _set_legend_checked(group: ET.Element, layer_id: str, checked: bool) -> bool
     return False
 
 
+# QGIS data providers that draw a remote map service (XYZ and WMS/WMTS
+# tiles, ArcGIS map and image services, vector tiles) rather than a
+# file openplaces wrote.
+_TILE_PROVIDERS = frozenset(
+    {'wms', 'arcgismapserver', 'arcgisimageserver', 'xyzvectortiles', 'vectortile'}
+)
+
+
+def _is_tile_layer(maplayer: ET.Element) -> bool:
+    """Whether a `<maplayer>` draws a basemap or other remote tile service.
+
+    Parameters
+    ----------
+    maplayer : xml.etree.ElementTree.Element
+        One `<maplayer>` element of a QGIS project.
+
+    Returns
+    -------
+    bool
+        True for a layer whose provider is a tile or map service (XYZ,
+        WMS/WMTS, ArcGIS map or image service, vector tiles), or whose
+        datasource declares ``type=xyz``.
+    """
+    provider = maplayer.find('provider')
+    provider_key = (provider.text or '').strip().lower() if provider is not None else ''
+    datasource = maplayer.find('datasource')
+    source = (datasource.text or '').lower() if datasource is not None else ''
+    return (
+        provider_key in _TILE_PROVIDERS
+        or maplayer.get('type') == 'vector-tile'
+        or 'type=xyz' in source
+    )
+
+
+def _remove_tile_layers(
+    projectlayers: ET.Element, layer_tree_root: ET.Element, legend_root: ET.Element
+) -> None:
+    """Drop every basemap or tile-service layer a template carries.
+
+    A generated project shows only openplaces' own layers; a user who
+    wants a background map adds one in QGIS. Applied to the template
+    before anything is cloned, so a template that still carries such a
+    layer (an older packaged file, or one hand-edited in the QGIS GUI)
+    cannot pass it through.
+    """
+    for maplayer in list(projectlayers.findall('maplayer')):
+        if not _is_tile_layer(maplayer):
+            continue
+        layer_id = maplayer.findtext('id') or ''
+        projectlayers.remove(maplayer)
+        _remove_layer_tree_entry(layer_tree_root, layer_id)
+        _remove_legend_entry(legend_root, layer_id)
+
+
 def _prune_empty_groups(group: ET.Element) -> None:
     for child in list(group.findall('layer-tree-group')):
         _prune_empty_groups(child)
@@ -1095,8 +1149,8 @@ def _ensure_project_crs(root: ET.Element) -> None:
 
     QGIS treats `<projectCrs>` — not `<mapcanvas><destinationsrs>` — as the
     actual project CRS setting (status bar, on-the-fly reprojection target);
-    a project missing it has no reliable working CRS and layers silently
-    fail to line up with the basemap. The packaged template writes both (see
+    a project missing it has no reliable working CRS and layers in
+    different CRSs silently fail to line up. The packaged template writes both (see
     `qgis/templates/build_template_from_reference.py`); this is a defensive
     backstop in case a template is ever hand-edited without it.
     """
@@ -1227,6 +1281,7 @@ def generate_qgz(
             'Template .qgs is missing <projectlayers>, root <layer-tree-group>, or '
             '<legend>; is this a valid QGIS project file?'
         )
+    _remove_tile_layers(projectlayers, layer_tree_root, legend_root)
 
     original_index = _index_maplayers_by_layername(projectlayers)
     static_styles_by_layername = {s.template_layer_name: s for s in get_static_styles()}
@@ -1501,7 +1556,7 @@ def generate_qgz(
     for layername, (elem, elem_id) in original_index.items():
         static_style = static_styles_by_layername.get(layername)
         if static_style is not None:
-            # Basemap/static layers always survive pruning, but their
+            # Static layers always survive pruning, but their
             # checked state is still registry-driven: sync it to
             # default_visible rather than leaving whatever the template
             # author happened to hand-set.

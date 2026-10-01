@@ -62,4 +62,4 @@ def test_get_admin_boundary_layer_fence_mode(sample_admin_gdf):
     assert layer.get_elevation == elevation_val
     assert layer.wireframe is True
     assert list(layer.get_line_color) == [0, 255, 0, 255]
-    assert list(layer.get_fill_color) == [255, 255, 255, 30]
+    assert list(layer.get_fill_color) == [51, 51, 51, 30]

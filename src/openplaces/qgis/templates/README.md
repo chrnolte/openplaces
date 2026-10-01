@@ -25,9 +25,9 @@ producing a run for a specific recipe + admin unit. Renaming a template
 layer is a one-line edit to the registry's `template_layer_name` column,
 not a code change.
 
-Group layers under four top-level layer-tree groups — `Buildings`,
-`Parcels`, `Admin`, `Basemaps` — mirroring the pre-standard per-county maps
-this template supersedes. Within `Buildings`, split further into `inputs`
+Group layers under three top-level layer-tree groups (`Buildings`,
+`Parcels`, `Admin`), mirroring the pre-standard per-county maps this
+template supersedes. Within `Buildings`, split further into `inputs`
 (ingest-stage per-source layers, registry `role: input`) and `openplaces`
 (harmonize/curate output layers, registry `role: output`/`admin`)
 subgroups.
@@ -36,19 +36,23 @@ Registry `role` values and what they mean for the template:
 
 - `output` / `input` / `admin`: a matched, resolver-driven layer pair (see
   above).
-- `basemap` / `static`: a layer that always passes through unpruned,
-  regardless of what a given recipe run resolves (e.g. basemap tiles,
-  satellite imagery, country-level context layers not tied to any specific
-  recipe). These only need `template_layer_name` in the registry — no
-  `_attr` sibling is required unless the layer happens to use the same
-  join pattern.
+- `static`: a layer that always passes through unpruned, regardless of
+  what a given recipe run resolves (e.g. a country-level context layer not
+  tied to any specific recipe). These only need `template_layer_name` in
+  the registry; no `_attr` sibling is required unless the layer happens to
+  use the same join pattern.
+- There is no `basemap` role. A generated project shows only openplaces'
+  own layers: `load_registry` rejects a `basemap` row, and the generator
+  drops every basemap or tile-service layer (XYZ, WMS/WMTS, ArcGIS map
+  services, vector tiles) from the template before cloning anything. A
+  user who wants a background map adds one in QGIS.
 - `_fallback` (reserved `style_key`): one generic, unstyled layer pair used
   whenever a resolved layer's `(entity_type, source)` has no registered
   style. Place it under an `Unstyled` group so it's easy to spot.
 
-A row's `default_visible` also controls a `basemap`/`static` layer's checked
-state in the generated project (not just matched/cloned layers) — the
-generator syncs it at generation time, so changing which basemap is on by
+A row's `default_visible` also controls a `static` layer's checked state in
+the generated project (not just matched/cloned layers): the generator
+syncs it at generation time, so changing which static layer is on by
 default is a registry edit, not a template rebuild.
 
 A row's `dynamic_categorize_attr`, when set, names a resolved-data column
@@ -100,20 +104,13 @@ style key, not required.
   references the project variables the generator sets on every run —
   `@recipe_id`, `@admin_id`, `@generated_at` — plus a legend, scale bar, and
   north arrow.
-- **Basemaps**: include an open, no-API-key basemap (CARTO Positron — flat
-  light-gray buildings, unlike OSM standard's high-contrast footprint
-  outlines, which visually compete with the recipe's own footprint layer;
-  attribution "© OpenStreetMap contributors © CARTO" applies) and the Google
-  Satellite/Roads layers. All three use plain key-free XYZ tile endpoints (no
-  `cfg.get_credentials()` involved — Google's is the same informal
-  `mt1.google.com/vt/lyrs=...` tile trick `io/scrapers/google_satellite.py`
-  already relies on for image ingestion). Google Roads is checked on by
-  default (`basemap-google-roads` row); the other two are off by default —
-  see `default_visible` above.
+- **No basemaps**: do not add a basemap, satellite imagery or any other
+  tile-service layer. The generator removes them anyway (see the roles
+  above), so one left in the template is dead weight.
 - **Project CRS**: every layer prototype's `<srs>` and the project's own
   `<projectCrs>` must be set (not just `<mapcanvas><destinationsrs>`) or
-  QGIS has no reliable working CRS and layers silently fail to line up with
-  the basemap. `build_template_from_reference.py` handles this
+  QGIS has no reliable working CRS and layers in different CRSs silently
+  fail to line up. `build_template_from_reference.py` handles this
   automatically; if a real QGIS GUI ever hand-edits and re-saves this file
   directly, QGIS itself always writes `<projectCrs>` on save, so this only
   matters for anyone scripting the `.qgs` XML directly.
@@ -123,7 +120,7 @@ style key, not required.
   (see Style variants above), joined to the base row's shared `_attr`
   layer, not a stray unregistered layer.
 - **No one-off rasters**: leave out layers tied to a specific past county
-  rather than a registry row or basemap requirement (e.g. farmland/land-value
+  rather than a registry row (e.g. farmland/land-value
   composites, Landsat/Sentinel tiles) — those belonged to the ad-hoc
   per-county maps this template supersedes, not the reusable template.
 - Save as `.qgz` (not `.qgs`) so the bundled style database travels with

@@ -4,12 +4,14 @@ Extracts real, already-styled layers out of the user's exploratory QGIS
 project (``US-NC-AR.qgz``, not part of this repo — lives under
 ``Dropbox/Data/world/show/qgis``), renames/relocates them into the packaged
 template's ``template_*`` naming and ``Buildings/{openplaces,inputs}`` /
-``Parcels`` / ``Admin`` / ``Basemaps`` group convention documented in
-``README.md``, and authors the pieces that have no real-world example to
-copy from: an open/no-API-key basemap (cloned structurally from the
-reference's Google raster layer, URL swapped), a print layout (title bound
-to the generator's project variables, legend, scale bar, north arrow), and
-the reserved unstyled ``_fallback`` prototype.
+``Parcels`` / ``Admin`` group convention documented in ``README.md``, and
+authors the pieces that have no real-world example to copy from: a print
+layout (title bound to the generator's project variables, legend, scale
+bar, north arrow) and the reserved unstyled ``_fallback`` prototype.
+
+The template carries no basemap or tile-service layer, whatever the
+reference project holds: generated maps show only openplaces' own
+layers, and a user adds a background map in QGIS if they need one.
 
 Layer extraction preserves each copied ``<maplayer>``'s own ``<id>``
 unchanged (already a globally-unique UUID in the source project) and only
@@ -184,22 +186,6 @@ BASE_LAYERS: tuple[BaseLayer, ...] = (
         'Admin',
         True,
     ),
-)
-
-# (template_name, source_name) - single-file raster basemaps, no attr sibling.
-RASTER_BASEMAPS: tuple[tuple[str, str], ...] = (
-    ('template_basemap_google_satellite', 'Google Satellite'),
-    ('template_basemap_google_roads', 'Google Roads'),
-)
-
-# CARTO Positron, not OSM standard: OSM's default style renders building
-# footprints prominently, which visually competes with the recipe's own
-# footprint layer drawn on top. Positron renders buildings as flat light-gray
-# fill instead. No API key required (same free-tier XYZ pattern as OSM);
-# attribution "(c) OpenStreetMap contributors (c) CARTO" applies.
-_OSM_DATASOURCE = (
-    'type=xyz&url=https://basemaps.cartocdn.com/light_all/%7Bz%7D/%7Bx%7D/%7By%7D.png'
-    '&zmax=20&zmin=0&crs=EPSG3857'
 )
 
 
@@ -393,15 +379,6 @@ def _fallback_layers(srs_element: ET.Element | None) -> tuple[ET.Element, ET.Ele
         },
     )
     return geo, attr
-
-
-def _osm_basemap(google_raster: ET.Element) -> ET.Element:
-    """Clone the structure of a working Google XYZ raster layer for OSM."""
-    clone = copy.deepcopy(google_raster)
-    clone.find('id').text = f'template_basemap_open_{uuid.uuid4().hex}'
-    clone.find('datasource').text = _OSM_DATASOURCE
-    clone.find('layername').text = 'template_basemap_open'
-    return clone
 
 
 def _print_layout() -> ET.Element:
@@ -605,28 +582,6 @@ def build(source_qgz: Path, output_path: Path) -> None:
                 vgeo.find('datasource').text,
             )
 
-    google_satellite_raw = source_index['Google Satellite']
-    for template_name, source_name in RASTER_BASEMAPS:
-        clone = _renamed_clone(source_index, source_name, template_name)
-        projectlayers.append(clone)
-        _place(
-            clone.find('id').text,
-            template_name,
-            'Basemaps',
-            False,
-            clone.find('datasource').text,
-        )
-
-    osm = _osm_basemap(google_satellite_raw)
-    projectlayers.append(osm)
-    _place(
-        osm.find('id').text,
-        'template_basemap_open',
-        'Basemaps',
-        True,
-        osm.find('datasource').text,
-    )
-
     fallback_geo, fallback_attr = _fallback_layers(real_data_srs)
     projectlayers.append(fallback_attr)
     projectlayers.append(fallback_geo)
@@ -671,7 +626,7 @@ def build(source_qgz: Path, output_path: Path) -> None:
                 # the top-level <projectCrs> as the actual project CRS
                 # setting (status bar, on-the-fly reprojection target). A
                 # project missing it opens with no reliable working CRS, so
-                # layers and basemap silently fail to line up.
+                # layers in different CRSs silently fail to line up.
                 project_crs = ET.SubElement(root, 'projectCrs')
                 project_crs.append(copy.deepcopy(src_spatialrefsys))
 
