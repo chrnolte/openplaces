@@ -229,7 +229,7 @@ degenerate source column, empty column — is in
 
   `stacked_units: false` opts a table out; a recipe that declares its own
   `property` layer gets no implicit one. See `io/stacked_units.py` for
-  the mechanism and its patent rationale.
+  the mechanism and its design rationale.
 - `additional_layers:` — secondary entities extracted from the same source
   file (a property table alongside a parcel table).
 

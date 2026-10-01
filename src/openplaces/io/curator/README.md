@@ -99,10 +99,11 @@ Steps are organized by the nature of the transformation:
   itself: the share of its group (any id column it already carries, e.g.
   `census_block_id`) whose evidence reads as a given class, excluding the
   row itself. It is a **groupby, deliberately not a spatial operation** — no
-  buffering, no boundary union, no nearest-neighbor search — both because
-  geometric neighbor/"community" detection is a patented technique shape in
-  this domain (see the patent-risk section of AGENTS.md) and because aggregating within a
-  published administrative unit is older, plainer practice. It exists
+  buffering, no boundary union, no nearest-neighbor search — because
+  geometric neighbor or "community" detection is kept out of this
+  repository by design (see "Design limits" in AGENTS.md) and because
+  aggregating within a published administrative unit is older, plainer
+  practice. It exists
   because `flag_manufactured_home_communities` counts per *parcel* and so
   cannot see a subdivided community where every home has its own lot. Feed
   it only evidence a downstream vote has not written, or the class

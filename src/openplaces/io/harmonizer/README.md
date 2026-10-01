@@ -473,8 +473,9 @@ The step sub-modules:
 - `link_methods.py` — `record_link_method`: after each `link_by_id` pass of
   the transaction spine, writes `parcel_link_method`, the name of the first
   rule that reached the row (`parcel_id_local`, then an exact address key).
-  A fixed label, written once, never a score and never revised (patent
-  shape 4). It re-reads the pass's reference instead of instrumenting
+  A fixed label, written once, never a score and never revised; every
+  tier compares exact keys and none falls through to a fuzzy comparison.
+  It re-reads the pass's reference instead of instrumenting
   `link_by_id`, so a step added between a pass and its label would make the
   label describe the wrong pass. A sale that reached its parcel through a
   unit's lot reads `stacked_units` (`via_column`/`via_label`).
@@ -547,8 +548,9 @@ columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
 (a test pins that a link table holds nothing else, so it can never carry a
 person). It runs in `US_parcel-spine-2026` because that is the first recipe
 in which both sides exist. `link_method` is a fixed label naming the rule
-that found the pair, never a score, and no link is removed once written
-(patent shape 4). A key on more rows than `link_by_id`'s placeholder cutoff
+that found the pair, never a score, and no link is removed once written;
+a row no exact match reaches stays unlinked, with no fuzzy fallback. A
+key on more rows than `link_by_id`'s placeholder cutoff
 keeps its pairs under `parcel_id_local_shared_key`, because a link table,
 unlike a sum, need not decide whether it is a placeholder or a large stack:
 a reader that sums values leaves that method out. The footer

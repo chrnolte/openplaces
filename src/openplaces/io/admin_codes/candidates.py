@@ -14,8 +14,8 @@ scores, optimal.
 Design note on independent derivation
 -------------------------------------
 The rules here are derived from the grammar of the names themselves, not
-from any existing code table. That matters because the obvious prior art,
-HASC, is published without a license. HASC's own documented construction
+from any existing code table. That matters because the obvious existing
+scheme, HASC, is published without a license. HASC's own documented construction
 rule is "the first letter in the subdivision name, followed by a letter
 that occurs later in that name" -- an unprotectable heuristic that this
 module reaches independently, and only as a late fallback. No HASC table is

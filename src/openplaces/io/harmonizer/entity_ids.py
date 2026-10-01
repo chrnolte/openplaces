@@ -22,8 +22,7 @@ content hash changes when an address is corrected and matches nothing in
 a deed; `{parcel}.{n}` cannot name a property on two lots or on none, and
 would make the property spine wait for the parcel spine, which reads it.
 The matching is exact, on a normalized issued number. No fuzzy tier, no
-score, nothing learned, and no row is unmerged afterwards (AGENTS.md,
-"Patent risk", shape 4).
+score, nothing learned, and no row is unmerged afterwards.
 """
 
 from __future__ import annotations
