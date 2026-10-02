@@ -6,6 +6,13 @@ AD-EN,Encamp,parish of Andorra,,pinned,Q24269,Encamp
 AD-LM,La Massana,parish of Andorra,,pinned,Q24276,
 AD-OR,Ordino,parish of Andorra,,pinned,Q24272,
 AD-SJ,Sant Julià de Lòria,parish of Andorra,,pinned,Q24282,Sant Julià de Lòria
+AE-AD,Abu Dhabi,emirate of the United Arab Emirates,,pinned,Q187712,إمارة أبو ظبي
+AE-AJ,Ajman,emirate of the United Arab Emirates,,pinned,Q159477,إمارة عجمان
+AE-DU,Dubai,emirate of the United Arab Emirates,,pinned,Q613,امارة عبدالله
+AE-FU,Fujairah,emirate of the United Arab Emirates,,pinned,Q4091,إمارة الفجيرة
+AE-RK,Ras Al Khaimah,emirate of the United Arab Emirates,,pinned,Q170024,إمارة رأس الخيمة
+AE-SH,Sharjah,emirate of the United Arab Emirates,,pinned,Q188810,إمارة الشارقة
+AE-UM,Umm Al Quwain,emirate of the United Arab Emirates,,any2,Q175021,إمارة أمّ القيوين
 AF-BA,Badakhshan,province of Afghanistan,,pinned,Q165376,
 AF-BD,Badghis,province of Afghanistan,,pinned,Q172052,
 AF-BG,Baghlan,province of Afghanistan,,pinned,Q170309,
@@ -62,6 +69,18 @@ AI-SN,Sandy Ground,administrative territorial entity of Anguilla,,pinned,Q298931
 AI-SU,"South Hill, Anguilla",administrative territorial entity of Anguilla,,any2,Q7567466,
 AI-VA,The Valley,administrative territorial entity of Anguilla,,pinned,Q30994,The Valley
 AI-WS,"West End, Anguilla",administrative territorial entity of Anguilla,,any2,Q7985024,
+AL-BR,Berat,county of Albania,,pinned,Q189296,Qarku i Beratit
+AL-DB,Dibra,county of Albania,,skeleton,Q192866,Qarku i Dibrës
+AL-DR,Durrës,county of Albania,,pinned,Q192853,Qarku i Durrësit
+AL-EL,Elbasan,county of Albania,,pinned,Q193790,Qarku i Elbasanit
+AL-FR,Fier,county of Albania,,pinned,Q231900,Qarku i Fierit
+AL-GJ,Gjirokastër,county of Albania,,pinned,Q193454,Qarku i Gjirokastrës
+AL-KO,Korçë,county of Albania,,pinned,Q193464,Qarku i Korçës
+AL-KU,Kukës,county of Albania,,pinned,Q231896,Qarku i Kukësit
+AL-LE,Lezhë,county of Albania,,pinned,Q193436,Qarku i Lezhës
+AL-SH,Shkodër,county of Albania,,pinned,Q193438,Qarku i Shkodrës
+AL-TR,Tirana,county of Albania,,anchor,Q229892,Qarku i Tiranës
+AL-VL,Vlorë,county of Albania,,pinned,Q192849,Qarku i Vlorës
 AM-AA,Aragatsotn,province of Armenia,,pinned,Q17915,Արագածոտնի մարզ
 AM-AR,Ararat,province of Armenia,,pinned,Q199880,Արարատի մարզ
 AM-AV,Armavir,province of Armenia,,pinned,Q201147,
@@ -316,6 +335,16 @@ BT-TR,Trashigang,district of Bhutan,,pinned,Q652773,
 BT-TS,Tsirang,district of Bhutan,,pinned,Q728922,
 BT-WP,Wangdue Phodrang,district of Bhutan,,pinned,Q728933,དབང་འདུས་ཕོ་བྲང་རྫོང་ཁག
 BT-ZH,Zhemgang,district of Bhutan,,pinned,Q197564,
+BW-CE,Central,district of Botswana,,pinned,Q57525,Central District
+BW-CH,Chobe,district of Botswana,,pinned,Q165536,
+BW-GH,Ghanzi,district of Botswana,,pinned,Q57571,Ghanzi
+BW-KG,Kgalagadi,district of Botswana,,pinned,Q57581,Kgalagadi
+BW-KL,Kgatleng,district of Botswana,,pinned,Q57593,Kgatleng
+BW-KW,Kweneng,district of Botswana,,pinned,Q57599,Kweneng
+BW-NE,North-East,district of Botswana,,pinned,Q57636,North-East District
+BW-NW,North-West,district of Botswana,,pinned,Q57617,
+BW-SE,South-East,district of Botswana,,pinned,Q57695,
+BW-SO,Southern,district of Botswana,,pinned,Q57609,Southern District
 BY-BY,Byerastsye,region of Belarus,,name,Q173822,Брэсцкая вобласць
 BY-GO,Gomel,region of Belarus,,pinned,Q188732,Гомельская вобласць
 BY-HR,Horadnia,region of Belarus,,anchor,Q191061,Гродненская область
@@ -523,6 +552,12 @@ DE-SL,Saarland,Land,10,pinned,,
 DE-SN,Sachsen,Freistaat,14,pinned,,
 DE-ST,Sachsen-Anhalt,Land,15,pinned,,
 DE-TH,Thüringen,Freistaat,16,pinned,,
+DJ-AR,Arta,region of Djibouti,,anchor,Q705941,
+DJ-AS,Ali Sabieh,region of Djibouti,,anchor,Q821008,
+DJ-DI,Dikhil,region of Djibouti,,anchor,Q283979,
+DJ-DJ,Djibouti,first-level administrative division,,anchor,Q3604,جيبوتي
+DJ-OB,Obock,region of Djibouti,,anchor,Q844929,أوبوك
+DJ-TA,Tadjourah,region of Djibouti,,anchor,Q645896,تاجورة
 DK-CD,Central Denmark,region of Denmark,,initials,Q26586,Midtjylland
 DK-CR,Capital Region of Denmark,region of Denmark,,initials,Q26073,Region Hovedstaden
 DK-ED,Eastern Denmark,region of Denmark,,initials,Q131281582,Region Østdanmark
@@ -610,6 +645,33 @@ EE-TA,Tartu,county of Estonia,,pinned,Q192370,Tartu maakond
 EE-VA,Valga,county of Estonia,,pinned,Q192362,Valga maakond
 EE-VI,Viljandi,county of Estonia,,pinned,Q192061,
 EE-VO,Võru,county of Estonia,,pinned,Q188076,Võrumaa
+EG-AL,Alexandria,governorate of Egypt,,name,Q29943,
+EG-AS,Asyut,governorate of Egypt,,pinned,Q29965,
+EG-AW,Aswan,governorate of Egypt,,pinned,Q29937,أسوان
+EG-BE,Beheira,governorate of Egypt,,name,Q30630,محافظة البحيرة
+EG-BN,Beni Suef,governorate of Egypt,,any2,Q30683,محافظة بني سويف
+EG-CA,Cairo,governorate of Egypt,,name,Q30805,محافظة القاهرة
+EG-DA,Dakahlia,governorate of Egypt,,name,Q31068,محافظة الدقهلية
+EG-DM,Damietta,governorate of Egypt,,skeleton,Q30644,محافظة دمياط
+EG-FY,Faiyum,governorate of Egypt,,skeleton,Q30656,
+EG-GA,Gharbia,governorate of Egypt,,any2,Q30835,
+EG-GI,Giza,governorate of Egypt,,name,Q30832,محافظة الجيزة
+EG-IM,Ismailia,governorate of Egypt,,any2,Q31067,محافظة  الإسماعيلية
+EG-KE,Kafr el-Sheikh,governorate of Egypt,,initials,Q30946,محافظة كفر الشيخ
+EG-LU,Luxor,governorate of Egypt,,name,Q30797,محافظة الأقصر
+EG-MO,Monufia,governorate of Egypt,,name,Q30786,
+EG-MT,Matruh,governorate of Egypt,,anchor,Q30682,محافظة مطروح
+EG-MY,Minya,governorate of Egypt,,any2,Q30675,المنيا
+EG-NS,North Sinai,governorate of Egypt,,initials,Q30662,محافظة شمال سينا
+EG-NV,New Valley,governorate of Egypt,,initials,Q30650,
+EG-PS,Port Said,governorate of Egypt,,initials,Q31079,بورسعيد
+EG-QE,Qena,governorate of Egypt,,name,Q31065,محافظة قنا
+EG-QL,Qalyubia,governorate of Egypt,,skeleton,Q31075,
+EG-RS,Red Sea,governorate of Egypt,,initials,Q30831,(محافظة البحر الأحمر
+EG-SA,Sharqia,governorate of Egypt,,any2,Q31074,
+EG-SO,Sohag,governorate of Egypt,,name,Q30669,محافظة سوهاج
+EG-ST,South Sinai,governorate of Egypt,,any2,Q30815,محافظة جنوب سينا
+EG-SZ,Suez,governorate of Egypt,,skeleton,Q31070,محافظة السويس
 ER-AN,Anseba,region of Eritrea,,pinned,Q569468,
 ER-DU,Debub,region of Eritrea,,pinned,Q27728,
 ER-GB,Gash-Barka,region of Eritrea,,pinned,Q873012,
@@ -759,6 +821,20 @@ GN-MA,Mamou,region of Guinea,,pinned,Q1043650,
 GN-NZ,Nzérékoré,region of Guinea,,pinned,Q870146,
 GN-RC,Région de Conakry,region of Guinea,,preposition.significant,Q1373230,
 GN-SI,Siguiri,region of Guinea,,anchor,Q1780649,
+GR-AT,Attica,administrative region of Greece,,name,Q758056,Περιφέρεια Αττικής
+GR-CG,Central Greece,administrative region of Greece,,initials,Q199580,
+GR-CM,Central Macedonia,administrative region of Greece,,initials,Q17152,
+GR-CR,Crete,administrative region of Greece,,name,Q1267522,
+GR-EM,Eastern Macedonia and Thrace,administrative region of Greece,,conjunction,Q171314,
+GR-EP,Epirus,administrative region of Greece,,name,Q180484,
+GR-II,Ionian Islands,administrative region of Greece,,initials,Q1147674,
+GR-MC,monastic community of Mount Athos,administrative territorial entity of Greece,,initials,Q780149,
+GR-NA,North Aegean,administrative region of Greece,,initials,Q173620,Περιφέρεια Βορείου Αιγαίου
+GR-PE,Peloponnese,administrative region of Greece,,name,Q202484,
+GR-SA,South Aegean,administrative region of Greece,,initials,Q173616,
+GR-TH,Thessaly,administrative region of Greece,,name,Q22807284,
+GR-WG,West Greece,administrative region of Greece,,initials,Q170291,
+GR-WM,Western Macedonia,administrative region of Greece,,initials,Q165408,
 GT-AV,Alta Verapaz,department of Guatemala,,pinned,Q504637,
 GT-BV,Baja Verapaz,department of Guatemala,,pinned,Q504647,
 GT-CM,Chimaltenango,department of Guatemala,,pinned,Q765975,
@@ -894,6 +970,40 @@ IL-JE,Jerusalem,districts of Israel,,pinned,Q192232,מחוז ירושלים
 IL-NO,Northern,districts of Israel,,name,Q189942,מחוז הצפון
 IL-SO,Southern,districts of Israel,,name,Q188781,מחוז הדרום
 IL-TA,Tel Aviv,districts of Israel,,pinned,Q192811,
+IN-AN,Andaman and Nicobar Islands,union territory of India,,anchor,Q40888,अंडमान और निकोबार द्वीप
+IN-AP,Andhra Pradesh,state of India,,anchor,Q1159,ಆಂಧ್ರ ಪ್ರದೇಶ
+IN-AR,Arunachal Pradesh,state of India,,anchor,Q1162,ཨ་རུ་ནཱ་ཅལ་མངའ་སྡེ།
+IN-AS,Assam,state of India,,anchor,Q1164,আসাম
+IN-BR,Bihar,state of India,,anchor,Q1165,बिहार
+IN-CG,Chhattisgarh,state of India,,anchor,Q1168,छत्तीसगढ
+IN-CH,Chandigarh,union territory of India,,anchor,Q120971341,
+IN-DH,Dadra and Nagar Haveli and Daman and Diu,union territory of India,,anchor,Q77997266,
+IN-GA,Goa,state of India,,anchor,Q1171,गोवा
+IN-GJ,Gujarat,state of India,,anchor,Q1061,ગુજરાત
+IN-HP,Himachal Pradesh,state of India,,anchor,Q1177,ہماچل پردیش
+IN-HR,Haryana,state of India,,anchor,Q1174,
+IN-JH,Jharkhand,state of India,,anchor,Q1184,झारखंड
+IN-KA,Karnataka,state of India,,anchor,Q1185,కర్ణాటక
+IN-KL,Kerala,state of India,,anchor,Q1186,കേരളം
+IN-LD,Lakshadweep,union territory of India,,anchor,Q26927,ލަކްޝަދީބު
+IN-MH,Maharashtra,state of India,,anchor,Q1191,महाराष्ट्र
+IN-ML,Meghalaya,state of India,,anchor,Q1195,মেঘালয়
+IN-MN,Manipur,state of India,,anchor,Q1193,मणिपुर
+IN-MP,Madhya Pradesh,state of India,,anchor,Q1188,मध्य प्रदेश
+IN-MZ,Mizoram,state of India,,anchor,Q1502,
+IN-NC,National Capital Territory of Delhi,union territory of India,,initials,Q9357528,
+IN-NL,Nagaland,state of India,,anchor,Q1599,नागालैंड
+IN-OD,Odisha,state of India,,anchor,Q22048,ଓଡ଼ିଶା
+IN-PB,Punjab,state of India,,anchor,Q22424,पंजाब
+IN-PY,Puducherry,union territory of India,,anchor,Q66743,పుదుచ్చేరి
+IN-RJ,Rajasthan,state of India,,anchor,Q1437,راجستھان
+IN-SK,Sikkim,state of India,,anchor,Q1505,सिक्किम
+IN-TG,Telangana,state of India,,anchor,Q677037,تلنگانہ
+IN-TN,Tamil Nadu,state of India,,anchor,Q1445,తమిళనాడు
+IN-TR,Tripura,state of India,,anchor,Q1363,Tripura
+IN-UK,Uttarakhand,state of India,,anchor,Q1499,उत्तराखण्ड
+IN-UP,Uttar Pradesh,state of India,,anchor,Q1498,اتر پردیش
+IN-WB,West Bengal,state of India,,anchor,Q1356,পশ্চিমবঙ্গ
 IQ-AN,Al Anbar,governorate of Iraq,,pinned,Q187334,الأنبار
 IQ-BG,Baghdad,governorate of Iraq,,pinned,Q191075,بغداد
 IQ-BS,Basra,governorate of Iraq,,skeleton,Q193551,
@@ -998,6 +1108,18 @@ JM-SM,Saint Mary,parish of Jamaica,,pinned,Q633565,
 JM-ST,Saint Thomas,parish of Jamaica,,pinned,Q1422332,
 JM-TR,Trelawny,parish of Jamaica,,pinned,Q1123340,
 JM-WE,Westmoreland,parish of Jamaica,,pinned,Q1440250,
+JO-AL,Ajloun,governorate of Jordan,,any2,Q506658,
+JO-AM,Amman,governorate of Jordan,,pinned,Q472788,
+JO-AQ,Aqaba,governorate of Jordan,,pinned,Q260796,
+JO-AT,Tafilah,governorate of Jordan,,pinned,Q750259,
+JO-BA,Balqa,governorate of Jordan,,pinned,Q721431,
+JO-IR,Irbid,governorate of Jordan,,pinned,Q721441,
+JO-JE,Jerash,governorate of Jordan,,name,Q750270,
+JO-KA,Karak,governorate of Jordan,,pinned,Q735245,محافظة الكرك
+JO-MA,Mafraq,governorate of Jordan,,pinned,Q854871,
+JO-MD,Madaba,governorate of Jordan,,pinned,Q750447,
+JO-MN,Ma'an,governorate of Jordan,,pinned,Q606340,
+JO-ZA,Zarqa,governorate of Jordan,,pinned,Q721445,
 JP-AI,Aichi,,23,pinned,,
 JP-AK,Akita,,05,pinned,,
 JP-AO,Aomori,,02,pinned,,
@@ -1173,6 +1295,15 @@ LA-UD,Udomsai,province of Laos,,name,Q465961,
 LA-VN,Vientiane,province of Laos,,skeleton,Q720066,
 LA-XG,Xiangkhouang,province of Laos,,any2,Q465947,ຊຽງຂວາງ
 LA-XN,Xaisomboun,province of Laos,,pinned,Q20202028,ໄຊສົມບູນ
+LB-AK,Akkar,governorate of Lebanon,,pinned,Q556146,
+LB-BA,Baalbek-Hermel,governorate of Lebanon,,any2,Q787753,
+LB-BI,Beqaa,governorate of Lebanon,,anchor,Q319632,البقاع
+LB-BR,Beirut,governorate of Lebanon,,pinned,Q651688,
+LB-KJ,Keserwan-Jbeil,governorate of Lebanon,,initials,Q56345291,
+LB-ML,Mount Lebanon,governorate of Lebanon,,pinned,Q216945,جبل لبنان
+LB-NB,Nabatieh,governorate of Lebanon,,skeleton,Q458417,
+LB-NO,North,governorate of Lebanon,,pinned,Q390267,
+LB-SO,South,governorate of Lebanon,,pinned,Q223643,
 LC-AL,Anse la Raye,quarter of Saint Lucia,,pinned,Q1676934,Anse la Raye Quarter
 LC-CA,Castries,quarter of Saint Lucia,,pinned,Q1049867,
 LC-CH,Choiseul,quarter of Saint Lucia,,pinned,Q1075816,
@@ -1230,6 +1361,48 @@ LU-RE,de Redange,canton of Luxembourg,,name,Q835980,Redange
 LU-RM,de Remich,canton of Luxembourg,,skeleton,Q691781,Remich
 LU-VI,de Vianden,canton of Luxembourg,,name,Q845600,
 LU-WI,de Wiltz,canton of Luxembourg,,name,Q550021,
+LV-AD,Ādaži,municipality of Latvia,,name,Q97233421,
+LV-AI,Aizkraukle,municipality of Latvia,,name,Q97229842,
+LV-AL,Alūksne,municipality of Latvia,,name,Q3393445,
+LV-AU,Augšdaugava,municipality of Latvia,,name,Q97230083,
+LV-BA,Balvi,municipality of Latvia,,name,Q97230143,
+LV-BS,Bauska,municipality of Latvia,,skeleton,Q97230156,
+LV-CE,Cēsis,municipality of Latvia,,name,Q97230394,
+LV-DA,Daugavpils,state city of Latvia,,name,Q80021,Daugavpils
+LV-DO,Dobele,municipality of Latvia,,name,Q97230466,
+LV-GU,Gulbene,municipality of Latvia,,name,Q209187,
+LV-JE,Jelgava,state city of Latvia,,name,Q179830,Jelgava
+LV-JK,Jēkabpils,municipality of Latvia,,skeleton,Q97231194,
+LV-JL,Jelgava,municipality of Latvia,,skeleton,Q97231093,
+LV-JU,Jūrmala,state city of Latvia,,name,Q178382,Jūrmala
+LV-KE,Ķekava,municipality of Latvia,,name,Q97233440,
+LV-KR,Krāslava,municipality of Latvia,,name,Q97231555,
+LV-KU,Kuldīga,municipality of Latvia,,name,Q97231583,
+LV-LI,Liepāja,state city of Latvia,,name,Q167668,Liepāja
+LV-LM,Limbaži,municipality of Latvia,,skeleton,Q97231916,
+LV-LU,Ludza,municipality of Latvia,,name,Q97231943,
+LV-LV,Līvāni,municipality of Latvia,,skeleton,Q2277489,
+LV-MA,Madona,municipality of Latvia,,name,Q97231990,
+LV-MR,Mārupe,municipality of Latvia,,skeleton,Q97232200,
+LV-OG,Ogre,municipality of Latvia,,name,Q97232220,
+LV-OL,Olaine,municipality of Latvia,,name,Q2451375,
+LV-PR,Preiļi,municipality of Latvia,,name,Q97232413,
+LV-RE,Rēzekne,state city of Latvia,,name,Q180379,Rēzne
+LV-RI,Riga,state city of Latvia,,name,Q1773,Rīga
+LV-RO,Ropaži,municipality of Latvia,,name,Q97232560,
+LV-RZ,Rēzekne,municipality of Latvia,,skeleton,Q97232589,
+LV-SA,Salaspils,municipality of Latvia,,name,Q2140753,
+LV-SI,Sigulda,municipality of Latvia,,name,Q97232700,
+LV-SK,South Kurzeme,municipality of Latvia,,initials,Q97230452,
+LV-SL,Saldus,municipality of Latvia,,skeleton,Q97232673,
+LV-SM,Smiltene,municipality of Latvia,,name,Q97232760,
+LV-SU,Saulkrasti,municipality of Latvia,,any2,Q97232692,
+LV-TA,Talsi,municipality of Latvia,,name,Q97232890,
+LV-TU,Tukums,municipality of Latvia,,name,Q97232977,
+LV-VA,Valka,municipality of Latvia,,name,Q1945263,
+LV-VE,Ventspils,state city of Latvia,,name,Q104036,Ventspils
+LV-VL,Valmiera,municipality of Latvia,,skeleton,Q97233086,
+LV-VN,Ventspils,municipality of Latvia,,skeleton,Q1345325,
 LY-BG,Benghazi District,district of Libya,,any2,Q33507,بنغازي
 LY-BN,Benghazi,municipality of Libya,,skeleton,Q40816,بنغازي
 LY-BT,Butnan,district of Libya,,skeleton,Q25931,
@@ -1593,6 +1766,22 @@ MX-TB,Tabasco,state of Mexico,,pinned,Q80914,Tabasco
 MX-TL,Tlaxcala,state of Mexico,,pinned,Q82681,Tlaxcala
 MX-YU,Yucatán,state of Mexico,,pinned,Q60176,Yucatán
 MX-ZA,Zacatecas,state of Mexico,,pinned,Q80269,Zacatecas
+MY-JO,Johor,state of Malaysia,,pinned,Q183032,Johor / جوهور
+MY-KD,Kedah,state of Malaysia,,pinned,Q188947,
+MY-KE,Kelantan,state of Malaysia,,pinned,Q185944,
+MY-KL,Kuala Lumpur,federal territory of Malaysia,,pinned,Q1865,
+MY-LA,Labuan,federal territory of Malaysia,,pinned,Q214504,ولايه ڤرسکوتوان لابوان
+MY-MA,Malacca,state of Malaysia,,name,Q185221,
+MY-NS,Negeri Sembilan,state of Malaysia,,pinned,Q213893,
+MY-PA,Pahang,state of Malaysia,,pinned,Q191346,
+MY-PE,Perak,state of Malaysia,,pinned,Q188953,
+MY-PN,Penang,state of Malaysia,,skeleton,Q188096,பினாங்கு
+MY-PR,Perlis,state of Malaysia,,pinned,Q213467,
+MY-PU,Putrajaya,federal territory of Malaysia,,pinned,Q182378,
+MY-SA,Sabah,state of Malaysia,,pinned,Q179029,
+MY-SE,Selangor,state of Malaysia,,pinned,Q189710,
+MY-SR,Sarawak,state of Malaysia,,pinned,Q170462,Sarawak
+MY-TE,Terengganu,state of Malaysia,,name,Q189701,
 MZ-MU,Maputo,municipality of Mozambique,,any2,Q3889,Maputo
 MZ-PC,Província de Cabo Delgado,province of Mozambique,,initials,Q466538,
 MZ-PG,Província de Gaza,province of Mozambique,,preposition.significant,Q466526,Gaza
@@ -1761,6 +1950,20 @@ OM-MU,Muscat,governorates of Oman,,pinned,Q544762,
 OM-SN,Ash Sharqiyah North,governorates of Oman,,pinned,Q4501876,
 OM-SS,Ash Sharqiyah South,governorates of Oman,,pinned,Q4501894,
 OM-WU,Al Wusta,governorates of Oman,,pinned,Q958518,
+PA-BT,Bocas del Toro,province of Panama,,pinned,Q217138,
+PA-CH,Chiriquí,province of Panama,,pinned,Q739651,
+PA-CL,Coclé,province of Panama,,pinned,Q825799,
+PA-CO,Colón,province of Panama,,pinned,Q820514,
+PA-DA,Darién,province of Panama,,pinned,Q688660,
+PA-EW,Emberá-Wounaan,comarca of Panama,,initials,Q1141041,Emberá-Wounaan
+PA-GY,Guna Yala,comarca of Panama,,initials,Q919017,
+PA-HE,Herrera,province of Panama,,pinned,Q842886,
+PA-NG,Ngäbe-Buglé,comarca of Panama,,any2,Q1129783,
+PA-NT,Naso Tjër-Di,comarca of Panama,,anchor,Q103838707,
+PA-PA,Panamá,province of Panama,,pinned,Q557506,
+PA-PO,Panamá Oeste,province of Panama,,pinned,Q16250688,
+PA-SA,Los Santos,province of Panama,,pinned,Q911278,
+PA-VE,Veraguas,province of Panama,,pinned,Q593137,
 PE-AM,Amazonas,department of Peru,,pinned,Q201162,
 PE-AN,Áncash,department of Peru,,pinned,Q205089,
 PE-AP,Apurímac,department of Peru,,pinned,Q208185,
@@ -2223,6 +2426,218 @@ SG-NR,North East Community Development,Community Development Council,,any2,Q3710
 SG-NW,North West Community Development,Community Development Council,,qualifier,Q5784118,
 SG-SE,South East Community Development,Community Development Council,,qualifier,Q1687545,
 SG-SW,South West Community Development,Community Development Council,,qualifier,Q5784126,
+SI-AJD,Ajdovščina,municipality of Slovenia,,name,Q331701,Ajdovščina
+SI-ANK,Ankaran,municipality of Slovenia,,name,Q12042075,
+SI-APA,Apače,municipality of Slovenia,,name,Q3278915,Apače
+SI-BEL,Beltinci,municipality of Slovenia,,name,Q778542,
+SI-BEN,Benedikt,municipality of Slovenia,,name,Q779018,
+SI-BLE,Bled,municipality of Slovenia,,name,Q647572,
+SI-BLO,Bloke,municipality of Slovenia,,name,Q164123,Bloke
+SI-BOH,Bohinj,municipality of Slovenia,,name,Q3661628,Občina Bohinj
+SI-BOR,Borovnica,municipality of Slovenia,,name,Q13377747,
+SI-BOS,Bistrica ob Sotli,municipality of Slovenia,,initials,Q13377731,
+SI-BOV,Bovec,municipality of Slovenia,,name,Q3259688,
+SI-BRA,Braslovče,municipality of Slovenia,,name,Q1034410,
+SI-BRD,Brda,municipality of Slovenia,,name,Q763400,
+SI-BRE,Brezovica,municipality of Slovenia,,name,Q849320,
+SI-BRZ,Brežice,municipality of Slovenia,,skeleton,Q906879,
+SI-CAN,Cankova,municipality of Slovenia,,name,Q13377751,
+SI-CEA,Cerknica,municipality of Slovenia,,name.ends,Q13107298,Občina Cerknica
+SI-CEK,Cerkvenjak,municipality of Slovenia,,name.ends,Q1252438,
+SI-CEL,Celje,city municipality of Slovenia,,name,Q3441823,
+SI-CER,Cerkno,municipality of Slovenia,,name,Q13220435,
+SI-CIR,Cirkulane,municipality of Slovenia,,name,Q13370246,
+SI-CNG,Cerklje na Gorenjskem,municipality of Slovenia,,initials,Q859679,
+SI-CNK,Črna na Koroškem,municipality of Slovenia,,initials,Q279072,
+SI-CRE,Črenšovci,municipality of Slovenia,,name,Q341658,
+SI-CRN,Črnomelj,municipality of Slovenia,,name,Q3482211,
+SI-DES,Destrnik,municipality of Slovenia,,name,Q570618,
+SI-DIV,Divača,municipality of Slovenia,,name,Q557216,
+SI-DOA,Dobrna,municipality of Slovenia,,name.ends,Q999579,
+SI-DOB,Dobrepolje,municipality of Slovenia,,name,Q1009409,
+SI-DOE,Dobje,municipality of Slovenia,,name.ends,Q1008179,
+SI-DOK,Dobrovnik,municipality of Slovenia,,name.ends,Q13365892,
+SI-DOM,Domžale,municipality of Slovenia,,name,Q13377763,
+SI-DOR,Dornava,municipality of Slovenia,,name,Q1003969,Dornava
+SI-DOT,Dolenjske Toplice,municipality of Slovenia,,compound,Q1016840,
+SI-DPG,Dobrova–Polhov Gradec,municipality of Slovenia,,initials,Q1005208,
+SI-DPL,Dol pri Ljubljani,municipality of Slovenia,,initials,Q998557,
+SI-DRA,Dravograd,municipality of Slovenia,,name,Q3503123,
+SI-DUP,Duplek,municipality of Slovenia,,name,Q999589,
+SI-GOA,Gorišnica,municipality of Slovenia,,name.ends,Q632998,
+SI-GOE,Gorje,municipality of Slovenia,,name.ends,Q1027062,
+SI-GOG,Gornji Grad,municipality of Slovenia,,compound,Q726548,
+SI-GOP,Gornji Petrovci,municipality of Slovenia,,compound,Q3435689,
+SI-GOR,Gornja Radgona,municipality of Slovenia,,compound,Q570397,
+SI-GRA,Grad,municipality of Slovenia,,name,Q1019067,
+SI-GRO,Grosuplje,municipality of Slovenia,,name,Q13377778,
+SI-GVP,Gorenja Vas-Poljane,municipality of Slovenia,,initials,Q1005224,
+SI-HAJ,Hajdina,municipality of Slovenia,,name,Q995065,
+SI-HOD,Hodoš,municipality of Slovenia,,name,Q13365904,
+SI-HOR,Horjul,municipality of Slovenia,,name,Q1005185,
+SI-HOS,Hoče-Slivnica,municipality of Slovenia,,compound,Q1008102,
+SI-HRA,Hrastnik,municipality of Slovenia,,name,Q13377780,
+SI-HRK,Hrpelje-Kozina,municipality of Slovenia,,compound,Q556206,
+SI-IDR,Idrija,municipality of Slovenia,,name,Q3441842,
+SI-IGG,Ig,municipality of Slovenia,,name.ends,Q917397,
+SI-ILB,Ilirska Bistrica,municipality of Slovenia,,compound,Q13377784,
+SI-IVG,Ivančna Gorica,municipality of Slovenia,,compound,Q1008048,
+SI-IZO,Izola,municipality of Slovenia,,name,Q12042076,
+SI-JES,Jesenice,municipality of Slovenia,,name,Q15881,
+SI-JEZ,Jezersko,municipality of Slovenia,,name,Q1688771,Jezersko
+SI-JUR,Juršinci,municipality of Slovenia,,name,Q1003984,
+SI-KAM,Kamnik,municipality of Slovenia,,name,Q3503153,
+SI-KAO,Kanal ob Soči,municipality of Slovenia,,compound,Q3435496,
+SI-KID,Kidričevo,municipality of Slovenia,,name,Q776770,
+SI-KNK,Kostanjevica na Krki,municipality of Slovenia,,initials,Q12062190,
+SI-KOB,Kobilje,municipality of Slovenia,,name,Q927718,
+SI-KOC,Kočevje,municipality of Slovenia,,name,Q15884,
+SI-KOD,Kobarid,municipality of Slovenia,,name.ends,Q688287,
+SI-KOM,Komenda,municipality of Slovenia,,name,Q963986,
+SI-KON,Komen,municipality of Slovenia,,name.ends,Q15283322,
+SI-KOP,Koper,city municipality of Slovenia,,name,Q556203,
+SI-KOS,Kostel,municipality of Slovenia,,name,Q3434092,
+SI-KOZ,Kozje,municipality of Slovenia,,name,Q1009421,
+SI-KRA,Kranj,city municipality of Slovenia,,name,Q3441893,
+SI-KRG,Kranjska Gora,municipality of Slovenia,,compound,Q507051,
+SI-KRI,Križevci,municipality of Slovenia,,name,Q999563,
+SI-KRS,Krško,city municipality of Slovenia,,name,Q3484655,
+SI-KUN,Kungota,municipality of Slovenia,,name,Q998566,
+SI-KUZ,Kuzma,municipality of Slovenia,,name,Q906636,
+SI-LAS,Laško,municipality of Slovenia,,name,Q15887,
+SI-LDR,Log–Dragomer,municipality of Slovenia,,compound.alt,Q1027089,
+SI-LEN,Lendava,municipality of Slovenia,,name,Q587328,
+SI-LET,Lenart,municipality of Slovenia,,name.ends,Q13365883,
+SI-LIT,Litija,municipality of Slovenia,,name,Q15891,
+SI-LJA,Ljubljana,city municipality of Slovenia,,name.ends,Q3434113,
+SI-LJR,Ljutomer,municipality of Slovenia,,name.ends,Q15892,
+SI-LJU,Ljubno,municipality of Slovenia,,name,Q773659,
+SI-LNP,Lovrenc na Pohorju,municipality of Slovenia,,initials,Q25110,
+SI-LOD,Loška Dolina,municipality of Slovenia,,compound,Q999525,Loška dolina
+SI-LOG,Logatec,municipality of Slovenia,,name,Q15893,
+SI-LOP,Loški Potok,municipality of Slovenia,,compound,Q999553,
+SI-LUC,Luče,municipality of Slovenia,,name,Q669648,
+SI-LUK,Lukovica,municipality of Slovenia,,name,Q946766,
+SI-MAJ,Majšperk,municipality of Slovenia,,name,Q1002371,
+SI-MAK,Makole,municipality of Slovenia,,name,Q1808143,
+SI-MAR,Markovci,municipality of Slovenia,,name,Q1008095,
+SI-MED,Medvode,municipality of Slovenia,,name,Q15894,Medvode
+SI-MEN,Mengeš,municipality of Slovenia,,name,Q15895,Mengeš
+SI-MET,Metlika,municipality of Slovenia,,name,Q3441856,
+SI-MEZ,Mežica,municipality of Slovenia,,name,Q678147,
+SI-MIK,Miren–Kostanjevica,municipality of Slovenia,,compound,Q658076,
+SI-MIP,Mirna Peč,municipality of Slovenia,,compound,Q1016805,
+SI-MIR,Mirna,municipality of Slovenia,,name,Q1515842,
+SI-MIS,Mislinja,municipality of Slovenia,,name,Q999584,
+SI-MND,Miklavž na Dravskem Polju,municipality of Slovenia,,initials,Q1005165,
+SI-MOR,Moravče,municipality of Slovenia,,name,Q1012761,
+SI-MOT,Moravske Toplice,municipality of Slovenia,,compound,Q3494723,
+SI-MOZ,Mozirje,municipality of Slovenia,,name,Q670975,
+SI-MRB,Maribor,city municipality of Slovenia,,skeleton,Q3435104,Maribor
+SI-MTR,Mokronog-Trebelno,municipality of Slovenia,,compound.alt,Q1027078,
+SI-MUS,Murska Sobota,city municipality of Slovenia,,compound,Q9273677,
+SI-MUT,Muta,municipality of Slovenia,,name,Q6309297,
+SI-NAK,Naklo,municipality of Slovenia,,name,Q1569014,
+SI-NAZ,Nazarje,municipality of Slovenia,,name,Q954987,
+SI-NOG,Nova Gorica,city municipality of Slovenia,,compound,Q3435478,
+SI-NOM,Novo Mesto,city municipality of Slovenia,,compound,Q398116,
+SI-ODR,Odranci,municipality of Slovenia,,name,Q924698,
+SI-OPL,Oplotnica,municipality of Slovenia,,name,Q1587261,
+SI-ORM,Ormož,municipality of Slovenia,,name,Q15900,
+SI-OSI,Osilnica,municipality of Slovenia,,name,Q778147,
+SI-PES,Pesnica,municipality of Slovenia,,name,Q995048,
+SI-PIR,Piran,municipality of Slovenia,,name,Q565170,
+SI-PIV,Pivka,municipality of Slovenia,,name,Q252154,
+SI-POA,Podvelka,municipality of Slovenia,,name.ends,Q1016800,Podvelka
+SI-POD,Podčetrtek,municipality of Slovenia,,name,Q999540,
+SI-POE,Poljčane,municipality of Slovenia,,name.ends,Q594852,
+SI-POK,Podlehnik,municipality of Slovenia,,name.ends,Q1002247,
+SI-POL,Polzela,municipality of Slovenia,,name,Q938443,
+SI-POS,Postojna,municipality of Slovenia,,name,Q2242799,
+SI-PRD,Prebold,municipality of Slovenia,,name.ends,Q1016698,
+SI-PRE,Preddvor,municipality of Slovenia,,name,Q539864,
+SI-PRV,Prevalje,municipality of Slovenia,,skeleton,Q650009,Prevalje
+SI-PUC,Puconci,municipality of Slovenia,,name,Q921092,
+SI-RAA,Radovljica,municipality of Slovenia,,name.ends,Q15910,
+SI-RAD,Radeče,municipality of Slovenia,,name,Q13377986,
+SI-RAF,Rače–Fram,municipality of Slovenia,,compound,Q731093,
+SI-RAI,Radenci,municipality of Slovenia,,name.ends,Q338743,
+SI-RAZ,Razkrižje,municipality of Slovenia,,name,Q3435117,
+SI-REO,Rečica ob Savinji,municipality of Slovenia,,compound,Q13378058,
+SI-REV,Renče–Vogrsko,municipality of Slovenia,,compound,Q612216,
+SI-RIB,Ribnica,municipality of Slovenia,,name,Q15912,Ribnica
+SI-RNK,Ravne na Koroškem,municipality of Slovenia,,initials,Q13378051,
+SI-RNP,Ribnica na Pohorju,municipality of Slovenia,,initials,Q1009413,
+SI-ROC,Rogatec,municipality of Slovenia,,name.ends,Q1027245,
+SI-ROD,Radlje ob Dravi,municipality of Slovenia,,initials,Q1005364,
+SI-ROG,Rogašovci,municipality of Slovenia,,name,Q599480,
+SI-ROS,Rogaška Slatina,municipality of Slovenia,,compound,Q15913,Občina Rogaška Slatina
+SI-RUS,Ruše,municipality of Slovenia,,name,Q3346841,
+SI-SAL,Šalovci,municipality of Slovenia,,name,Q13378373,
+SI-SAV,Sveti Andraž v Slovenskih Goricah,municipality of Slovenia,,initials,Q925149,
+SI-SEA,Sevnica,municipality of Slovenia,,name.ends,Q11214302,
+SI-SEJ,Šentilj,municipality of Slovenia,,name.ends,Q391446,
+SI-SEM,Semič,municipality of Slovenia,,name,Q1587704,
+SI-SEN,Šentjur,municipality of Slovenia,,name,Q13378384,
+SI-SEO,Selnica ob Dravi,municipality of Slovenia,,compound,Q919934,
+SI-SER,Šenčur,municipality of Slovenia,,name.ends,Q2346638,
+SI-SET,Šentrupert,municipality of Slovenia,,name.ends,Q3487128,
+SI-SEV,Šempeter–Vrtojba,municipality of Slovenia,,compound,Q391428,
+SI-SEZ,Sežana,municipality of Slovenia,,name,Q554854,
+SI-SJO,Sveti Jurij ob Ščavnici,municipality of Slovenia,,initials,Q920353,
+SI-SJV,Sveti Jurij v Slovenskih Goricah,municipality of Slovenia,,initials,Q1008144,
+SI-SKL,Škofja Loka,municipality of Slovenia,,compound,Q2318898,
+SI-SKN,Škocjan,municipality of Slovenia,,name.ends,Q391800,
+SI-SKO,Škofljica,municipality of Slovenia,,name,Q392103,
+SI-SLB,Slovenska Bistrica,municipality of Slovenia,,compound,Q11211457,
+SI-SLG,Slovenj Gradec,city municipality of Slovenia,,compound,Q3441817,
+SI-SLK,Slovenske Konjice,municipality of Slovenia,,compound,Q13378155,
+SI-SMT,Šmarješke Toplice,municipality of Slovenia,,compound,Q3509893,
+SI-SNT,Šentjernej,municipality of Slovenia,,skeleton,Q1016812,
+SI-SOD,Sodražica,municipality of Slovenia,,name,Q1008079,
+SI-SOL,Solčava,municipality of Slovenia,,name,Q1313614,
+SI-SOP,Šmartno ob Paki,municipality of Slovenia,,initials,Q392188,
+SI-SOS,Šoštanj,municipality of Slovenia,,name,Q15923,
+SI-SPJ,Šmarje pri Jelšah,municipality of Slovenia,,initials,Q392173,
+SI-SPL,Šmartno pri Litiji,municipality of Slovenia,,initials,Q13378453,
+SI-SRO,Središče ob Dravi,municipality of Slovenia,,compound,Q3441796,
+SI-STA,Starše,municipality of Slovenia,,name,Q1016826,
+SI-STO,Štore,municipality of Slovenia,,name,Q392468,
+SI-STR,Straža,municipality of Slovenia,,name,Q1784972,
+SI-STV,Sveta Trojica v Slovenskih Goricah,municipality of Slovenia,,initials,Q1016820,
+SI-SVA,Sveta Ana,municipality of Slovenia,,compound,Q990063,
+SI-SVT,Sveti Tomaž,municipality of Slovenia,,compound,Q1016831,
+SI-TAB,Tabor,municipality of Slovenia,,name,Q999530,
+SI-TIS,Tišina,municipality of Slovenia,,name,Q1276793,
+SI-TOL,Tolmin,municipality of Slovenia,,name,Q15924,
+SI-TRB,Trbovlje,municipality of Slovenia,,name,Q15925,
+SI-TRE,Trebnje,municipality of Slovenia,,name,Q13378243,
+SI-TRN,Trzin,municipality of Slovenia,,name.ends,Q773160,
+SI-TRV,Trnovska Vas,municipality of Slovenia,,compound,Q999559,
+SI-TRZ,Tržič,municipality of Slovenia,,name,Q15927,
+SI-TUR,Turnišče,municipality of Slovenia,,name,Q201074,
+SI-UMP,Urban Municipality of Ptuj,city municipality of Slovenia,,preposition.significant,Q3441808,
+SI-VEE,Velenje,city municipality of Slovenia,,name.ends,Q3441849,
+SI-VEL,Velike Lašče,municipality of Slovenia,,compound,Q13378281,
+SI-VEP,Velika Polana,municipality of Slovenia,,compound,Q995101,
+SI-VER,Veržej,municipality of Slovenia,,name,Q1008086,
+SI-VID,Videm,municipality of Slovenia,,name,Q1002863,
+SI-VIP,Vipava,municipality of Slovenia,,name,Q1002229,Občina Vipava
+SI-VIT,Vitanje,municipality of Slovenia,,name,Q13378288,
+SI-VOD,Vodice,municipality of Slovenia,,name,Q13378292,
+SI-VOJ,Vojnik,municipality of Slovenia,,name,Q2134561,
+SI-VRA,Vransko,municipality of Slovenia,,name,Q13378299,
+SI-VRH,Vrhnika,municipality of Slovenia,,name,Q9014817,
+SI-VUZ,Vuzenica,municipality of Slovenia,,name,Q370390,Vuzenica
+SI-ZAL,Žalec,municipality of Slovenia,,name,Q15931,
+SI-ZAV,Zavrč,municipality of Slovenia,,name,Q167001,
+SI-ZEL,Železniki,municipality of Slovenia,,name,Q15932,
+SI-ZET,Žetale,municipality of Slovenia,,name,Q393910,
+SI-ZII,Žiri,municipality of Slovenia,,name.ends,Q394087,Žiri
+SI-ZIR,Žirovnica,municipality of Slovenia,,name,Q394103,
+SI-ZOS,Zagorje ob Savi,municipality of Slovenia,,initials,Q13378328,
+SI-ZRE,Zreče,municipality of Slovenia,,name,Q227163,
+SI-ZUZ,Žužemberk,municipality of Slovenia,,name,Q13377798,
 SK-BB,Banská Bystrica,region of Slovakia,,initials,Q183640,Besztercebányai kerület
 SK-BT,Bratislava,region of Slovakia,,any2,Q183498,Pozsonyi kerület
 SK-KS,Košice,region of Slovakia,,skeleton,Q186295,Košický kraj
@@ -2287,6 +2702,16 @@ SR-PR,Para,district of Suriname,,pinned,Q1140891,
 SR-SA,Saramacca,district of Suriname,,pinned,Q1351157,
 SR-SI,Sipaliwini,district of Suriname,,pinned,Q1130138,
 SR-WA,Wanica,district of Suriname,,pinned,Q1147524,
+SS-BN,Northern Bahr el Ghazal,state of South Sudan,,anchor,Q491111,
+SS-BW,Western Bahr el Ghazal,state of South Sudan,,anchor,Q332095,
+SS-EC,Central Equatoria,state of South Sudan,,pinned,Q487709,Central Equatoria
+SS-EE,Eastern Equatoria,state of South Sudan,,pinned,Q488519,
+SS-EW,Western Equatoria,state of South Sudan,,anchor,Q319979,
+SS-JG,Jonglei,state of South Sudan,,anchor,Q488904,
+SS-LK,Lakes,state of South Sudan,,pinned,Q491096,
+SS-NU,Upper Nile,state of South Sudan,,pinned,Q487702,
+SS-UY,Unity,state of South Sudan,,pinned,Q319965,
+SS-WR,Warrap,state of South Sudan,,anchor,Q491138,
 ST-AG,Água Grande,district of São Tomé and Príncipe,,initials,Q249742,
 ST-CA,Cantagalo,district of São Tomé and Príncipe,,name,Q1033696,
 ST-CU,Caué,district of São Tomé and Príncipe,,any2,Q1051692,
@@ -2448,6 +2873,19 @@ TJ-DU,Dushanbe,capital city,,pinned,Q9365,دوشنبه
 TJ-GO,Gorno-Badakhshan Autonomous,region of Tajikistan,,any2,Q207319,Вилояти Мухтори Кӯҳистони Бадахшон
 TJ-KT,Khatlon,region of Tajikistan,,pinned,Q633511,Вилояти Хатлон
 TJ-SU,Sughd,region of Tajikistan,,pinned,Q241582,Вилояти Суғд
+TL-AL,Aileu,municipality of East Timor,,pinned,Q405100,
+TL-AN,Ainaro,municipality of East Timor,,pinned,Q405926,
+TL-BA,Baucau,municipality of East Timor,,pinned,Q811132,
+TL-BO,Bobonaro,municipality of East Timor,,pinned,Q860913,
+TL-CL,Cova Lima,municipality of East Timor,,initials,Q165575,
+TL-DI,Díli,municipality of East Timor,,pinned,Q860901,
+TL-ER,Ermera,municipality of East Timor,,pinned,Q668171,
+TL-LA,Lautém,municipality of East Timor,,pinned,Q686554,
+TL-LI,Liquiçá,municipality of East Timor,,pinned,Q860897,
+TL-MF,Manufahi,municipality of East Timor,,pinned,Q629934,
+TL-MT,Manatuto,municipality of East Timor,,pinned,Q860630,
+TL-OE,Oe-Cusse Ambeno,special administrative region in East Timor,,anchor,Q860639,Oecussi-Ambeno
+TL-VI,Viqueque,municipality of East Timor,,pinned,Q610726,
 TM-AG,Ashgabat,city of Turkmenistan,,any2,Q23438,Aşgabat
 TM-AH,Ahal,region of Turkmenistan,,pinned,Q399899,Ahal welaýaty
 TM-BA,Balkan,region of Turkmenistan,,pinned,Q486073,
@@ -2772,6 +3210,40 @@ VE-YA,Yaracuy,state of Venezuela,,pinned,Q201121,
 VE-ZU,Zulia,state of Venezuela,,pinned,Q43269,
 VI-SA,Saint Thomas and Saint John,district of the United States Virgin Islands,,any2,Q84505324,
 VI-SC,Saint Croix,district of the United States Virgin Islands,,pinned,Q20852568,Saint Croix
+VN-AL,Đắk Lắk,province of Vietnam,,pinned,Q36690,
+VN-BN,Bắc Ninh,province of Vietnam,,pinned,Q33408,
+VN-CB,Cao Bằng,province of Vietnam,,pinned,Q36865,
+VN-CM,Cà Mau,province of Vietnam,,pinned,Q33354,ខេត្តទឹកខ្មៅ
+VN-CT,Cần Thơ,province of Vietnam,,pinned,Q216075,Cần Thơ
+VN-DA,Da Nang,centrally-governed cities of Vietnam,,any2,Q25282,Đà Nẵng
+VN-GI,An Giang,province of Vietnam,,pinned,Q36592,ខេត្តមាត់ជ្រូក
+VN-GL,Gia Lai,province of Vietnam,,pinned,Q36662,
+VN-HE,Huế,province of Vietnam,,any2,Q36399,Huế
+VN-HI,Haiphong,centrally-governed cities of Vietnam,,any2,Q72818,Hải Phòng
+VN-HO,Hanoi,centrally-governed cities of Vietnam,,any2,Q1858,Hà Nội
+VN-HT,Hà Tĩnh,province of Vietnam,,pinned,Q33351,Hà Tĩnh
+VN-HY,Hưng Yên,province of Vietnam,,pinned,Q36235,
+VN-IB,Điện Biên,province of Vietnam,,pinned,Q36955,Điện Biên
+VN-KH,Khánh Hòa,province of Vietnam,,pinned,Q33369,
+VN-LA,Lai Châu,province of Vietnam,,pinned,Q36409,
+VN-LC,Lào Cai,province of Vietnam,,pinned,Q36446,
+VN-LO,Lâm Đồng,province of Vietnam,,pinned,Q36721,
+VN-LS,Lạng Sơn,province of Vietnam,,pinned,Q33403,
+VN-NB,Ninh Bình,province of Vietnam,,pinned,Q36900,
+VN-NG,Nghệ An,province of Vietnam,,pinned,Q36587,
+VN-ON,Đồng Nai,province of Vietnam,,pinned,Q33271,
+VN-OT,Đồng Tháp,province of Vietnam,,pinned,Q36676,ខេត្តផ្សារដែក
+VN-PT,Phú Thọ,province of Vietnam,,pinned,Q36610,
+VN-QA,Quảng Ninh,centrally-governed cities of Vietnam,,pinned,Q33396,
+VN-QT,Quảng Trị,province of Vietnam,,pinned,Q36579,
+VN-QU,Quảng Ngãi,province of Vietnam,,pinned,Q33304,
+VN-SG,Ho Chi Minh,centrally-governed cities of Vietnam,,pinned,Q1854,ក្រុងព្រៃនគរ
+VN-SL,Sơn La,province of Vietnam,,pinned,Q33379,
+VN-TA,Tây Ninh,province of Vietnam,,pinned,Q36608,
+VN-TH,Thanh Hóa,province of Vietnam,,pinned,Q36512,Thanh Hóa
+VN-TN,Thái Nguyên,province of Vietnam,,pinned,Q26575,
+VN-TQ,Tuyên Quang,province of Vietnam,,pinned,Q2332060,
+VN-VL,Vĩnh Long,province of Vietnam,,pinned,Q7333405,
 VU-MA,Malampa,province of Vanuatu,,pinned,Q740656,Malampa
 VU-PE,Penama,province of Vanuatu,,pinned,Q836649,
 VU-SA,Sanma,province of Vanuatu,,pinned,Q740640,
