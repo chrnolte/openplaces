@@ -126,7 +126,7 @@ def run_validation(
     started = datetime.now(UTC).isoformat(timespec='seconds')
     repo_root = Path(cfg.code_root)
     if log_dir is None:
-        log_dir = Path(cfg.get_dir('cache')) / '_logs' / 'validate' / recipe_id / region
+        log_dir = Path(cfg.get_dir('logs')) / 'validate' / recipe_id / region
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     env = {

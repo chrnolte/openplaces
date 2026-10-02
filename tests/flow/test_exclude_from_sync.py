@@ -43,7 +43,8 @@ def test_a_missing_path_is_not_marked_unless_created(tmp_path):
 
 @supports_marker
 def test_bookkeeping_folders_of_a_run(tmp_path):
-    marked = exclude_bookkeeping_from_sync(tmp_path / 'repo', tmp_path / 'cache')
+    logs = tmp_path / 'cache' / '_logs'
+    marked = exclude_bookkeeping_from_sync(tmp_path / 'repo', logs)
     if not marked:
         pytest.skip('this filesystem cannot carry the marker')
     assert {p.name for p in marked} == {'.snakemake', '_logs'}

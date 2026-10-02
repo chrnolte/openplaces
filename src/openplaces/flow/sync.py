@@ -86,15 +86,15 @@ def exclude_from_sync(path: str | Path, create: bool = True) -> bool:
     return is_excluded_from_sync(path)
 
 
-def exclude_bookkeeping_from_sync(workdir: str | Path, cache_dir: str | Path) -> list:
+def exclude_bookkeeping_from_sync(workdir: str | Path, logs_dir: str | Path) -> list:
     """Mark the orchestrator's bookkeeping folders for one run.
 
     Parameters
     ----------
     workdir : str or Path
         The Snakemake working directory, which holds ``.snakemake``.
-    cache_dir : str or Path
-        The openplaces cache directory, whose ``_logs`` tree holds the
+    logs_dir : str or Path
+        The openplaces logs directory (cfg.logs_dir), which holds the
         stage timers and Snakemake benchmarks.
 
     Returns
@@ -103,7 +103,7 @@ def exclude_bookkeeping_from_sync(workdir: str | Path, cache_dir: str | Path) ->
         The folders now carrying the marker.
     """
     marked = []
-    for folder in (Path(workdir) / '.snakemake', Path(cache_dir) / '_logs'):
+    for folder in (Path(workdir) / '.snakemake', Path(logs_dir)):
         if exclude_from_sync(folder):
             marked.append(folder)
     return marked

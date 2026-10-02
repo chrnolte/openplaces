@@ -59,14 +59,19 @@ STANDARD_DIRS = {
         'shared': False,
         'retention': 'until_consumed',
     },
+    # 'parent' makes a relative path resolve against that bucket instead
+    # of data_root, so moving the cache (off a synced drive, say) moves
+    # the heap and the logs with it.
     'heap': {
-        'default': 'data/cache/_heap',
+        'default': '_heap',
+        'parent': 'cache',
         'description': 'Freshly unzipped data, to be deleted after use',
         'shared': False,
         'retention': 'transient',
     },
     'logs': {
-        'default': 'data/cache/_logs',
+        'default': '_logs',
+        'parent': 'cache',
         'description': 'Logs from script runs for performance profiling',
         'shared': False,
         'retention': 'keep',
