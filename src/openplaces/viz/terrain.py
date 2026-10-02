@@ -137,7 +137,7 @@ def show_value_terrain_layer(
     outline_darken: float = 0.6,
     missing_value: str = 'render',
     ghost_offset: float = 2.0,
-    ghost_rgba: tuple[int, int, int, int] = (255, 255, 255, 140),
+    ghost_rgba: tuple[int, int, int, int] = (64, 64, 64, 140),
     ghost_width: float = 1.0,
     drop_corridors: bool | dict = False,
     mark_clipped: bool = False,
@@ -344,24 +344,24 @@ def show_value_terrain_layer(
         `terrain_exaggeration` is applied. Defaults to 0 (sea level, the
         original behavior).
 
-        Set this when a basemap is in the scene. Extruding from sea level
-        lifts everything as far above the flat basemap as the land is above
-        the ocean, and with the camera tilted to pitch `p` a feature `h`
-        meters up appears displaced from its own basemap position by
-        `h * tan(p)` — at pitch 75 over terrain 345 m up, roughly 1.3 km.
+        Set this when the land sits well above sea level. Extruding from
+        sea level lifts everything as far above the z=0 ground plane as
+        the land is above the ocean, and with the camera tilted to pitch
+        `p` a feature `h` meters up appears displaced from its own
+        longitude and latitude (where the view state places it) by
+        `h * tan(p)`: at pitch 75 over terrain 345 m up, roughly 1.3 km.
         Referencing the scene to the ground under it removes that term,
         leaving only the relief the terrain is meant to show.
 
         Ground elevation is clamped at z=0 afterward, so nothing sinks
-        below a flat basemap and out of sight even if the datum is set
-        above part of the extent. Only the *ground* is clamped; value
-        height and `stack_on` offsets are added on top of the clamped
-        ground and are unaffected.
+        below the ground plane even if the datum is set above part of the
+        extent. Only the *ground* is clamped; value height and `stack_on`
+        offsets are added on top of the clamped ground and are unaffected.
 
         Compute it once with `viz.elevation.get_elevation_datum` and pass
-        the same value to every layer of the scene — parcels, buildings,
-        boundaries, basemap. A datum that differs between layers slides
-        them vertically against each other, exactly like a mismatched
+        the same value to every layer of the scene (parcels, buildings,
+        boundaries). A datum that differs between layers slides them
+        vertically against each other, exactly like a mismatched
         `terrain_exaggeration`.
     stack_on : TerrainLayer, optional
         A previously built layer to stack this one on top of: each row here
@@ -410,14 +410,14 @@ def show_value_terrain_layer(
         is about missing *values*; `missing` (below) is about missing output
         *files*.
 
-        - `'render'` (default) — keep them in `layer` as flat, zero-height
+        - `'render'` (default): keep them in `layer` as flat, zero-height
           gray polygons.
-        - `'drop'` — remove them entirely, leaving the basemap visible. Most
+        - `'drop'`: remove them entirely, leaving the ground empty. Most
           useful for parcels, where the unvalued polygons are typically
           rights-of-way whose geometry traces a whole road network as one
           feature: at town zoom such a corridor is narrower than a pixel and
           collapses to a hairline criss-crossing the map.
-        - `'ghost'` — move them to `ghost_layer`, an outline-only ring
+        - `'ghost'`: move them to `ghost_layer`, an outline-only ring
           floating `ghost_offset` meters above whatever they sit on. Most
           useful for buildings, where a missing value usually means a real
           structure nobody assessed separately (a secondary footprint, say)
@@ -433,7 +433,8 @@ def show_value_terrain_layer(
         marking, without detaching from the feature it belongs to. Applies
         only when `missing_value='ghost'`.
     ghost_rgba : tuple of int
-        RGBA line color for `ghost_layer`. Defaults to translucent white.
+        RGBA line color for `ghost_layer`. Defaults to translucent dark
+        gray, which reads on the plain background the map draws on.
     ghost_width : float
         `ghost_layer` line width in pixels. Defaults to 1.
     drop_corridors : bool or dict

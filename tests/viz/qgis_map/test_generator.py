@@ -236,12 +236,13 @@ class TestLayerCloning:
     def test_maplayer_count(self, tmp_path, basic_specs):
         # Per matched spec: only its clone (2 layers, 1 if combined) — the
         # original template prototype it was cloned from is pruned, not
-        # kept. Plus the always-kept basemap.
+        # kept. Plus the always-kept static layer; the template's tile
+        # layers are dropped.
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
         maplayers = root.find('projectlayers').findall('maplayer')
         expected = sum(1 if spec.combined else 2 for spec in basic_specs)
-        expected += 1  # proto_basemap, always kept regardless of resolved specs
+        expected += 1  # proto_static, always kept regardless of resolved specs
         # The footprint/cheer output spec resolves to 'test-output', which has
         # one registered variant (test-output-by-roof-shape): +1 new variant
         # clone. Likewise the combined parcel/openplaces spec resolves to
@@ -478,14 +479,14 @@ class TestPruning:
         }
         assert not (matched_prototypes & layernames)
 
-    def test_static_basemap_prototype_survives_pruning(self, tmp_path, basic_specs):
+    def test_static_prototype_survives_pruning(self, tmp_path, basic_specs):
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
         layernames = {
             m.find('layername').text
             for m in root.find('projectlayers').findall('maplayer')
         }
-        assert 'proto_basemap' in layernames
+        assert 'proto_static' in layernames
 
     def test_pruned_layers_removed_from_tree_and_legend(self, tmp_path, basic_specs):
         out = _run(tmp_path, basic_specs)
@@ -657,7 +658,7 @@ class TestStaticLayerCheckedState:
         self, tmp_path, basic_specs, fixture_registry, monkeypatch
     ):
         modified = fixture_registry.copy()
-        modified.loc['basemap-open', 'default_visible'] = False
+        modified.loc['static-context', 'default_visible'] = False
         monkeypatch.setattr(
             generator_module,
             'get_static_styles',
@@ -665,18 +666,65 @@ class TestStaticLayerCheckedState:
         )
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
-        assert _find_tree_layer(root, 'proto_basemap').get('checked') == 'Qt::Unchecked'
-        assert (
-            _find_legendlayer(root, 'proto_basemap').get('checked') == 'Qt::Unchecked'
-        )
+        assert _find_tree_layer(root, 'proto_static').get('checked') == 'Qt::Unchecked'
+        assert _find_legendlayer(root, 'proto_static').get('checked') == 'Qt::Unchecked'
 
     def test_default_visible_true_keeps_checked(self, tmp_path, basic_specs):
-        # Fixture registry's basemap-open row is default_visible=true, matching
-        # the template's own baked Qt::Checked -- unaffected regression guard.
+        # Fixture registry's static-context row is default_visible=true,
+        # matching the template's own baked Qt::Checked -- unaffected
+        # regression guard.
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
-        assert _find_tree_layer(root, 'proto_basemap').get('checked') == 'Qt::Checked'
-        assert _find_legendlayer(root, 'proto_basemap').get('checked') == 'Qt::Checked'
+        assert _find_tree_layer(root, 'proto_static').get('checked') == 'Qt::Checked'
+        assert _find_legendlayer(root, 'proto_static').get('checked') == 'Qt::Checked'
+
+
+class TestNoTileLayers:
+    """A generated project never carries a basemap or tile-service layer."""
+
+    def test_template_tile_layers_are_dropped(self, tmp_path, basic_specs):
+        # The fixture template carries an XYZ raster (registered as a
+        # static row) and a vector-tile layer; neither may pass through.
+        template_root = _read_qgs_root(TEMPLATE_PATH)
+        template_layers = template_root.find('projectlayers').findall('maplayer')
+        assert any(generator_module._is_tile_layer(m) for m in template_layers)
+
+        out = _run(tmp_path, basic_specs)
+        root = _read_qgs_root(out)
+        maplayers = root.find('projectlayers').findall('maplayer')
+        assert not any(generator_module._is_tile_layer(m) for m in maplayers)
+        assert all(m.get('type') == 'vector' for m in maplayers)
+
+    def test_tile_layers_leave_no_tree_or_legend_entry(self, tmp_path, basic_specs):
+        out = _run(tmp_path, basic_specs)
+        root = _read_qgs_root(out)
+        project_xml = ET.tostring(root, encoding='unicode')
+        assert 'type=xyz' not in project_xml
+        assert 'proto_xyz_tiles' not in project_xml
+        assert 'proto_vector_tiles' not in project_xml
+        group_names = {
+            g.get('name')
+            for g in root.find('layer-tree-group').iter('layer-tree-group')
+        }
+        assert 'Background' not in group_names
+
+    @pytest.mark.parametrize(
+        ('layer_type', 'provider', 'datasource', 'expected'),
+        [
+            ('raster', 'wms', 'type=xyz&url=https://a.invalid/{z}/{x}/{y}.png', True),
+            ('raster', 'wms', 'url=https://a.invalid/wms&layers=x', True),
+            ('raster', 'arcgismapserver', 'url=https://a.invalid/MapServer', True),
+            ('vector-tile', 'xyzvectortiles', 'url=https://a.invalid', True),
+            ('raster', 'gdal', 'type=xyz&url=https://a.invalid/{z}/{x}/{y}', True),
+            ('raster', 'gdal', './dem.tif', False),
+            ('vector', 'ogr', './parcels.parquet', False),
+        ],
+    )
+    def test_is_tile_layer(self, layer_type, provider, datasource, expected):
+        maplayer = ET.Element('maplayer', {'type': layer_type})
+        ET.SubElement(maplayer, 'datasource').text = datasource
+        ET.SubElement(maplayer, 'provider').text = provider
+        assert generator_module._is_tile_layer(maplayer) is expected
 
 
 class TestProjectCrs:

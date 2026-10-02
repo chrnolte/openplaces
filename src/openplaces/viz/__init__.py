@@ -1,4 +1,9 @@
-"""Visualization tools for geospatial data."""
+"""Visualization tools for geospatial data.
+
+Every map draws openplaces' own layers on a plain background, never over
+a basemap, tile service or other background map. Add a background map
+in your own tool if you need one.
+"""
 
 import urllib
 from importlib import import_module
@@ -28,9 +33,6 @@ from openplaces.viz.tabulation import plot_tabulation, tabulate
 _LAZY_SOURCES = {
     'DEFAULT_ELEVATION_SCALE': 'openplaces.viz.terrain:DEFAULT_ELEVATION_SCALE',
     'get_admin_boundary_layer': 'openplaces.viz.interactive:get_admin_boundary_layer',
-    'get_basemap_layer': 'openplaces.viz.interactive:get_basemap_layer',
-    'get_maplibre_basemap': 'openplaces.viz.interactive:get_maplibre_basemap',
-    'get_terrain_basemap_layer': 'openplaces.viz.interactive:get_terrain_basemap_layer',
     'set_camera_pitch': 'openplaces.viz.interactive:set_camera_pitch',
     'show_entities_interactive': 'openplaces.viz.interactive:show_entities_interactive',
     'show_entities_raster': 'openplaces.viz.raster:show_entities_raster',
@@ -45,9 +47,6 @@ __all__ = [
     'continuous_to_rgba',
     'create_street_view_link',
     'get_admin_boundary_layer',
-    'get_basemap_layer',
-    'get_maplibre_basemap',
-    'get_terrain_basemap_layer',
     'match_palette',
     'plot_tabulation',
     'resolve_category_colors',

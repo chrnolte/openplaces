@@ -884,30 +884,31 @@ def get_elevation_datum(
     """Ground elevation to treat as z=0 for a scene, in meters.
 
     The 3D viz extrudes from sea level by default, which puts the whole
-    scene as far above the flat basemap as the land happens to be above the
-    ocean — a few hundred meters here, more once `terrain_exaggeration`
-    multiplies it. That offset is not harmless: with the camera tilted to
-    pitch `p`, anything `h` meters up appears shifted from its own
-    basemap position by `h * tan(p)`, so at pitch 75 a scene 345 m up
-    (Lancaster at 3x) reads about 1.3 km away from the streets it sits on.
+    scene as far above the z=0 ground plane as the land happens to be above
+    the ocean: a few hundred meters here, more once `terrain_exaggeration`
+    multiplies it. That offset is not harmless. deck.gl places a map's view
+    state on that plane, so with the camera tilted to pitch `p`, anything
+    `h` meters up appears shifted from its own longitude and latitude by
+    `h * tan(p)`: at pitch 75 a scene 345 m up (Lancaster at 3x) reads
+    about 1.3 km away from where the view is centered and rotates around.
 
     Referencing the scene to the ground beneath it removes that whole term.
     What is left is only the relief *within* the extent, which is what the
     terrain is actually meant to show.
 
     Defaults to a low quantile (0.1%) rather than the mean or the
-    minimum. A mean would put half the terrain below z=0, underneath a
-    flat basemap, where it is hidden. The minimum is hostage to a few bad
-    pixels: Boston's 3DEP tile holds some 600 returns below -30 m in the
-    harbor, and referencing to them lifted a city at sea level 77 m off
-    its basemap. The layers clamp at z=0 (`viz.terrain`), so the handful
-    of vertices below a low quantile sit on the ground plane rather than
+    minimum. A mean would put half the terrain below z=0, under the
+    ground plane. The minimum is hostage to a few bad pixels: Boston's
+    3DEP tile holds some 600 returns below -30 m in the harbor, and
+    referencing to them lifted a city at sea level 77 m off the ground
+    plane. The layers clamp at z=0 (`viz.terrain`), so the handful of
+    vertices below a low quantile sit on the ground plane rather than
     under it; pass `quantile=0` for the strict minimum.
 
     Compute this **once per scene** and pass the same value to every layer
-    — parcels, buildings, boundaries, the draped basemap. A datum that
-    differs between layers slides them vertically relative to each other,
-    the same failure mode as a mismatched `terrain_exaggeration`.
+    (parcels, buildings, boundaries). A datum that differs between layers
+    slides them vertically relative to each other, the same failure mode
+    as a mismatched `terrain_exaggeration`.
 
     Parameters
     ----------
@@ -993,9 +994,9 @@ def clamp_z(geometry, lower: float = 0.0):
     """Raise every vertex Z below `lower` up to it, leaving x/y alone.
 
     Used by `viz.terrain`'s `elevation_datum` to guarantee that referenced
-    ground never sinks below the basemap plane, where a flat basemap would
-    simply hide it. Clamping (rather than shifting the whole scene down to
-    fit) keeps the datum meaning what it says for the rest of the extent;
+    ground never sinks below the z=0 ground plane. Clamping (rather than
+    shifting the whole scene down to fit) keeps the datum meaning what it
+    says for the rest of the extent;
     only the part that would have gone under is flattened onto the plane.
 
     Parameters

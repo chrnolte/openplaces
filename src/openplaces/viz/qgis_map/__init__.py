@@ -6,6 +6,9 @@ cloning layers from a hand-authored template (see
 ``qgis/templates/README.md``). Opt-in and on-demand: call
 :func:`export_qgis_map` whenever a map deliverable is wanted; nothing here
 runs automatically as part of :func:`openplaces.io.curator.curate`.
+
+A generated project contains no basemap or tile-service layer; add a
+background map in QGIS if you need one.
 """
 
 from openplaces.core.schema import AdminId
@@ -139,8 +142,8 @@ def export_qgis_map(
         unit (default True).
     include_inputs : bool, optional
         Include the ingest-stage source layers (default True). Pass False
-        for a map of the delivered product alone: the curated output, admin
-        context, and the template's basemaps.
+        for a map of the delivered product alone: the curated output and
+        its admin context.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
 

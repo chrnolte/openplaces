@@ -13,8 +13,11 @@
   for `test-output` (footprint), a single-file (no attr) prototype for
   `test-output-combined` (parcel, exercising `LayerSpec.combined`), a joined
   pair for `test-input` (footprint/obm) and `test-admin` (admin), a
-  standalone `basemap-open` prototype (always kept, unpruned), and a joined
-  `_fallback` prototype for the graceful-degradation path.
+  standalone `static-context` prototype (always kept, unpruned), and a
+  joined `_fallback` prototype for the graceful-degradation path. It also
+  carries two remote tile layers (an XYZ raster and a vector-tile layer,
+  one of them registered as `static-xyz-tiles`) that the generator must
+  drop from every generated project.
 
 - `style_registry.csv` — a small registry matching `tiny_template.qgz`'s
   layer names, passed to `style_registry.get_style(..., registry=...)` in

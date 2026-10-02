@@ -72,7 +72,6 @@ def test_parcel_label_box_tolerates_missing_values(parcels):
     fig, ax = show_building(
         (LAT + STEP / 2, LON - STEP / 2),
         {'parcels': parcels},
-        show_basemap=False,
         return_fig_ax=True,
     )
     box_text = [text.get_text() for text in ax.texts if 'Parcel ID' in text.get_text()]
@@ -102,7 +101,6 @@ def test_crosshair_match_requires_a_named_index(parcels):
     fig, ax = show_building(
         location,
         {'parcels': parcels, 'footprints': unrelated},
-        show_basemap=False,
         return_fig_ax=True,
     )
     assert not any('somewhere else' in text.get_text() for text in ax.texts)
@@ -130,10 +128,20 @@ def test_overlay_survives_a_shared_index_name(parcels):
     fig, ax = show_building(
         location,
         {'parcels': parcels, 'footprints': footprints},
-        show_basemap=False,
         return_fig_ax=True,
     )
     assert any('1 Test Street' in text.get_text() for text in ax.texts)
+
+
+def test_show_building_draws_no_background_image(parcels):
+    """The context map draws only its own layers, on a plain background."""
+    fig, ax = show_building(
+        (LAT + STEP / 2, LON - STEP / 2),
+        {'parcels': parcels},
+        return_fig_ax=True,
+    )
+    assert ax.collections or ax.lines
+    assert not ax.images
 
 
 def _ingester(entities):
@@ -148,8 +156,8 @@ def _ingester(entities):
 def test_line_geometry_is_plotted_and_not_left_to_the_default_extent():
     """Lines fell through both branches, leaving the (0, 1) limits.
 
-    The basemap call then fetched tiles for a degree square in the
-    Atlantic off West Africa: a plausible-looking map of nothing.
+    The map then showed a degree square in the Atlantic off West
+    Africa: a plausible-looking map of nothing.
     """
     lines = gpd.GeoDataFrame(
         {'name': ['a', 'b']},
@@ -164,11 +172,10 @@ def test_line_geometry_is_plotted_and_not_left_to_the_default_extent():
     with (
         patch('openplaces.viz.maps._has_geometry_output', return_value=True),
         patch('openplaces.viz.maps.get_entities', return_value=entities),
-        patch('openplaces.viz.maps.cx.add_basemap') as add_basemap,
     ):
         fig, ax = show_ingested_geometries(ingester)
 
     assert ax.collections, 'the lines were not drawn'
-    assert add_basemap.called
+    assert not ax.images, 'a background image was drawn under the data'
     xmin, xmax = ax.get_xlim()
     assert xmin <= LON <= xmax

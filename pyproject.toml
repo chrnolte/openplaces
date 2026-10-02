@@ -74,8 +74,7 @@ viz = [
     "plotly>=5.15.0", 
     "folium>=0.15.0", 
     "altair>=5.0.0",
-    "seaborn>=0.12.0",
-    "contextily>=1.6.2"
+    "seaborn>=0.12.0"
 ]
 
 # Fast large-scale (1M+ polygon) rendering: GPU-accelerated interactive
@@ -87,9 +86,11 @@ viz = [
 # live kernel and zero notebook chrome (no toolbar/sidebar/max-width column)
 # -- the fix for viewing a 1M+ polygon map genuinely fullscreen, since
 # Map.to_html()'s static export embeds full geometry inline and doesn't
-# scale to that data volume.
+# scale to that data volume. lonboard >=0.16.0 for Map(basemap=None),
+# which openplaces.viz.interactive uses to build every map without a
+# basemap (verified on 0.16.0).
 viz-fast = [
-    "lonboard>=0.10.0",
+    "lonboard>=0.16.0",
     "datashader>=0.16.0",
     "voila>=0.5.0"
 ]

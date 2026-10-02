@@ -6,5 +6,6 @@ test-output-combined-by-zone,parcel,,output,proto_output_combined_by_zone,Curate
 test-input,footprint,obm,input,proto_input,Inputs,false,10,,,Joined attr/geo input prototype.,
 test-admin,admin,,admin,proto_admin,Admin,true,20,,,Joined attr/geo admin boundary prototype.,
 test-dynamic-cat,footprint,dynamiccat,output,proto_dynamic_cat,Curated,true,4,,,Combined prototype with a categorized-symbol renderer to regenerate from real data.,conflict_field
-basemap-open,,,basemap,proto_basemap,Basemaps,true,90,,,Always-kept basemap prototype.,
+static-context,,,static,proto_static,Context,true,90,,,Always-kept static context prototype.,
+static-xyz-tiles,,,static,proto_xyz_tiles,Background,true,91,,,An XYZ tile layer registered as static; the generator must still drop it.,
 _fallback,,,static,proto_fallback,,false,999,,,Reserved generic fallback prototype.,
