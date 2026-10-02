@@ -50,7 +50,12 @@ from openplaces.recipe import (
 
 
 @_register('load_geospine')
-def load_geospine(state: HarmonizeState, entity_recipe_id: str | None = None):
+def load_geospine(
+    state: HarmonizeState,
+    entity_recipe_id: str | None = None,
+    links_recipe_id: str | None = None,
+    links_key: str | None = None,
+):
     """Restore the geospine recipe's spine and link products into *state*.
 
     Reads everything from what the geospine recipe persisted -- its
@@ -71,11 +76,28 @@ def load_geospine(state: HarmonizeState, entity_recipe_id: str | None = None):
     mismatched sidecar raises with instructions to rerun the geospine
     recipe rather than silently recomputing geometry here.
 
+    A spine established from another entity's geospine (the building
+    geospine from the footprint geospine) has no links of its own; the
+    links it needs were computed against the rows it was built from.
+    *links_recipe_id* names that geospine, and its sidecars are restored
+    the same way and re-keyed to this spine through *links_key*, the
+    column holding each row's id in that geospine (`footprint_id`). The
+    re-keying is a rename while the relation is one to one; a row without
+    a source id gets no links, and several rows sharing one source id are
+    refused, because fanning a link out to them is a decision (slice b3
+    of the building spine) and not a lookup.
+
     Parameters
     ----------
     entity_recipe_id : str or dict, optional
         Geospine recipe (id or loaded dict) to load. Defaults to the
         recipe's own `entity_recipe` key.
+    links_recipe_id : str, optional
+        Another geospine whose link sidecars apply to this spine's rows
+        through *links_key*.
+    links_key : str, optional
+        Column of this spine holding the row's id in *links_recipe_id*.
+        Defaults to that recipe's `{entity_type}_id`.
     """
     geospine = entity_recipe_id or state.recipe.get('entity_recipe')
     if not geospine:
@@ -112,8 +134,210 @@ def load_geospine(state: HarmonizeState, entity_recipe_id: str | None = None):
             continue
         state = _restore_link(state, geospine, step_index, step_cfg, spine_id_col)
 
+    if links_recipe_id is not None:
+        state = _restore_foreign_links(state, links_recipe_id, links_key, spine_id_col)
+
     if state.timer:
         state.timer.mark('Load (geospine)')
+    return state
+
+
+def _restore_foreign_links(
+    state: HarmonizeState,
+    links_recipe_id: str,
+    links_key: str | None,
+    spine_id_col: str,
+) -> HarmonizeState:
+    """Restore another geospine's links and re-key them to this spine.
+
+    See `load_geospine`. The sidecars are read exactly as that geospine's
+    own attribute recipe would read them (its recipe, its step positions,
+    its fingerprints), keyed by *links_key*; every crosswalk and overlay
+    that arrives is then re-keyed to this spine's index through the
+    *links_key* column. The inferred-row frames need no re-keying: they
+    are rebuilt from this spine's own provenance columns.
+    """
+    other = get_recipe_by_id(links_recipe_id)
+    other_id = get_recipe_id(other)
+    if links_key is None:
+        entity = other.get('entity')
+        links_key = f'{entity.entity_type}_id' if entity is not None else 'entity_id'
+    spine = state.spine
+    if links_key not in spine.columns:
+        raise ValueError(
+            f'load_geospine: links_recipe_id={other_id!r} needs the column '
+            f'{links_key!r} on the spine to re-key its links, and the spine has '
+            'no such column.'
+        )
+    keys = spine[links_key]
+    present = keys.notna()
+    duplicated = keys[present].duplicated()
+    if duplicated.any():
+        raise ValueError(
+            f'load_geospine: {int(duplicated.sum()):,d} spine rows share a '
+            f'{links_key} with another row; re-keying {other_id} links onto '
+            'several rows is a decision the slice that splits rows has to make.'
+        )
+    mapping = pd.Series(spine.index[present.to_numpy()], index=keys[present].to_numpy())
+
+    already = set(state.crosswalks)
+    for step_index, step_cfg in enumerate(other.get('pipeline') or []):
+        if not isinstance(step_cfg, dict):
+            continue
+        if step_cfg.get('step') != 'link_to_reference':
+            continue
+        if step_cfg.get('save_link') is False:
+            continue
+        state = _restore_link(state, other, step_index, step_cfg, links_key)
+
+    for recipe_id in list(state.crosswalks):
+        if recipe_id in already:
+            continue
+        state.crosswalks[recipe_id] = _rekey_frame(
+            state.crosswalks[recipe_id], links_key, spine_id_col, mapping
+        )
+        if recipe_id in state.overlays:
+            state.overlays[recipe_id] = _rekey_frame(
+                state.overlays[recipe_id], links_key, spine_id_col, mapping
+            )
+    if state.verbose:
+        n_new = len(set(state.crosswalks) - already)
+        print(
+            f'  Load (geospine): {n_new} {other_id} links re-keyed '
+            f'{links_key} -> {spine_id_col}'
+        )
+    return state
+
+
+def _rekey_frame(frame, old: str, new: str, mapping: pd.Series):
+    """Replace ids named *old* on *frame* by their *mapping* image, as *new*.
+
+    Works on the level of a MultiIndex, on a single index, or on a column,
+    whichever carries *old*. An id with no image keeps its value under
+    the new name, and no row is dropped: a link sidecar records pairs for
+    rows a later geometry step removed from the spine (`resolve_overlaps`
+    runs after the parcel overlay in the footprint geospine), the
+    attribute steps already tolerate keys the spine lacks, and dropping
+    those rows here changed what the steps compute over the crosswalk.
+    Measured 2026-09-29 on US-WI-VI: 62 footprints in the parcel sidecar
+    and not on the spine, 199 crosswalk rows, whose absence moved the
+    tie-break between equal overlaps on 14 footprints and the per-parcel
+    footprint count on 53. A frame carrying *old* nowhere is returned
+    unchanged.
+    """
+    index = frame.index
+    if old in (index.names or []):
+        level = list(index.names).index(old)
+        original = index.get_level_values(level)
+        images = mapping.reindex(original)
+        images = images.where(images.notna(), pd.Series(original, index=images.index))
+        frame = frame.copy()
+        if isinstance(index, pd.MultiIndex):
+            arrays = [index.get_level_values(i) for i in range(index.nlevels)]
+            arrays[level] = pd.Index(images.to_numpy())
+            names = list(index.names)
+            names[level] = new
+            frame.index = pd.MultiIndex.from_arrays(arrays, names=names)
+        else:
+            frame.index = pd.Index(images.to_numpy(), name=new)
+        return frame
+    if old in frame.columns:
+        frame = frame.copy()
+        values = frame[old]
+        images = pd.Series(
+            mapping.reindex(values.to_numpy()).to_numpy(), index=frame.index
+        )
+        frame[old] = images.where(images.notna(), values)
+        return frame.rename(columns={old: new})
+    return frame
+
+
+@_register('adopt_entity_attributes')
+def adopt_entity_attributes(
+    state: HarmonizeState,
+    recipe_id: str,
+    key: str | None = None,
+    rename: dict[str, str] | None = None,
+) -> HarmonizeState:
+    """Copy another spine's attributes onto this one through a one-to-one key.
+
+    The footprint spine is a projection of the building spine while one
+    building is one footprint: every attribute the building carries
+    (parcel evidence, addresses, permit counts) is the outline's too, and
+    the consumers of the footprint spine (the parcel geospine's morphology
+    and dwelling-address steps, the imagery recipes, the footprint curate)
+    read it there until they read the building spine directly. That is
+    why this step exists and why it copies wide columns onto another
+    entity, which harmonize otherwise avoids: the copy is transitional,
+    and the alternative, rerunning every consumer against the building
+    spine in one move, would change six recipes' inputs at once.
+
+    Every column of *recipe_id*'s output except *key* and the geometry is
+    written onto the spine: a column the spine already has is overwritten
+    in place (keeping its position), a new one is appended in the other
+    spine's order, so the projected table has the column order the
+    attribute steps produced when they ran on this spine. Count columns
+    named for the other entity are renamed through *rename*
+    (`n_parcels_per_building` to `n_parcels_per_footprint`); a rename
+    naming a column the other spine lacks is ignored, because a count a
+    link writes is absent wherever its source does not apply.
+
+    Parameters
+    ----------
+    recipe_id : str
+        The spine whose attributes are adopted (`US_building-spine-2026`).
+    key : str, optional
+        Column of that spine holding this spine's id. Defaults to this
+        spine's index name. A row of the other spine without a key is
+        ignored (a building with no outline); several rows sharing one
+        key are refused, as is a spine row no other row names, because
+        either means the relation is no longer one to one and the
+        projection would have to choose.
+    rename : dict, optional
+        Column renames applied to the adopted columns.
+    """
+    spine = state.spine
+    if spine is None or len(spine) == 0:
+        return state
+    own_id = spine.index.name
+    key = key or own_id
+    other = get_entities(recipe_id, state.admin_id, geom=False, missing='raise')
+    if key not in other.columns:
+        raise ValueError(
+            f'adopt_entity_attributes: {recipe_id} has no column {key!r} naming '
+            f"this spine's {own_id}."
+        )
+    other = other[other[key].notna()]
+    duplicated = other[key].duplicated()
+    if duplicated.any():
+        raise ValueError(
+            f'adopt_entity_attributes: {int(duplicated.sum()):,d} rows of '
+            f'{recipe_id} share a {key}; the projection onto {own_id} needs '
+            'one row per key.'
+        )
+    other = other.set_index(key)
+    missing = spine.index.difference(other.index)
+    if len(missing):
+        raise ValueError(
+            f'adopt_entity_attributes: {len(missing):,d} {own_id} rows have no '
+            f'row in {recipe_id}; rerun it for {state.admin_id} first.'
+        )
+    other = other.reindex(spine.index).drop(columns='geometry', errors='ignore')
+    # A rename naming a column the other spine lacks is not an error: a
+    # count written by a link to a source that does not apply to the unit
+    # (a permit recipe held out of a checkout, a county without permits)
+    # is legitimately absent, and the projection copies what exists.
+    other = other.rename(columns=dict(rename or {}))
+    for column in other.columns:
+        spine[column] = other[column]
+    state.spine = spine
+    if state.verbose:
+        print(
+            f'  adopt_entity_attributes: {other.shape[1]} columns of {recipe_id} '
+            f'projected onto {len(spine):,d} {own_id} rows'
+        )
+    if state.timer:
+        state.timer.mark('Adopt (attributes)')
     return state
 
 

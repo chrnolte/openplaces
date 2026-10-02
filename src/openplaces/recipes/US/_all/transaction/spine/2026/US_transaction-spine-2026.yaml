@@ -251,3 +251,81 @@ pipeline:
     recipe_id: US_parcel-spine-2026
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings, area_ha]
+
+  # The rows into the entity's terms, and the ids, last: a transaction
+  # is one recorded sale, and the spine is where an entity is
+  # established (moved here from US_transaction-openplaces-2026 on
+  # 2026-09-29; plans/stage-contract-audit.md: "Transaction ids are
+  # minted in the transaction spine, like property ids; curate filters
+  # and never re-mints"). After every parcel link above, because the
+  # fold below sums the linked area and takes the other columns from
+  # the representative parcel.
+  #
+  # A recorder states a date, a roll a year and month (or a month-only
+  # date); every step below compares sales by year and month.
+  - step: derive_sale_period
+
+  # A source published as overlapping rolling windows lists the same
+  # recorded document twice. Same key, same row: keep one. The record
+  # kind is part of the key so that a deed and the assessor's last-sale
+  # record of it are never taken for one row listed twice; columns a
+  # county lacks read as missing. What this drops is unambiguous: an
+  # exact repeat, 15.4% of Lake County FL's rows, all deeds (2026-09-29).
+  - step: dedup_transactions
+    key_columns:
+      - sale_record_kind
+      - parcel_id_local
+      - parcel_id_assessor
+      - sale_year
+      - sale_month
+      - price
+      - sale_book
+      - sale_page
+      - sale_clerk_instrument
+      # The North Carolina recorders' spelling; without it two deeds
+      # on one parcel in one month at price 0 would read as one.
+      - book
+      - page
+      # Wisconsin's RETR names its document; MassGIS's last sales sit
+      # on property rows with no parcel key of their own.
+      - instrument_number
+      - property_id_assessor
+
+  # The deed behind each row, spelled per source: Florida records a
+  # clerk instrument number for newer sales and an official-record book
+  # and page for older ones. Another source adds its own candidate here:
+  # the North Carolina county recorders map `book` and `page`. An
+  # assessor last-sale row citing a deed's book and page gets a scoped
+  # identifier, so it is never counted or aggregated as a second parcel
+  # of that deed, while the last-sale rows of one multi-parcel deed
+  # still share theirs.
+  - step: derive_document_id
+    candidates:
+      - [sale_clerk_instrument]
+      - [instrument_number]
+      - [sale_book, sale_page]
+      - [book, page]
+    scope_column: sale_record_kind
+    unscoped_value: deed
+
+  # How many parcels the deed covered, on every row, so the count
+  # survives the fold below and a consumer can tell an aggregated row
+  # from a single-parcel one. On Lake County FL this agrees with the
+  # source's own multi-parcel flag on 80,488 rows and finds 32,972 more
+  # rows the flag misses.
+  - step: count_parcels_per_document
+    parcel_column: parcel_id_assessor
+
+  # One row per deed. Areas and counts are summed and the other columns
+  # taken from the representative parcel, per the registry's rule for
+  # each column; the price was never wrong, the denominator was. Before
+  # the ids, so a deed's id is its document's, without a suffix.
+  - step: aggregate_multi_parcel_sales
+
+  # Give each sale an id, once the row is the entity. Until 2026-09-23 a
+  # transaction had none: the curated output carried an unnamed
+  # RangeIndex, so every county numbered its rows 0, 1, 2, harmless per
+  # county and destructive when pooled, because `export_delivery`
+  # de-duplicates on the index. The curate stage keeps this index and
+  # never re-mints.
+  - step: assign_transaction_ids

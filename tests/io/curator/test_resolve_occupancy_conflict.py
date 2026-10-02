@@ -18,7 +18,7 @@ import openplaces.io.curator.reconcilers as rec
 import openplaces.path as op_path
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import impute_occupancy_type
+from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
 
 CLASS_MAP = [
     {

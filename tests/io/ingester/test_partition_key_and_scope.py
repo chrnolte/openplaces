@@ -13,8 +13,9 @@ import pandas as pd
 import pytest
 
 from openplaces.core.schema import AdminId
-from openplaces.io import ingester as ingester_module
 from openplaces.io.ingester import Ingester, _transform_partition_key
+from openplaces.io.ingester import partitions as ingester_partitions
+from openplaces.io.ingester import scope as ingester_scope
 from openplaces.timing import Timer
 
 
@@ -56,7 +57,10 @@ def _spine(monkeypatch, by_level):
     def fake_get_admin(admin_id, level, **kwargs):
         return pd.DataFrame(index=pd.Index(by_level.get(level, []), name='admin_id'))
 
-    monkeypatch.setattr(ingester_module, 'get_admin', fake_get_admin)
+    # get_admin is looked up by the scope and the partition mixins, each
+    # in its own module since the 2026-09-29 split.
+    for module in (ingester_scope, ingester_partitions):
+        monkeypatch.setattr(module, 'get_admin', fake_get_admin)
 
 
 def test_a_childless_unit_is_a_quiet_no_op(monkeypatch):

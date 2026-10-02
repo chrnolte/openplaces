@@ -19,13 +19,13 @@ import pandas as pd
 import pytest
 
 import openplaces.io.curator.evidence as evidence_mod
-import openplaces.io.harmonizer.links as links_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.evidence import apportion_curated_values
 from openplaces.io.curator.imputers import impute_from_group_statistic
 from openplaces.io.curator.provenance import is_imputed, mark_imputed, record_sources
 from openplaces.io.curator.reconcilers import select_value_source_by_admin_unit
+from tests.links_patching import patch_links
 
 
 def _state(df: pd.DataFrame, admin_id: AdminId | None = None) -> CurateState:
@@ -91,8 +91,10 @@ class TestApportionmentPropagation:
         monkeypatch.setattr(
             evidence_mod, 'get_entity_link_path', lambda *a, **k: sidecar_path
         )
-        monkeypatch.setattr(
-            links_mod, '_resolve_reference_recipe', lambda *a, **k: ('parcel-ref', None)
+        patch_links(
+            monkeypatch,
+            '_resolve_reference_recipe',
+            lambda *a, **k: ('parcel-ref', None),
         )
 
     @staticmethod

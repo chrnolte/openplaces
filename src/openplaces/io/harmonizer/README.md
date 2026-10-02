@@ -201,7 +201,7 @@ Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{sou
 
 ---
 
-#### `classify_footprint_priority` (attributes.py)
+#### `classify_footprint_priority` (attributes/priority.py)
 Assign `priority_on_parcel` (primary / secondary / unknown) per parcel.
 
 **Seed**: all parcel-linked footprints → `'primary'`; unlinked → `'unknown'`.
@@ -218,7 +218,7 @@ Writes: `spine['priority_on_parcel']` (Categorical).
 
 ### C. ATTRIBUTE EVIDENCE (no value selection)
 
-#### `reconcile_attributes` (attributes.py)
+#### `reconcile_attributes` (attributes/reconcile.py)
 Aggregate reference columns to the spine as source-suffixed evidence columns.
 Attribution only — between-source value selection moved to the curate stage
 (`reconcile_values` in `openplaces.io.curator.reconcilers`).
@@ -241,7 +241,7 @@ from the reference geometry and cannot be named without loading it.
 
 ---
 
-##### `_attribute_polygon_reference` (attributes.py)
+##### `_attribute_polygon_reference` (attributes/polygon.py)
 
 Key computed columns (suffix = e.g. `_parcel`):
 
@@ -277,7 +277,7 @@ with direct column assignment (no area weighting).
 
 ---
 
-##### `_attribute_point_reference` (attributes.py)
+##### `_attribute_point_reference` (attributes/point.py)
 
 Key columns (suffix = e.g. `_building_nsi`):
 `n_{entity_type}s_{source_id}` (e.g. `n_buildings_nsi`; for dwelling/overture the
@@ -297,7 +297,7 @@ Gap-filling, derived metrics, and occupancy inference no longer run in harmonize
 They are curate steps now (`openplaces.io.curator`): `derive_metrics` (m2,
 `*_per_area`), `infer_group_combined` (→ `group_parcel_building_nsi_inferred`),
 `impute_n_dwelling_units`, `infer_occupancy_type`. `_OCC_UNITS`/`reverse_occ_units`
-remain in `attributes.py` (still used by `links/points.py` `_aggregate_multipoint`); the
+remain in `attributes/_shared.py` (still used by `links/points.py` `_aggregate_multipoint`); the
 curate `impute_n_dwelling_units` imports `_OCC_UNITS` from there.
 
 ---
@@ -399,6 +399,31 @@ over the aggressive core-bucket demotion). Bucket policy: `core` holds the
 normalized store and intermediate evidence; terminal curate outputs ship
 self-contained (attributes + geometry) in `share`.
 
+**The building spine** (`US_building-geospine-2026`, `US_building-spine-2026`,
+slices b1 and b2 of `plans/core-schema-and-stage-contracts-review.md`,
+2026-09-29). The building is the structure entity; the footprint is one
+geometry source for it and today the only one. The building geospine is
+`resolve_spine` over the footprint geospine alone (`- auto_discover: false`,
+`geometry_source` kept from the row rather than stamped), `adopt_source_entity_id`
+(the footprint's id kept in `footprint_id`, the index renamed `building_id`,
+equal values while one outline is one building) and the geometry attributes.
+The building spine loads it with the footprint geospine's link sidecars
+re-keyed to building ids (`load_geospine` with `links_recipe_id`), writes the
+footprint-to-building link table (`link_entities_by_id` against the footprint
+geospine, method `footprint_outline`), and runs the parcel priority, evidence,
+address, postal and permit steps that ran on the footprint spine until b2; the
+relational counts take the building's name (`n_parcels_per_building`). The
+footprint spine is then `load_geospine` plus `adopt_entity_attributes` of the
+building spine with the counts renamed back, so its output is unchanged cell
+for cell and its consumers (the parcel geospine's morphology and
+dwelling-address steps, the imagery recipes, the footprint curate, the
+validation references) are untouched; the projection goes when they read the
+building spine. Order per unit: footprint geospine, building geospine,
+building spine, footprint spine, parcel geospine. Slice b3 (townhome splits,
+condo-tower merges, NSI points with no outline as rows) is where a building
+stops being one footprint; the re-keying and the projection both refuse rows
+that share a source id, so that slice has to decide the fan-out explicitly.
+
 The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
   and assign each row's containing polygon id from a space-partitioning
@@ -419,19 +444,38 @@ The step sub-modules:
   `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones
-  included, and forwards attribute assignments to the submodule that
-  defines the name, so the tests' patches on `links` still reach the
-  steps; the debt of moving those patches to the submodules is recorded
-  in `plans/stage-contract-audit.md`. The step loader imports the
-  package explicitly, because the shared loader skips sub-packages.
+  included, and is a plain package: a test patches the submodule a step
+  lives in, or every submodule binding the name through
+  `tests/links_patching.patch_links` (the forwarding class that stood in
+  for that between 2026-09-29 and 2026-09-30 is gone). The step loader
+  imports the package explicitly, because the shared loader skips
+  sub-packages.
 - `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
   prepared references from its persisted output and link sidecars
   (`load_geospine`); which links to restore is read from the geospine
-  recipe's own pipeline, so the two YAMLs cannot drift
-- `attributes.py` — attribute source columns to the spine as suffixed evidence
-  columns (`reconcile_attributes`), assign each footprint's parcel priority
-  (`classify_footprint_priority`), and build the combined land-use label the
-  parcel classifier votes on (`derive_use_classes`). Its `columns` list is
+  recipe's own pipeline, so the two YAMLs cannot drift. A spine built
+  from another entity's geospine has no links of its own:
+  `links_recipe_id` names the geospine whose sidecars apply, and they
+  are restored keyed by that entity's id and re-keyed to this spine
+  through `links_key` (the building spine reads the footprint geospine's
+  parcel, NSI and Overture links through `footprint_id`; a rename while
+  the relation is one to one, refused where rows share a source id).
+  `adopt_entity_attributes` is the reverse projection: every column of
+  another spine's output copied onto this one through a one-to-one key,
+  overwriting in place and appending the rest in the other's order, with
+  explicit renames for counts named after the other entity. The
+  footprint spine is such a projection of the building spine (below).
+- `attributes/` — attribute source columns to the spine as suffixed evidence
+  columns (`reconcile_attributes`, in `reconcile.py` with the polygon and
+  point attribution in `polygon.py` and `point.py`), assign each
+  footprint's parcel priority (`classify_footprint_priority`,
+  `priority.py`), build the combined land-use label the parcel classifier
+  votes on (`derive_use_classes`, `use_classes.py`), summarize footprint
+  morphology (`morphology.py`), detect shared-land and condo clusters
+  (`shared_land.py`, `condo_clusters.py`), estimate property counts and
+  attribute dwelling addresses; one package since 2026-09-29 (until then
+  a 2,615-line module), every name re-exported by the package file, the
+  step loader importing it explicitly. `reconcile_attributes`'s `columns` list is
   ordered, and each entry is either a column or a list of alternatives
   **coalesced per row** — the default is `[use_group, use_group_code]` then
   `[use_subgroup, use_subgroup_code]`, so a source whose raw code has no
@@ -488,6 +532,25 @@ The step sub-modules:
   the sale conveyed, which the record does not say.
   Without the step a re-ingested county loses its condo sales silently
   (Vilas County WI: 1.1% of returns).
+- `transactions.py` — the steps that make the transaction spine's rows the
+  entity (one recorded sale) and mint their ids, at the end of
+  `US_transaction-spine-2026` after every parcel link, in this order:
+  `derive_sale_period`, `dedup_transactions` (exact repeats of one document
+  from overlapping source windows; 15.4% of Lake County FL's rows, all
+  deeds, measured 2026-09-29), `derive_document_id`,
+  `count_parcels_per_document`, `aggregate_multi_parcel_sales` (one row per
+  deed, extensive columns summed, the rest from the heaviest parcel) and
+  `assign_transaction_ids` (the document scoped by the admin unit,
+  `US-FL-LA_<document>`, a content fingerprint where no document is named,
+  a suffix only where two rows are still named alike). The fold precedes
+  the ids so a deed's id carries no suffix. The curate stage loads this
+  index and never re-mints; the curate steps of the same names remain as
+  wrappers over the shared frame functions in `io/sale_records.py`. Moved
+  from `US_transaction-openplaces-2026` on 2026-09-29 (the audit's decision
+  that transaction ids are minted in the spine, like property ids). Two
+  curate indicators changed base by the move: the nominal price floor and
+  the disclosure share are measured over deeds now, not over deed-parcel
+  rows.
 - `last_sales.py` — `append_last_sales`: turn the last-sale fields an
   assessment roll carries into transaction rows
   (`sale_record_kind = assessor_last_sale`; rows already on the spine read

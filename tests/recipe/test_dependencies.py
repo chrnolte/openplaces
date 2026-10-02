@@ -30,17 +30,24 @@ def test_footprint_spine_literal_edges():
     # Value crosswalks are not data dependencies
     assert 'US_building-nsi-2026_occupancy-type-remap' not in upstream
 
-    # The attribute recipe's own edges: the geospine plus the sources its
-    # reconcile/link_by_id steps still name directly.
-    edges = get_recipe_dependencies('US_footprint-spine-2026')
+    # The attribute steps run on the building spine since slice b2, so
+    # the sources its reconcile/link_by_id steps name directly are its
+    # edges, beside its own geospine and the footprint geospine whose
+    # links it re-keys.
+    edges = get_recipe_dependencies('US_building-spine-2026')
     upstream = _upstream_ids(edges)
+    assert 'US_building-geospine-2026' in upstream
     assert 'US_footprint-geospine-2026' in upstream
     assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
-
-
-def test_footprint_spine_auto_discover_unresolved_without_admin():
+    # The footprint spine projects the building spine onto its geospine.
     edges = get_recipe_dependencies('US_footprint-spine-2026')
+    upstream = _upstream_ids(edges)
+    assert upstream == {'US_footprint-geospine-2026', 'US_building-spine-2026'}
+
+
+def test_building_spine_auto_discover_unresolved_without_admin():
+    edges = get_recipe_dependencies('US_building-spine-2026')
     unresolved = [e for e in edges if not e.resolved]
     assert unresolved, 'auto_discover without admin_id must yield unresolved edges'
     assert all(e.upstream_recipe_id is None for e in unresolved)

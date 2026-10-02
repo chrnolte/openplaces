@@ -12,6 +12,7 @@ from openplaces.io import cleanup as cl
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import links as links_mod
 from openplaces.recipe import get_output_path, get_recipe_by_id
+from tests.links_patching import patch_links
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
@@ -60,7 +61,7 @@ def _parcels_gdf():
 
 @pytest.fixture
 def state(data_root, monkeypatch):
-    monkeypatch.setattr(links_mod, 'get_entities', lambda *a, **k: _parcels_gdf())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _parcels_gdf())
     recipe = get_recipe_by_id(SPINE)
     return HarmonizeState(
         recipe=recipe,
@@ -126,13 +127,13 @@ def test_reload_skips_overlay_and_reproduces_crosswalk(state, monkeypatch):
     crosswalk_fresh = state.crosswalks[PARCEL]
 
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
 
     state2 = _run_overlay(_fresh_state(state))
     assert calls['n'] == 0, 'sidecar reload must skip the overlay'
@@ -155,13 +156,13 @@ def test_reload_skips_overlay_and_reproduces_crosswalk(state, monkeypatch):
 def test_threshold_change_invalidates_sidecar(state, monkeypatch):
     state = _run_overlay(state)
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
     _run_overlay(
         _fresh_state(state),
         thresholds={'min_fraction_of_largest': 0.3, 'area_intersection_m2_min': 10},
@@ -172,13 +173,13 @@ def test_threshold_change_invalidates_sidecar(state, monkeypatch):
 def test_reprocess_recomputes_and_rewrites(state, monkeypatch):
     state = _run_overlay(state)
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
     state2 = _fresh_state(state)
     state2.reprocess = True
     _run_overlay(state2)
@@ -194,13 +195,13 @@ def test_source_change_invalidates_sidecar(state, monkeypatch):
     state = _run_overlay(state)
 
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
 
     # Unchanged source: reload
     _run_overlay(_fresh_state(state))
@@ -235,13 +236,13 @@ def test_deleted_source_with_receipt_stays_valid(state, monkeypatch):
     )
 
     calls = {'n': 0}
-    real_overlay = links_mod.overlay_polygons
+    real_overlay = links_mod.spatial.overlay_polygons
 
     def _counting_overlay(*args, **kwargs):
         calls['n'] += 1
         return real_overlay(*args, **kwargs)
 
-    monkeypatch.setattr(links_mod, 'overlay_polygons', _counting_overlay)
+    patch_links(monkeypatch, 'overlay_polygons', _counting_overlay)
     _run_overlay(_fresh_state(state))
     assert calls['n'] == 0, 'receipt must stand in for the deleted source'
 

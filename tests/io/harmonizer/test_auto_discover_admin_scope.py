@@ -17,6 +17,7 @@ import openplaces.io.harmonizer.spine as spine_module
 import openplaces.recipe as recipe_module
 from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 WAKE_STALE = 'US-NC-WA'
 WARREN = 'US-NC-WAR'
@@ -82,13 +83,13 @@ class TestExpandAutoDiscover:
 class TestFindReferenceRecipe:
     def test_a_shorter_sibling_recipe_is_not_selected(self, monkeypatch):
         rows = pd.DataFrame([_row(WAKE_STALE, 'wakeco', '2026', 'footprint')])
-        monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+        patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
         assert links._find_reference_recipe('footprint', AdminId(WARREN)) is None
 
     def test_a_filename_suffix_is_kept(self, monkeypatch):
         rows = pd.DataFrame([_row('CO', 'igac', '2026', suffix='rural')])
-        monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+        patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
         found = links._find_reference_recipe('parcel', AdminId('CO-AN'))
         assert found == 'CO_parcel-igac-2026_rural'

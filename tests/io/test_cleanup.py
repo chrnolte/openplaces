@@ -19,14 +19,17 @@ from openplaces.recipe import get_output_path, get_recipe_by_id
 
 NSI = 'US_building-nsi-2026'
 FOOTPRINT_SPINE = 'US_footprint-spine-2026'
+BUILDING_SPINE = 'US_building-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
 FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL_GEOSPINE = 'US_parcel-geospine-2026'
 COUNTY = 'US-NC-BRU'
 # Every recipe in the cheer tree that consumes NSI directly: under the
 # geometry/attribute split, the geospine halves link it and the attribute
-# halves attribute it, so a valid NSI receipt must record all four.
-NSI_CONSUMERS = [FOOTPRINT_SPINE, PARCEL_SPINE, FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE]
+# halves attribute it, so a valid NSI receipt must record all four. Since
+# slice b2 (2026-09-29) the building spine attributes it, not the
+# footprint spine, which projects the building spine.
+NSI_CONSUMERS = [BUILDING_SPINE, PARCEL_SPINE, FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE]
 
 
 @pytest.fixture
@@ -62,7 +65,7 @@ def _nsi_path(admin=COUNTY):
 
 def _spine_paths(admin=COUNTY):
     return (
-        get_output_path(get_recipe_by_id(FOOTPRINT_SPINE), admin_id=admin),
+        get_output_path(get_recipe_by_id(BUILDING_SPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(PARCEL_SPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(FOOTPRINT_GEOSPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(PARCEL_GEOSPINE), admin_id=admin),
@@ -282,18 +285,16 @@ def test_receipt_skip_requires_all_recorded_consumers(data_root):
 def test_receipt_skip_consumer_cascade(data_root):
     # A consumer replaced by its own receipt still counts (conceptual
     # existence), so upstream receipts stay valid
-    fp_path, pc_path, fp_geo_path, pc_geo_path = _spine_paths()
+    bd_path, pc_path, fp_geo_path, pc_geo_path = _spine_paths()
     _write_parquet(pc_path)
     _write_parquet(fp_geo_path)
     _write_parquet(pc_geo_path)
     cl.write_receipt(
-        fp_path,
+        bd_path,
         {
-            'recipe_id': FOOTPRINT_SPINE,
+            'recipe_id': BUILDING_SPINE,
             'admin_id': COUNTY,
-            'consumers_verified': [
-                {'recipe_id': 'US_footprint-openplaces-2026', 'path': 'gone'}
-            ],
+            'consumers_verified': [{'recipe_id': FOOTPRINT_SPINE, 'path': 'gone'}],
         },
     )
     cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
@@ -304,7 +305,7 @@ def test_receipt_skip_voided_by_unrecorded_consumer(data_root):
     # Receipt recording only ONE of the two tree consumers must not skip
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
-    cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE]))
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi([BUILDING_SPINE]))
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
 
@@ -359,7 +360,7 @@ def test_global_node_resolves_consumers_at_their_own_scope():
     run. Such a consumer is resolved against its own admin scope instead.
     """
     index = cl._dependency_index()
-    consumer = FOOTPRINT_SPINE
+    consumer = BUILDING_SPINE
     assert consumer in index._auto_consumers
     upstreams, unresolved = index._auto_upstreams(consumer, '')
     assert not unresolved
@@ -382,7 +383,7 @@ def test_reprocess_discards_the_receipts_of_its_inputs(data_root):
     cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
     assert cl.receipt_justifies_skip(NSI, COUNTY)
 
-    discarded = cl.discard_input_receipts(FOOTPRINT_SPINE, COUNTY)
+    discarded = cl.discard_input_receipts(BUILDING_SPINE, COUNTY)
 
     assert _nsi_path() in discarded
     assert cl.read_receipt(_nsi_path()) is None
@@ -491,7 +492,7 @@ def test_cleanup_deletes_consumed_input(data_root):
     receipt = cl.read_receipt(_nsi_path())
     assert receipt is not None
     recorded = {c['recipe_id'] for c in receipt['consumers_verified']}
-    assert {FOOTPRINT_SPINE, PARCEL_SPINE} <= recorded
+    assert {BUILDING_SPINE, PARCEL_SPINE} <= recorded
 
 
 def test_cleanup_stage_filter(data_root):
@@ -748,7 +749,7 @@ def test_aggressive_keeps_config_protected_recipe(data_root, monkeypatch):
     monkeypatch.setitem(
         cfg.config,
         'retention',
-        {'cleanup': {}, 'recipes': {FOOTPRINT_SPINE: 'keep'}},
+        {'cleanup': {}, 'recipes': {BUILDING_SPINE: 'keep'}},
     )
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
@@ -762,7 +763,7 @@ def test_aggressive_keeps_config_protected_recipe(data_root, monkeypatch):
         dry_run=False,
         verbose=False,
     )
-    rows = report[report['recipe_id'] == FOOTPRINT_SPINE]
+    rows = report[report['recipe_id'] == BUILDING_SPINE]
     assert not rows.empty
     assert (rows['class'] == 'keep').all()
     assert (rows['action'] == 'kept').all()

@@ -13,7 +13,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point
 
-from openplaces.io.ingester import table_ingester
+from openplaces.io.ingester import table_ingester, table_read
 from openplaces.io.ingester.table_ingester import TableIngester
 
 
@@ -38,7 +38,7 @@ def test_on_invalid_is_passed_to_the_reader(tmp_path, monkeypatch, suffix):
         seen.update(kwargs)
         return gpd.GeoDataFrame({'pid': ['1']}, geometry=[Point(0, 0)])
 
-    monkeypatch.setattr(table_ingester, 'read_gdb_with_domains', fake_read)
+    monkeypatch.setattr(table_read, 'read_gdb_with_domains', fake_read)
     monkeypatch.setattr(table_ingester.gpd, 'read_file', fake_read)
 
     ti = _ingester({'on_invalid': 'warn', 'layer': 'parcels'}, tmp_path / f'x{suffix}')

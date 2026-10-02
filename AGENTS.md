@@ -416,7 +416,7 @@ Layer 2  recipe
 Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/sale_records (the frame operations that put recorded sales into the transaction entity's terms and mint their ids; the harmonize and curate steps of the same names both call them), io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -535,7 +535,12 @@ geometry rerun, which is why the curate step fills only what is empty.
 properties together is separated at ingest (an `additional_layers` entry
 writes its own property table), so by harmonize every property table exists
 independently of any parcel spine. Per admin unit the order is: every
-ingest; `US_property-spine-2026`; the footprint geospine and spine; the
+ingest; `US_property-spine-2026`; the footprint geospine; the building
+geospine (one building per outline) and the building spine, which runs
+the evidence, address and permit steps against the footprint geospine's
+links re-keyed to building ids; the footprint spine, a projection of the
+building spine onto the outlines (`adopt_entity_attributes`, so its
+consumers read unchanged values until they read the building spine); the
 parcel geospine, which reads the ingest-level property tables for
 parcel-level values and the property spine for a count; the parcel spine;
 enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
@@ -553,7 +558,7 @@ fixed label, never a score, and no link is removed once written (patent
 shape 4). Both are described in full in
 `src/openplaces/io/harmonizer/README.md`.
 
-### Recipes (`recipe.py`, `src/openplaces/recipes/`)
+### Recipes (`recipe/`, `src/openplaces/recipes/`)
 
 Recipes are YAML files that define how to ingest, harmonize, enrich, or curate
 a dataset. They are stored in a path-encoded directory structure:
@@ -603,8 +608,23 @@ Key recipe fields:
 - `additional_layers` — list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
 - `entity_recipe` — predecessor entity recipe used by enrichment or curation
 - `pipeline` — ordered named steps for harmonization, enrichment, or curation
+- `patches` / `pipeline_patch` — a patch recipe: a file at a county's or
+  state's scope that names a national harmonize or curate recipe and
+  lists operations on its pipeline (`set`, `extend`, `insert_before`,
+  `insert_after`, `replace`, `remove`, each addressing a step by name,
+  `occurrence` when the name repeats). `recipe.apply_recipe_patches`
+  applies the patches whose scope covers the unit, coarse to fine, once
+  per unit inside the harmonizer and the curator; the output footer
+  records them (`openplaces:recipe_patches`). Auto-discovery never picks
+  a patch recipe as an entity's recipe and the DAG keeps one recipe id
+  per job. A county's rule goes there, never into a branch on a place
+  in the national recipe or in `src/` (`recipes/README.md`).
 
-Key recipe functions (`recipe.py`):
+Key recipe functions (the `recipe/` package, one module per concern
+since 2026-09-30: `loading`, `tables`, `naming`, `discovery`, `patches`,
+`dependencies`, `output`; every name is re-exported by the package, and
+a test that patches `openplaces.recipe.<name>` reaches a caller that
+imports it from the package at call time):
 - `get_recipe(admin_id, entity, ...)` / `get_recipe_by_id(recipe_id)` — load a recipe dict
 - `find_entity_recipe_id(...)` — select by stage rank
   `ingest < harmonize < enrich < curate`; pass `stage=` when a caller needs
@@ -721,7 +741,16 @@ interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
 (`n_parcels_per_footprint`). Final output order is computed from the suffix + registry
 `sort` rank, so no explicit per-recipe column list is needed.
 
-### Configuration (`config.py`)
+### Configuration (`config/`)
+
+A package since 2026-09-30: `identity` (User-Agent, identity prompt),
+`user_config` (the user's own file, the prompts that fill it, agent
+detection), `settings` (`OpenPlacesConfig`), and the package file, which
+keeps `cfg`, `_cfg`, `get_config`, `reload_config` and every setter that
+reads or rebinds them (consent, personal columns, identity, usage
+profile), because the tests patch those names on `openplaces.config` and
+the callers look them up there. `python -m openplaces.config` still runs
+the command line (`__main__.py`).
 
 `cfg` (singleton `OpenPlacesConfig`) holds directory paths (`data_root`, `dir_core`,
 `dir_external`, `dir_heap`, etc.), CRS, and the installation's `identity`.

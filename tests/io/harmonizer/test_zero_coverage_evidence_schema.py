@@ -17,6 +17,7 @@ import openplaces.io.harmonizer.attributes as attrs
 import openplaces.io.harmonizer.links as links
 from openplaces.core.schema import SourceGeometryType
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 OVERTURE = 'dwelling-overture-2025'
 COLUMNS = ['n_dwellings', 'address_street', 'postal_code']
@@ -50,7 +51,7 @@ def _sources():
 def test_zero_coverage_point_reference_still_writes_its_columns(monkeypatch):
     # The link step finds no reference rows for this unit and returns
     # early, leaving no crosswalk behind.
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: pd.DataFrame())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: pd.DataFrame())
     state = links.link_to_reference(
         _state(),
         recipe_id=OVERTURE,
@@ -80,7 +81,7 @@ def test_declared_column_missing_from_a_covered_reference_is_still_written(
         geometry=[box(0.2, 0.2, 0.4, 0.4).centroid],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links.link_to_reference(
         _state(),
         recipe_id=OVERTURE,

@@ -1,0 +1,225 @@
+# Recipe: building spine harmonization (attribute phase)
+#
+# The attribute half of the building spine. Loads the building geospine
+# (US_building-geospine-2026, one building per footprint outline in
+# this slice) together with the footprint geospine's link sidecars,
+# re-keyed from footprint to building ids (load_geospine's
+# links_recipe_id), writes the footprint-to-building link table, and
+# runs the attribute steps that ran on the footprint spine until slice
+# b2 (plans/core-schema-and-stage-contracts-review.md, deliverable 3b,
+# 2026-09-29): parcel priority, the parcel / Overture / NSI evidence,
+# addresses, postal codes, the address key and the permit joins. They
+# describe the structure, so they run once, here; US_footprint-spine-
+# 2026 projects the result back onto the outlines (adopt_entity_
+# attributes) so that every consumer of the footprint spine reads the
+# same values as before, cell for cell, until it reads this spine.
+#
+# The link table is written here and not in the footprint spine because
+# the building is the finer entity in ENTITY_LINK_ORDER and its
+# geospine is built from the footprint geospine, so both sides exist
+# when this runs; the table lands beside the building geospine's output
+# (geo.link.get_entity_link_path). It links against the footprint
+# geospine, not the footprint spine, because the footprint spine now
+# runs after this recipe.
+#
+# Count columns take this entity's name (n_parcels_per_building,
+# n_buildings_per_parcel, n_permits_per_building); the footprint spine
+# renames them on projection.
+
+description: >-
+  Harmonized U.S. building spine attaching parcel, NSI, dwelling and
+  permit evidence to the building geospine, with the footprint link.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: building
+  source:
+    source_id: spine
+    # Not an external source: an openplaces pipeline product that
+    # carries whatever its inputs carry and nothing of its own; the
+    # applicable terms are derived per output by io.bundle_terms.
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+entity_recipe: US_building-geospine-2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+  # Attribute-only: the geometry lives with the geospine and is resolved
+  # by readers through the entity_recipe chain.
+  geometry: false
+
+pipeline:
+
+  # The building geospine's rows, plus the footprint geospine's parcel
+  # overlay, NSI and Overture point links restored from their sidecars
+  # and re-keyed footprint_id -> building_id (a rename while the two are
+  # equal). Which links exist, and with what thresholds, is read from
+  # the footprint geospine's own pipeline, so the YAMLs cannot drift.
+  - step: load_geospine
+    links_recipe_id: US_footprint-geospine-2026
+    links_key: footprint_id
+
+  # One row per (footprint, building) pair, keyed on the footprint id the
+  # geospine kept on each building row against the footprint geospine's
+  # own index. The method label says what found the pair; it is never a
+  # score, and no pair is removed once written (patent shape 4).
+  - step: link_entities_by_id
+    recipe_id: US_footprint-geospine-2026
+    spine_key: footprint_id
+    ref_key: footprint_id
+    link_method: footprint_outline
+
+  - step: classify_footprint_priority
+    entity_type: parcel
+    thresholds:
+      # Keep a parcel's largest footprint primary when an address point
+      # sits on a structure a third its size or smaller and an NSI point
+      # sits on the large one. Measured against roll floor area
+      # 2026-09-17: the large footprint is the dwelling on 68% (NC) and
+      # 89% (TX) of such parcels; see classify_footprint_priority.
+      dwelling_override_ratio: 3.0
+
+  # Attribution only: aggregate source columns into suffixed evidence columns.
+  # checkpoint: the spine after this step is persisted; a rerun whose
+  # changes sit in later steps restores it instead of re-running the
+  # load and reconcile prefix (about two-thirds of an attribute rerun).
+  - step: reconcile_attributes
+    checkpoint: true
+    sources:
+      - entity_type: parcel
+        columns:
+          # Pull basic parcel metadata; skip value columns (improvement_value, land_value,
+          # year_built) since they are apportioned in curation from the curated parcels.
+          - parcel_id_local
+          - use_group
+          - use_subgroup
+          - use_group_combined
+          - address
+      - recipe_id: dwelling-overture-2025
+        columns:
+          - n_dwellings
+          - address_street
+          - address_number
+          - postal_code
+          - city
+      - recipe_id: US_building-nsi-2026
+        collect_ids: true
+        columns:
+          - occupancy_type
+          - group
+          - structure_value
+          - year_built_block_median
+          - source
+          - gross_floor_area_sqft
+          - n_stories
+          - n_dwellings
+          # NSI assigns foundation from regional/flood-zone rules, so it is
+          # a prior rather than a per-building observation -- but a stable
+          # one, which a per-building classifier is not guaranteed to be
+          # (see the foundation_type reconciliation in US_footprint-openplaces-2026).
+          - foundation_type
+          # Same prior-not-observation caveat: NSI derives bldgtype from
+          # occupancy statistics. Still the only national source, and the
+          # fallback behind the per-building CHEER inventory where that
+          # inventory exists.
+          - construction_type
+
+  # Reconcile a canonical address and extract clean street names to support curation grouping.
+  - step: reconcile_addresses
+    output_col: address
+    sources:
+      parcel:
+        address_full: address_parcel
+      dwelling_overture:
+        address_street: address_street_dwelling_overture
+        address_number: address_number_dwelling_overture
+        city: city_dwelling_overture
+        postal_code: postal_code_dwelling_overture
+    # Complete state from the run's admin unit (level-2 code) where missing.
+    complete_from_admin:
+      state: 2
+    # Persist the resolved components too, so impute_postal_city below can
+    # fill a still-missing city and re-render `address` without re-parsing it.
+    number_output_col: address_number
+    unit_output_col: address_unit
+    city_output_col: city
+
+  # Coalesce ZIP-code evidence by priority: dwelling_overture's parsed ZIP,
+  # then the spatially-derived zcta5_id -- a state with no Overture address
+  # coverage at all (e.g. Wisconsin, South Carolina) still gets a ZIP-like
+  # value from the latter.
+  - step: reconcile_postal_code
+    sources: [postal_code_dwelling_overture, zcta5_id]
+    output_column: postal_code
+
+  # A ZIP code has exactly one USPS-preferred city, so this is imputed here
+  # rather than in curate. Reads the coalesced ZIP above for the broadest
+  # coverage, and completes `city`/`address` wherever they're still missing.
+  - step: impute_postal_city
+    column: postal_code
+
+  # Town-scoped address matching key, for id-free linking to sources with no
+  # shared parcel id (e.g. the address-fallback pass below).
+  - step: derive_address_id_local
+
+  # Independent occupancy_type evidence from NC building permits: APN-based
+  # linking first (parcel_id_local, computed by both sides at ingest time),
+  # then an address fallback for buildings the APN pass missed. Deliberately
+  # not yet added to US_footprint-openplaces-2026's occupancy vote -- that vote/
+  # kernel mechanism is mid-overhaul on a separate branch; see this recipe's
+  # evidence-only mandate above.
+  #
+  # The address pass runs FIRST and the APN pass SECOND, not the other way
+  # round: link_by_id's column-priority rule (_write_prioritized) lets
+  # whichever call writes *last* win outright when its own coverage is a
+  # majority of the spine (>=50%) -- both passes clear that bar here, so
+  # write order, not declaration order, decides which source is "first".
+  # Ending on the APN pass makes it the one that wins on rows both sources
+  # matched, with the address pass's matches surviving only as a gap-fill
+  # for rows the APN pass missed.
+  #
+  # The address pass reads the permit table itself, not the property
+  # spine: the property spine discovers only recipes scoped below its
+  # own US scope, so it never held a permit (0 rows in all 44 eastern
+  # NC counties, 2026-09-16), and it must not: a permit is not a
+  # property, and property-spine rows are summed into curated parcels.
+  # The permit table carries no town id, so both sides are keyed on
+  # street and number within the county being processed, derived for
+  # this join only (no key column is persisted).
+  - step: link_by_id
+    recipe_id: US_property-shovels-2026
+    mode: aggregate
+    spine_key: address_id_local_county
+    ref_key: address_id_local_county
+    spine_address_key: &permit_address_key
+      admin4_column: null
+      city_column: null
+      output_column: address_id_local_county
+      output_column_city: null
+    ref_address_key:
+      <<: *permit_address_key
+      street_column: street
+      number_column: street_no
+    columns:
+      occupancy_type_raw: occupancy_type_property_shovels
+    ref_sort_by: permit_start_date
+    ref_sort_ascending: false
+    count_as: n_permits_per_building_address
+
+  - step: link_by_id
+    recipe_id: US_property-shovels-2026
+    mode: aggregate
+    spine_key: parcel_id_local
+    ref_key: parcel_id_local
+    columns:
+      occupancy_type_raw: occupancy_type_property_shovels
+    ref_sort_by: permit_start_date
+    ref_sort_ascending: false
+    count_as: n_permits_per_building

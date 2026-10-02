@@ -1,53 +1,50 @@
-"""Registered curation steps specific to the transaction entity type."""
+"""Registered curation steps specific to the transaction entity type.
+
+The steps that put a source's rows into the entity's terms (the sale
+period, the exact-duplicate drop, the document id, the parcel count, the
+multi-parcel fold) and the id minting run in the transaction spine since
+2026-09-29 (`io/harmonizer/transactions.py`, on the shared frame
+functions of `io/sale_records.py`). They stay registered here, as thin
+wrappers over the same functions, for a recipe that still lists them;
+`US_transaction-openplaces-2026` no longer does.
+"""
 
 from __future__ import annotations
 
-import re
 import warnings
 
 import pandas as pd
 
+from openplaces.io import sale_records
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.readers import get_entities
-from openplaces.table import add_unique_suffix, aggregate_rows
+from openplaces.io.sale_records import (  # noqa: F401  (kept importable)
+    REPEATED_DOCUMENT_SHARE,
+    TRANSACTION_FINGERPRINT_TIERS,
+)
 
-_NON_ALNUM = re.compile(r'[^0-9A-Za-z]')
-
-
-def _normalized(series: pd.Series) -> pd.Series:
-    return series.astype(str).str.replace(_NON_ALNUM, '', regex=True)
+_normalized = sale_records.normalized_text
 
 
 @_register('dedup_transactions', phase='standardize')
 def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
     """Drop rows that are the same recorded document, kept once.
 
-    Sale sources published as overlapping rolling windows (e.g. FL DOR's
-    SDF) can carry the same legal transaction in two adjacent files. A
-    ``transaction_id_source`` cannot be used to detect this (assigned
-    per-county, not unique across a source's full coverage); the
-    composite key below identifies the underlying document instead.
+    The transaction spine does this since 2026-09-29; kept for a recipe
+    that still lists it. See `io.sale_records.duplicate_document_mask`.
 
     Parameters
     ----------
     key_columns : list of str
         Columns whose combination identifies one recorded document. The
         first occurrence of a repeated combination is kept. A column the
-        table lacks reads as missing on every row: the key is written
-        once for every source, and a clerk instrument number exists in
-        Florida and nowhere else.
+        table lacks reads as missing on every row.
     """
     curated = state.curated
-    # Compared as strings with one placeholder for missing, exactly as
-    # the former per-row '|'.join key did, but through the frame's own
-    # hashed duplicated(), which is vectorized: the row-wise join took
-    # 83 of Lake County FL's 111 s transaction curate (2026-09-29).
-    key = curated.reindex(columns=key_columns).astype('string').fillna('NA')
-    mask = ~key.duplicated(keep='first')
-    n_dropped = int((~mask).sum())
-    state.curated = curated.loc[mask].copy()
+    repeated = sale_records.duplicate_document_mask(curated, key_columns)
+    state.curated = curated.loc[~repeated.to_numpy()].copy()
     if state.verbose:
-        print(f'  dedup_transactions: dropped {n_dropped:,} duplicate rows')
+        print(f'  dedup_transactions: dropped {int(repeated.sum()):,} duplicate rows')
     return state
 
 
@@ -57,28 +54,15 @@ def derive_sale_period(
 ) -> CurateState:
     """Fill `sale_year` and `sale_month` from a date where they are missing.
 
-    Sources state when a sale happened in one of two ways: a date (a
-    recorder's table) or a year and month (Florida's roll, and any roll
-    that records the month only). Every later step compares sales by
-    year and month, so both spellings are brought to that form here. A
-    year or month the source stated itself is never overwritten.
+    The transaction spine does this since 2026-09-29; kept for a recipe
+    that still lists it. See `io.sale_records.derive_sale_period`.
 
     Parameters
     ----------
     date_column : str, optional
         Column holding the date (default `recorded_date`).
     """
-    curated = state.curated
-    if date_column not in curated.columns:
-        return state
-    date = pd.to_datetime(curated[date_column], errors='coerce')
-    for column, part in (('sale_year', date.dt.year), ('sale_month', date.dt.month)):
-        derived = part.astype('float64')
-        if column in curated.columns:
-            stated = pd.to_numeric(curated[column], errors='coerce')
-            derived = stated.fillna(derived)
-        curated[column] = derived
-    state.curated = curated
+    state.curated = sale_records.derive_sale_period(state.curated, date_column)
     return state
 
 
@@ -568,39 +552,14 @@ def derive_document_id(
         The *scope_column* value left unprefixed (`deed`), so identifiers
         already published for it do not change.
     """
-    curated = state.curated
-    document = pd.Series(pd.NA, index=curated.index, dtype='string')
-    for group in candidates:
-        columns = [group] if isinstance(group, str) else list(group)
-        if any(c not in curated.columns for c in columns):
-            continue
-        parts = []
-        for c in columns:
-            part = _normalized(curated[c]).astype('string')
-            # A part that is empty or all zeros is a placeholder, not an
-            # identifier. Glades County FL's roll writes a single space
-            # for book and page on every row, which named one document
-            # ('/') for all 1,333 of its last sales and folded them into
-            # a single "deed".
-            placeholder = part.str.fullmatch('0*').fillna(True)
-            parts.append(part.where(curated[c].notna() & ~placeholder))
-        complete = pd.concat(parts, axis=1).notna().all(axis=1)
-        joined = parts[0]
-        for part in parts[1:]:
-            joined = joined + separator + part
-        document = document.where(document.notna() | ~complete, joined)
-    if scope_column is not None and scope_column in curated.columns:
-        scope = curated[scope_column].astype('string')
-        scoped = document.notna() & scope.notna()
-        if unscoped_value is not None:
-            scoped &= (scope != unscoped_value).fillna(False)
-        document = document.where(~scoped, scope + ':' + document)
-    curated[output] = document
-    state.curated = curated
+    state.curated = sale_records.derive_document_id(
+        state.curated, candidates, output, separator, scope_column, unscoped_value
+    )
     if state.verbose:
+        named = int(state.curated[output].notna().sum())
         print(
-            f'  derive_document_id: {int(document.notna().sum()):,} of '
-            f'{len(curated):,} rows name a document'
+            f'  derive_document_id: {named:,} of {len(state.curated):,} rows name '
+            'a document'
         )
     return state
 
@@ -630,12 +589,9 @@ def count_parcels_per_document(
         Column written (default ``n_parcels_per_sale``). Missing where
         the document is.
     """
-    curated = state.curated
-    if document_column not in curated.columns or parcel_column not in curated.columns:
-        return state
-    counts = curated.groupby(document_column, dropna=True)[parcel_column].nunique()
-    curated[output] = curated[document_column].map(counts).astype('float')
-    state.curated = curated
+    state.curated = sale_records.count_parcels_per_document(
+        state.curated, parcel_column, document_column, output
+    )
     return state
 
 
@@ -675,64 +631,15 @@ def aggregate_multi_parcel_sales(
         Column holding the parcels-per-document count, kept as the
         representative member's value (default ``n_parcels_per_sale``).
     """
-    curated = state.curated
-    if document_column not in curated.columns:
-        return state
-    has_document = curated[document_column].notna()
-    shared = has_document & curated[document_column].duplicated(keep=False)
-    if not shared.any():
-        return state
-    members = curated.loc[shared].copy()
-    if weight_column is not None and weight_column in members.columns:
-        members = members.sort_values(weight_column, ascending=False)
-    # The representative row's label, taken before the registry-driven
-    # aggregation, which keeps only columns the registry knows.
-    label = members.index.to_series().groupby(members[document_column]).first()
-    aggregated = aggregate_rows(
-        members,
-        by=document_column,
-        aggregation_function={count_column: 'first'},
+    state.curated, n_rows, n_documents = sale_records.aggregate_multi_parcel_sales(
+        state.curated, document_column, weight_column, count_column
     )
-    aggregated[document_column] = aggregated.index
-    aggregated.index = pd.Index(
-        label.reindex(aggregated.index).to_numpy(), name=curated.index.name
-    )
-    kept = curated.loc[~shared]
-    result = pd.concat([kept, aggregated.reindex(columns=kept.columns)])
-    # Back in input order, so the step is stable under a later sort.
-    result = result.loc[curated.index[curated.index.isin(result.index)]]
-    state.curated = result
-    if state.verbose:
+    if state.verbose and n_rows:
         print(
-            f'  aggregate_multi_parcel_sales: {int(shared.sum()):,} rows on '
-            f'{len(aggregated):,} multi-parcel documents became one row each'
+            f'  aggregate_multi_parcel_sales: {n_rows:,} rows on {n_documents:,} '
+            'multi-parcel documents became one row each'
         )
     return state
-
-
-# How a sale with no recorded document is fingerprinted, narrowest
-# first. Each tier is added only if the ones before it leave two such
-# sales sharing a fingerprint, because **every column in the hash is a
-# column that can change the id**: these ids are published, and a sale
-# re-ingested with a corrected use code or parcel key should keep its
-# name. What a sale is, before anything else, is a price on a date.
-#
-# The parcel keys come next because two sales at one price in one
-# month are nearly always different properties, and the record kind
-# last because it separates a deed from the assessor's echo of it,
-# which `dedup_transactions` and `flag_sales_matching_other_kind` have
-# usually already dealt with.
-TRANSACTION_FINGERPRINT_TIERS = (
-    ('sale_year', 'sale_month', 'price'),
-    ('parcel_id_local', 'parcel_id_assessor'),
-    ('sale_record_kind',),
-)
-
-# Above this share of rows sharing a document with another, the column
-# is not identifying sales and the ids stop being references anyone
-# could look up. Matches the spirit of `NO_ACCOUNT_NUMBER_SHARE` for
-# properties.
-REPEATED_DOCUMENT_SHARE = 0.02
 
 
 @_register('assign_transaction_ids', phase='infer')
@@ -780,8 +687,6 @@ def assign_transaction_ids(
         Name used for rows the source gave no document, appearing in
         their id as `{admin}_{label}:{fingerprint}`.
     """
-    from openplaces.io.harmonizer.entity_ids import normalize_issued_id
-
     curated = state.curated
     if curated is None or curated.empty:
         return state
@@ -798,75 +703,28 @@ def assign_transaction_ids(
             stacklevel=2,
         )
 
-    # Positional throughout: the frame reaching here can carry a
-    # duplicate index, because `aggregate_multi_parcel_sales` indexes
-    # its aggregated rows by the representative row's label.
-    frame = curated.reset_index(drop=True)
-    admin = str(state.admin_id)
-
-    issued = (
-        normalize_issued_id(frame[document_column])
-        if document_column in frame.columns
-        else pd.Series(pd.NA, index=frame.index, dtype='string')
+    state.curated, report = sale_records.mint_transaction_ids(
+        curated, str(state.admin_id), document_column, label
     )
-    ids = (f'{admin}_' + issued).astype('string')
-
-    unnamed = issued.isna()
-    tiers_used = 0
-    if unnamed.any():
-        # Widen the fingerprint only while two unnamed sales still share
-        # one. Escalation is over the whole county rather than per row,
-        # so an id depends on the columns used, not on which other rows
-        # happen to be present.
-        columns: list[str] = []
-        fingerprint = None
-        for tier in TRANSACTION_FINGERPRINT_TIERS:
-            present = [c for c in tier if c in frame.columns]
-            if not present:
-                continue
-            columns += present
-            tiers_used += 1
-            fingerprint = pd.util.hash_pandas_object(
-                frame.loc[unnamed, columns].astype('string'), index=False
-            )
-            if not fingerprint.duplicated().any():
-                break
-        if fingerprint is not None:
-            named = fingerprint.map('{:016x}'.format).astype('string')
-            ids.loc[unnamed] = f'{admin}_{label}:' + named
-
     # A document that names many rows names none of them. Those rows
     # still get an id, by suffix, but the id stops being the reference
     # a reader could look the sale up by, so say so rather than let a
     # county quietly ship `..._2`, `..._3` throughout.
-    named = ~unnamed
-    if named.any():
-        repeated = int(ids[named].duplicated(keep=False).sum())
-        if repeated > REPEATED_DOCUMENT_SHARE * len(frame):
-            warnings.warn(
-                f'assign_transaction_ids: {repeated:,} of {len(frame):,} '
-                f'sales share their {document_column!r} with another, so '
-                'that column is not identifying them. They are separated '
-                'by suffix; check what derive_document_id found for this '
-                'source.',
-                stacklevel=2,
-            )
-
-    # Every surviving row gets its own id: a row reaching this step
-    # already survived `dedup_transactions`, so it is one the recipe
-    # means to keep, and an index that merged two of them would have
-    # the delivery's de-duplication drop one silently. Osceola County
-    # FL had 3,380 such rows of 793,283 (2026-09-24), sales its source
-    # states identically and distinguishes by nothing read here.
-    ids = add_unique_suffix(ids)
-    curated = curated.copy()
-    curated.index = pd.Index(ids.to_numpy(), name='transaction_id')
-    state.curated = curated
+    repeated = report['n_repeated_documents']
+    if repeated > REPEATED_DOCUMENT_SHARE * report['n_rows']:
+        warnings.warn(
+            f'assign_transaction_ids: {repeated:,} of {report["n_rows"]:,} '
+            f'sales share their {document_column!r} with another, so '
+            'that column is not identifying them. They are separated '
+            'by suffix; check what derive_document_id found for this '
+            'source.',
+            stacklevel=2,
+        )
     if state.verbose:
         print(
-            f'  assign_transaction_ids: {len(curated):,} sales, '
-            f'{curated.index.nunique():,} ids '
-            f'({int(unnamed.sum()):,} fingerprinted over '
-            f'{tiers_used} tier(s))'
+            f'  assign_transaction_ids: {report["n_rows"]:,} sales, '
+            f'{state.curated.index.nunique():,} ids '
+            f'({report["n_unnamed"]:,} fingerprinted over '
+            f'{report["tiers_used"]} tier(s))'
         )
     return state

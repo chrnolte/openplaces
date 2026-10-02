@@ -15,7 +15,9 @@ import pandas as pd
 import openplaces.io.curator.evidence as ev
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import flag_manufactured_home_communities
+from openplaces.io.curator.estimators.manufactured_homes import (
+    flag_manufactured_home_communities,
+)
 from openplaces.io.curator.reconcilers import resolve_by_vote
 
 

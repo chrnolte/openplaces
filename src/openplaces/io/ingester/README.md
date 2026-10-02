@@ -19,6 +19,25 @@ current code. -->
 already-resolved source file. It applies column mappings, type casts, spatial filtering,
 and the attribute registry type checks.
 
+**Both classes are assembled from mixins, one module per concern**
+(since 2026-09-29; until then `__init__.py` held 2,518 lines and
+`table_ingester.py` 1,710). `Ingester` keeps its constructor, `ingest`,
+the per-partition driver and table processing in `__init__.py`, and
+inherits `scope.py` (which units are saved, processed, downloaded),
+`partitions.py` (partition, tile and placeholder ids), `download.py`
+(URLs, paths, download, unzip, scrapers) and `outputs.py` (entity links,
+tile merges, table joins, aggregation); module-level helpers sit in
+`_helpers.py`. `TableIngester` keeps `process` in `table_ingester.py` and
+inherits `table_scope.py`, `table_read.py`, `table_preprocess.py`,
+`table_ids.py` and `table_save.py`. All state stays on the instance.
+**A test patches the module the method lives in**
+(`openplaces.io.ingester.download.unzip`,
+`openplaces.io.ingester.table_read.read_access_table`), because a method
+looks names up in its own module's globals; a patch on the package or on
+`table_ingester` reaches nothing now, and `monkeypatch` raises rather
+than passing silently. `get_admin` is the one name bound in two mixins
+(`scope` and `partitions`), so a test that fakes the spine patches both.
+
 **Every parcel table is split into lots and properties at ingest**
 (`io/stacked_units.py`). Sixteen parcel sources stack several ownership
 records on one lot polygon (Florida's statewide layer alone carries 1.13

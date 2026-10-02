@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from pyogrio.errors import DataSourceError
 
-from openplaces.io.ingester import table_ingester as ti_module
+from openplaces.io.ingester import table_read
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.timing import Timer
 
@@ -35,14 +35,14 @@ def locked_gdb(tmp_path, monkeypatch):
     def denied(*args, **kwargs):
         raise DataSourceError(f'{gdb}: Permission denied')
 
-    monkeypatch.setattr(ti_module, 'read_gdb_with_domains', denied)
+    monkeypatch.setattr(table_read, 'read_gdb_with_domains', denied)
     return gdb
 
 
 def test_unattended_run_raises_with_the_path_instead_of_prompting(
     locked_gdb, monkeypatch
 ):
-    monkeypatch.setattr(ti_module, 'can_prompt', lambda: False)
+    monkeypatch.setattr(table_read, 'can_prompt', lambda: False)
 
     def no_prompt(*args, **kwargs):
         raise AssertionError('input() must not be called unattended')
@@ -55,7 +55,7 @@ def test_unattended_run_raises_with_the_path_instead_of_prompting(
 
 
 def test_attended_run_still_asks(locked_gdb, monkeypatch):
-    monkeypatch.setattr(ti_module, 'can_prompt', lambda: True)
+    monkeypatch.setattr(table_read, 'can_prompt', lambda: True)
     monkeypatch.setattr('builtins.input', lambda *a, **k: 'n')
     with pytest.raises(RuntimeError, match='manually'):
         _ingester(locked_gdb)._read_recipe_data()

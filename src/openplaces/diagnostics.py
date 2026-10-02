@@ -158,6 +158,10 @@ def _recipe_index() -> pd.DataFrame:
                 ),
                 'supplements': str(data.get('supplements') or ''),
                 'supplements_key': str(data.get('supplements_key') or ''),
+                # A patch recipe amends another recipe's pipeline for
+                # the units in its own scope (recipe.apply_recipe_patches)
+                # and is never "the" recipe for an entity.
+                'patches': str(data.get('patches') or ''),
                 'level': level,
                 'recipe_id': recipe_id,
                 'filename_suffix': filename_suffix,
@@ -176,6 +180,7 @@ def _recipe_index() -> pd.DataFrame:
             'exclude_from_auto_discover',
             'supplements',
             'supplements_key',
+            'patches',
             'level',
             'recipe_id',
             'filename_suffix',

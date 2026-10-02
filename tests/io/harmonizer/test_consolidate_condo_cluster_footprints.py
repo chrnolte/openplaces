@@ -26,6 +26,7 @@ from openplaces.geo.link import get_entity_link_path
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import links as links_mod
 from openplaces.recipe import get_recipe_by_id
+from tests.links_patching import patch_links
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
@@ -76,9 +77,7 @@ def _condo_unit_parcels_gdf():
 
 @pytest.fixture
 def state(data_root, monkeypatch):
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _condo_unit_parcels_gdf()
-    )
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _condo_unit_parcels_gdf())
     recipe = get_recipe_by_id(SPINE)
     return HarmonizeState(
         recipe=recipe,
@@ -157,8 +156,8 @@ def _condo_cluster_with_hub_gdf():
 
 
 def test_hub_geometry_excluded_from_consolidated_footprint(data_root, monkeypatch):
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _condo_cluster_with_hub_gdf()
+    patch_links(
+        monkeypatch, 'get_entities', lambda *a, **k: _condo_cluster_with_hub_gdf()
     )
     recipe = get_recipe_by_id(SPINE)
     state = HarmonizeState(
@@ -238,9 +237,7 @@ def _state_with_real_footprint(data_root, monkeypatch, real_geom):
     # overlaps the two condo unit parcels well enough (>=50% of their
     # combined area, >=33% of each individually) to be linked to both by
     # _link_spatial_overlay before consolidation runs.
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _condo_unit_parcels_gdf()
-    )
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _condo_unit_parcels_gdf())
     recipe = get_recipe_by_id(SPINE)
     spine = gpd.GeoDataFrame(
         {'geometry': [box(100, 100, 101, 101), real_geom]},
@@ -393,9 +390,7 @@ def test_one_straggler_far_below_old_floor_still_passes_smooth_score(
     # area-weighted score must let U9's shortfall get outvoted by the
     # other 9 parcels.
     real_geom = box(0, 0, 0.00092, 0.0001)
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _ten_unit_parcels_gdf()
-    )
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _ten_unit_parcels_gdf())
     recipe = get_recipe_by_id(SPINE)
     spine = gpd.GeoDataFrame(
         {'geometry': [box(100, 100, 101, 101), real_geom]},
@@ -447,8 +442,8 @@ def test_two_clusters_sharing_one_real_footprint_are_merged(data_root, monkeypat
     # they must merge into one row rather than each claiming the whole
     # shared polygon (which real Carteret County data showed produces
     # duplicate rows a later dedup step then silently drops entirely).
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
+    patch_links(
+        monkeypatch, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
     )
     recipe = get_recipe_by_id(SPINE)
     real_geom = box(0, 0, 0.0102, 0.0001)
@@ -490,8 +485,8 @@ def test_two_clusters_with_different_real_footprints_are_not_merged(
     # Same two far-apart pairs, but each covered by its OWN separate real
     # footprint -- no shared spine id, so they must stay as two distinct
     # consolidated rows.
-    monkeypatch.setattr(
-        links_mod, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
+    patch_links(
+        monkeypatch, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
     )
     recipe = get_recipe_by_id(SPINE)
     real_geom_1 = box(0, 0, 0.0002, 0.0001)
