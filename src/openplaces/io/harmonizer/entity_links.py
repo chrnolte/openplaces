@@ -16,8 +16,8 @@ mechanism for both.
 Why exact keys and a fixed label, and nothing more: a link row records
 which rule found the pair (link_method). It is not a strength score,
 nothing is tuned from the links made, and no later pass removes a link
-an earlier one wrote. Those three absences are deliberate (AGENTS.md,
-"Patent risk", shape 4) and should stay that way.
+an earlier one wrote. Those three absences are deliberate and should
+stay that way.
 """
 
 from __future__ import annotations

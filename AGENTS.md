@@ -152,153 +152,21 @@ repository.
   recipe is a separate, parallel concern — check the source's license and
   redistribution terms the same way before writing the recipe.
 
-## Patent risk: new algorithms in the parcel/property-matching and valuation space
-- **"Open-source, non-commercial, public-benefit" is not a legal shield
-  against patent infringement in the U.S.** — this is a common and
-  understandable misconception, but it's wrong, and a specific, on-point
-  precedent says so directly: *Madey v. Duke University*, 307 F.3d 1351
-  (Fed. Cir. 2002) held that a university's own research use of a patented
-  invention did not qualify for the "experimental use" defense, because it
-  still furthered the university's legitimate institutional
-  objectives — the defense is limited to use "for amusement, to satisfy
-  idle curiosity, or for strictly philosophical inquiry," which a
-  maintained, publicly-used research tool is not. Don't let the project's
-  mission stand in for an actual legal analysis when a specific technique
-  looks close to a known patent.
-- **Where risk actually concentrates, based on research done so far**:
-  the parcel/property-record-linking space has real, active patent
-  holders — CoreLogic/Cotality, Black Knight/ICE Mortgage Technology, and
-  First American chief among them — whose claims cluster around four
-  specific technique *shapes*, not the general goal of "link/match
-  property records" (which itself isn't patentable, only a particular
-  claimed method for doing it is):
-  1. Geometric neighbor/"community" detection (buffer-enlarge, union,
-     reduce a group of parcel boundaries) used to impute or validate a
-     *missing address number* by interpolating between neighbors
-     (CoreLogic **US10248731B1**, to 2037-03-25; continuation
-     **US11061985B2**, whose claimed purpose is validating or correcting
-     address information; second continuation US20220067117A1, grant
-     status unconfirmed). Claim 1 recites five steps and **two of them
-     are worth knowing before writing any geometry that groups
-     parcels**: the community is parcels *within a threshold distance*
-     with contiguous boundaries, and the border is built by *enlarging*
-     each boundary, unioning, then *reducing* it back. A proximity
-     threshold is therefore a recited element, which is why a distance
-     tolerance is a different proposition from strict adjacency. The
-     back half (border-intersection points, a reduced neighbor set, and
-     bracketing a missing address number) is what the whole claim is
-     for, and `openplaces` does none of it.
-  2. A trained machine-learning model used to score match probability
-     between two property/record representations (as opposed to a fixed,
-     deterministic rule set with no learned parameters).
-  3. Detecting records *internally inconsistent* with their own source's
-     mapping/address data, grouping them, and normalizing the group
-     (CoreLogic **US9298740B2**; all three independent claims start from
-     a parcel that *failed verification* against mapping or addressing
-     data, which nothing here tests).
-  4. A **cascading match that falls through to fuzzy matching**, scores the
-     resulting link with a strength indicator, *calibrates that scorer from
-     the links it just made*, and then detects and removes an incorrect
-     earlier link (Black Knight US10606854B2, in force to 2038). This is
-     the shape closest to what `openplaces` already does: it normalizes to
-     a comparable form and matches in tiers. **The three independent
-     claims differ, and the narrowest reading is not the safe one** (claims
-     read from the patent text 2026-09-21; an agent's reading, not legal
-     advice). Claim 1 (machine) and claim 15 (method) require the strength
-     indicator and its calibration from the links just made (claim 1 also
-     the removal of an incorrect link). **Claim 17, the computer-readable
-     medium claim and so the one a library is measured against, requires
-     none of that back half** (it appears only in dependent claim 18). Its
-     elements are: an input record with two attributes; a transformation
-     into a comparable form; a first non-fuzzy match on the first
-     attribute; on failure a cascade to a second non-fuzzy match on a
-     second attribute; **on failure of both, a cascade to a fuzzy matching
-     comparison, and a link made on the fuzzy match**. What keeps
-     `openplaces` clear of claim 17 is therefore the *front* half: **no
-     record-linking path falls through from exact key passes to a fuzzy
-     comparison.** `link_by_id`, `link_entities_by_id`, the stacked-units
-     passes, the transaction lane's parcel and address keys and
-     `assign_entity_ids` are exact matches on normalized keys, and a row
-     no exact pass reaches stays unlinked. `rapidfuzz` is used in two
-     places, neither a fall-through of that kind: `reconcile_addresses`
-     compares two address columns *already on one row* to decide whether
-     two sources agree (no record is linked by it), and
-     `io.curator.validation.link_points_to_entities` matches validation
-     points by house number plus fuzzy street name *first* and falls back
-     to distance, the reverse order, for scoring only. **Do not add a fuzzy
-     tier behind exact key passes in any linking step** (parcel, property,
-     transaction, address), do not add link-confidence scoring that learns
-     from its own past links, and do not add an unlink-on-reconsideration
-     step, without a specific check against that patent and the
-     maintainer's decision.
-  A new feature that does one of these four things, in this domain,
-  deserves a specific check against that sub-area before merging — not a
-  general "we checked patents once" assumption. `openplaces`'s existing
-  `parcel_id_local`/`geo_id` matching is deterministic string/geometry
-  fingerprinting with no learned parameters and no neighbor-comparison or
-  address-imputation step, which is why it reads as a different mechanism
-  from all four shapes above — that reasoning doesn't automatically carry
-  over to a new ML-based imputation or inference feature, which may
-  resemble shape 2 much more closely by design. If ML matching is ever
-  added, note that every independent claim of the shape-2 patent
-  (US11372900B1) needs *two* trained models — one scoring record-pair
-  matches, a second identifying a "context" that then selects the cleansing
-  rules. A single match-scoring model does not read on it; adding the
-  context model and context-selected rules is what would.
-- **Process for a new imputation/inference/matching/valuation feature
-  touching parcel, property, or transaction data**: (1) identify the
-  specific technique, not just the goal, and check whether it resembles
-  one of the four shapes above or another known patent in this space;
-  (2) if it does, flag it to the user explicitly before merging — this is
-  a judgment call for a human, not something an agent should silently wave
-  through, the same posture as the IP-ownership section above — **but
-  count the differing steps before flagging anything** (maintainer's
-  rule, 2026-09-22). Infringement needs *every* element of a claim; one
-  element absent is enough to be clear of it. The maintainer set four
-  levels, in these words:
-
-  > Three steps different: silent. Two steps: report but don't ask for
-  > permissions. Moving from two to one steps: warn. Removing the last
-  > step: forbidden
-
-  So three or more differing steps is not a close call and saying so
-  only wastes attention; two is reported in passing, not escalated into
-  a blocking question; going from two to one is the point to warn,
-  because one further change would close the gap; and **taking the count
-  to zero is forbidden outright**, not warned about, because every
-  element present is infringement. The floor is the part of the rule
-  that protects anything, so never treat the warn level as the top of
-  the scale.
-  Count against the claim text, not against a paraphrase, and say which
-  steps you counted. **Count against every independent claim, and let
-  the one with the fewest absent steps decide**, because clearing one
-  claim clears nothing on its own: US10606854B2's claim 17 drops the
-  whole score/calibrate/unlink back half that claims 1 and 15 recite, so
-  a change measured only against claim 1 would read as three steps clear
-  while sitting one step from claim 17. For a library, the
-  computer-readable-medium claim is usually the broadest and is the one
-  to count first. Worked example: a strict contiguity gate on a lot
-  union differs from US10248731B1 claim 1 on the community-and-threshold
-  step, the border-intersection step, the neighbor-set step and the
-  address-bracketing step, so it needed no warning at all, and the 2026-09-22
-  stop on it was over-cautious by this rule; (3) where
-  more than one technically valid approach exists, prefer the one that is
-  most clearly mechanistically different from a known patented approach —
-  this is not purely defensive: a genuinely distinct method is also a
-  stronger, more citable methodological contribution for a research
-  project, so the incentive runs the same direction as the science; (4)
-  document the technical rationale for a new method in the code itself
-  (why this approach, not a more obvious alternative) — ordinary good
-  practice that also creates a contemporaneous record of independent
-  development.
-- **Publishing openly and promptly is itself a protective strategy, not
-  just a defensive one** — a clearly dated, technically detailed
-  description of a novel method (in code, docs, or a paper) becomes prior
-  art that keeps the technique in the public domain and available to
-  everyone, rather than leaving room for someone else to patent it later
-  and assert it against future users of this or a similar tool. This is
-  directly aligned with the project's own public-benefit mission, not a
-  tradeoff against it.
+## Design limits
+- Some techniques are kept out of this repository by decision of the
+  maintainer. Contributors with access keep the list in
+  `plans/design-limits/DESIGN_LIMITS.md` (a private repository cloned
+  into the git-ignored `plans/` folder).
+- Before planning or implementing work that touches record linking or
+  matching, identifiers derived from geometry, grouping or merging of
+  parcels or lots, reconciling values across sources, imagery or other
+  trained models, transaction deduplication, price indices, or
+  valuation models, read that file if it exists, and state in the plan
+  which of its limits you checked.
+- If the file does not exist on your machine, do not add a new
+  technique in those areas without asking the maintainer first.
+- Document the technical rationale for a new method in the code itself
+  (why this approach, not a more obvious alternative).
 
 ## Code style
 - Line length:
@@ -554,8 +422,8 @@ values until it is rerun**.
 its admin unit (`assign_entity_ids`), and rows sharing an id merge into
 one. **Relationships between entities are link tables**, one row per
 pair (`link_entities_by_id` for property to parcel); `link_method` is a
-fixed label, never a score, and no link is removed once written (patent
-shape 4). Both are described in full in
+fixed label, never a score, and no link is removed once written. Both
+are described in full in
 `src/openplaces/io/harmonizer/README.md`.
 
 ### Recipes (`recipe/`, `src/openplaces/recipes/`)

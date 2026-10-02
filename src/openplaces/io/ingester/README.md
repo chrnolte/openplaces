@@ -101,12 +101,10 @@ $79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
 roll exists the property spine holds stacked units only (all of Wisconsin:
 Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
 conserved to the dollar). The module docstring
-carries the patent rationale (US9298740B2, all-elements rule: claims 1
-and 15 recite the same six steps, claim 11 adds a wilderness test, and all
-three start from a parcel that *failed verification* against mapping or
-addressing data, which the split never tests; read from the patent text
-2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
-re-ingested.
+records the design: the split groups all rows by the source's own lot
+identity and never verifies a row against other mapping or addressing
+data, flags it as inconsistent, or normalizes it. Data on disk keeps the
+old row shape until a county is re-ingested.
 
 Public entrypoint:
 

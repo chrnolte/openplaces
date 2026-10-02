@@ -69,7 +69,7 @@ pipeline:
   # One row per (footprint, building) pair, keyed on the footprint id the
   # geospine kept on each building row against the footprint geospine's
   # own index. The method label says what found the pair; it is never a
-  # score, and no pair is removed once written (patent shape 4).
+  # score, and no pair is removed once written.
   - step: link_entities_by_id
     recipe_id: US_footprint-geospine-2026
     spine_key: footprint_id

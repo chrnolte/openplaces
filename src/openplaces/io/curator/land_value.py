@@ -1109,9 +1109,7 @@ def impute_land_value(
     :func:`~openplaces.io.curator.reconcilers.adopt_stories_by_floor_area_fit`
     already use. It is a two-way comparison of medians between two
     deterministic estimators, with no trained model, no record linking
-    and no neighbor geometry, so it reads on none of the patent shapes
-    AGENTS.md lists for this domain (an agent's reading, not legal
-    advice).
+    and no neighbor geometry.
     """
     curated = state.curated
     required = {

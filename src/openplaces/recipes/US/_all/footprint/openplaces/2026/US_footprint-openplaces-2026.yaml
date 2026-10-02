@@ -1317,8 +1317,7 @@ pipeline:
   # own area_m2 within that parcel, and a unit count read from that
   # parcel's own record. No neighboring parcel, buffer, union or other
   # geometry operation, no learned parameter, no score or link
-  # strength, and no link added or removed (patent-risk section of
-  # AGENTS.md, shapes 1 to 4).
+  # strength, and no link added or removed.
   - step: derive_group_count
     group_column: parcel_id
     output: n_primary_manufactured_homes_per_parcel
