@@ -1,8 +1,15 @@
 # Recipe: Harmonized admin level-1 geometries (countries)
 #
-# Discovers all stage='ingest' admin recipes at level 1, assigns each
-# country to the most specific/newest source, merges into a single global
-# GeoDataFrame, and optionally simplifies geometry for visualization.
+# Discovers all stage='ingest' admin recipes at level 1, ranks the ones
+# covering each country (most specific, then newest), takes each
+# country's polygon from the first that has one, and simplifies a copy
+# for visualization. Restricted sources (GADM) are not candidates.
+#
+# Two sources, split differently: geoBoundaries CGAZ draws sovereign
+# states, and Natural Earth's map units fill the dependencies and
+# overseas departments CGAZ draws inside them. The step
+# carve_lumped_territories gives each such territory the area its
+# sovereign's CGAZ polygon lumped in, so no two countries overlap.
 
 description: >-
   Harmonized global country geometries (admin level 1), merging the most specific
@@ -37,6 +44,7 @@ save_to:
 pipeline:
   - step: discover_sources
   - step: merge_global
+  - step: carve_lumped_territories
   - step: simplify_geometries
     thresholds:
       tolerance: 0.01
