@@ -462,7 +462,15 @@ The step sub-modules:
   `io.curator.diagnostics`'s established convention. Never raises, never
   changes the harmonized spine.
 - `filter.py` — subset rows (`filter_entities`)
-- `discover.py` — discover available data sources for an admin unit
+- `discover.py` — admin spine geometry: `discover_sources` ranks every
+  ingest recipe covering a unit (restricted ones such as GADM left out
+  unless `include_restricted: true`), `merge_global` takes each unit's
+  polygon from the first that has one, so a names-only national recipe
+  (INSEE, Soumu) falls through to geoBoundaries, and
+  `carve_lumped_territories` (level 1) gives a territory from a finer
+  source the area its sovereign's polygon lumped in. Not
+  `resolve_overlaps`, which is the footprint step in `links/overlaps.py`;
+  the step registry refuses a second function under a taken name
 - `admin_names.py` — `assign_admin_id_from_name`: the admin unit a record
   only *names*, as an id, matched exactly and uniquely against the units of
   its county or not at all. It exists because an address key is scoped by

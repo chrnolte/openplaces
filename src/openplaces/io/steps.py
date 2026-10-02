@@ -29,6 +29,11 @@ from importlib import import_module
 PHASES = ('geometry', 'attributes')
 
 
+def _identity(fn: Callable) -> tuple[str, str]:
+    """A step function's module and qualified name."""
+    return (getattr(fn, '__module__', ''), getattr(fn, '__qualname__', repr(fn)))
+
+
 def make_register(
     registry: dict[str, Callable],
     phases: dict[str, str] | None = None,
@@ -81,6 +86,18 @@ def make_register(
 
         def decorator(fn: Callable) -> Callable:
             for name in names:
+                # A second step under a taken name used to replace the
+                # first without a word: an admin step registered as
+                # 'resolve_overlaps' on 2026-09-30 displaced the
+                # footprint step of that name, and the next run used
+                # the footprint step on countries. The same function
+                # imported again (a module reload) is not a clash.
+                held = registry.get(name)
+                if held is not None and _identity(held) != _identity(fn):
+                    raise ValueError(
+                        f'step {name!r} is already registered by '
+                        f'{".".join(_identity(held))}'
+                    )
                 registry[name] = fn
                 if phases is not None:
                     phases[name] = phase

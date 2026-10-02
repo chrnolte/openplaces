@@ -72,6 +72,11 @@ def _admin_level_of(admin_id) -> int:
     return admin_id.get_level()
 
 
+def _is_undefined_crs(crs) -> bool:
+    """Whether a CRS is GDAL's placeholder for one the file never named."""
+    return str(getattr(crs, 'name', '')).startswith('Undefined')
+
+
 class TableIngester:
     """
     Processes a single table from an already-resolved source file into an
@@ -214,14 +219,18 @@ class TableIngester:
         # Some source shapefiles ship a blank/unreadable .prj (no CRS on
         # read) despite genuinely being in a known projection -- declare it
         # via the recipe's `source_crs` rather than guessing. Only applied
-        # when the read geometry truly has no CRS, so it can't silently
+        # when the read geometry has no declared CRS, so it can't silently
         # override a valid one that merely differs from `source_crs`.
+        # GDAL's "Undefined geographic SRS" counts as undeclared: it is
+        # what GDAL names a CRS the file never identified, and
+        # geoBoundaries' CGAZ GeoPackage reads that way although it is
+        # WGS 84 longitude/latitude.
         if (
             isinstance(gdf, gpd.GeoDataFrame)
-            and gdf.crs is None
+            and (gdf.crs is None or _is_undefined_crs(gdf.crs))
             and self.recipe.get('source_crs')
         ):
-            gdf = gdf.set_crs(self.recipe['source_crs'])
+            gdf = gdf.set_crs(self.recipe['source_crs'], allow_override=True)
 
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
             gdf = reproject(gdf, cfg.crs)

@@ -121,6 +121,70 @@ def admin1_id_index_from_admin1_id_a3(gdf):
     return gdf_indexed
 
 
+def admin1_id_index_from_codes(gdf, code_columns, remap=None):
+    """Index country polygons by admin1_id from alpha-3 codes, dissolving.
+
+    Written for global boundary layers whose rows are not the spine's
+    countries one for one. A row can name its unit in more than one
+    column, of which only one is the spine's code (Natural Earth's map
+    units carry Guadeloupe's GLP in one column and France's FRA in
+    another), a unit can span several rows (the United States Minor
+    Outlying Islands are eight), and some rows are no unit of the spine
+    at all (geoBoundaries CGAZ's disputed zones, Natural Earth's
+    overlays).
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        The layer, with the code columns already renamed by the recipe.
+    code_columns : list of str
+        Columns tried in order; a row takes the first code that, after
+        remap, is the admin1_id_a3 of a spine level-1 unit.
+    remap : dict of str to str, optional
+        Source code to spine alpha-3 code, for the few layers that code
+        a unit differently (CGAZ's XKX for Kosovo, spine XKO).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        One row per admin1_id, its geometry the union of its rows and
+        its other columns those of its first row. Rows no spine code
+        matches are dropped, and their count is warned about.
+    """
+    remap = remap or {}
+    # The spine's own level 1, not the ISO table: ISO lists Hong Kong
+    # and Macau as countries, while the spine carries them at level 2
+    # under China, and a level-1 polygon for either would overlap it.
+    spine = get_admin(level=1, all_columns=True)
+    known = pd.Series(spine.index, index=spine['admin1_id_a3'])
+    admin1_id = pd.Series(pd.NA, index=gdf.index, dtype='object')
+    for column in code_columns:
+        if column not in gdf:
+            continue
+        codes = gdf[column].astype('string').map(lambda c: remap.get(c, c))
+        matched = codes.map(known)
+        admin1_id = admin1_id.fillna(matched)
+    keep = admin1_id.notna()
+    if (~keep).any():
+        warnings.warn(
+            f'{int((~keep).sum())} row(s) match no admin1 code and are dropped',
+            stacklevel=2,
+        )
+    out = gdf[keep.to_numpy()].copy()
+    out['admin1_id'] = admin1_id[keep].to_numpy()
+    # Repaired before the union: CGAZ ships self-intersecting rings
+    # (a side location conflict in the Gulf), and GEOS refuses to union
+    # an invalid polygon. Measured 2026-09-30 on admin-geoboundaries-6~0~0:
+    # the dissolve fails without it.
+    out[out.geometry.name] = out.geometry.make_valid()
+    shared = out['admin1_id'].duplicated(keep=False)
+    single = out[~shared].set_index('admin1_id')
+    if shared.any():
+        dissolved = out[shared].dissolve(by='admin1_id', aggfunc='first')
+        single = pd.concat([single, dissolved])
+    return single.sort_index()
+
+
 # Admin 2: States / provinces
 
 
