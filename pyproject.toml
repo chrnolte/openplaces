@@ -170,7 +170,7 @@ academic = [
 
 [project.urls]
 Homepage = "https://github.com/chrnolte/openplaces"
-Documentation = "https://openplaces.readthedocs.io/"
+Documentation = "https://docs.openplaces.io"
 Repository = "https://github.com/chrnolte/openplaces.git"
 "Bug Tracker" = "https://github.com/chrnolte/openplaces/issues"
 
