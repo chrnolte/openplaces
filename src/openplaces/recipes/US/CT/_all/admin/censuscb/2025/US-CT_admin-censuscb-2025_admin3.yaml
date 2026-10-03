@@ -1,0 +1,58 @@
+# Recipe to import land-only towns for Connecticut (2025, 500k)
+#
+# New England has no county government in the spine: these states' towns
+# are admin level 3. See US_admin-censuscb-2025_admin3 for why this
+# layer exists beside the TIGER one.
+
+description: >-
+  Connecticut town boundaries clipped to the shoreline, Census cartographic
+  boundary files 2025 county subdivisions at 1:500,000 (admin level 3).
+
+# Land-only boundaries for drawing, not for joining. The Census
+# cartographic boundary files are TIGER/Line generalized in the interior
+# and clipped to the shoreline, so the Great Lakes and coastal waters sit
+# outside the polygons that TIGER draws out to the state water
+# boundaries. AWATER still reports the TIGER water area and does not
+# describe the clipped geometry. Pass geom='land' to get_admin() to read
+# this layer. It is withdrawn from auto-discovery so that no spine, join
+# or clip takes its polygons: generalizing and clipping at the shore
+# would move shoreline and island points out of their unit.
+
+admin_id: US-CT
+
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: admin
+  source:
+    source_id: censuscb
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_09_cousub_500k.zip"
+  version: 2025
+
+compressed_file_name: "cb_2025_09_cousub_500k.zip"
+uncompressed_file_name: "cb_2025_09_cousub_500k.shp"
+
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin3_id_admin1: GEOID
+  admin3_id_ansi: COUSUBNS
+
+# Placeholder rows for open water and unorganized area, if present, have
+# a subdivision code of 00000 and no counterpart in the spine.
+query: "COUSUBFP != '00000'"
+
+create_index:
+  function: "openplaces.io.admin.admin3_id_index_from_admin3_code"
+  args:
+    country_id: US-CT
+
+save_to:
+  data_dir: core
+  filename: admin3

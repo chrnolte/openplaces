@@ -90,6 +90,23 @@ publisher genuinely differs, and say why in the header comment:
 - `rockymountnc` — the City of Rocky Mount publishes Nash County's parcels
 - `nhcgov`, `bladenco` — the county's own domain differs from its name
 
+## Two geometries for a US admin unit: joining and drawing
+
+The spine's polygons (Census TIGER/Line, `US_admin-census-2025_admin{2,3,4}`)
+run out over water to the state water boundaries, so Michigan includes the
+Great Lakes. Every spatial join, clip and assignment uses them. For maps,
+`get_admin(..., geom='land')` returns the same units from the Census
+cartographic boundary files (`censuscb`, 1:500,000), clipped to the
+shoreline; `'land_coarse'` (`censuscb5m`) and `'land_coarsest'`
+(`censuscb20m`) are lighter, for quick plots. Levels 2 to 4 exist; towns
+(New England level 3) and subdivisions (level 4) have 500k only and come
+back at 500k at any setting. These recipes carry
+`exclude_from_auto_discover: true` and must keep it: a generalized,
+shoreline-clipped polygon moves boundaries by up to a few hundred meters
+and drops shoreline and island points out of their unit, which is fine
+for a picture and wrong for a join. Never read them for anything but
+drawing.
+
 ## Column names come from the registry
 
 Every key under `columns:` (and every `output:` of a transformation) must

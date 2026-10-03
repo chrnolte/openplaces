@@ -1,0 +1,53 @@
+# Recipe to import land-only states for the United States (2025, 20m)
+
+description: >-
+  U.S. state boundaries clipped to the shoreline, Census cartographic
+  boundary files 2025 at 1:20,000,000 (admin level 2).
+
+# Land-only boundaries for drawing, not for joining. The Census
+# cartographic boundary files are TIGER/Line generalized in the interior
+# and clipped to the shoreline, so the Great Lakes and coastal waters sit
+# outside the polygons that TIGER draws out to the state water
+# boundaries. AWATER still reports the TIGER water area and does not
+# describe the clipped geometry. Pass geom='land' to get_admin() to read
+# this layer. It is withdrawn from auto-discovery so that no spine, join
+# or clip takes its polygons: generalizing and clipping at the shore
+# would move shoreline and island points out of their unit.
+
+admin_id: US
+
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: admin
+  source:
+    source_id: censuscb20m
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_us_state_20m.zip"
+  version: 2025
+
+compressed_file_name: "cb_2025_us_state_20m.zip"
+
+columns:
+  name: NAME
+  admin2_id_leaf: STUSPS
+  admin2_id_admin1: STATEFP
+  admin2_id_ansi: STATENS
+
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
+
+create_index:
+  name: admin2_id
+  method: prefix
+  column: admin2_id_leaf
+  prefix: US-
+
+save_to:
+  data_dir: core
+  filename: admin2

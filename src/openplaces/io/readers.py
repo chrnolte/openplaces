@@ -22,12 +22,24 @@ from openplaces.recipe import (
     get_table_recipe,
     resolve_attribute_name,
     saves_geometry,
+    version_sort_key,
 )
 from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-spine-2026'
 REGION_SOURCE_DEFAULT = 'admin-regions-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-openplaces-2026'
+# Land-only geometry for drawing, by `get_admin(geom=...)` value: the
+# source id of the Census cartographic boundary recipes at each
+# resolution (500k, 5m and 20m). Only `censuscb` has every level; a
+# level or scope the requested resolution lacks reads `censuscb`.
+LAND_GEOMETRY_SOURCES = {
+    'land': 'censuscb',
+    'land_coarse': 'censuscb5m',
+    'land_coarsest': 'censuscb20m',
+}
+LAND_GEOMETRY_FINEST_SOURCE = 'censuscb'
+LAND_GEOMETRY_LEVELS = (2, 3, 4)
 ADMIN_PRIMARY_COLUMNS = {
     1: ['name', 'admin1_id_a3'],
     2: [
@@ -134,12 +146,24 @@ def get_admin(
         If none, use level of `admin_id` (deepest if a list is passed).
     recipe : str
         Use this recipe to import geometries and additional attributes.
-    geom : bool or 'simplified'
+    geom : bool or str
         If False, return a DataFrame without geometries.
         If True, return a GeoDataFrame with full geometries.
         If 'simplified', return a GeoDataFrame with simplified geometries
         from the `_geo_simplified` companion file written by
         `AdminHarmonizer`.
+        If 'land', 'land_coarse' or 'land_coarsest', return geometries
+        clipped to the shoreline (the Great Lakes and coastal waters
+        are not part of a state or county), from the Census cartographic
+        boundary files at 1:500,000, 1:5,000,000 and 1:20,000,000. Meant
+        for drawing maps of US states (level 2), counties and New
+        England towns (level 3) and county subdivisions (level 4), never
+        for assigning or clipping data: the polygons are generalized and
+        move boundaries by up to a few hundred meters at 500k. Units a
+        resolution does not cover (subdivisions and towns exist at 500k
+        only) come back at 500k. `recipe` must not be given.
+        Measured 2026-10-03 on US-MI: 'land' covers 150,910 km2 against
+        250,486 km2 from the TIGER layers, which include the Great Lakes.
     columns : list of str or None
         If a list of strings, will be used to select columns.
     all_columns : bool
@@ -202,8 +226,25 @@ def get_admin(
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
         level = admin_id_level
 
+    land_source = None
+    if isinstance(geom, str) and geom in LAND_GEOMETRY_SOURCES:
+        if recipe is not None:
+            raise ValueError(f"geom='{geom}' reads its own recipes; omit `recipe`.")
+        if level is None:
+            raise ValueError(
+                f"geom='{geom}' needs `level` or an admin_id deeper than the "
+                f'country: land-only geometry exists for levels '
+                f'{format_list(list(LAND_GEOMETRY_LEVELS))}.'
+            )
+        if level not in LAND_GEOMETRY_LEVELS:
+            raise ValueError(
+                f"geom='{geom}' covers levels "
+                f'{format_list(list(LAND_GEOMETRY_LEVELS))}, not level {level}.'
+            )
+        land_source = LAND_GEOMETRY_SOURCES[geom]
+
     # Pick default recipe for geometry attributes if None is provided
-    if geom and recipe is None:
+    if geom and recipe is None and land_source is None:
         if level is None:
             # Default to countries
             level = 1
@@ -395,6 +436,11 @@ def get_admin(
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)
 
+    if land_source is not None:
+        admin = _join_land_geometry(
+            admin, land_source, level, admin_ids if admin_id is not None else None
+        )
+
     # Filter columns
     if not all_columns or columns:
         if columns:
@@ -417,6 +463,100 @@ def get_admin(
     if geom and 'geometry' in admin and 'geometry' not in non_empty_columns:
         non_empty_columns.append('geometry')
     return admin[non_empty_columns]
+
+
+def _land_geometry_recipe_ids(source_id, level, admin_ids):
+    """Pick the land-only recipes that supply `level` units in scope.
+
+    Every scope the cartographic boundary recipes cover at `level` (the
+    national county file, each New England state's towns) gets one
+    recipe: the newest version of `source_id` where that scope has it,
+    else of the finest resolution. Recipes read from the index, not a
+    list here, so a state added beside the others needs no code.
+
+    Parameters
+    ----------
+    source_id : str
+        Source id of the requested resolution.
+    level : int
+        Admin level of the units.
+    admin_ids : list of AdminId or None
+        Units asked for; a recipe whose scope neither contains nor sits
+        inside one of them is left out. None keeps every recipe.
+
+    Returns
+    -------
+    list of str
+        Recipe ids, sorted.
+    """
+    from openplaces.diagnostics import find_recipes
+
+    index = find_recipes('admin', stage='ingest')
+    index = index[
+        index['level'].eq(level)
+        & index['source_id'].isin([source_id, LAND_GEOMETRY_FINEST_SOURCE])
+    ]
+    chosen = []
+    for scope, rows in index.groupby('admin_id'):
+        if admin_ids is not None:
+            scope_id = AdminId(scope)
+            if not any(
+                scope_id.is_parent_or_equal_of(unit)
+                or unit.is_parent_or_equal_of(scope_id)
+                for unit in admin_ids
+            ):
+                continue
+        preferred = rows[rows['source_id'].eq(source_id)]
+        rows = preferred if len(preferred) else rows
+        newest = max(rows.itertuples(), key=lambda r: version_sort_key(r.version))
+        chosen.append(newest.recipe_id)
+    return sorted(chosen)
+
+
+def _join_land_geometry(admin, source_id, level, admin_ids):
+    """Attach land-only geometry to the spine rows `get_admin` selected.
+
+    Parameters
+    ----------
+    admin : pandas.DataFrame
+        Selected spine rows, indexed by `admin{level}_id`.
+    source_id : str
+        Source id of the requested resolution.
+    level : int
+        Admin level of the units.
+    admin_ids : list of AdminId or None
+        The request's scope, or None for the whole level.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        `admin` with a `geometry` column; units without a polygon in the
+        cartographic boundary files (the spine has units the Census does
+        not draw) keep an empty geometry.
+    """
+    recipe_ids = _land_geometry_recipe_ids(source_id, level, admin_ids)
+    index_name = f'admin{level}_id'
+    wanted = sorted(set(admin.index))
+    parts = []
+    for recipe_id in recipe_ids:
+        recipe = get_recipe_by_id(recipe_id)
+        output_ids = _get_output_admin_ids(recipe, admin_ids)[0]
+        paths = [get_output_path(recipe, output_id) for output_id in output_ids]
+        paths = [path for path in paths if path.exists()]
+        if not paths:
+            continue
+        part = _concat_recipe_files(
+            paths, geom=True, filters=[(index_name, 'in', wanted)]
+        )
+        parts.append(part[['geometry']])
+    if not parts:
+        raise FileNotFoundError(
+            f'No land-only geometry is ingested for level {level}. '
+            f'Ingest: {format_list(recipe_ids)}.'
+        )
+    geometry = gpd.GeoDataFrame(pd.concat(parts), crs=parts[0].crs)
+    geometry = geometry[~geometry.index.duplicated()]
+    return gpd.GeoDataFrame(admin.join(geometry), crs=geometry.crs)
 
 
 def get_admin_ids(admin_level, admin_id=None, admin_recipe=None, allow_empty=False):
