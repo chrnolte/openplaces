@@ -1,0 +1,71 @@
+# Recipe: NHD High Resolution area features (NHDArea), final release
+#
+# The sibling of US_water-waterbody-usgs-nhdhr2023, reading the NHDArea
+# layer of the same state GeoPackage: the download location follows
+# the dataset (theme, source, version), not the recipe id, so this
+# recipe reuses that download instead of fetching every state again.
+#
+# NHDArea carries the polygons of wide rivers (StreamRiver 46000,
+# 46003, 46006, 46007), rapids (43100), canals, the sea and ocean
+# (44500), foreshore, inundation areas and structures such as dams and
+# locks. The rivers are what the enrich step reads, with the same FCode
+# sidecar as the waterbodies. Narrow rivers and streams have no polygon
+# in NHD; they are NHDFlowline lines, a later phase.
+#
+# NHDArea has no reachcode field. Permanent_Identifier is unique across
+# NHD feature classes, so waterbody_id_nhd never collides with a
+# waterbody's id.
+#
+# Measured 2026-09-29 on US-DE: 1,880 NHDArea features, EPSG:4269,
+# MultiPolygon Z (dropped to 2D here).
+
+description: >-
+  USGS NHD High Resolution area features (wide rivers, rapids, canals,
+  sea), final 2023 release, per state, all feature codes.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: usgs
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.usgs.gov/national-hydrography/access-national-hydrography-products"
+    download_url: "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/State/GPKG/NHD_H_{admin2_name}_State_GPKG.zip"
+  version: nhdhr2023
+
+compressed_file_name: "NHD_H_{admin2_name}_State_GPKG.zip"
+uncompressed_file_name: "NHD_H_{admin2_name}_State_GPKG.gpkg"
+extract_members:
+  - "*.gpkg"
+layer: NHDArea
+
+download_by:
+  admin_level: 2
+  partition_key_transformation:
+    admin2_name:
+      operation: replace
+      args: [" ", "_"]
+
+columns:
+  waterbody_id_nhd: permanent_identifier
+  gnis_id: gnis_id
+  gnis_name: gnis_name
+  feature_type_nhd: ftype
+  feature_code_nhd: fcode
+  area_km2: areasqkm
+  source_date: fdate
+
+# FType and FCode stay integers (see the waterbody recipe).
+force_2d: true
+
+set_index: waterbody_id_nhd
+
+save_to:
+  data_dir: core
+  # A dataset's output path follows the dataset, not the recipe id, so
+  # without a filename this recipe would overwrite the waterbody file
+  # (it did, 2026-09-29).
+  filename: area

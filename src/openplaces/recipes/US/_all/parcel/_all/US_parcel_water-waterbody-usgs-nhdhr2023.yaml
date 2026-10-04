@@ -1,0 +1,76 @@
+# Recipe: lake and river frontage and distance evidence for parcels
+#
+# Reads the NHD High Resolution waterbody and area ingests
+# (US_water-waterbody-usgs-nhdhr2023, ..._area) and writes, per parcel:
+# frontage by shoreline allocation, distance from the primary building
+# and from the parcel edge, the fronted and the nearest lake with their
+# areas, and the parcel's water share. A link table with one row per
+# parcel x waterbody pair (every pair with frontage, and pairs within
+# link_distance_m) is written beside the evidence as *_links.parquet;
+# LakeSense and any crosswalk (LAGOS-US, HydroLAKES, 3DHP) join through
+# it.
+#
+# Method and the choices behind each parameter:
+# plans/lake-frontage-and-distance-enrichment.md, section 4. The
+# tolerance is provisional until scored against assessor waterfront
+# flags (TX CAD frontage recipes, Minneapolis, Adams CO).
+#
+# Tolerance, validated 2026-09-29 against Aransas County, TX (US-TX-ARA),
+# whose roll codes land segments WATERFRONT / LAKEFRONT / CANAL (3,607
+# parcels) and WATERVIEW (201 view-only parcels); water taken as every
+# open-water class, because the assessor does not tell lake from bay.
+# Frontage on water >= 1 ha:
+#   t = 20 m: precision 0.807, recall 0.788, F1 0.798, view lots 7%
+#   F1 plateaus from 20 m up; view lots flagged rise to 14% at 30 m
+#   the places 25 m ring: precision 0.613, recall 0.933, F1 0.740
+# Most remaining false positives front ponds under 1 ha (excluded by
+# the frontage floor) or the bay itself (lots the roll does not code).
+#
+# Lakes follow the LAGOS-US LOCUS FCode list (perennial LakePond and
+# water-storage Reservoir codes; decorative and swimming pools
+# excluded). Pools stay in the link table as their own class.
+
+description: >-
+  Parcel lake and river frontage, distance from the primary building and
+  parcel edge, and fronted and nearest lake, from NHD High Resolution.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: usgs
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+  version: nhdhr2023
+
+entity_recipe: US_parcel-spine-2026
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: link_parcels_to_waterbodies
+    waterbody_recipe_id: US_water-waterbody-usgs-nhdhr2023
+    area_recipe_id: US_water-waterbody-usgs-nhdhr2023_area
+    footprint_recipe_id: US_footprint-spine-2026
+    lake_definition: is_lake_lagos
+    river_definition: is_river_places
+    tolerance_m: 20
+    segment_m: 2
+    frontage_min_area_ha: 1
+    distance_min_area_ha: 4
+    max_distance_m: 10000
+    link_distance_m: 500
+    sliver_m: 5
+    sliver_water_share: 0.5
+    holder_share: 0.5
+    holder_house_m: 20
+    max_vertices: 256
+    save_links: true

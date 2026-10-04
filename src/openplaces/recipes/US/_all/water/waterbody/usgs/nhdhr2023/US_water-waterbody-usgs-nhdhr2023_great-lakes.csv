@@ -1,0 +1,6 @@
+gnis_name,note
+Lake Superior,Split into several NHD polygons; matched by name because their ids differ across NHD versions
+Lake Michigan,
+Lake Huron,
+Lake Erie,
+Lake Ontario,

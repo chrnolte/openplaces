@@ -1,0 +1,53 @@
+# Recipe: USGS crosswalk of NHDPlus HR waterbodies to NHDPlus V2
+#
+# King, T. V. (2026-02-26), "Crosswalk of Waterbody Identifiers between
+# National Hydrography Dataset Plus High Resolution, National Hydrography
+# Dataset Plus V2, and Hydrolakes datasets for the Contiguous United
+# States", U.S. Geological Survey data release, doi:10.5066/P13N85SW.
+#
+# One row per overlapping pair of an NHDPlus HR waterbody
+# (Permanent_Identifier, the key of US_water-waterbody-usgs-nhdhr2023)
+# and an NHDPlus V2 waterbody (COMID), with each side's area and the
+# shared area. Many-to-many: one HR polygon may overlap several V2
+# polygons and vice versa, so no row is a "best" match; consumers choose
+# their own rule from the areas. NHDPlus HR ids are NHD HR ids.
+#
+# Area columns keep their published names (hr_areasqkm, v2_areasqkm,
+# hr_v2_intersection_area_km2); the ids map to registry names.
+
+description: >-
+  USGS waterbody crosswalk, NHDPlus HR Permanent_Identifier to NHDPlus V2
+  COMID, with overlap areas, contiguous US.
+
+admin_id: US
+
+dataset:
+  theme: reference
+  source:
+    source_id: usgs
+    license: "CC0-1.0 (public domain dedication, stated on the data release)"
+    terms_url: "https://creativecommons.org/publicdomain/zero/1.0/"
+    redistribution_restricted: false
+    portal_url: "https://doi.org/10.5066/P13N85SW"
+    download_url: "https://www.sciencebase.gov/catalog/file/get/692f2402d4be026ff273aa53?f=__disk__aa%2F41%2Fce%2Faa41ce17118bbb09d8c005d2f1d0f64c64e19e34"
+  version: waterbodyxwalk2026
+
+uncompressed_file_name: "NHDPlusHR_NHDPlusV2.csv"
+
+csv_dtype:
+  hr_permanent_identifier: str
+  v2_comid: str
+  hr_huc4: str
+  v2_vpuid: str
+
+columns:
+  waterbody_id_nhd: hr_permanent_identifier
+  waterbody_id_nhdplusv2: v2_comid
+
+keep_unnamed_columns: true
+
+save_to:
+  data_dir: core
+  # Explicit filename, or the sibling crosswalks of this release
+  # (same dataset) overwrite each other.
+  filename: nhdplushr-nhdplusv2

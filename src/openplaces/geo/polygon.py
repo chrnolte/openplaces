@@ -868,6 +868,94 @@ def get_simplified_geometries(gdf, tolerance):
     return gdf
 
 
+def subdivide_polygons(
+    geoms: gpd.GeoSeries,
+    max_vertices: int = 256,
+    max_extent: float | None = None,
+    max_depth: int = 40,
+) -> gpd.GeoSeries:
+    """Cut large polygons into pieces of bounded size, for faster overlays.
+
+    A polygon with more than *max_vertices* coordinates (or, when
+    *max_extent* is given, a bounding box wider or taller than it) is
+    cut in two across the longer side of its bounding box, and each
+    half is cut again until every piece is within bounds or *max_depth*
+    cuts were made. This is the recursive bisection of the "katana"
+    function used in earlier code of this project and of PostGIS
+    ST_Subdivide, run one level at a time over the whole array instead
+    of one polygon at a time.
+
+    Why: a GEOS overlay or distance between a small polygon (a parcel)
+    and a large one (a lake with tens of thousands of vertices) scans
+    the large one each time, so a county's parcels along one shore pay
+    for that shore once per parcel. Against pieces of a few hundred
+    vertices, each operation touches only the pieces nearby.
+
+    Parameters
+    ----------
+    geoms : geopandas.GeoSeries
+        Polygons or multipolygons, in a projected CRS when *max_extent*
+        is used.
+    max_vertices : int
+        Largest number of coordinates a piece may keep.
+    max_extent : float, optional
+        Largest bounding-box width or height of a piece, in CRS units.
+    max_depth : int
+        Largest number of successive cuts of one polygon.
+
+    Returns
+    -------
+    geopandas.GeoSeries
+        Single-part polygon pieces, indexed by the index label of the
+        polygon each came from (repeated). The pieces of one polygon
+        cover it exactly; their boundaries include cut lines that are not
+        boundaries of the original.
+    """
+    index = geoms.index.to_numpy()
+    parts, part_idx = shapely.get_parts(geoms.values, return_index=True)
+    labels = index[part_idx]
+    done_geoms, done_labels = [], []
+    for _ in range(max_depth):
+        too_big = shapely.get_num_coordinates(parts) > max_vertices
+        bounds = shapely.bounds(parts)
+        width = bounds[:, 2] - bounds[:, 0]
+        height = bounds[:, 3] - bounds[:, 1]
+        if max_extent is not None:
+            too_big |= np.maximum(width, height) > max_extent
+        done_geoms.append(parts[~too_big])
+        done_labels.append(labels[~too_big])
+        if not too_big.any():
+            break
+        parts, labels = parts[too_big], labels[too_big]
+        bounds, width, height = bounds[too_big], width[too_big], height[too_big]
+        tall = height >= width
+        mid_x = (bounds[:, 0] + bounds[:, 2]) / 2
+        mid_y = (bounds[:, 1] + bounds[:, 3]) / 2
+        x1 = np.where(tall, bounds[:, 2], mid_x)
+        y1 = np.where(tall, mid_y, bounds[:, 3])
+        x0 = np.where(tall, bounds[:, 0], mid_x)
+        y0 = np.where(tall, mid_y, bounds[:, 1])
+        box_a = shapely.box(bounds[:, 0], bounds[:, 1], x1, y1)
+        box_b = shapely.box(x0, y0, bounds[:, 2], bounds[:, 3])
+        halves = shapely.intersection(
+            np.concatenate([parts, parts]), np.concatenate([box_a, box_b])
+        )
+        half_labels = np.concatenate([labels, labels])
+        parts, k = shapely.get_parts(halves, return_index=True)
+        labels = half_labels[k]
+        # Cutting can leave lines or points on the cut; keep polygons.
+        keep = (shapely.get_type_id(parts) == 3) & ~shapely.is_empty(parts)
+        parts, labels = parts[keep], labels[keep]
+    else:
+        done_geoms.append(parts)
+        done_labels.append(labels)
+    return gpd.GeoSeries(
+        np.concatenate(done_geoms),
+        index=pd.Index(np.concatenate(done_labels), name=geoms.index.name),
+        crs=geoms.crs,
+    )
+
+
 def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
     """Get proj4 string for a projection from lat/long.
 

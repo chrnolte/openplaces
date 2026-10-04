@@ -94,25 +94,35 @@ class _DownloadMixin:
                     '`download_url_source` was provided, but '
                     '`download_by` is not defined.'
                 )
-            # Scrape website providing download URLs
-            req = urllib.request.Request(
-                source.download_url_source, headers=request_headers()
-            )
-            ssl_context = (
-                None if source.verify_ssl else ssl._create_unverified_context()
-            )
-            with urllib.request.urlopen(req, context=ssl_context) as response:
-                html = response.read().decode('utf8')
-
+            # Scrape website providing download URLs. A failed scrape is
+            # not fatal yet: when the file is already on disk (found by
+            # `compressed_file_name`, which may be a wildcard), the
+            # ingest proceeds from it. The error is raised at download
+            # time, only if a download is needed. Until 2026-10-01 a
+            # changed page broke every ingest of the recipe, files on
+            # disk included (FEMA USA Structures).
             download_url_source_regex = self._resolve_placeholders(
                 source.download_url_source_regex
             )
-            download_url_found = re.compile(download_url_source_regex).findall(html)
-
-            if not download_url_found:
-                raise ValueError(
-                    f'Could not extract {download_url_source_regex} from html:\n{html}'
+            try:
+                req = urllib.request.Request(
+                    source.download_url_source, headers=request_headers()
                 )
+                ssl_context = (
+                    None if source.verify_ssl else ssl._create_unverified_context()
+                )
+                with urllib.request.urlopen(req, context=ssl_context) as response:
+                    html = response.read().decode('utf8')
+                download_url_found = re.compile(download_url_source_regex).findall(html)
+                if not download_url_found:
+                    raise ValueError(
+                        f'Could not extract {download_url_source_regex} from '
+                        f'{source.download_url_source} (page length {len(html)})'
+                    )
+            except (OSError, ValueError) as err:
+                self.download_partition['download_url'] = None
+                self.download_partition['download_url_error'] = err
+                return
 
             download_url = download_url_found[0]
 
@@ -403,6 +413,8 @@ class _DownloadMixin:
                 self.download_partition['unavailable'] = True
                 return
 
+            if self.download_partition.get('download_url_error') is not None:
+                raise self.download_partition['download_url_error']
             self._catch_missing_download_url_error()
 
             if self.verbose:

@@ -1,0 +1,41 @@
+# Recipe: USGS crosswalk of NHDPlus HR waterbodies to HydroLAKES
+#
+# Same data release as US_reference-usgs-waterbodyxwalk2026_nhdplushr-
+# nhdplusv2 (King 2026, doi:10.5066/P13N85SW, CC0): one row per
+# overlapping pair of an NHDPlus HR waterbody and a HydroLAKES lake
+# (Hylak_id; HydroLAKES maps lakes >= 10 ha), with each side's area and
+# the shared area. Many-to-many; no best match is chosen.
+
+description: >-
+  USGS waterbody crosswalk, NHDPlus HR Permanent_Identifier to HydroLAKES
+  Hylak_id, with overlap areas, contiguous US.
+
+admin_id: US
+
+dataset:
+  theme: reference
+  source:
+    source_id: usgs
+    license: "CC0-1.0 (public domain dedication, stated on the data release)"
+    terms_url: "https://creativecommons.org/publicdomain/zero/1.0/"
+    redistribution_restricted: false
+    portal_url: "https://doi.org/10.5066/P13N85SW"
+    download_url: "https://www.sciencebase.gov/catalog/file/get/692f2402d4be026ff273aa53?f=__disk__12%2F0f%2F80%2F120f80a68bc13181a589931debe59c528c046f18"
+  version: waterbodyxwalk2026
+
+uncompressed_file_name: "NHDPlusHR_Hydrolakes.csv"
+
+csv_dtype:
+  hr_permanent_identifier: str
+  Hylak_id: str
+  hr_huc4: str
+
+columns:
+  waterbody_id_nhd: hr_permanent_identifier
+  waterbody_id_hydrolakes: Hylak_id
+
+keep_unnamed_columns: true
+
+save_to:
+  data_dir: core
+  filename: nhdplushr-hydrolakes

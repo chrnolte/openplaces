@@ -55,7 +55,8 @@ def _transform_partition_key(value, spec: dict) -> str:
         The resolved partition key.
     spec : dict
         ``operation`` plus ``args``: ``substring`` ([start, stop]),
-        ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]).
+        ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]),
+        ``replace`` ([old, new], every occurrence).
     """
     value = str(value)
     operation = spec.get('operation')
@@ -63,7 +64,13 @@ def _transform_partition_key(value, spec: dict) -> str:
     # Each operation's arity, checked before indexing: a short `args` list
     # otherwise raised a bare IndexError naming neither the recipe key nor
     # the operation that wanted more arguments.
-    arity = {'substring': 2, 'zfill': 1, 'add_prefix': 1, 'add_suffix': 1}
+    arity = {
+        'substring': 2,
+        'zfill': 1,
+        'add_prefix': 1,
+        'add_suffix': 1,
+        'replace': 2,
+    }
     if operation in arity and len(args) < arity[operation]:
         raise ValueError(
             f"partition_key_transformation operation '{operation}' needs "
@@ -77,9 +84,15 @@ def _transform_partition_key(value, spec: dict) -> str:
         return f'{args[0]}{value}'
     if operation == 'add_suffix':
         return f'{value}{args[0]}'
+    if operation == 'replace':
+        # USGS names NHD state files with underscores for spaces
+        # ('NHD_H_North_Dakota_State_GPKG.zip'), which neither
+        # admin_key_transform option produces.
+        return value.replace(args[0], args[1])
     raise ValueError(
         f'Unknown partition_key_transformation operation {operation!r}; '
-        "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix'."
+        "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix', "
+        "'replace'."
     )
 
 

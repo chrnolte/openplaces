@@ -48,6 +48,15 @@ def test_a_year_placeholder_is_transformed():
     assert resolved == 'roll_19.zip'
 
 
+def test_replace_rewrites_every_occurrence():
+    """NHD state files spell a state name with underscores."""
+    spec = {'operation': 'replace', 'args': [' ', '_']}
+
+    assert _transform_partition_key('District of Columbia', spec) == (
+        'District_of_Columbia'
+    )
+
+
 def test_a_short_args_list_names_the_operation():
     with pytest.raises(ValueError, match="'substring' needs 2 argument"):
         _transform_partition_key('2019', {'operation': 'substring', 'args': [2]})

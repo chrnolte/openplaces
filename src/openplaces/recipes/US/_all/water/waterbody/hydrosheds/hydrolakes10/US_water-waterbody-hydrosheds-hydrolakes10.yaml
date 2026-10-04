@@ -1,0 +1,50 @@
+# Recipe: HydroLAKES v1.0 lake polygons, United States
+#
+# Messager, M.L., Lehner, B., Grill, G., Nedeva, I., Schmitt, O. (2016):
+# Estimating the volume and age of water stored in global lakes using a
+# geo-statistical approach. Nature Communications 7: 13603.
+# doi:10.1038/ncomms13603. Global lakes and reservoirs >= 10 ha, from
+# SWBD, CanVec, MODIS and other sources, keyed by Hylak_id.
+#
+# The download is the global shapefile (820 MB); rows are kept where the
+# lake's Country is the United States. Ingested to crosswalk NHD HR
+# lakes to Hylak_id by polygon overlap. The USGS crosswalk (King 2026)
+# and an overlap reach about the same share, because HydroLAKES lacks
+# many small lakes, not because ids changed. Measured 2026-09-30 on
+# US-FL: overlap 0.358, USGS id crosswalk 0.344 of lakes >= 10 ha.
+#
+# Lake_type: 1 lake, 2 reservoir, 3 lake control (a regulated natural
+# lake). Grand_id links reservoirs to the GRanD dam database.
+
+description: >-
+  HydroLAKES v1.0 lake and reservoir polygons (>= 10 ha), United States,
+  keyed by Hylak_id, for crosswalks to NHD lakes.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: hydrosheds
+    license: "CC-BY-4.0 (HydroSHEDS licence; attribution required)"
+    terms_url: "https://www.hydrosheds.org/products/hydrolakes"
+    redistribution_restricted: false
+    portal_url: "https://www.hydrosheds.org/products/hydrolakes"
+    download_url: "https://data.hydrosheds.org/file/hydrolakes/HydroLAKES_polys_v10_shp.zip"
+  version: hydrolakes10
+
+compressed_file_name: "HydroLAKES_polys_v10_shp.zip"
+uncompressed_file_name: "HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp"
+
+query: Country == 'United States of America'
+
+columns:
+  waterbody_id_hydrolakes: Hylak_id
+  area_km2: Lake_area
+
+keep_unnamed_columns: true
+
+set_index: waterbody_id_hydrolakes
+
+save_to:
+  data_dir: core

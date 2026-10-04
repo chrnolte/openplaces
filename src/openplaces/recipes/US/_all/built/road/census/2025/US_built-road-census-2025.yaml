@@ -1,0 +1,54 @@
+# Recipe: Census TIGER/Line 2025 roads, one file per county
+#
+# All road edges (primary, secondary, local, ramps, service drives,
+# trails) with their MAF/TIGER feature class code (MTFCC). Used by the
+# water access step: a lot does not reach the water across open land
+# when a road lies between them (maintainer's decision, 2026-10-01).
+# The predecessor model (places/core/b3_rd.py) read the 2019 release of
+# the same files.
+
+description: >-
+  Census TIGER/Line 2025 road centerlines per county, with MTFCC feature
+  class codes.
+
+admin_id: US
+
+dataset:
+  theme: built-road
+  source:
+    source_id: census
+    # Work of the U.S. Government, 17 U.S.C. 105.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/ROADS/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/ROADS/tl_2025_{admin3_id_admin1}_roads.zip"
+  version: 2025
+
+compressed_file_name: "tl_2025_{admin3_id_admin1}_roads.zip"
+
+# One file per county. Where admin level 3 is a New England town, the
+# 10-digit COUSUB GEOID's first five digits are the county FIPS, so the
+# towns of one county share one download and the spatial mask cuts
+# each town's edges out of it.
+download_by:
+  admin_level: 3
+  partition_key_transformation:
+    admin3_id_admin1:
+      operation: substring
+      args: [0, 5]
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  road_id_tiger: LINEARID
+  name: FULLNAME
+  feature_code_tiger: MTFCC
+
+set_index: road_id_tiger
+
+save_to:
+  data_dir: cache
+  admin_level: 3
