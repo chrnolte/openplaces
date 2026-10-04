@@ -8,6 +8,7 @@ steps before saving a canonical entity dataset.
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
 from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
+    RECIPE_PATCHES_METADATA_KEY,
+    apply_recipe_patches,
     get_output_path,
     get_recipe_by_id,
     get_save_admin_level,
@@ -252,7 +255,11 @@ class Curator:
             release_unused_memory()
 
     def _curate_one(self, admin_id: AdminId) -> None:
-        pipeline = self.recipe.get('pipeline')
+        # The recipe as this unit runs it: a county's or state's patch
+        # recipe amends the national pipeline here, once per unit, and
+        # the output footer records which patches applied.
+        recipe, applied_patches = apply_recipe_patches(self.recipe, admin_id)
+        pipeline = recipe.get('pipeline')
         if not pipeline:
             warnings.warn(
                 f"Recipe has no 'pipeline' section; nothing to do for {admin_id}."
@@ -277,7 +284,7 @@ class Curator:
         require_unique_index(curated, f'curate {recipe_id} for {admin_id}')
         curated = _coerce_registry_numerics(curated)
         state = CurateState(
-            recipe=self.recipe,
+            recipe=recipe,
             entity_recipe=self.entity_recipe,
             admin_id=admin_id,
             verbose=self.verbose,
@@ -319,8 +326,13 @@ class Curator:
             state = fn(state, **params)
 
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
+        save_kwargs = {'combined': combined}
+        if applied_patches:
+            save_kwargs['file_metadata'] = {
+                RECIPE_PATCHES_METADATA_KEY: json.dumps(applied_patches)
+            }
         save_parquet(
-            state.curated, get_output_path(self.recipe, admin_id), combined=combined
+            state.curated, get_output_path(self.recipe, admin_id), **save_kwargs
         )
 
     def show_random_entity(self):

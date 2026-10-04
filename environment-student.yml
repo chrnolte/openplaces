@@ -69,7 +69,6 @@ dependencies:
   - plotly>=5.15.0
   - folium>=0.15.0
   - seaborn>=0.12.0
-  - contextily>=1.6.2
   - altair>=5.0.0
 
   # Optional: raster, only the two that are module-level imports on the

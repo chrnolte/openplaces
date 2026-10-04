@@ -31,12 +31,11 @@ points lay within 50 m of a footprint.
 Why this shape and not a scored match: each link is decided by one
 exact rule, the rule is recorded in `matched_via` as a label rather than
 a strength score, nothing is learned from the links made, and no link is
-ever revisited or removed. There is no fuzzy string comparison. A
-cascade that falls through to fuzzy matching, scores link strength,
-recalibrates that scorer from its own links and unlinks is the shape of
-a known patent in this domain (see AGENTS.md, patent risk, shape 4);
-this module deliberately has none of those parts, and a change adding
-one needs that check first.
+ever revisited or removed. There is no fuzzy string comparison. The
+module deliberately has no fall-through to fuzzy matching, no link
+strength score, no scorer recalibrated from its own links and no
+unlinking step, and a change adding one of those parts is a design
+decision for the maintainer (see "Design limits" in AGENTS.md).
 """
 
 from __future__ import annotations

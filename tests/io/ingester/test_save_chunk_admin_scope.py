@@ -12,7 +12,7 @@ import pandas as pd
 from shapely.geometry import box
 
 from openplaces.core.schema import Entity
-from openplaces.io.ingester import table_ingester
+from openplaces.io.ingester import table_save
 from openplaces.io.ingester.table_ingester import TableIngester
 
 WAKE_TOWN = 'US-NC-WAK-CA'
@@ -49,8 +49,8 @@ def _run(monkeypatch, chunk_admin_id, tmp_path):
     def fake_save_parquet(gdf, output_path):
         saved[output_path.stem] = gdf
 
-    monkeypatch.setattr(table_ingester, 'get_output_path', fake_get_output_path)
-    monkeypatch.setattr(table_ingester, 'save_parquet', fake_save_parquet)
+    monkeypatch.setattr(table_save, 'get_output_path', fake_get_output_path)
+    monkeypatch.setattr(table_save, 'save_parquet', fake_save_parquet)
     _ingester(chunk_admin_id)._save_recipe_data(_gdf())
     return saved
 

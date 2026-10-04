@@ -15,6 +15,7 @@ import pytest
 from shapely.geometry import box
 
 from openplaces.io.ingester import table_ingester as ti_module
+from openplaces.io.ingester import table_read
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.timing import Timer
 
@@ -41,8 +42,8 @@ def unreadable_archive(tmp_path, monkeypatch):
         return _frame(str(Path(path).name))
 
     monkeypatch.setattr(ti_module.gpd, 'read_file', fake_read_file)
-    monkeypatch.setattr(ti_module, 'unzip', lambda *a, **k: None)
-    monkeypatch.setattr(ti_module, 'find_latest_file_or_gdb', lambda _dir: extracted)
+    monkeypatch.setattr(table_read, 'unzip', lambda *a, **k: None)
+    monkeypatch.setattr(table_read, 'find_latest_file_or_gdb', lambda _dir: extracted)
     return archive, heap, extracted
 
 
@@ -85,7 +86,7 @@ def test_missing_extraction_names_the_archive_in_the_error(
     tmp_path, monkeypatch, unreadable_archive
 ):
     archive, heap, _extracted = unreadable_archive
-    monkeypatch.setattr(ti_module, 'find_latest_file_or_gdb', lambda _dir: None)
+    monkeypatch.setattr(table_read, 'find_latest_file_or_gdb', lambda _dir: None)
     partition = {'data_path': archive}
 
     with pytest.raises(OSError, match='source.zip'):

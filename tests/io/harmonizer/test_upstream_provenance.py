@@ -13,6 +13,7 @@ import pytest
 
 from openplaces.core.schema import Entity
 from openplaces.io.harmonizer import HarmonizeState, links
+from tests.links_patching import patch_links
 
 
 def _state(spine):
@@ -30,7 +31,7 @@ def _spine():
 
 
 def _link(monkeypatch, ref, **kwargs):
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref.copy())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref.copy())
     opts = dict(
         mode='attributes',
         columns=['land_value'],
@@ -102,7 +103,7 @@ def test_provenance_marks_only_the_cells_this_pass_wrote(monkeypatch, fill_only)
             'land_value_source': ['edgecombecounty', 'edgecombecounty'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref.copy())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref.copy())
     out = links.link_by_id(
         _state(spine),
         'US_parcel-spine-2026',

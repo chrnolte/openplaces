@@ -16,6 +16,7 @@ from shapely.geometry import Point, box
 
 import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 CRS = 32617  # UTM 17N (metric)
 
@@ -32,7 +33,7 @@ def _state():
 
 
 def _run(monkeypatch, points_df):
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: points_df)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: points_df)
     state = _state()
     # save_link=False: persistence needs a real spine recipe for the
     # sidecar path and fingerprint; these tests exercise the flag logic.

@@ -14,6 +14,7 @@ import pandas as pd
 import openplaces.io.harmonizer.links as links
 from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 def _state(spine):
@@ -27,8 +28,8 @@ def _state(spine):
 
 
 def _patch_reference(monkeypatch, ref):
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref.copy())
-    monkeypatch.setattr(links, 'restrict_to_admin_by_name', lambda df, *a: df)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref.copy())
+    patch_links(monkeypatch, 'restrict_to_admin_by_name', lambda df, *a: df)
 
 
 def _spine():
@@ -104,8 +105,8 @@ def test_auto_discovered_link_does_not_copy_the_parcel_key(monkeypatch):
         }
     )
     _patch_reference(monkeypatch, ref)
-    monkeypatch.setattr(
-        links,
+    patch_links(
+        monkeypatch,
         '_discover_link_sources',
         lambda state, entity_type: [
             {
@@ -118,7 +119,7 @@ def test_auto_discovered_link_does_not_copy_the_parcel_key(monkeypatch):
             }
         ],
     )
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     state = links.link_by_id(
         _state(spine),

@@ -1,18 +1,17 @@
 """Core mapping interface for quick visualization.
 
 This module provides the main entry points for creating maps with sensible
-defaults and automatic performance optimization.
+defaults and automatic performance optimization. Every map draws only
+openplaces' own layers, on a plain background; add a background map in
+your own tool if you need one.
 """
 
 import textwrap
 import warnings
 
-import contextily as cx
 import geopandas as gpd
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import requests
 from pyproj import Transformer
 from shapely.geometry import (
     LineString,
@@ -28,12 +27,16 @@ from openplaces.geo.polygon import get_areas
 from openplaces.io.readers import get_admin, get_entities
 from openplaces.recipe import find_admin_recipe_id, get_output_path
 
+# Line colors for a white background: neighbors recede, the feature
+# of interest stands out.
+_CONTEXT_COLOR = '#7f7f7f'
+_TARGET_COLOR = '#d62728'
+
 
 def show_geometry_context(
     gdf: gpd.GeoDataFrame,
     idx: int | str,
     buffer_factor: float = 3.0,
-    basemap_source: str = 'Esri.WorldImagery',
     figsize: tuple = (12, 8),
     max_attrs: int = 20,
     title: str = None,
@@ -53,8 +56,6 @@ def show_geometry_context(
         Buffer size as a multiple of the feature's maximum dimension.
         For point geometries (zero extent) the buffer is derived from
         `min_buffer_m` instead.
-    basemap_source : str
-        Contextily basemap provider string.
     figsize : tuple
         Figure size (width, height).
     max_attrs : int
@@ -162,48 +163,53 @@ def show_geometry_context(
         gridspec_kw={'width_ratios': [7, 3], 'wspace': 0},
     )
 
+    # Neighbors in gray, the target in a saturated color: both read on
+    # the plain white background the map is drawn on.
     if is_poly:
         context_ortho.plot(
             ax=ax_map,
             facecolor='none',
-            edgecolor='yellow',
+            edgecolor=_CONTEXT_COLOR,
             linewidth=1,
-            alpha=0.7,
+            alpha=0.8,
         )
-        # Fill with semi-transparent color + thick boundary
+        target_ortho.plot(
+            ax=ax_map,
+            facecolor=_TARGET_COLOR,
+            edgecolor=_TARGET_COLOR,
+            linewidth=2.5,
+            alpha=0.25,
+        )
         target_ortho.plot(
             ax=ax_map,
             facecolor='none',
-            edgecolor='yellow',
+            edgecolor=_TARGET_COLOR,
             linewidth=2.5,
-            alpha=0.9,
         )
     elif is_line:
         context_ortho.plot(
             ax=ax_map,
-            color='yellow',
+            color=_CONTEXT_COLOR,
             linewidth=1,
-            alpha=0.7,
+            alpha=0.8,
         )
         target_ortho.plot(
             ax=ax_map,
-            color='yellow',
+            color=_TARGET_COLOR,
             linewidth=2.5,
-            alpha=0.9,
         )
     else:  # Point / MultiPoint
         context_ortho.plot(
             ax=ax_map,
-            facecolor='yellow',
-            edgecolor='red',
+            facecolor='#d9d9d9',
+            edgecolor=_CONTEXT_COLOR,
             markersize=20,
             linewidth=1,
-            alpha=0.9,
         )
         target_ortho.plot(
             ax=ax_map,
-            facecolor='yellow',
-            edgecolor='red',
+            facecolor=_TARGET_COLOR,
+            edgecolor='black',
             markersize=40,
             linewidth=1.5,
         )
@@ -217,14 +223,6 @@ def show_geometry_context(
     ax_map.set_ylim(
         target_centroid_ortho.y - buffer_dist_plot,
         target_centroid_ortho.y + buffer_dist_plot,
-    )
-
-    # Basemap
-    cx.add_basemap(
-        ax_map,
-        crs=ortho_crs.to_string(),
-        source=basemap_source,
-        attribution=False,
     )
 
     ax_map.set_axis_off()
@@ -286,7 +284,10 @@ def show_geometry_context(
     return fig, (ax_map, ax_table)
 
 
-_DEFAULT_COLORS = ['#00ffff', '#ff66ff', '#66ff66', '#ffaa00', '#ff6666', '#aaaaff']
+# Per-dataset colors chosen to read on the white background.
+_DEFAULT_COLORS = ['#1f77b4', '#9467bd', '#2ca02c', '#ff7f0e', '#d62728', '#17becf']
+# Parcel boundaries: a dark gold that stays visible on white.
+_PARCEL_COLOR = '#b8860b'
 # (ha, va) positions for per-dataset text boxes; cycles if > 3 non-parcel datasets
 _LABEL_POSITIONS = [
     ('right', 'top'),
@@ -368,14 +369,15 @@ def show_building(
     styles=None,
     radius=100,
     size=10,
-    show_basemap=True,
     show_crosshair=True,
     show_location=True,
     return_fig_ax=False,
     ax=None,
     verbose=False,
 ):
-    """Show building in its context with basemap
+    """Show a building in the context of its parcel and nearby datasets.
+
+    Drawn on a plain white background.
 
     Parameters
     ----------
@@ -396,8 +398,6 @@ def show_building(
         Radius of plot in EPSG:3857 "meters" (~1.3m in NY)
     size : float
         Size of plot in inches (both height and width of `figsize`)
-    show_basemap : bool
-        If True, a basemap is added, and colors of parcels are adjusted.
     show_crosshair : bool
         Display crosshair of the centerpoint
     show_location : bool
@@ -444,26 +444,12 @@ def show_building(
         fig, ax = plt.subplots(figsize=(size, size))
     else:
         fig = ax.get_figure()
-    ax.set_xlim(xmin, xmax)  # Needs to happen before adding a basemap
+    ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
 
-    # Try to show basemap
-    if show_basemap:
-        try:
-            cx.add_basemap(
-                ax,
-                crs='epsg:3857',
-                source=cx.providers.Esri.WorldImagery,
-                alpha=0.8,
-            )
-        except requests.exceptions.ConnectionError:
-            print('No internet connection: could not add basemap. ')
-            show_basemap = False
-
     if show_crosshair:
-        crosshair_color = 'white' if show_basemap else 'black'
-        ax.plot([xmin, xmax], [ymin, ymax], color=crosshair_color, ls=':', linewidth=1)
-        ax.plot([xmin, xmax], [ymax, ymin], color=crosshair_color, ls=':', linewidth=1)
+        ax.plot([xmin, xmax], [ymin, ymax], color='black', ls=':', linewidth=1)
+        ax.plot([xmin, xmax], [ymax, ymin], color='black', ls=':', linewidth=1)
 
     if show_location:
         ax.text(
@@ -482,7 +468,7 @@ def show_building(
             ),
         )
 
-    color_parcel = 'yellow' if show_basemap else 'gold'
+    color_parcel = _PARCEL_COLOR
 
     # Resolve per-dataset styles
     styles = styles or {}
@@ -866,13 +852,12 @@ def show_ingested_geometries(
     edgecolor: str = 'blue',
     point_markersize: float = 2,
     max_plot: int = 250_000,
-    basemap_source: str = 'Esri.WorldImagery',
     figsize: tuple = (10, 10),
 ) -> tuple[plt.Figure, plt.Axes] | None:
     """Plot the last ingested layer for visual inspection.
 
     Reads entities and admin boundary from the ingester, applies a sample cap
-    for large datasets, and renders a basemap.
+    for large datasets, and draws them on a plain background.
 
     Parameters
     ----------
@@ -892,8 +877,6 @@ def show_ingested_geometries(
     max_plot : int
         Maximum number of polygon features to render; a random sample is taken
         when exceeded.
-    basemap_source : str
-        Contextily basemap provider string (e.g. 'Esri.WorldImagery').
     figsize : tuple
         Figure size (width, height) in inches.
 
@@ -980,9 +963,8 @@ def show_ingested_geometries(
         # Lines, geometry collections, or a null first geometry: plot
         # through geopandas' own dispatch rather than leaving the axes
         # empty. Falling through both branches left the default (0, 1)
-        # limits, and the basemap below then fetched tiles for a degree
-        # square in the Atlantic off West Africa: a plausible-looking
-        # map of nothing.
+        # limits: a degree square in the Atlantic off West Africa, a
+        # plausible-looking map of nothing.
         to_plot = entities
         if len(entities) > max_plot:
             print(f'>{max_plot:,d} features to plot. Taking sample.')
@@ -994,16 +976,6 @@ def show_ingested_geometries(
 
     ax.set_title(title)
     ax.axis('off')
-
-    # No finite extent (every geometry empty or null): a basemap
-    # would be fetched for the default axis limits, which is a place
-    # the data has nothing to do with.
-    if np.isfinite(entities.total_bounds).all():
-        basemap_provider = basemap_source.split('.')
-        source = cx.providers
-        for part in basemap_provider:
-            source = source[part]
-        cx.add_basemap(ax, crs=entities.crs, source=source, alpha=0.5)
 
     return fig, ax
 

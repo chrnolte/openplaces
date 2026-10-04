@@ -10,9 +10,9 @@ import openplaces.io.curator.reconcilers as rec
 import openplaces.path as op_path
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
+from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
 from openplaces.io.curator.formatters import cast_integers, order_columns
 from openplaces.io.curator.imputers import impute_n_dwellings
-from openplaces.io.curator.inferers import impute_occupancy_type
 from openplaces.io.curator.reconcilers import reconcile_values
 
 CLASS_MAP = [

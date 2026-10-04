@@ -10,20 +10,20 @@ units at one file, keeps both at the recipe's own unit so the shared download
 is fetched once.
 """
 
+import openplaces.io.ingester.download as ingester_download
 from openplaces.core.schema import AdminId, Entity
-from openplaces.io import ingester as ingester_module
 from openplaces.io.ingester import Ingester
 from openplaces.timing import Timer
 
 
 def _ingester(recipe, admin_id_to_download, tmp_path, monkeypatch):
     monkeypatch.setattr(
-        ingester_module,
+        ingester_download,
         'heap_dir',
         lambda admin_id, *a, **k: tmp_path / 'heap' / str(admin_id),
     )
     monkeypatch.setattr(
-        ingester_module,
+        ingester_download,
         'external_dir',
         lambda admin_id, *a, **k: tmp_path / 'external' / str(admin_id),
     )

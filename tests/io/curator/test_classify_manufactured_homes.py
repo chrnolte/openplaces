@@ -5,7 +5,9 @@ from shapely.geometry import box
 import openplaces.io.curator.occupancy as occ_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import classify_manufactured_homes
+from openplaces.io.curator.estimators.manufactured_homes import (
+    classify_manufactured_homes,
+)
 
 # Class names and geometry thresholds the step reads from the recipe occupancy
 # block; the test asserts these values flow through rather than hardcoded ones.

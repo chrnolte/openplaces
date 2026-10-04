@@ -18,6 +18,9 @@ from openplaces.io.admin.ids import (
     admin1_id_index_from_admin1_id_a3 as admin1_id_index_from_admin1_id_a3,
 )
 from openplaces.io.admin.ids import (
+    admin1_id_index_from_codes as admin1_id_index_from_codes,
+)
+from openplaces.io.admin.ids import (
     admin2_id_index_from_admin2_gadm as admin2_id_index_from_admin2_gadm,
 )
 from openplaces.io.admin.ids import (

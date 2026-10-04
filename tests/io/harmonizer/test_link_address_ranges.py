@@ -14,6 +14,7 @@ import pandas as pd
 
 import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 def _state(spine, admin_id='US-MA-SOM'):
@@ -43,7 +44,7 @@ def test_single_match_links_the_range(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_address_ranges(
         _state(spine), recipe_id='ref_recipe', columns=['use_group']
@@ -62,7 +63,7 @@ def test_ambiguous_match_left_unmatched_and_warns(monkeypatch):
             'use_group': ['Residential', 'Commercial'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -85,7 +86,7 @@ def test_zero_match_is_silent(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -114,7 +115,7 @@ def test_does_not_overwrite_an_already_linked_row(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_address_ranges(
         _state(spine), recipe_id='ref_recipe', columns=['use_group']
@@ -138,7 +139,7 @@ def test_plain_unmatched_number_still_gets_a_direct_shot(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_address_ranges(
         _state(spine), recipe_id='ref_recipe', columns=['use_group']
@@ -158,7 +159,7 @@ def test_already_matched_plain_row_is_not_reconsidered(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_address_ranges(
         _state(spine), recipe_id='ref_recipe', columns=['use_group']
@@ -180,7 +181,7 @@ def test_plain_number_matches_a_reference_range_half(monkeypatch):
             'use_group': ['Residential'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_address_ranges(
         _state(spine), recipe_id='ref_recipe', columns=['use_group']
@@ -201,7 +202,7 @@ def test_plain_number_ambiguous_between_range_half_and_distinct_parcel(monkeypat
             'use_group': ['Residential', 'Commercial'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')

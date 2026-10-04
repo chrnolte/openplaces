@@ -324,6 +324,16 @@ def resolve_spine(
         all — set it to the rough size of an ordinary house to protect only
         large/likely-multi-unit buildings (also the main performance lever,
         since it excludes most footprints from ever being buffered).
+    keep_columns : list of str, optional
+        Source columns carried onto the spine from each source's own row;
+        a column a source lacks is skipped. Listing ``geometry_source``
+        keeps the source's own provenance instead of stamping the
+        source's label: a spine built from another entity's spine (the
+        building geospine from the footprint geospine) then says where
+        each outline came from (`obm`, `parcel.spine`), which the steps
+        that read that token (`classify_footprint_priority`, the
+        inferred-row attribution) need, rather than the one word
+        `footprint` that names the intermediate.
     track_provenance : list of str, optional
         Subset of *keep_columns* to seed per-cell source provenance for: a
         ``{column}_source`` sidecar recording which resolved source's own
@@ -414,7 +424,7 @@ def resolve_spine(
     spine: gpd.GeoDataFrame = source_gdfs[first_recipe_id][
         _spine_cols(source_gdfs[first_recipe_id])
     ].copy()
-    spine['geometry_source'] = first_label
+    _stamp_geometry_source(spine, first_label, keep_columns)
     for col in track_cols & set(spine.columns):
         _record_source(spine, col, spine[col].notna(), first_label)
 
@@ -461,7 +471,7 @@ def resolve_spine(
         else:
             n_elong_dropped = 0
 
-        to_add['geometry_source'] = label
+        _stamp_geometry_source(to_add, label, keep_columns)
         for col in track_cols & set(to_add.columns):
             _record_source(to_add, col, to_add[col].notna(), label)
         if candidate.index.name != spine.index.name:
@@ -529,6 +539,76 @@ def resolve_spine(
         state.spine.index = state.spine.index.rename('spine_id')
 
     return state
+
+
+@_register('adopt_source_entity_id', phase='geometry')
+def adopt_source_entity_id(
+    state: HarmonizeState, source_id_column: str
+) -> HarmonizeState:
+    """Give a spine built from another entity's rows its own id, keeping the
+    source's id as a column.
+
+    An entity established from another entity's spine (the building spine
+    from the footprint geospine, one building per outline while nothing
+    says otherwise) arrives with the source's index: `resolve_spine` keeps
+    the first source's ids and index name. This step writes those ids into
+    *source_id_column* (`footprint_id`), so the relationship stays on the
+    row and the link table can be built from it, and renames the index to
+    this recipe's own `{entity_type}_id`. The values are unchanged: while
+    the relation is one to one the building's id equals its footprint's,
+    which is what makes the projection back onto footprints a join and
+    not a lookup. A row that later has no source of its own (a point
+    building with no outline, a townhome split into several buildings)
+    is minted by the step that adds it, not here.
+
+    Parameters
+    ----------
+    source_id_column : str
+        Column the source's ids are written to. Refused if the spine
+        already carries it, because a source id column that arrived
+        with the rows and one written here would disagree silently.
+    """
+    spine = state.spine
+    if spine is None or len(spine) == 0:
+        return state
+    entity = state.recipe.get('entity')
+    entity_type = str(entity.entity_type) if entity is not None else 'entity'
+    own_id = f'{entity_type}_id'
+    if source_id_column in spine.columns:
+        raise ValueError(
+            f'adopt_source_entity_id: the spine already carries '
+            f'{source_id_column!r}; the source id would be written twice.'
+        )
+    if spine.index.name == own_id:
+        raise ValueError(
+            f'adopt_source_entity_id: the spine is already indexed by {own_id!r}; '
+            'the step belongs right after the source rows are loaded.'
+        )
+    spine = spine.copy()
+    spine[source_id_column] = spine.index.to_numpy()
+    spine.index = spine.index.rename(own_id)
+    state.spine = spine
+    if state.verbose:
+        print(
+            f'  adopt_source_entity_id: {len(spine):,d} rows indexed by {own_id}, '
+            f'source ids kept in {source_id_column}'
+        )
+    return state
+
+
+def _stamp_geometry_source(frame, label: str, keep_columns: list[str]) -> None:
+    """Write a source's label into `geometry_source`, unless kept from the row.
+
+    A source that is itself a spine arrives with a `geometry_source`
+    column of its own. When the recipe lists that column under
+    `keep_columns`, the value on the row is the finer provenance and
+    stays; the label fills only rows where it is missing. Otherwise the
+    label is the provenance, as for an ingested layer.
+    """
+    if 'geometry_source' in keep_columns and 'geometry_source' in frame.columns:
+        frame['geometry_source'] = frame['geometry_source'].fillna(label)
+        return
+    frame['geometry_source'] = label
 
 
 def _admin_specificity(recipe_id: str) -> int:
@@ -720,6 +800,16 @@ def _expand_auto_discover(
     rows, its roll's 53,405 plus 46,707 components, before this skip.
     """
     from openplaces.recipe import find_additional_layer_recipes
+
+    # Discovery is on by default, sentinel or not (the sentinel only
+    # says where the discovered sources rank). A recipe whose sources
+    # must be exactly the ones it lists says so with
+    # `- auto_discover: false`: the building geospine is built from the
+    # footprint geospine alone, and without this the CHEER building
+    # inventory, an ingest recipe of the same entity type, was merged in
+    # (Currituck, 2026-09-29: 1,637 rows that no footprint drew).
+    if any(s.get('auto_discover') is False for s in sources):
+        return [s for s in sources if 'auto_discover' not in s]
 
     sentinel_idx = next(
         (i for i, s in enumerate(sources) if s.get('auto_discover')),

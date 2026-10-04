@@ -1,18 +1,19 @@
 """GPU-accelerated interactive rendering of large entity datasets.
 
 Uses Lonboard/deck.gl, rendered client-side in the browser over WebGL2.
+
+Every map is built with no basemap: openplaces renders only its own
+layers, on a plain background. Add a background map in your own tool
+if you need one.
 """
 
 import warnings
-from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import rasterio
 import shapely
-import xyzservices.providers as xyz
-from lonboard import BitmapTileLayer, Map, PathLayer, PolygonLayer, SolidPolygonLayer
+from lonboard import Map, PathLayer, PolygonLayer, SolidPolygonLayer
 from lonboard.layer_extension import PathStyleExtension
 
 from openplaces.io.readers import get_admin, get_entities
@@ -31,23 +32,6 @@ DEFAULT_FILL_COLOR = '#5a9e6f'
 # reimplements that ramp directly rather than calling
 # continuous_to_rgba.
 NUMERIC_RAMP = ('#e5e7db', '#5a2828')
-
-# Free, keyless XYZ tile providers spanning visually distinct basemap
-# styles
-# for use as the ground plane under an extruded scene (e.g.
-# openplaces.viz.terrain) -- Map's own basemap_style only offers
-# abstract
-# CARTO vector styles, no photographic/topo raster option, so a raster
-# tile
-# layer is used instead. All confirmed keyless via
-# provider.requires_token().
-_BASEMAP_PROVIDERS = {
-    'satellite': xyz.Esri.WorldImagery,
-    'osm': xyz.OpenStreetMap.Mapnik,
-    'positron': xyz.CartoDB.Positron,
-    'dark_matter': xyz.CartoDB.DarkMatter,
-    'topo': xyz.Esri.WorldTopoMap,
-}
 
 
 def show_entities_interactive(
@@ -147,7 +131,7 @@ def show_entities_interactive(
         display(HTML(legend_html(color_by, **legend_kwargs)))
 
     layer = SolidPolygonLayer.from_geopandas(gdf, get_fill_color=fill_color)
-    return Map(layer)
+    return Map(layer, basemap=None)
 
 
 def _resolve_fill_color(gdf: gpd.GeoDataFrame, color_by, default_color, alpha):
@@ -342,77 +326,6 @@ def _needs_reassert(view_state, max_pitch, min_pitch, reassert_above) -> bool:
     # Below the ceiling only a requested floor above lonboard's default
     # (0) can still bind, so only that is worth a write.
     return min_pitch is not None and min_pitch > 0
-
-
-# A MapLibre style that needs no API key. lonboard draws its map
-# controls (fullscreen, navigation, scale) through the MapLibre basemap,
-# so a Map without one loses them; its default style is CARTO's, which
-# now asks for a key. OpenFreeMap serves this one without.
-KEYLESS_BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron'
-
-
-def get_maplibre_basemap(style: str = KEYLESS_BASEMAP_STYLE):
-    """A lonboard MapLibre basemap that needs no API key.
-
-    Pass as `Map(..., basemap=get_maplibre_basemap())` under a raster
-    `get_basemap_layer`, which covers it; it is there for the map
-    controls and as the ground the camera pans against.
-
-    Parameters
-    ----------
-    style : str
-        URL of a MapLibre style. Default `KEYLESS_BASEMAP_STYLE`.
-
-    Returns
-    -------
-    lonboard.basemap.MaplibreBasemap
-    """
-    from lonboard.basemap import MaplibreBasemap
-
-    return MaplibreBasemap(style=style)
-
-
-def get_basemap_layer(
-    provider: str = 'satellite', opacity: float = 1.0
-) -> BitmapTileLayer:
-    """XYZ tile basemap as a lonboard basemap layer.
-
-    Add as the *first* entry in a `lonboard.Map([...])` layer list so it
-    renders as the ground plane beneath other layers (e.g. an extruded 3D
-    scene from `openplaces.viz.terrain`) — `Map`'s own `basemap_style`
-    parameter only offers abstract CARTO vector styles (Positron, DarkMatter,
-    Voyager), no photographic or topo raster option, so a raster tile layer
-    is used instead.
-
-    Parameters
-    ----------
-    provider : str
-        One of ``'satellite'`` (Esri World Imagery, photographic), ``'osm'``
-        (OpenStreetMap Mapnik, streets/labels), ``'positron'`` (CartoDB
-        Positron, light/minimal), ``'dark_matter'`` (CartoDB Dark Matter,
-        dark/minimal), or ``'topo'`` (Esri World Topo Map, shaded
-        relief/contours).
-    opacity : float
-        Layer opacity in [0, 1].
-
-    Returns
-    -------
-    lonboard.BitmapTileLayer
-    """
-    if provider not in _BASEMAP_PROVIDERS:
-        raise ValueError(
-            f'Unknown basemap provider {provider!r}; must be one of '
-            f'{sorted(_BASEMAP_PROVIDERS)}.'
-        )
-    tile_provider = _BASEMAP_PROVIDERS[provider]
-    return BitmapTileLayer(
-        data=tile_provider.build_url(x='{x}', y='{y}', z='{z}'),
-        tile_size=256,
-        max_requests=-1,
-        min_zoom=0,
-        max_zoom=tile_provider.get('max_zoom', 19),
-        opacity=opacity,
-    )
 
 
 def _elevation_module():
@@ -658,315 +571,6 @@ def _ribbon_from_lines(lines: gpd.GeoDataFrame, half_width: float) -> gpd.GeoSer
     )
 
 
-def get_terrain_basemap_layer(
-    admin_id=None,
-    level=None,
-    recipe=None,
-    *,
-    gdf: gpd.GeoDataFrame | None = None,
-    elevation_recipe,
-    provider: str = 'satellite',
-    resolution: float = 20.0,
-    terrain_exaggeration: float = 1.0,
-    elevation_datum: float = 0.0,
-    opacity: float = 1.0,
-    max_cells: int = 600_000,
-    clip: bool = True,
-    zoom: int | None = None,
-) -> SolidPolygonLayer:
-    """Basemap imagery draped over the DEM, as a colored quad mesh.
-
-    `get_basemap_layer` pins its tiles to sea level. That is fine for a flat
-    map and wrong for a tilted 3D one: everything else in the scene sits on
-    real terrain, so at pitch `p` a feature at height `h` appears displaced
-    from its own basemap position by `h * tan(p)`. Over terrain a few
-    hundred meters up, viewed near the pitch ceiling, that is a kilometer or
-    more — buildings float far from the streets they belong to.
-
-    deck.gl solves this with `TerrainLayer`, but lonboard does not wrap it,
-    and its `BitmapLayer` accepts only 2D bounds, so neither can be lifted.
-    What lonboard does expose is `SolidPolygonLayer`, which takes arbitrary
-    3D geometry and a per-feature color — so the surface is built here as
-    one quad per grid cell, each colored by the *area mean* of the basemap
-    pixels it covers and carrying its four corners' own sampled elevations.
-    Corners are shared between neighbors, so the mesh is continuous rather
-    than stepped.
-
-    Averaging (rather than sampling) the pixels is what keeps this legible:
-    a road narrower than a cell still darkens every cell it crosses, so the
-    network stays continuous instead of breaking into dots. At 20 m cells
-    the street network of a New England town remains readable; by 30 m it is
-    soft, and by 60 m it is noise.
-
-    This is a mesh, not a texture, so cost scales with area over resolution
-    squared — see `resolution` and `max_cells`. It suits one admin unit at a
-    time, not a whole state.
-
-    Parameters
-    ----------
-    admin_id : str, AdminId, or sequence, optional
-        Administrative unit ID(s) whose extent to cover.
-    level : int, optional
-        Administrative level, forwarded to `io.readers.get_admin`.
-    recipe : str, optional
-        Admin recipe ID, forwarded to `io.readers.get_admin`.
-    gdf : geopandas.GeoDataFrame, optional
-        Pre-loaded extent polygons. If given, `admin_id`, `level` and
-        `recipe` are ignored.
-    elevation_recipe : str or dict
-        DEM dataset recipe (e.g. ``'US_land-elevation-usgs-3dep'``). Unlike
-        the other layer builders this is required — a draped basemap with no
-        DEM would just be `get_basemap_layer` at greater expense.
-    provider : str
-        Basemap style, one of the same names `get_basemap_layer` accepts.
-    resolution : float
-        Grid cell size in meters. Defaults to 20, the coarsest size at which
-        a street network still reads as continuous lines.
-    terrain_exaggeration : float
-        Multiplier on ground elevation. Must match the value passed to
-        `viz.terrain.show_value_terrain_layer` and
-        `get_admin_boundary_layer`, or the basemap will sit at a different
-        vertical scale than the scene it is meant to align.
-    elevation_datum : float
-        Ground elevation in meters to treat as z=0, subtracted before
-        `terrain_exaggeration`. Defaults to 0 (sea level). Must match the
-        value passed to every other layer in the scene -- compute it once
-        with `viz.elevation.get_elevation_datum`. Ground is clamped at z=0
-        afterward so nothing sinks under a flat basemap.
-    opacity : float
-        Fill opacity in [0, 1].
-    max_cells : int
-        Refuse to build a mesh larger than this many quads, rather than
-        hanging the browser. Defaults to 600,000. The error names the
-        resolution that would fit.
-    clip : bool
-        If True (default), drop cells whose center falls outside the extent
-        polygons, so the mesh follows the admin unit instead of hanging a
-        rectangular slab over its neighbors.
-    zoom : int, optional
-        Tile zoom level to average down from. Defaults to the level whose
-        pixels are about a quarter of a cell. Worth raising by hand: tile
-        styles drop detail at low zoom (CartoDB omits residential streets
-        below roughly z15), so a level chosen purely on pixel size can
-        average down imagery that never drew the roads in the first place.
-        Higher zoom means more tiles to fetch.
-
-    Returns
-    -------
-    lonboard.SolidPolygonLayer
-        Add as the *first* layer of a `lonboard.Map`, in place of
-        `get_basemap_layer`.
-    """
-    import contextily as cx
-
-    from openplaces.geo.raster import sample_raster_at_points
-
-    if provider not in _BASEMAP_PROVIDERS:
-        raise ValueError(
-            f'Unknown basemap provider {provider!r}; must be one of '
-            f'{sorted(_BASEMAP_PROVIDERS)}.'
-        )
-    if gdf is None:
-        gdf = get_admin(admin_id, level=level, recipe=recipe, geom=True)
-
-    metric_crs = gdf.estimate_utm_crs()
-    metric = gdf.to_crs(metric_crs)
-    minx, miny, maxx, maxy = metric.total_bounds
-
-    n_x = max(1, int(np.ceil((maxx - minx) / resolution)))
-    n_y = max(1, int(np.ceil((maxy - miny) / resolution)))
-    if n_x * n_y > max_cells:
-        needed = np.sqrt((maxx - minx) * (maxy - miny) / max_cells)
-        raise ValueError(
-            f'A {resolution} m mesh over this extent needs {n_x * n_y:,} quads, '
-            f'over the {max_cells:,} limit. Use resolution >= {needed:.0f}, a '
-            'smaller admin unit, or raise max_cells if the browser can take it.'
-        )
-
-    # Corner grid: (n_y + 1) x (n_x + 1), shared between adjacent quads
-    # so
-    # the surface is continuous.
-    edge_x = minx + np.arange(n_x + 1) * resolution
-    edge_y = miny + np.arange(n_y + 1) * resolution
-    grid_x, grid_y = np.meshgrid(edge_x, edge_y)
-
-    corner_z = _sample_corner_elevation(
-        grid_x, grid_y, metric_crs, elevation_recipe, gdf, sample_raster_at_points
-    )
-    corner_z = (
-        np.maximum(_fill_missing_elevation(corner_z) - elevation_datum, 0.0)
-        * terrain_exaggeration
-    )
-
-    center_x = (edge_x[:-1] + edge_x[1:]) / 2
-    center_y = (edge_y[:-1] + edge_y[1:]) / 2
-    keep = np.ones((n_y, n_x), dtype=bool)
-    if clip:
-        centers = gpd.GeoSeries(
-            gpd.points_from_xy(*[a.ravel() for a in np.meshgrid(center_x, center_y)]),
-            crs=metric_crs,
-        )
-        extent = metric.geometry.union_all()
-        keep = centers.within(extent).to_numpy().reshape(n_y, n_x)
-        if not keep.any():
-            raise ValueError(
-                'No grid cell center falls inside the extent -- the mesh would '
-                'be empty. Use a finer `resolution`, or clip=False.'
-            )
-
-    colors = _basemap_cell_colors(
-        cx, provider, metric, metric_crs, edge_x, edge_y, n_x, n_y, zoom
-    )
-
-    rows, cols = np.nonzero(keep)
-    quads = [
-        shapely.Polygon(
-            [
-                (grid_x[r, c], grid_y[r, c], corner_z[r, c]),
-                (grid_x[r, c + 1], grid_y[r, c + 1], corner_z[r, c + 1]),
-                (grid_x[r + 1, c + 1], grid_y[r + 1, c + 1], corner_z[r + 1, c + 1]),
-                (grid_x[r + 1, c], grid_y[r + 1, c], corner_z[r + 1, c]),
-            ]
-        )
-        for r, c in zip(rows, cols, strict=True)
-    ]
-    mesh = gpd.GeoDataFrame(geometry=quads, crs=metric_crs).to_crs(gdf.crs)
-
-    rgba = np.empty((len(rows), 4), dtype=np.uint8)
-    rgba[:, :3] = colors[rows, cols]
-    rgba[:, 3] = round(min(max(opacity, 0.0), 1.0) * 255)
-
-    return SolidPolygonLayer.from_geopandas(
-        mesh,
-        extruded=False,
-        filled=True,
-        wireframe=False,
-        get_fill_color=rgba,
-    )
-
-
-def _sample_corner_elevation(
-    grid_x, grid_y, metric_crs, elevation_recipe, gdf, sample_raster_at_points
-):
-    """Sample the DEM at every grid corner, grouped by covering admin unit."""
-    from openplaces.io.readers import get_dataset
-
-    corners = gpd.GeoSeries(
-        gpd.points_from_xy(grid_x.ravel(), grid_y.ravel()), crs=metric_crs
-    )
-    dem_ids = _elevation_module().resolve_dem_admin_ids(gdf, elevation_recipe).unique()
-
-    z = np.full(corners.shape[0], np.nan)
-    for dem_id in dem_ids:
-        dem_path = get_dataset(elevation_recipe, admin_id=dem_id)
-        if not Path(dem_path).exists():
-            _elevation_module()._ingest_missing_dem(
-                elevation_recipe, dem_id, Path(dem_path), False
-            )
-        with rasterio.open(dem_path) as src:
-            raster_crs = src.crs
-        points = corners.to_crs(raster_crs)
-        sampled = sample_raster_at_points(dem_path, points.x, points.y)
-        # Several DEMs can cover one extent (an admin unit straddling
-        # two
-        # counties); each contributes only where it has data, so later
-        # rasters fill the previous one's gaps instead of overwriting
-        # it.
-        z = np.where(np.isnan(z), sampled, z)
-    return z.reshape(grid_x.shape)
-
-
-def _fill_missing_elevation(corner_z: np.ndarray) -> np.ndarray:
-    """Replace nodata corners with their nearest sampled neighbor's value.
-
-    A DEM carries nodata over water and outside its own footprint. Left as
-    NaN those corners would render at sea level, punching isolated spikes
-    hundreds of meters deep through an otherwise smooth mesh -- far more
-    visually wrong than the small error of borrowing the nearest real
-    elevation, since a nodata pixel here is almost always a pond or river
-    surrounded by ground at nearly its own height.
-    """
-    missing = np.isnan(corner_z)
-    if not missing.any():
-        return corner_z
-    if missing.all():
-        raise ValueError(
-            'The DEM has no data anywhere over this extent -- every grid '
-            'corner sampled nodata. Check that elevation_recipe covers this '
-            'admin unit.'
-        )
-    from scipy import ndimage
-
-    _, nearest = ndimage.distance_transform_edt(
-        missing, return_distances=True, return_indices=True
-    )
-    return corner_z[tuple(nearest)]
-
-
-def _basemap_cell_colors(
-    cx, provider, metric, metric_crs, edge_x, edge_y, n_x, n_y, zoom=None
-):
-    """Mean basemap RGB per grid cell, from a tile mosaic of the extent.
-
-    Averaging rather than point-sampling is what keeps sub-cell features
-    (roads) visible: a road narrower than a cell still darkens every cell it
-    crosses.
-    """
-    web = metric.to_crs(3857)
-    west, south, east, north = web.total_bounds
-
-    # Pick the zoom whose pixels are about four times finer than a cell,
-    # so
-    # each cell averages a real neighborhood rather than one or two
-    # pixels.
-    # Web-Mercator resolution halves per zoom level from ~156543 m/px at
-    # the
-    # equator; the latitude factor matters away from it.
-    cell_m = (edge_x[-1] - edge_x[0]) / n_x
-    if zoom is None:
-        geographic_bounds = metric.to_crs(4326).total_bounds
-        latitude = np.radians((geographic_bounds[1] + geographic_bounds[3]) / 2)
-        target = cell_m / 4
-        zoom = int(np.ceil(np.log2(156543.03392 * np.cos(latitude) / target)))
-    zoom = int(np.clip(zoom, 1, 19))
-
-    image, extent = cx.bounds2img(
-        west, south, east, north, zoom=zoom, source=_BASEMAP_PROVIDERS[provider]
-    )
-    image = image[:, :, :3].astype(np.float64)
-    img_west, img_east, img_south, img_north = extent
-
-    # Cell centers -> fractional pixel coordinates in the mosaic.
-    # Averaging
-    # is done by bincount over the pixel->cell assignment, which is much
-    # faster than slicing a window per cell.
-    px_h, px_w = image.shape[:2]
-    px_x = np.linspace(img_west, img_east, px_w, endpoint=False)
-    px_y = np.linspace(img_north, img_south, px_h, endpoint=False)
-    mesh_px_x, mesh_px_y = np.meshgrid(px_x, px_y)
-
-    pixels = gpd.GeoSeries(
-        gpd.points_from_xy(mesh_px_x.ravel(), mesh_px_y.ravel()), crs=3857
-    ).to_crs(metric_crs)
-    col = np.floor((pixels.x.to_numpy() - edge_x[0]) / cell_m).astype(np.int64)
-    row = np.floor(
-        (pixels.y.to_numpy() - edge_y[0]) / ((edge_y[-1] - edge_y[0]) / n_y)
-    ).astype(np.int64)
-    inside = (col >= 0) & (col < n_x) & (row >= 0) & (row < n_y)
-
-    flat_cell = (row[inside] * n_x + col[inside]).astype(np.int64)
-    counts = np.bincount(flat_cell, minlength=n_x * n_y)
-    colors = np.zeros((n_x * n_y, 3))
-    for band in range(3):
-        total = np.bincount(
-            flat_cell, weights=image[:, :, band].ravel()[inside], minlength=n_x * n_y
-        )
-        colors[:, band] = np.divide(
-            total, counts, out=np.zeros_like(total), where=counts > 0
-        )
-    return colors.reshape(n_y, n_x, 3).astype(np.uint8)
-
-
 def get_admin_boundary_layer(
     admin_id=None,
     level=None,
@@ -974,13 +578,13 @@ def get_admin_boundary_layer(
     *,
     gdf: gpd.GeoDataFrame | None = None,
     elevation: float | np.ndarray | None = None,
-    color='white',
+    color='#333333',
     width: float = 3.0,
     style: str = 'dotted',
     dash_array: tuple[int, int] | list[int] | None = None,
     width_units: str = 'pixels',
     opacity: float = 1.0,
-    fill_color='white',
+    fill_color='#333333',
     fill_opacity: float = 0.118,
     mode: str = 'floating_line',
     elevation_recipe: str | dict | None = None,
@@ -1009,7 +613,9 @@ def get_admin_boundary_layer(
         `elevation_recipe` set this becomes a height *above the terrain*
         rather than above sea level.
     color : str or sequence of int
-        Line color (e.g. ``'white'``, ``'#ffffff'``, ``[255, 255, 255, 255]``).
+        Line color (e.g. ``'black'``, ``'#333333'``, ``[51, 51, 51, 255]``).
+        Defaults to dark gray, which reads on the plain background the
+        map draws on.
     width : float
         Line stroke width.
     style : {'dotted', 'dashed', 'solid'}
@@ -1022,8 +628,8 @@ def get_admin_boundary_layer(
     opacity : float
         Line/outline opacity in [0.0, 1.0].
     fill_color : str or sequence of int
-        Fence face/wall color (e.g. ``'white'``, ``'#ffffff'``, or RGBA list).
-        Only used in 'fence' mode.
+        Fence face/wall color (e.g. ``'black'``, ``'#333333'``, or RGBA
+        list). Defaults to dark gray. Only used in 'fence' mode.
     fill_opacity : float
         Fence face/wall opacity in [0.0, 1.0]. Only used in 'fence' mode.
     mode : {'floating_line', 'fence'}
@@ -1056,7 +662,7 @@ def get_admin_boundary_layer(
         `terrain_exaggeration`. Defaults to 0 (sea level). Must match the
         value passed to every other layer in the scene -- compute it once
         with `viz.elevation.get_elevation_datum`. Ground is clamped at z=0
-        afterward so nothing sinks under a flat basemap.
+        afterward so nothing sinks under the ground plane.
     snap_to : geopandas.GeoDataFrame or GeoSeries, optional
         3D geometry already in scene z, typically the `gdf` of the terrain
         layer the boundary runs through (`show_value_terrain_layer(...).gdf`).

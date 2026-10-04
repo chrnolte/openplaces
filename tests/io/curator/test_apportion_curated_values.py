@@ -13,10 +13,10 @@ import pandas as pd
 import pytest
 
 import openplaces.io.curator.evidence as evidence_mod
-import openplaces.io.harmonizer.links as links_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.evidence import apportion_curated_values
+from tests.links_patching import patch_links
 
 
 def _state(df: pd.DataFrame) -> CurateState:
@@ -97,8 +97,8 @@ def _patch(monkeypatch, tmp_path, sidecar: pd.DataFrame, ref: pd.DataFrame):
     monkeypatch.setattr(
         evidence_mod, 'get_entity_link_path', lambda *a, **k: sidecar_path
     )
-    monkeypatch.setattr(
-        links_mod, '_resolve_reference_recipe', lambda *a, **k: ('parcel-ref', None)
+    patch_links(
+        monkeypatch, '_resolve_reference_recipe', lambda *a, **k: ('parcel-ref', None)
     )
 
 

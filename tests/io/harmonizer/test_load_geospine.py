@@ -22,6 +22,7 @@ from openplaces.io.harmonizer import links as links_mod
 from openplaces.io.harmonizer import load as load_mod
 from openplaces.io.readers import get_entities
 from openplaces.recipe import get_output_path, get_recipe_by_id
+from tests.links_patching import patch_links
 
 SPINE = 'US_footprint-spine-2026'
 GEOSPINE = 'US_footprint-geospine-2026'
@@ -92,7 +93,7 @@ def _geospine_recipe(pipeline=None):
 
 def _run_geospine_overlay(recipe, monkeypatch, reprocess=False):
     """Run the toy geospine's overlay step exactly as its pipeline would."""
-    monkeypatch.setattr(links_mod, 'get_entities', lambda *a, **k: _parcels_gdf())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _parcels_gdf())
     state = HarmonizeState(
         recipe=recipe,
         admin_id=AdminId(COUNTY),
@@ -124,13 +125,13 @@ def _save_geospine_output(recipe, spine):
 class TestFingerprintFormat2:
     def _count_overlays(self, monkeypatch):
         calls = {'n': 0}
-        real = links_mod.overlay_polygons
+        real = links_mod.spatial.overlay_polygons
 
         def _counting(*args, **kwargs):
             calls['n'] += 1
             return real(*args, **kwargs)
 
-        monkeypatch.setattr(links_mod, 'overlay_polygons', _counting)
+        patch_links(monkeypatch, 'overlay_polygons', _counting)
         return calls
 
     def test_geometry_step_change_invalidates(self, data_root, monkeypatch):
@@ -203,9 +204,7 @@ class TestPointLinkSidecar:
         )
 
     def _run_point(self, recipe, monkeypatch, reprocess=False):
-        monkeypatch.setattr(
-            links_mod, 'get_entities', lambda *a, **k: self._points_gdf()
-        )
+        patch_links(monkeypatch, 'get_entities', lambda *a, **k: self._points_gdf())
         state = HarmonizeState(
             recipe=recipe,
             admin_id=AdminId(COUNTY),
@@ -229,13 +228,13 @@ class TestPointLinkSidecar:
         assert 'geometry' not in pd.read_parquet(sidecar).columns
 
         calls = {'n': 0}
-        real_sjoin = links_mod.gpd.sjoin
+        real_sjoin = links_mod.points.gpd.sjoin
 
         def _counting(*args, **kwargs):
             calls['n'] += 1
             return real_sjoin(*args, **kwargs)
 
-        monkeypatch.setattr(links_mod.gpd, 'sjoin', _counting)
+        monkeypatch.setattr(links_mod.points.gpd, 'sjoin', _counting)
         state2 = self._run_point(recipe, monkeypatch)
         assert calls['n'] == 0, 'a valid point sidecar must skip every pass'
         reloaded = state2.crosswalks[self.NSI]
@@ -251,13 +250,13 @@ class TestPointLinkSidecar:
         self._run_point(recipe, monkeypatch)
 
         calls = {'n': 0}
-        real_sjoin = links_mod.gpd.sjoin
+        real_sjoin = links_mod.points.gpd.sjoin
 
         def _counting(*args, **kwargs):
             calls['n'] += 1
             return real_sjoin(*args, **kwargs)
 
-        monkeypatch.setattr(links_mod.gpd, 'sjoin', _counting)
+        monkeypatch.setattr(links_mod.points.gpd, 'sjoin', _counting)
         self._run_point(recipe, monkeypatch, reprocess=True)
         assert calls['n'] > 0, 'reprocess=True must ignore the point sidecar'
 
@@ -448,9 +447,7 @@ class TestPointFingerprintGeometryType:
     def _run(self, monkeypatch, thresholds, sgt):
         from openplaces.core.schema import SourceGeometryType
 
-        monkeypatch.setattr(
-            links_mod, 'get_entities', lambda *a, **k: self._points_gdf()
-        )
+        patch_links(monkeypatch, 'get_entities', lambda *a, **k: self._points_gdf())
         recipe = dict(get_recipe_by_id(GEOSPINE))
         recipe['pipeline'] = [{'step': 'link_to_reference', 'join': 'spatial_point'}]
         state = HarmonizeState(
@@ -468,13 +465,13 @@ class TestPointFingerprintGeometryType:
 
     def _count_sjoins(self, monkeypatch):
         calls = {'n': 0}
-        real = links_mod.gpd.sjoin
+        real = links_mod.points.gpd.sjoin
 
         def _counting(*args, **kwargs):
             calls['n'] += 1
             return real(*args, **kwargs)
 
-        monkeypatch.setattr(links_mod.gpd, 'sjoin', _counting)
+        monkeypatch.setattr(links_mod.points.gpd, 'sjoin', _counting)
         return calls
 
     def test_changed_geometry_type_invalidates_an_aggregating_sidecar(

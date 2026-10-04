@@ -1,8 +1,8 @@
 """Context an entity cannot supply about itself: the share, count
 or rank of its group (any id column it already carries) that
 satisfies a condition, excluding the row itself. A groupby,
-deliberately not a spatial operation (AGENTS.md, patent risk,
-shape 1)."""
+deliberately not a spatial operation: no buffering, no boundary union
+and no neighbor search."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ def derive_group_class_share(
     nearest-neighbor search, and no interpolation between neighbors. That is a
     deliberate choice, not an incidental one. Identifying "communities" by
     enlarging and merging parcel boundaries, then reading a value off the
-    neighbors, is a technique shape with active patents in the property-data
-    space (see the patent-risk section of ``AGENTS.md``); aggregating a
-    statistic within a published administrative unit is both mechanistically
-    different and far older practice. A radius-based neighborhood and a
+    neighbors, is kept out of this repository by design (see "Design
+    limits" in ``AGENTS.md``); aggregating a statistic within a published
+    administrative unit is both mechanistically different and far older
+    practice. A radius-based neighborhood and a
     block-level groupby answer the question about equally well -- measured on
     Harris County, TX, they agree closely -- so the groupby wins.
 
@@ -169,9 +169,9 @@ def derive_group_count(
     and the count is a plain groupby over it. No geometry is read: no
     buffering, no union of boundaries, no nearest-neighbor or distance
     search, and nothing from neighboring groups, and no parameter is
-    learned from the data. That keeps it apart from the geometric
-    "community" detection shape of the patent-risk section of AGENTS.md,
-    in the same way as :func:`derive_group_class_share`.
+    learned from the data. That keeps it apart from geometric
+    "community" detection (enlarging and merging boundaries to find
+    neighbors), in the same way as :func:`derive_group_class_share`.
 
     Feedback loops
     --------------

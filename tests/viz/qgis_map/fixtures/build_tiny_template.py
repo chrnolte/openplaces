@@ -121,7 +121,7 @@ _PROTOTYPES = [
     ('Curated', 'proto_output_combined_id', 'proto_output_combined', None, True),
     ('Inputs', 'proto_input_id', 'proto_input', 'proto_input_attr_id', False),
     ('Admin', 'proto_admin_id', 'proto_admin', 'proto_admin_attr_id', True),
-    ('Basemaps', 'proto_basemap_id', 'proto_basemap', None, True),
+    ('Context', 'proto_static_id', 'proto_static', None, True),
     (
         'Unstyled',
         'proto_fallback_id',
@@ -153,6 +153,33 @@ _COMBINED_VARIANTS = [
         'proto_output_combined_by_zone_id',
         'proto_output_combined_by_zone',
         False,
+    ),
+]
+
+
+# Remote tile layers a hand-edited template might carry: an XYZ raster
+# (QGIS's 'wms' provider) and a vector-tile layer. The generator must
+# drop both, even when a registry row names one as static.
+# (group, layer id, layer name, maplayer type, provider, datasource)
+_TILE_LAYERS = [
+    (
+        'Background',
+        'proto_xyz_tiles_id',
+        'proto_xyz_tiles',
+        'raster',
+        'wms',
+        'crs=EPSG:3857&amp;format&amp;type=xyz&amp;'
+        'url=https://tiles.example.invalid/%7Bz%7D/%7Bx%7D/%7By%7D.png'
+        '&amp;zmax=19&amp;zmin=0',
+    ),
+    (
+        'Background',
+        'proto_vector_tiles_id',
+        'proto_vector_tiles',
+        'vector-tile',
+        'xyzvectortiles',
+        'styleUrl=https://tiles.example.invalid/style.json&amp;type=xyz&amp;'
+        'url=https://tiles.example.invalid/%7Bz%7D/%7Bx%7D/%7By%7D.pbf',
     ),
 ]
 
@@ -252,6 +279,24 @@ def build_qgs() -> str:
             layer_id='proto_dynamic_cat_id', name='proto_dynamic_cat', checked=True
         )
     )
+
+    for group, layer_id, name, layer_type, provider, datasource in _TILE_LAYERS:
+        maplayers.append(
+            f'<maplayer type="{layer_type}">'
+            f'<id>{layer_id}</id>'
+            f'<datasource>{datasource}</datasource>'
+            f'<layername>{name}</layername>'
+            f'<provider>{provider}</provider>'
+            '</maplayer>'
+        )
+        groups.setdefault(group, []).append(
+            f'<layer-tree-layer source="{datasource}" id="{layer_id}" '
+            f'name="{name}" providerKey="{provider}" checked="Qt::Checked" '
+            'expanded="1"/>'
+        )
+        legend_groups.setdefault(group, []).append(
+            _legend_layer(layer_id=layer_id, name=name, checked=True)
+        )
 
     tree_groups_xml = ''.join(
         f'<layer-tree-group groupLayer="" name="{name}" '

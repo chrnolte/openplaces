@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-import openplaces.io.ingester as ingester_module
+import openplaces.io.ingester.download as ingester_download
 from openplaces.core.schema import AdminId, Source
 from openplaces.io.ingester import Ingester
 
@@ -55,7 +55,7 @@ def _make_ingester(tmp_path, source):
 @pytest.fixture
 def _no_network(monkeypatch):
     monkeypatch.setattr(
-        ingester_module,
+        ingester_download,
         'download',
         lambda *a, **k: pytest.fail('download() ran for a gated source'),
     )
@@ -76,7 +76,7 @@ def test_a_declined_requirement_soft_skips_the_partition(
         seen.update({'source': src, 'recipe_id': recipe_id, 'admin_id': admin_id})
         return False
 
-    monkeypatch.setattr(ingester_module, 'require_usage_compatible', _decline)
+    monkeypatch.setattr(ingester_download, 'require_usage_compatible', _decline)
 
     ing._download_and_unzip_recipe_data()
 
@@ -92,12 +92,12 @@ def test_a_source_without_a_requirement_never_consults_the_gate(tmp_path, monkey
     # Let the run stop at the download itself; reaching it proves the
     # gate did not divert an unrestricted source.
     monkeypatch.setattr(
-        ingester_module,
+        ingester_download,
         'require_usage_compatible',
         lambda *a, **k: pytest.fail('gate consulted without a requirement'),
     )
     monkeypatch.setattr(
-        ingester_module, 'download', lambda *a, **k: (_ for _ in ()).throw(_Stop())
+        ingester_download, 'download', lambda *a, **k: (_ for _ in ()).throw(_Stop())
     )
 
     with pytest.raises(_Stop):

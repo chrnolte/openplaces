@@ -15,28 +15,14 @@ is the ingest-time default for every parcel table (a recipe opts out
 with `stacked_units: false`) and is keyed on `geo_id`, the hash of the
 row's geometry, unless the recipe names a source lot id (`lot_key`).
 
-Rationale for the mechanism, recorded for the patent check AGENTS.md
-asks for on new parcel-record grouping features. The nearest claim read
-is claim 1 of US9298740B2 (CoreLogic, 2013), which requires (b) a
-repository search for mapping or addressing data associated with a
-parcel identifier, (c) verifying whether it matches, (d) flagging the
-parcels that do not verify, (e) grouping those non-verified parcels and
-(f) normalizing the group. This step does none of (b), (c), (d) or
-(f): it searches nothing, verifies nothing, flags nothing and
-normalizes nothing (every source record survives unchanged as a
-property row), and the grouping is of all rows by the source's own
-geometry or lot id, never of a verification failure. Under the
-all-elements rule a method that practices none of those elements does
-not infringe that claim. The patent's other two independent claims were
-read from its text on 2026-09-21 (an agent's reading, not legal advice).
-Claim 15, the method claim, recites the same six steps as claim 1.
-Claim 11, the system claim, requires identifying a parcel "that could
-not be verified by mapping data and addressing data", determining
-whether it lies in a wilderness area, grouping it with other parcels if
-so, normalizing the parcel on that grouping and storing the result.
-This step identifies no unverified parcel, asks nothing about
-wilderness and normalizes nothing, so it practices none of claim 11's
-elements either. All 19 claims depend on claims 1, 11 or 15.
+Design of the mechanism. The split works from the source's own lot
+identity and nothing else: it searches no other repository of mapping
+or addressing data, verifies no row against such data, flags no row as
+inconsistent and normalizes nothing (every source record survives
+unchanged as a property row). The grouping is of all rows by the
+source's own geometry or lot id, never of rows that failed a check,
+and no group is tested for location (a wilderness area or otherwise)
+before it is formed.
 """
 
 from __future__ import annotations
@@ -185,22 +171,17 @@ def _lot_unions(df, lot: pd.Series, lots) -> tuple[dict, set]:
     Scattered groups are returned separately so their rows are left
     alone rather than merged into one.
 
-    **Strictly adjacent, with no distance tolerance, and that is a
-    patent question as much as a data one** (an agent's reading of the
-    claim text, not legal advice). CoreLogic US10248731B1 claim 1, in
-    force to 2037, identifies a "community" of parcels *within a
-    threshold distance* with contiguous boundaries, then builds a
-    border by *enlarging* each boundary, unioning, and *reducing* it
-    back. A proximity tolerance here would supply that recited
-    threshold and let proximity decide membership. Adjacency does not:
-    the group comes from the source's own lot id, and geometry only
-    answers whether a group someone else declared is one shape. The
-    claim's remaining steps (border-intersection points, a reduced
-    neighbor set, and bracketing a missing address number) have no
-    counterpart here at all. **Do not add a tolerance parameter**, not
-    even one defaulting to zero: a knob whose safety depends on nobody
-    turning it is not a safeguard, and this was put to the maintainer
-    on 2026-09-22 rather than decided in code.
+    **Strictly adjacent, with no distance tolerance.** A proximity
+    tolerance would let proximity decide which parcels belong to a
+    group. Adjacency does not: the group comes from the source's own
+    lot id, and geometry only answers whether a group someone else
+    declared is one shape. No border is built by enlarging and then
+    shrinking boundaries, and nothing here intersects borders, selects
+    a set of neighbors or infers an address from them. **Do not add a
+    tolerance parameter**, not even one defaulting to zero: a knob
+    whose safety depends on nobody turning it is not a safeguard, and
+    this was put to the maintainer on 2026-09-22 rather than decided
+    in code.
 
     Returns
     -------
