@@ -23,7 +23,10 @@ _REGISTRY_PATH = Path(__file__).parent / 'qgis_map_style_registry.csv'
 #: Reserved style_key for the generic unstyled fallback layer.
 FALLBACK_STYLE_KEY = '_fallback'
 
-_CARRY_THROUGH_ROLES = ('basemap', 'static')
+#: Registry roles whose template layers pass through every run unpruned.
+#: There is no 'basemap' role: a generated project carries only
+#: openplaces' own layers, and a background map is the user's to add.
+_CARRY_THROUGH_ROLES = ('static',)
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,11 @@ class LayerStyle:
 def load_registry() -> pd.DataFrame:
     """Return the QGIS map style registry as a DataFrame indexed by style_key."""
     df = pd.read_csv(_REGISTRY_PATH, dtype=str, keep_default_na=False)
+    if df['role'].eq('basemap').any():
+        raise ValueError(
+            "The QGIS map style registry has a 'basemap' row; generated "
+            'projects carry only openplaces layers, so remove it.'
+        )
     df['default_visible'] = df['default_visible'].str.lower().isin({'true', '1', 'yes'})
     df['priority'] = df['priority'].replace('', '0').astype(int)
     return df.set_index('style_key')
@@ -116,8 +124,8 @@ def get_style(
     Tries an exact ``(entity_type, source)`` match among rows with the given
     *role* first, then falls back to a wildcard row with a blank `source`
     for the same *entity_type* and *role*. *role* must be one of 'output',
-    'input', or 'admin' — matching never considers 'basemap'/'static' rows,
-    which are looked up separately via :func:`get_static_styles`. Variant
+    'input', or 'admin'; matching never considers 'static' rows, which
+    are looked up separately via :func:`get_static_styles`. Variant
     rows (`variant_of` set) are never returned here — use
     :func:`get_style_variants` to fetch a base style's column variants.
 
@@ -178,15 +186,15 @@ def get_fallback_style(*, registry: pd.DataFrame | None = None) -> LayerStyle:
 
 
 def get_static_styles(*, registry: pd.DataFrame | None = None) -> list[LayerStyle]:
-    """Return 'basemap'/'static' rows: template layers always kept, never cloned.
+    """Return 'static' rows: template layers always kept, never cloned.
 
     Unlike matched output/input/admin rows, these survive pruning
-    unconditionally and are never cloned — but their `default_visible` still
+    unconditionally and are never cloned, but their `default_visible` still
     drives whether the generator checks them on by default (see
     `generator.py`'s pruning step). Excludes the reserved `_fallback` row
-    even though it is tagged ``role='static'`` — the fallback prototype must
+    even though it is tagged ``role='static'``: the fallback prototype must
     only survive pruning when a resolved layer actually falls back to it
-    (see :func:`get_fallback_style`), not unconditionally like a basemap.
+    (see :func:`get_fallback_style`), not unconditionally.
     """
     reg = registry if registry is not None else load_registry()
     static = reg[

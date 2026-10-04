@@ -7,7 +7,7 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import derive_stories_from_height
+from openplaces.io.curator.estimators.stories import derive_stories_from_height
 
 
 def _state(df: pd.DataFrame) -> CurateState:

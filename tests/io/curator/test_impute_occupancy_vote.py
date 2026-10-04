@@ -14,7 +14,7 @@ import pandas as pd
 import openplaces.io.curator.occupancy as occ_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import impute_occupancy_type
+from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
 
 CLASS_MAP = [
     {

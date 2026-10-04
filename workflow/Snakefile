@@ -247,15 +247,14 @@ for node in dag.nodes():
             _flagged,
             *_extra,
         # Persistent per-job wall/CPU/RSS profile, one tsv per rule, in
-        # the same _logs tree where openplaces' own stage timers land on
+        # the same logs tree where openplaces' own stage timers land on
         # finish(). Together they give ex-post profiling at two grains:
         # Snakemake's job totals here, the library's per-step timings in
         # the JSON files beside them. notebooks/flow/monitor_build.ipynb
         # joins the two on (stage, recipe, admin unit).
         benchmark:
             str(
-                Path(cfg.get_dir('cache'))
-                / '_logs'
+                Path(cfg.get_dir('logs'))
                 / 'benchmarks'
                 / f'{rule_name(node)}.tsv'
             )

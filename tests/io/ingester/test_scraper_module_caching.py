@@ -11,10 +11,11 @@ per-process folder-listing memo) before every single admin unit/partition.
 from __future__ import annotations
 
 import openplaces.io.ingester as ingester_module
+import openplaces.io.ingester.download as ingester_download
 
 
 def test_load_scraper_fetch_reuses_same_module_across_calls(monkeypatch):
-    monkeypatch.setattr(ingester_module, '_SCRAPER_MODULE_CACHE', {})
+    monkeypatch.setattr(ingester_download, '_SCRAPER_MODULE_CACHE', {})
 
     fetch_1 = ingester_module.Ingester._load_scraper_fetch('google_drive_scraper')
     fetch_2 = ingester_module.Ingester._load_scraper_fetch('google_drive_scraper')
@@ -24,7 +25,7 @@ def test_load_scraper_fetch_reuses_same_module_across_calls(monkeypatch):
 
 
 def test_load_scraper_fetch_preserves_module_level_state_across_calls(monkeypatch):
-    monkeypatch.setattr(ingester_module, '_SCRAPER_MODULE_CACHE', {})
+    monkeypatch.setattr(ingester_download, '_SCRAPER_MODULE_CACHE', {})
 
     fetch = ingester_module.Ingester._load_scraper_fetch('google_drive_scraper')
     fetch.__globals__['_FOLDER_INDEX_MEMO']['sentinel'] = ('marker', True)

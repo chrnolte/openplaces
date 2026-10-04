@@ -13,7 +13,7 @@ import pytest
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import derive_admin_attribute
+from openplaces.io.curator.evidence import derive_admin_attribute
 
 
 def _state(frame, admin_id=None):

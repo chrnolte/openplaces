@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from openplaces.io.ingester import table_ingester as ti_module
+from openplaces.io.ingester import table_scope
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.timing import Timer
 
@@ -35,8 +35,8 @@ def _one_file_get_admin(admin_id, level, **kwargs):
 
 @pytest.fixture
 def tile_ingester(monkeypatch, tmp_path):
-    monkeypatch.setattr(ti_module, 'get_admin', _one_file_get_admin)
-    monkeypatch.setattr(ti_module, 'get_crs', lambda *a, **k: 'EPSG:4326')
+    monkeypatch.setattr(table_scope, 'get_admin', _one_file_get_admin)
+    monkeypatch.setattr(table_scope, 'get_crs', lambda *a, **k: 'EPSG:4326')
 
     ingester = TableIngester.__new__(TableIngester)
     ingester.recipe = {'overlay_admin_ids': {'admin_level': 2}}

@@ -5,4 +5,8 @@ IN,2,Q200667,Ladakh,"Split from Jammu and Kashmir in 2019 and claimed in part by
 PK,2,Q200130,Azad Kashmir,"Administered by Pakistan and claimed by India; absent from the spine. Excluded under the same decision as India's side of the dispute, so the spine takes neither side."
 PK,2,Q200697,Gilgit-Baltistan,"Administered by Pakistan and claimed by India; absent from the spine. Excluded under the same decision."
 RU,2,Q114333615,Zaporozhye,"A Ukrainian oblast annexed by Russia in 2022 and recognised as Ukrainian by the United Nations. Absent from the spine, and adding it would assert the annexation."
+DJ,2,Q12182414,région de Djibouti,"Not a territorial question: a second item for the Djibouti region, which the harvest also returns as Q3604 with its ISO code DJ-DJ. One of the two must go, and the one carrying the code is kept."
+GR,2,Q144880,Zakynthos,"Not a territorial question: an island and regional unit inside the Ionian Islands region, returned through a 'polis' class beside the 13 regions and Mount Athos."
+LV,2,Q108037,Valmiera,"Not a territorial question: a state city that has sat inside Valmiera municipality (Q97233086) since the 2021 reform, so keeping both would count its area twice. Latvia's other state cities are units of their own."
+LV,2,Q191120,Jēkabpils,"Not a territorial question: a state city inside Jēkabpils municipality (Q97231194) since the 2021 reform, excluded for the same reason as Valmiera."
 PK,2,Q6608704,Sind,"Not a territorial question: a duplicate of Sindh, which the harvest also returns. Listed here because the effect is the same, one row that must not reach the spine, and the reason is recorded so it is not mistaken for a political exclusion."

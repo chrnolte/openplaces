@@ -443,6 +443,414 @@ def _move_units_to_lots(
     return ref, n_moved + len(divided), len(divided)
 
 
+def _link_auto_discovered(
+    state: HarmonizeState,
+    *,
+    entity_type: str,
+    supplements_only: bool,
+    spine_key: str,
+    ref_key: str,
+    columns,
+    aggregation_function: dict | None,
+    suffix: str | None,
+    count_as,
+    ref_sort_by: str | None,
+    ref_sort_ascending: bool,
+    track_provenance: list[str] | None,
+    fill_only: bool,
+) -> HarmonizeState:
+    """The `auto_discover` branch of `link_by_id`: one aggregate join per
+    discovered source of *entity_type*, each through `link_by_id` itself.
+
+    A standalone roll that is also one of the spine's own geometry
+    sources (state.metadata['spine_source_recipe_ids'], set by
+    resolve_spine) would otherwise re-derive its keep_columns attributes
+    (e.g. use_group/use_subgroup) by aggregating across every spine row
+    sharing its join key -- overwriting an already-correct per-geometry
+    value with one pooled from unrelated rows. Those columns are already
+    on the spine directly from the same source's own row wherever its
+    geometry won; protect exactly those rows (`_protect_own_columns`)
+    rather than dropping the column from the whole match, so this same
+    source can still fill a keep_columns gap on a row a *different*
+    source's geometry occupies.
+    """
+    spine_source_ids = state.metadata.get('spine_source_recipe_ids', set())
+    spine_keep_columns = state.metadata.get('spine_keep_columns', set())
+    has_geometry_source = (
+        state.spine is not None and 'geometry_source' in state.spine.columns
+    )
+    matches = _discover_link_sources(state, entity_type)
+    if supplements_only:
+        matches = _select_supplements(matches, spine_source_ids)
+    for match in matches:
+        keyed = match.get('supplements_key')
+        if keyed and not supplements_only:
+            # Its key names rows of its roll, not parcels or any
+            # other entity: joining it here would match on a column
+            # the spine does not share, or on one that means
+            # something else there. Its attributes reach other
+            # entities in curate, from the property spine.
+            continue
+        # The registry default lists the matching keys too, and
+        # copying a matched source's key over the spine's own is
+        # never what a link means: the key is how the rows met.
+        # Pender County NC (geospine of 2026-09-08) lost its county
+        # key on 99.8% of parcels to one placeholder value this way,
+        # when a punctuation-free fallback pass matched a statewide
+        # layer whose assessor id is '0' on every row. An explicit
+        # *columns* list is left as the caller wrote it.
+        match_columns = columns or [
+            c
+            for c in get_attributes(match['layer'] or entity_type).index
+            if c not in _LINK_KEY_COLUMNS
+        ]
+        protect_columns: set[str] | None = None
+        if match['layer'] is None and match['recipe_id'] in spine_source_ids:
+            keep_overlap = {c for c in match_columns if c in spine_keep_columns}
+            if keep_overlap:
+                if has_geometry_source:
+                    protect_columns = keep_overlap
+                else:
+                    # No geometry_source to key row-level protection on
+                    # (e.g. a union_spine_sources-built non-spatial
+                    # spine) -- fall back to the coarser column drop
+                    # rather than risk the pooled-duplicate-key
+                    # corruption this guard exists to prevent.
+                    match_columns = [c for c in match_columns if c not in keep_overlap]
+                    if not match_columns:
+                        continue
+        # A match's own declared override (e.g. the improvement-detail
+        # sibling's year_built: min) wins over the caller's for the
+        # columns it names, but never reaches a sibling match with no
+        # such declaration -- see _discover_link_sources.
+        match_aggregation_function = {
+            **(aggregation_function or {}),
+            **(match['aggregation_function'] or {}),
+        }
+        # Auto-discovery normally picks the key per match. An
+        # explicit key from the caller overrides it, which is what
+        # lets a second pass re-run the same discovery on the
+        # punctuation-free fallback key. A supplements_key is the
+        # one column relating a supplement to its roll, so no
+        # caller key replaces it.
+        unit_lot_pairs = None
+        if keyed:
+            match_spine_key = match_ref_key = keyed
+        elif match.get('stacked_units_layer'):
+            # Units split off a parcel table name their lot in the
+            # layer's key and keep their own `parcel_id_local`, so
+            # the pair of columns differs by side. A caller's
+            # fallback key is built from the unit's own id and
+            # cannot name a lot: such a pass skips this layer.
+            if spine_key != DEFAULT_LINK_KEY or ref_key != DEFAULT_LINK_KEY:
+                continue
+            match_spine_key, match_ref_key = DEFAULT_LINK_KEY, match['key']
+        else:
+            match_spine_key = (
+                spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
+            )
+            match_ref_key = ref_key if ref_key != DEFAULT_LINK_KEY else match['key']
+            if (
+                entity_type == 'property'
+                and match_spine_key == DEFAULT_LINK_KEY
+                and match_ref_key == DEFAULT_LINK_KEY
+            ):
+                # A roll keyed on a unit's own number finds no parcel
+                # row on a stacked lot, whose row carries the lot's
+                # key. The split's unit-to-lot pairs carry it there.
+                from openplaces.io.harmonizer.entity_links import (
+                    load_unit_lot_pairs,
+                )
+
+                unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
+        state = link_by_id(
+            state,
+            recipe_id=match['recipe_id'],
+            mode='aggregate',
+            spine_key=match_spine_key,
+            ref_key=match_ref_key,
+            columns=match_columns,
+            aggregation_function=match_aggregation_function or None,
+            suffix=suffix,
+            count_as=count_as,
+            layer=match['layer'],
+            ref_sort_by=ref_sort_by,
+            ref_sort_ascending=ref_sort_ascending,
+            track_provenance=track_provenance,
+            fill_only=fill_only,
+            _protect_own_columns=protect_columns,
+            _supplement_of=match['supplements'] if keyed else None,
+            _unit_lot_pairs=unit_lot_pairs,
+        )
+        state = _apply_remap_csvs(state, match['recipe_id'])
+    return state
+
+
+def _link_attributes(
+    state: HarmonizeState,
+    spine,
+    skey: pd.Series,
+    rkey: pd.Series,
+    ref,
+    *,
+    recipe_id: str,
+    spine_key: str,
+    ref_key: str,
+    columns,
+    suffix: str | None,
+    track_provenance: list[str] | None,
+    fill_only: bool,
+) -> None:
+    """`link_by_id` mode 'attributes': one reference row per key, its
+    columns written onto the spine by the priority rule."""
+    pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
+    # 'attributes' keeps one arbitrary row per key (no aggregation, unlike
+    # 'aggregate'/'count') -- a duplicate ref_key here is silently resolved
+    # by drop_duplicates below, so flag it before that happens.
+    _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
+    ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
+    ref_unique.index = ref_unique[ref_key].astype('string')
+    provenance_cols = set(track_provenance or [])
+    token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
+    for col, out_name in pairs:
+        name = f'{out_name}{suffix}' if suffix else out_name
+        ref_series = ref_unique[col]
+        mapper = ref_series.to_dict() if ref_series.empty else ref_series
+        _write_prioritized(
+            spine,
+            name,
+            skey.map(mapper),
+            # A lossy key must only fill what a precise one left.
+            majority_coverage=float('inf') if fill_only else 0.5,
+            provenance_token=(
+                _upstream_tokens(ref_unique, col, skey, token)
+                if out_name in provenance_cols
+                else None
+            ),
+        )
+    matched = int(skey.isin(set(rkey.dropna())).sum())
+    if state.verbose:
+        print(
+            f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
+            f'rows matched {recipe_id} ({len(pairs)} columns)'
+        )
+    _warn_if_link_underperforms(
+        matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+    )
+
+
+def _link_count(
+    state: HarmonizeState,
+    spine,
+    skey: pd.Series,
+    rkey: pd.Series,
+    *,
+    recipe_id: str,
+    count_as,
+    flag_as: str | None,
+) -> None:
+    """`link_by_id` mode 'count': reference rows per key and a presence flag."""
+    count_as = count_as or 'n_transactions'
+    counts = rkey.dropna().value_counts()
+    mapper = counts.to_dict() if counts.empty else counts
+    _accumulate_count(state, spine, count_as, skey.map(mapper))
+    if flag_as:
+        spine[flag_as] = spine[count_as] > 0
+    linked = int((spine[count_as] > 0).sum())
+    if state.verbose:
+        print(
+            f'  Link by id (count): {linked:,d}/'
+            f'{len(spine):,d} spine rows linked to {recipe_id} ({count_as})'
+        )
+    # A count link is a different question: a parcel with no
+    # transaction is a real zero, not a failed join, so a low share
+    # says nothing about the conversion and nothing is flagged here.
+
+
+# The registry aggregations `_link_aggregate` can apply; anything else
+# falls back to the first value per key.
+_REDUCIBLE = {
+    'sum',
+    'mean',
+    'max',
+    'min',
+    'first',
+    'last',
+    'median',
+    'join_nonnull',
+}
+
+
+def _link_aggregate(
+    state: HarmonizeState,
+    spine,
+    skey: pd.Series,
+    rkey: pd.Series,
+    ref,
+    *,
+    recipe_id: str,
+    spine_key: str,
+    ref_key: str,
+    columns,
+    aggregation_function: dict | None,
+    suffix: str | None,
+    count_as,
+    track_provenance: list[str] | None,
+    fill_only: bool,
+    protect_own_columns: set[str] | None,
+) -> None:
+    """`link_by_id` mode 'aggregate': a 1:many reference reduced per key
+    by each column's registry rule, plus a per-key record count.
+
+    Registry-driven reduction (sum values/dwellings, mean year, etc.);
+    columns without a usable registry rule fall back to the first value.
+    Looked up by the *output* name -- the canonical slot being filled --
+    not the reference's own column name, so a rename (e.g. price ->
+    last_sale_price) still resolves the right aggregation. 'join_nonnull'
+    (e.g. address, use_group) is not a pandas groupby function on its
+    own -- routed through _agg_func_for (the same helper aggregate_rows
+    uses) to concatenate every distinct non-null value instead of
+    silently degrading to 'first' (an arbitrary row's value, discarding
+    every other row's -- the original multi-property-per-parcel
+    collapse bug). 'address' gets its own joiner there
+    (join_nonnull_addresses) rather than the generic one: a condo/
+    apartment building's per-unit property records typically differ
+    only by an APT/UNIT/# suffix, and the plain joiner's ' + '-
+    concatenation of every unit's full address corrupts downstream
+    address parsing (no parser can split a multi-address blob back
+    into one street/number). 'use_group' and other join_nonnull
+    columns keep the plain joiner -- their concatenated values are
+    consumed directly, never re-parsed.
+    """
+    pairs = [
+        (c, o)
+        for c, o in _columns_as_pairs(columns)
+        if c in ref.columns and c != ref_key
+    ]
+    ref_valid = ref.dropna(subset=[ref_key]).copy()
+    ref_valid[ref_key] = ref_valid[ref_key].astype('string')
+    grouped = ref_valid.groupby(ref_key, sort=False)
+
+    own_geometry_mask = None
+    if protect_own_columns and 'geometry_source' in spine.columns:
+        own_label = source_id_from_recipe_id(recipe_id)
+        own_geometry_mask = spine['geometry_source'].astype('string') == own_label
+    provenance_cols = set(track_provenance or [])
+    token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
+    for col, out_name in pairs:
+        canonical_name = resolve_attribute_name(out_name)
+        fname = (aggregation_function or {}).get(out_name) or get_agg_func(
+            canonical_name
+        )
+        func = _agg_func_for(canonical_name, fname) if fname in _REDUCIBLE else 'first'
+        name = f'{out_name}{suffix}' if suffix else out_name
+        col_series = ref_valid[col]
+        # A registry-numeric column can still arrive here as pandas
+        # 'string'/object dtype (e.g. a fixed-width ingest, which never
+        # casts a mapped column's dtype -- see the PACS improvement-
+        # detail recipe). 'sum'/'mean'/'median' on a string column
+        # crashes outright; 'min'/'max' does not, but silently compares
+        # lexicographically instead of numerically (e.g. '12' < '5'),
+        # which is worse -- no crash to notice it by. Coerce first for
+        # either failure mode.
+        if fname in (
+            'sum',
+            'mean',
+            'median',
+            'min',
+            'max',
+        ) and not pd.api.types.is_numeric_dtype(col_series):
+            grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
+                ref_valid[ref_key], sort=False
+            )
+        else:
+            grouped_col = grouped[col]
+        if fname == 'sum':
+            # A group whose values are all missing has an unknown
+            # total, not a total of zero: a property whose every bath
+            # row failed to parse must not read as zero baths.
+            # min_count=1 matches transform._aggregate_cols.
+            agg_series = grouped_col.sum(min_count=1)
+        else:
+            agg_series = grouped_col.agg(func)
+        mapper = agg_series.to_dict() if agg_series.empty else agg_series
+        new_vals = skey.map(mapper)
+        if fname == 'sum':
+            # A group total stamped onto every spine row sharing the
+            # key multiplies it by the number of rows: in Carteret
+            # County NC 97% of parcels share their punctuation-free
+            # key (groups of up to 335), and the county's improvement
+            # value came out 31 times its source. A sum belongs to one
+            # spine row; where the key cannot say which, assign none.
+            # Only where a sum happened, though: a reference key held
+            # by one row was not summed, and its value is that row's,
+            # so every spine row that names it may carry it. That is
+            # the transaction spine's case, several sales of one
+            # parcel each carrying the parcel's value (Lake County
+            # FL, 2026-09-12: 572,120 of 597,666 sales withheld
+            # before this distinction, every parcel value lost).
+            group_sizes = grouped.size()
+            summed = skey.map(group_sizes).fillna(0) > 1
+            shared = skey.duplicated(keep=False) & skey.notna() & summed
+            if shared.any():
+                warnings.warn(
+                    f'link_by_id (aggregate): {name!r} is a sum over '
+                    f'{ref_key!r}, and {int(shared.sum()):,} spine rows '
+                    f'share their {spine_key!r} with others; the sum is '
+                    'not assigned to them, since stamping it on each '
+                    'would count it once per row.',
+                    stacklevel=2,
+                )
+                new_vals = new_vals.mask(shared)
+        if (
+            protect_own_columns
+            and out_name in protect_own_columns
+            and own_geometry_mask is not None
+        ):
+            new_vals = new_vals.mask(own_geometry_mask)
+        _write_prioritized(
+            spine,
+            name,
+            new_vals,
+            # A lossy key must only fill what a precise one left.
+            majority_coverage=float('inf') if fill_only else 0.5,
+            # The recipe's own name, not an upstream sidecar, unlike
+            # the 'attributes' branch. Two reasons, and they agree:
+            # this is the auto-discovered path, so `recipe_id` is
+            # already the county source that supplied the value and
+            # there is nothing more original to reach; and a value
+            # here may be an aggregate over several reference rows,
+            # which can disagree about their own provenance, so one
+            # token per spine row would be a guess.
+            provenance_token=token if out_name in provenance_cols else None,
+        )
+    # count_as=False asks for the attributes alone: a spine receiving
+    # a detail table's columns has no use for a count of its rows,
+    # and an unneeded column is redundancy in harmonize.
+    if count_as is False:
+        count_col = None
+    else:
+        count_col = count_as or 'n_records_per_key'
+        gsize = grouped.size()
+        mapper = gsize.to_dict() if gsize.empty else gsize
+        _accumulate_count(state, spine, count_col, skey.map(mapper))
+    # Counted whether or not anyone is watching: this is the mode
+    # auto-discovery uses, so a spine whose only parcel link is an
+    # auto-discovered one is exactly the case that most needs the
+    # guard below. Computing it only under `verbose` is how Holmes
+    # County FL rebuilt at 6.8% matched without a word.
+    matched = int(skey.isin(set(rkey.dropna())).sum())
+    if state.verbose:
+        print(
+            f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
+            f'rows matched {recipe_id} '
+            f'({len(pairs)} columns, {count_col or "no count"})'
+        )
+    _warn_if_link_underperforms(
+        matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+    )
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -667,130 +1075,21 @@ def link_by_id(
         carries *spine_key*.
     """
     if auto_discover:
-        # A standalone roll that is also one of the spine's own geometry
-        # sources (state.metadata['spine_source_recipe_ids'], set by
-        # resolve_spine) would otherwise re-derive its keep_columns
-        # attributes (e.g. use_group/use_subgroup) by aggregating across
-        # every spine row sharing its join key -- overwriting an
-        # already-correct per-geometry value with one pooled from unrelated
-        # rows. Those columns are already on the spine directly from the
-        # same source's own row wherever its geometry won; protect exactly
-        # those rows (see _protect_own_columns below) rather than dropping
-        # the column from the whole match, so this same source can still
-        # fill a keep_columns gap on a row a *different* source's geometry
-        # occupies.
-        spine_source_ids = state.metadata.get('spine_source_recipe_ids', set())
-        spine_keep_columns = state.metadata.get('spine_keep_columns', set())
-        has_geometry_source = (
-            state.spine is not None and 'geometry_source' in state.spine.columns
+        return _link_auto_discovered(
+            state,
+            entity_type=entity_type,
+            supplements_only=supplements_only,
+            spine_key=spine_key,
+            ref_key=ref_key,
+            columns=columns,
+            aggregation_function=aggregation_function,
+            suffix=suffix,
+            count_as=count_as,
+            ref_sort_by=ref_sort_by,
+            ref_sort_ascending=ref_sort_ascending,
+            track_provenance=track_provenance,
+            fill_only=fill_only,
         )
-        matches = _discover_link_sources(state, entity_type)
-        if supplements_only:
-            matches = _select_supplements(matches, spine_source_ids)
-        for match in matches:
-            keyed = match.get('supplements_key')
-            if keyed and not supplements_only:
-                # Its key names rows of its roll, not parcels or any
-                # other entity: joining it here would match on a column
-                # the spine does not share, or on one that means
-                # something else there. Its attributes reach other
-                # entities in curate, from the property spine.
-                continue
-            # The registry default lists the matching keys too, and
-            # copying a matched source's key over the spine's own is
-            # never what a link means: the key is how the rows met.
-            # Pender County NC (geospine of 2026-09-08) lost its county
-            # key on 99.8% of parcels to one placeholder value this way,
-            # when a punctuation-free fallback pass matched a statewide
-            # layer whose assessor id is '0' on every row. An explicit
-            # *columns* list is left as the caller wrote it.
-            match_columns = columns or [
-                c
-                for c in get_attributes(match['layer'] or entity_type).index
-                if c not in _LINK_KEY_COLUMNS
-            ]
-            protect_columns: set[str] | None = None
-            if match['layer'] is None and match['recipe_id'] in spine_source_ids:
-                keep_overlap = {c for c in match_columns if c in spine_keep_columns}
-                if keep_overlap:
-                    if has_geometry_source:
-                        protect_columns = keep_overlap
-                    else:
-                        # No geometry_source to key row-level protection on
-                        # (e.g. a union_spine_sources-built non-spatial
-                        # spine) -- fall back to the coarser column drop
-                        # rather than risk the pooled-duplicate-key
-                        # corruption this guard exists to prevent.
-                        match_columns = [
-                            c for c in match_columns if c not in keep_overlap
-                        ]
-                        if not match_columns:
-                            continue
-            # A match's own declared override (e.g. the improvement-detail
-            # sibling's year_built: min) wins over the caller's for the
-            # columns it names, but never reaches a sibling match with no
-            # such declaration -- see _discover_link_sources.
-            match_aggregation_function = {
-                **(aggregation_function or {}),
-                **(match['aggregation_function'] or {}),
-            }
-            # Auto-discovery normally picks the key per match. An
-            # explicit key from the caller overrides it, which is what
-            # lets a second pass re-run the same discovery on the
-            # punctuation-free fallback key. A supplements_key is the
-            # one column relating a supplement to its roll, so no
-            # caller key replaces it.
-            unit_lot_pairs = None
-            if keyed:
-                match_spine_key = match_ref_key = keyed
-            elif match.get('stacked_units_layer'):
-                # Units split off a parcel table name their lot in the
-                # layer's key and keep their own `parcel_id_local`, so
-                # the pair of columns differs by side. A caller's
-                # fallback key is built from the unit's own id and
-                # cannot name a lot: such a pass skips this layer.
-                if spine_key != DEFAULT_LINK_KEY or ref_key != DEFAULT_LINK_KEY:
-                    continue
-                match_spine_key, match_ref_key = DEFAULT_LINK_KEY, match['key']
-            else:
-                match_spine_key = (
-                    spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
-                )
-                match_ref_key = ref_key if ref_key != DEFAULT_LINK_KEY else match['key']
-                if (
-                    entity_type == 'property'
-                    and match_spine_key == DEFAULT_LINK_KEY
-                    and match_ref_key == DEFAULT_LINK_KEY
-                ):
-                    # A roll keyed on a unit's own number finds no parcel
-                    # row on a stacked lot, whose row carries the lot's
-                    # key. The split's unit-to-lot pairs carry it there.
-                    from openplaces.io.harmonizer.entity_links import (
-                        load_unit_lot_pairs,
-                    )
-
-                    unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
-            state = link_by_id(
-                state,
-                recipe_id=match['recipe_id'],
-                mode='aggregate',
-                spine_key=match_spine_key,
-                ref_key=match_ref_key,
-                columns=match_columns,
-                aggregation_function=match_aggregation_function or None,
-                suffix=suffix,
-                count_as=count_as,
-                layer=match['layer'],
-                ref_sort_by=ref_sort_by,
-                ref_sort_ascending=ref_sort_ascending,
-                track_provenance=track_provenance,
-                fill_only=fill_only,
-                _protect_own_columns=protect_columns,
-                _supplement_of=match['supplements'] if keyed else None,
-                _unit_lot_pairs=unit_lot_pairs,
-            )
-            state = _apply_remap_csvs(state, match['recipe_id'])
-        return state
 
     if recipe_id is None:
         warnings.warn('link_by_id: no recipe_id and auto_discover is False; skipping.')
@@ -911,214 +1210,47 @@ def link_by_id(
     _warn_if_duplicate_key(skey, spine_key, 'spine key', is_own_identity_key=is_own_key)
 
     if mode == 'attributes':
-        pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
-        # 'attributes' keeps one arbitrary row per key (no aggregation, unlike
-        # 'aggregate'/'count') -- a duplicate ref_key here is silently resolved
-        # by drop_duplicates below, so flag it before that happens.
-        _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
-        ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
-        ref_unique.index = ref_unique[ref_key].astype('string')
-        provenance_cols = set(track_provenance or [])
-        token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
-        for col, out_name in pairs:
-            name = f'{out_name}{suffix}' if suffix else out_name
-            ref_series = ref_unique[col]
-            mapper = ref_series.to_dict() if ref_series.empty else ref_series
-            _write_prioritized(
-                spine,
-                name,
-                skey.map(mapper),
-                # A lossy key must only fill what a precise one left.
-                majority_coverage=float('inf') if fill_only else 0.5,
-                provenance_token=(
-                    _upstream_tokens(ref_unique, col, skey, token)
-                    if out_name in provenance_cols
-                    else None
-                ),
-            )
-        matched = int(skey.isin(set(rkey.dropna())).sum())
-        if state.verbose:
-            print(
-                f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(pairs)} columns)'
-            )
-        _warn_if_link_underperforms(
-            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+        _link_attributes(
+            state,
+            spine,
+            skey,
+            rkey,
+            ref,
+            recipe_id=recipe_id,
+            spine_key=spine_key,
+            ref_key=ref_key,
+            columns=columns,
+            suffix=suffix,
+            track_provenance=track_provenance,
+            fill_only=fill_only,
         )
     elif mode == 'count':
-        count_as = count_as or 'n_transactions'
-        counts = rkey.dropna().value_counts()
-        mapper = counts.to_dict() if counts.empty else counts
-        _accumulate_count(state, spine, count_as, skey.map(mapper))
-        if flag_as:
-            spine[flag_as] = spine[count_as] > 0
-        linked = int((spine[count_as] > 0).sum())
-        if state.verbose:
-            print(
-                f'  Link by id (count): {linked:,d}/'
-                f'{len(spine):,d} spine rows linked to {recipe_id} ({count_as})'
-            )
-        # A count link is a different question: a parcel with no
-        # transaction is a real zero, not a failed join, so a low share
-        # says nothing about the conversion and nothing is flagged here.
+        _link_count(
+            state,
+            spine,
+            skey,
+            rkey,
+            recipe_id=recipe_id,
+            count_as=count_as,
+            flag_as=flag_as,
+        )
     elif mode == 'aggregate':
-        pairs = [
-            (c, o)
-            for c, o in _columns_as_pairs(columns)
-            if c in ref.columns and c != ref_key
-        ]
-        ref_valid = ref.dropna(subset=[ref_key]).copy()
-        ref_valid[ref_key] = ref_valid[ref_key].astype('string')
-        grouped = ref_valid.groupby(ref_key, sort=False)
-
-        # Registry-driven reduction (sum values/dwellings, mean year, etc.);
-        # columns without a usable registry rule fall back to the first value.
-        # Looked up by the *output* name -- the canonical slot being filled --
-        # not the reference's own column name, so a rename (e.g. price ->
-        # last_sale_price) still resolves the right aggregation. 'join_nonnull'
-        # (e.g. address, use_group) is not a pandas groupby function on its
-        # own -- routed through _agg_func_for (the same helper aggregate_rows
-        # uses) to concatenate every distinct non-null value instead of
-        # silently degrading to 'first' (an arbitrary row's value, discarding
-        # every other row's -- the original multi-property-per-parcel
-        # collapse bug). 'address' gets its own joiner there
-        # (join_nonnull_addresses) rather than the generic one: a condo/
-        # apartment building's per-unit property records typically differ
-        # only by an APT/UNIT/# suffix, and the plain joiner's ' + '-
-        # concatenation of every unit's full address corrupts downstream
-        # address parsing (no parser can split a multi-address blob back
-        # into one street/number). 'use_group' and other join_nonnull
-        # columns keep the plain joiner -- their concatenated values are
-        # consumed directly, never re-parsed.
-        reducible = {
-            'sum',
-            'mean',
-            'max',
-            'min',
-            'first',
-            'last',
-            'median',
-            'join_nonnull',
-        }
-        own_geometry_mask = None
-        if _protect_own_columns and 'geometry_source' in spine.columns:
-            own_label = source_id_from_recipe_id(recipe_id)
-            own_geometry_mask = spine['geometry_source'].astype('string') == own_label
-        provenance_cols = set(track_provenance or [])
-        token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
-        for col, out_name in pairs:
-            canonical_name = resolve_attribute_name(out_name)
-            fname = (aggregation_function or {}).get(out_name) or get_agg_func(
-                canonical_name
-            )
-            func = (
-                _agg_func_for(canonical_name, fname) if fname in reducible else 'first'
-            )
-            name = f'{out_name}{suffix}' if suffix else out_name
-            col_series = ref_valid[col]
-            # A registry-numeric column can still arrive here as pandas
-            # 'string'/object dtype (e.g. a fixed-width ingest, which never
-            # casts a mapped column's dtype -- see the PACS improvement-
-            # detail recipe). 'sum'/'mean'/'median' on a string column
-            # crashes outright; 'min'/'max' does not, but silently compares
-            # lexicographically instead of numerically (e.g. '12' < '5'),
-            # which is worse -- no crash to notice it by. Coerce first for
-            # either failure mode.
-            if fname in (
-                'sum',
-                'mean',
-                'median',
-                'min',
-                'max',
-            ) and not pd.api.types.is_numeric_dtype(col_series):
-                grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
-                    ref_valid[ref_key], sort=False
-                )
-            else:
-                grouped_col = grouped[col]
-            if fname == 'sum':
-                # A group whose values are all missing has an unknown
-                # total, not a total of zero: a property whose every bath
-                # row failed to parse must not read as zero baths.
-                # min_count=1 matches transform._aggregate_cols.
-                agg_series = grouped_col.sum(min_count=1)
-            else:
-                agg_series = grouped_col.agg(func)
-            mapper = agg_series.to_dict() if agg_series.empty else agg_series
-            new_vals = skey.map(mapper)
-            if fname == 'sum':
-                # A group total stamped onto every spine row sharing the
-                # key multiplies it by the number of rows: in Carteret
-                # County NC 97% of parcels share their punctuation-free
-                # key (groups of up to 335), and the county's improvement
-                # value came out 31 times its source. A sum belongs to one
-                # spine row; where the key cannot say which, assign none.
-                # Only where a sum happened, though: a reference key held
-                # by one row was not summed, and its value is that row's,
-                # so every spine row that names it may carry it. That is
-                # the transaction spine's case, several sales of one
-                # parcel each carrying the parcel's value (Lake County
-                # FL, 2026-09-12: 572,120 of 597,666 sales withheld
-                # before this distinction, every parcel value lost).
-                group_sizes = grouped.size()
-                summed = skey.map(group_sizes).fillna(0) > 1
-                shared = skey.duplicated(keep=False) & skey.notna() & summed
-                if shared.any():
-                    warnings.warn(
-                        f'link_by_id (aggregate): {name!r} is a sum over '
-                        f'{ref_key!r}, and {int(shared.sum()):,} spine rows '
-                        f'share their {spine_key!r} with others; the sum is '
-                        'not assigned to them, since stamping it on each '
-                        'would count it once per row.',
-                        stacklevel=2,
-                    )
-                    new_vals = new_vals.mask(shared)
-            if (
-                _protect_own_columns
-                and out_name in _protect_own_columns
-                and own_geometry_mask is not None
-            ):
-                new_vals = new_vals.mask(own_geometry_mask)
-            _write_prioritized(
-                spine,
-                name,
-                new_vals,
-                # A lossy key must only fill what a precise one left.
-                majority_coverage=float('inf') if fill_only else 0.5,
-                # The recipe's own name, not an upstream sidecar, unlike
-                # the 'attributes' branch. Two reasons, and they agree:
-                # this is the auto-discovered path, so `recipe_id` is
-                # already the county source that supplied the value and
-                # there is nothing more original to reach; and a value
-                # here may be an aggregate over several reference rows,
-                # which can disagree about their own provenance, so one
-                # token per spine row would be a guess.
-                provenance_token=token if out_name in provenance_cols else None,
-            )
-        # count_as=False asks for the attributes alone: a spine receiving
-        # a detail table's columns has no use for a count of its rows,
-        # and an unneeded column is redundancy in harmonize.
-        if count_as is False:
-            count_col = None
-        else:
-            count_col = count_as or 'n_records_per_key'
-            gsize = grouped.size()
-            mapper = gsize.to_dict() if gsize.empty else gsize
-            _accumulate_count(state, spine, count_col, skey.map(mapper))
-        # Counted whether or not anyone is watching: this is the mode
-        # auto-discovery uses, so a spine whose only parcel link is an
-        # auto-discovered one is exactly the case that most needs the
-        # guard below. Computing it only under `verbose` is how Holmes
-        # County FL rebuilt at 6.8% matched without a word.
-        matched = int(skey.isin(set(rkey.dropna())).sum())
-        if state.verbose:
-            print(
-                f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} '
-                f'({len(pairs)} columns, {count_col or "no count"})'
-            )
-        _warn_if_link_underperforms(
-            matched, len(spine), spine_key, recipe_id, state.admin_id, fill_only
+        _link_aggregate(
+            state,
+            spine,
+            skey,
+            rkey,
+            ref,
+            recipe_id=recipe_id,
+            spine_key=spine_key,
+            ref_key=ref_key,
+            columns=columns,
+            aggregation_function=aggregation_function,
+            suffix=suffix,
+            count_as=count_as,
+            track_provenance=track_provenance,
+            fill_only=fill_only,
+            protect_own_columns=_protect_own_columns,
         )
     else:
         raise ValueError(

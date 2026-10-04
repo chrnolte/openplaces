@@ -25,6 +25,7 @@ from shapely.geometry import box
 import openplaces.io.harmonizer.attributes as attrs
 import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 class _Entity:
@@ -57,7 +58,7 @@ def test_n_footprints_per_parcel_is_int64_with_zero_for_unlinked(monkeypatch):
         geometry=[box(0, 0, 1, 1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
     )
@@ -94,7 +95,7 @@ def test_parcel_id_sorts_before_parcel_id_local(monkeypatch):
         geometry=[box(0, 0, 1, 1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
     )
@@ -130,7 +131,7 @@ def test_area_intersection_m2_parcel_equals_dominant_link_overlap(monkeypatch):
         geometry=[box(-1, -1, 2, 2), box(0.9, 0.9, 1.1, 1.1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
     )
@@ -174,7 +175,7 @@ def test_inferred_backfill_propagates_parcel_id_local(monkeypatch):
         geometry=[box(0, 0, 1, 1), box(100, 100, 101, 101)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
     )
@@ -364,7 +365,7 @@ def test_polygon_reference_carries_generic_numeric_with_registry_agg(monkeypatch
         geometry=[box(0, 0, 1, 1), box(2, 2, 3, 3)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'US_footprint-fema-2023', 'footprint', {'area_intersection_m2_min': 0}
     )
@@ -403,7 +404,7 @@ def test_footprint_fema_relational_count_pluralizes_entity_not_whole_suffix(
         geometry=[box(0, 0, 1, 1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'US_footprint-fema-2023', 'footprint', {'area_intersection_m2_min': 0}
     )
@@ -445,7 +446,7 @@ def test_sliver_link_excluded_from_relational_count_after_trim(monkeypatch):
         geometry=[box(0, 0, 10, 10), box(15, 15, 15.1, 15.1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'US_footprint-fema-2023', 'footprint', {'area_intersection_m2_min': 0}
     )
@@ -507,7 +508,7 @@ def test_spine_without_geometry_source_is_attributed(monkeypatch):
         geometry=[box(0, 0, 1, 1)],
         crs='EPSG:4326',
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     state = links._link_spatial_overlay(
         state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
     )

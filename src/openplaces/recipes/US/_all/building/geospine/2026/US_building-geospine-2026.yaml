@@ -1,0 +1,92 @@
+# Recipe: building geospine (geometry phase of the building spine)
+#
+# The building is the structure entity (core.schema.ENTITY_DEFINITIONS:
+# one structure; a townhome row drawn as a single footprint is several
+# buildings, a condominium tower of many outlines is one). The footprint
+# is one geometry source for it, and today the only one, so this first
+# slice establishes one building per footprint of the footprint geospine
+# and nothing else (plans/core-schema-and-stage-contracts-review.md,
+# deliverable 3b, slice b1, decided by the maintainer 2026-09-29).
+#
+# What it does: takes the footprint geospine's rows as the single source
+# (geometry, the geographic ids the footprint geospine already joined,
+# each outline's own provenance), keeps each row's footprint id in
+# `footprint_id` and indexes the spine by `building_id`, minted from the
+# geometry the way `footprint_id` is, so the two ids are equal while the
+# relation is one to one. The footprint-to-building link table is
+# written by the attribute recipe (US_building-spine-2026), which also
+# runs every attribute step that used to run on the footprint spine
+# (slice b2), against the footprint geospine's link sidecars re-keyed
+# to building ids.
+#
+# What it does not do yet, by slice: point sources without an outline
+# (NSI buildings the footprint layers miss) become rows in b3, as do
+# townhome splits and condo-tower merges. Until then US_footprint-spine-
+# 2026 is a projection of the building spine and the footprint curate
+# is untouched, so this recipe changes no shipped number.
+
+description: >-
+  Building geometry spine, one building per footprint of the footprint
+  geospine, keeping each footprint's id and the geographic ids.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: building
+  source:
+    source_id: geospine
+    # Not an external source: an openplaces pipeline product that
+    # carries whatever its inputs carry and nothing of its own; the
+    # applicable terms are derived per output by io.bundle_terms.
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+  # Part of the normalized geometry store, like the footprint geospine:
+  # an aggressive cleanup must not reclaim it.
+  retention: keep
+
+pipeline:
+
+  # One source, the footprint geospine, so no overlap test runs and every
+  # outline becomes one row. keep_columns carries what the footprint
+  # geospine already computed per outline and a building needs as its
+  # own: the outline's provenance (geometry_source kept from the row,
+  # not stamped with the label 'footprint': classify_footprint_priority
+  # and the inferred-row attribution read the 'parcel.spine' token, and
+  # the footprint curate withdraws values on 'condo_cluster.*' rows) and
+  # the geographic ids (joined there by link_geographic_ids).
+  - step: resolve_spine
+    sources:
+      - recipe_id: US_footprint-geospine-2026
+        label: footprint
+      # Exactly this source. resolve_spine discovers ingest recipes of the
+      # spine's entity type by default, and the CHEER building inventory
+      # is one (US-NC_footprint_building-cheer-v0): merging it here added
+      # 1,637 Currituck rows no footprint drew (2026-09-29). Buildings
+      # without an outline are slice b3's question, not this recipe's.
+      - auto_discover: false
+    keep_columns:
+      - geometry_source
+      - geometry_source_id
+      - admin4_id
+      - census_subdivision_id
+      - census_tract_id
+      - census_blockgroup_id
+      - census_block_id
+      - zcta5_id
+
+  # The rows arrived indexed by footprint_id. Keep that on the row and
+  # index the spine by building_id; the values are the same while one
+  # footprint is one building.
+  - step: adopt_source_entity_id
+    source_id_column: footprint_id
+
+  # Centroid and area of the building's own outline.
+  - step: derive_geometry_attributes

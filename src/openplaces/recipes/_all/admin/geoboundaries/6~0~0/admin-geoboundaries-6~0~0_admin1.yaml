@@ -1,0 +1,73 @@
+# geoBoundaries CGAZ ADM0 polygons, ingested as openplaces admin level 1.
+#
+# CGAZ (Comprehensive Global Administrative Zones) is geoBoundaries'
+# global composite: one polygon per country, clipped to the US
+# Department of State's international boundaries, gaps between borders
+# filled, and disputed areas cut out into zones of their own. That
+# makes it the one open world layer whose countries do not overlap,
+# which is what level 1 needs to stop coming from GADM (non-commercial,
+# no redistribution).
+#
+# Measured 2026-09-30 on admin-geoboundaries-6~0~0: 218 rows. 199 match
+# a spine level-1 unit by ISO alpha-3 (Kosovo after the XKX -> XKO
+# remap below), 19 are disputed zones numbered 111-129 that name no
+# unit and are dropped, and 64 spine units have no CGAZ row: mostly
+# dependencies and overseas departments (Aruba, Guadeloupe, Jersey),
+# which CGAZ draws inside their sovereign's polygon or not at all.
+# Those come from admin-naturalearth-5~1~1_admin1, and the level-1
+# harmonize step carve_lumped_territories carves them out of the
+# parent here.
+#
+# Pinned to the v6.0.0 tag, the release the ADM1-ADM3 recipes beside
+# this one use; the page geoboundaries.org/globalDownloads.html links
+# the moving main branch instead.
+#
+# Citation: Runfola, D. et al. (2020) geoBoundaries: A global database
+# of political administrative boundaries. PLoS ONE 15(4): e0231866.
+
+description: >-
+  geoBoundaries CGAZ country polygons (admin level 1), clipped to US
+  State Department boundaries with disputed zones cut out.
+
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: geoboundaries
+    portal_url: "https://www.geoboundaries.org/globalDownloads.html"
+    download_url: "https://github.com/wmgeolab/geoBoundaries/raw/v6.0.0/releaseData/CGAZ/geoBoundariesCGAZ_ADM0.gpkg"
+    # CC BY 4.0 per geoBoundaries: "Attribution is required for all
+    # uses of this dataset." Checked 2026-09-30.
+    license: "CC BY 4.0 (attribution required)"
+    terms_url: "https://www.geoboundaries.org/globalDownloads.html"
+    redistribution_restricted: false
+  version: 6~0~0
+
+uncompressed_file_name: "geoBoundariesCGAZ_ADM0.gpkg"
+
+# The GeoPackage reads as GDAL's "Undefined geographic SRS" (a WGS 84
+# ellipsoid with no authority code), and its coordinates are WGS 84
+# longitude and latitude.
+source_crs: "EPSG:4326"
+
+columns:
+  name: shapeName
+  admin1_id_a3: shapeGroup
+
+keep_unnamed_columns: False
+
+create_index:
+  function: "openplaces.io.admin.admin1_id_index_from_codes"
+  args:
+    code_columns: [admin1_id_a3]
+    # CGAZ codes Kosovo with the user-assigned XKX; the spine, from
+    # the ISO table's additions, uses XKO.
+    remap:
+      XKX: XKO
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin1

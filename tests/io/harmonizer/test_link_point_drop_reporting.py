@@ -14,6 +14,7 @@ from shapely.geometry import Point, box
 
 import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 CRS = 32617  # UTM 17N (metric)
 
@@ -48,7 +49,7 @@ def _state(verbose, with_parcels):
 
 def _run(monkeypatch, verbose=True, with_parcels=True):
     points = gpd.GeoDataFrame({'source': ['Parcel']}, geometry=[Point(75, 50)], crs=CRS)
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: points)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: points)
     return links._link_spatial_point(
         _state(verbose, with_parcels), 'nsi_ref', 'building', None, {}, save_link=False
     )

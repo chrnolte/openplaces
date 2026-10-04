@@ -15,7 +15,6 @@ from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.recipe import (
-    find_admin_recipe_id,
     get_output_path,
     get_recipe_by_id,
     get_recipe_id,
@@ -28,7 +27,7 @@ from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-spine-2026'
 REGION_SOURCE_DEFAULT = 'admin-regions-2026'
-ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
+ADMIN_GEO_SOURCE_DEFAULT = 'admin-openplaces-2026'
 ADMIN_PRIMARY_COLUMNS = {
     1: ['name', 'admin1_id_a3'],
     2: [
@@ -208,34 +207,14 @@ def get_admin(
         if level is None:
             # Default to countries
             level = 1
-        # Prefer the most specific admin recipe scope the requested IDs
-        # share, walking up to the country; fall back to the global GADM
-        # default otherwise. The walk matters where a level's geometry
-        # ships per state rather than nationally: New England admin3 is
-        # towns, excluded from the national county layer and provided by
-        # per-state COUSUB recipes (US-MA_admin-census-2025_admin3), so a
-        # request scoped inside one state must find that state's recipe.
-        in_country_recipe_id = None
-        if admin_id is not None:
-            common = admin_ids[0].levels
-            for _aid in admin_ids[1:]:
-                n = 0
-                while (
-                    n < len(common)
-                    and n < len(_aid.levels)
-                    and common[n] == _aid.levels[n]
-                ):
-                    n += 1
-                common = common[:n]
-            for scope_level in range(len(common), 0, -1):
-                in_country_recipe_id = find_admin_recipe_id(
-                    AdminId(*common[:scope_level]), level, silent=True
-                )
-                if in_country_recipe_id:
-                    break
-        recipe = in_country_recipe_id or f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
-        if isinstance(recipe, str):
-            recipe = get_recipe_by_id(recipe)
+        # The harmonized spine geometry, which already assigns every
+        # unit its most specific source: New England's per-state COUSUB
+        # towns (US-MA_admin-census-2025_admin3) as much as a national
+        # layer. Reading an ingest recipe here instead, as this did
+        # until 2026-09-29, picked a national source with names and no
+        # polygons (FR's INSEE, JP's Soumu) and returned no geometry,
+        # and fell back to GADM, which the spine may not carry.
+        recipe = get_recipe_by_id(f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}')
 
     if admin_id is None and level is None:
         # Default to countries

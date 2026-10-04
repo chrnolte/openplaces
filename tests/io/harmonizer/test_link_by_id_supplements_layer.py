@@ -14,6 +14,7 @@ import openplaces.io.harmonizer.links as links
 import openplaces.io.harmonizer.spine as spine_module
 from openplaces.core.schema import AdminId, Entity
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 _HOST = 'US-XX_parcel-statewide-2025'
 _CITY = 'US-XX-YY_property-citytable-2026'
@@ -72,7 +73,7 @@ def test_a_city_table_lands_on_the_layer_rows_it_details(monkeypatch):
     monkeypatch.setattr(
         'openplaces.recipe.get_recipe_by_id', lambda rid, **k: recipes[rid]
     )
-    monkeypatch.setattr(links, '_find_admin_scoped_recipe_ids', lambda *a: [_CITY])
+    patch_links(monkeypatch, '_find_admin_scoped_recipe_ids', lambda *a: [_CITY])
     frames = {
         # Two building rows of 'a' sum; 'z' is not on the spine.
         _CITY: pd.DataFrame(
@@ -84,9 +85,9 @@ def test_a_city_table_lands_on_the_layer_rows_it_details(monkeypatch):
         assert recipe_id in frames, f'{recipe_id} should not be loaded'
         return frames[recipe_id]
 
-    monkeypatch.setattr(links, 'get_entities', _get_entities)
-    monkeypatch.setattr(links, 'restrict_to_admin_by_name', lambda df, *a: df)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, 'get_entities', _get_entities)
+    patch_links(monkeypatch, 'restrict_to_admin_by_name', lambda df, *a: df)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     state = _state()
     state.spine = pd.DataFrame(
@@ -116,7 +117,7 @@ def test_a_supplement_naming_an_unknown_layer_fails_at_discovery(monkeypatch):
     monkeypatch.setattr(
         'openplaces.recipe.get_recipe_by_id', lambda rid, **k: recipes[rid]
     )
-    monkeypatch.setattr(links, '_find_admin_scoped_recipe_ids', lambda *a: [_CITY])
+    patch_links(monkeypatch, '_find_admin_scoped_recipe_ids', lambda *a: [_CITY])
 
     with pytest.raises(ValueError, match='no such additional layer'):
         links._discover_link_sources(_state(), 'property')

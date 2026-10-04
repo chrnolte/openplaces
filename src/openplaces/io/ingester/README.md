@@ -19,6 +19,25 @@ current code. -->
 already-resolved source file. It applies column mappings, type casts, spatial filtering,
 and the attribute registry type checks.
 
+**Both classes are assembled from mixins, one module per concern**
+(since 2026-09-29; until then `__init__.py` held 2,518 lines and
+`table_ingester.py` 1,710). `Ingester` keeps its constructor, `ingest`,
+the per-partition driver and table processing in `__init__.py`, and
+inherits `scope.py` (which units are saved, processed, downloaded),
+`partitions.py` (partition, tile and placeholder ids), `download.py`
+(URLs, paths, download, unzip, scrapers) and `outputs.py` (entity links,
+tile merges, table joins, aggregation); module-level helpers sit in
+`_helpers.py`. `TableIngester` keeps `process` in `table_ingester.py` and
+inherits `table_scope.py`, `table_read.py`, `table_preprocess.py`,
+`table_ids.py` and `table_save.py`. All state stays on the instance.
+**A test patches the module the method lives in**
+(`openplaces.io.ingester.download.unzip`,
+`openplaces.io.ingester.table_read.read_access_table`), because a method
+looks names up in its own module's globals; a patch on the package or on
+`table_ingester` reaches nothing now, and `monkeypatch` raises rather
+than passing silently. `get_admin` is the one name bound in two mixins
+(`scope` and `partitions`), so a test that fakes the spine patches both.
+
 **Every parcel table is split into lots and properties at ingest**
 (`io/stacked_units.py`). Sixteen parcel sources stack several ownership
 records on one lot polygon (Florida's statewide layer alone carries 1.13
@@ -82,12 +101,10 @@ $79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
 roll exists the property spine holds stacked units only (all of Wisconsin:
 Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
 conserved to the dollar). The module docstring
-carries the patent rationale (US9298740B2, all-elements rule: claims 1
-and 15 recite the same six steps, claim 11 adds a wilderness test, and all
-three start from a parcel that *failed verification* against mapping or
-addressing data, which the split never tests; read from the patent text
-2026-09-21, an agent's reading, not legal advice). Data on disk keeps the old row shape until a county is
-re-ingested.
+records the design: the split groups all rows by the source's own lot
+identity and never verifies a row against other mapping or addressing
+data, flags it as inconsistent, or normalizes it. Data on disk keeps the
+old row shape until a county is re-ingested.
 
 Public entrypoint:
 

@@ -17,16 +17,16 @@ from openplaces.timing import Timer
 
 
 def _ingester(tmp_path, monkeypatch, recipe):
-    from openplaces.io.ingester import table_ingester as ti_module
+    from openplaces.io.ingester import table_save
 
     written = []
     monkeypatch.setattr(
-        ti_module,
+        table_save,
         'get_output_path',
         lambda _r, admin_id, partition_id=None: tmp_path / f'{admin_id}.parquet',
     )
     monkeypatch.setattr(
-        ti_module, 'save_parquet', lambda gdf, path: written.append(path)
+        table_save, 'save_parquet', lambda gdf, path: written.append(path)
     )
 
     ingester = TableIngester.__new__(TableIngester)

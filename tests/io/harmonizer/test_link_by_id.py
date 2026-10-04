@@ -13,6 +13,7 @@ import pytest
 import openplaces.io.harmonizer.links as links
 from openplaces.core.schema import Entity
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 def _state(spine, entity_type=None):
@@ -25,7 +26,7 @@ def _state(spine, entity_type=None):
 def test_attributes_mode_joins_columns(monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B', 'C']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'land_value': [100, 200]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine), 'ref', mode='attributes', columns=['land_value']
@@ -39,7 +40,7 @@ def test_attributes_mode_joins_columns(monkeypatch):
 def test_count_mode_flags_transacted_parcels(monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B', 'C']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'A', 'B']})  # A x2, B x1, C none
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(_state(spine), 'tx', mode='count')
 
@@ -49,7 +50,7 @@ def test_count_mode_flags_transacted_parcels(monkeypatch):
 
 def test_missing_spine_key_skips(monkeypatch):
     spine = pd.DataFrame({'other': [1, 2]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: pd.DataFrame())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: pd.DataFrame())
     state = links.link_by_id(_state(spine), 'ref', mode='count')
     assert 'n_transactions' not in state.spine.columns
 
@@ -65,7 +66,7 @@ def test_aggregate_mode_reduces_many_to_one(monkeypatch):
             'usecode': ['102', '102', '101'],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine),
@@ -93,7 +94,7 @@ def test_aggregate_mode_custom_count_name(monkeypatch):
     ref = pd.DataFrame(
         {'parcel_id_admin2': ['A', 'A', 'B'], 'land_value': [10.0, 20.0, 5.0]}
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine),
@@ -110,7 +111,7 @@ def test_aggregate_mode_custom_count_name(monkeypatch):
 
 def test_unknown_mode_raises(monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A']})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: spine.copy())
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: spine.copy())
     with pytest.raises(ValueError, match='unknown mode'):
         links.link_by_id(_state(spine), 'ref', mode='bogus')
 
@@ -122,7 +123,7 @@ def test_missing_reference_data_skips(monkeypatch):
     def _raise(*a, **k):
         raise FileNotFoundError('no such entity for admin')
 
-    monkeypatch.setattr(links, 'get_entities', _raise)
+    patch_links(monkeypatch, 'get_entities', _raise)
     state = links.link_by_id(
         _state(spine),
         'US-MA_property-massgis-2025',
@@ -141,7 +142,7 @@ def test_duplicate_spine_key_warns_but_does_not_change_result(monkeypatch):
     # surfaced, not silent.
     spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
     ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with pytest.warns(UserWarning, match="'parcel_id_local' is not unique"):
         state = links.link_by_id(
@@ -157,7 +158,7 @@ def test_duplicate_foreign_spine_key_does_not_warn(recwarn, monkeypatch):
     # than once), so this must not warn.
     spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
     ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     links.link_by_id(
         _state(spine, entity_type='transaction'),
@@ -175,7 +176,7 @@ def test_duplicate_own_spine_key_still_warns(monkeypatch):
     # real anomaly, so this must still warn.
     spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
     ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with pytest.warns(UserWarning, match="'parcel_id_local' is not unique"):
         links.link_by_id(
@@ -191,7 +192,7 @@ def test_duplicate_attributes_ref_key_warns(monkeypatch):
     # aggregation -- so a duplicated ref_key must be flagged.
     spine = pd.DataFrame({'parcel_id_local': ['A']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'A'], 'land_value': [100, 200]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     with pytest.warns(UserWarning, match='reference key'):
         state = links.link_by_id(
@@ -205,7 +206,7 @@ def test_duplicate_attributes_ref_key_warns(monkeypatch):
 def test_unique_key_emits_no_duplicate_warning(recwarn, monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'land_value': [100, 200]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     links.link_by_id(_state(spine), 'ref', mode='attributes', columns=['land_value'])
 
@@ -215,7 +216,7 @@ def test_unique_key_emits_no_duplicate_warning(recwarn, monkeypatch):
 def test_attributes_mode_dict_columns_renames_on_write(monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'price': [100, 200]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine), 'ref', mode='attributes', columns={'price': 'last_sale_price'}
@@ -234,7 +235,7 @@ def test_aggregate_mode_dict_columns_renames_and_uses_output_name_for_registry(
     ref = pd.DataFrame(
         {'parcel_id_local': ['A', 'A'], 'recorded_date': ['2020-01-01', '2021-06-01']}
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine),
@@ -252,7 +253,7 @@ def test_aggregate_mode_count_as_n_transactions_now_honored(monkeypatch):
     # explicitly requested -- an explicit count_as must now be honored as-is.
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
     ref = pd.DataFrame({'parcel_id_local': ['A', 'A', 'B']})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine), 'tx', mode='aggregate', count_as='n_transactions'
@@ -265,7 +266,7 @@ def test_aggregate_mode_count_as_n_transactions_now_honored(monkeypatch):
 def test_count_mode_flag_as_none_skips_flag_column(monkeypatch):
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
     ref = pd.DataFrame({'parcel_id_local': ['A']})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(_state(spine), 'tx', mode='count', flag_as=None)
 
@@ -284,7 +285,7 @@ def test_ref_sort_by_picks_most_recent_for_first_aggregation(monkeypatch):
             'price': [200, 100, 400],
         }
     )
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(
         _state(spine),
@@ -314,7 +315,7 @@ def test_aggregate_mode_duplicate_spine_key_warns_and_keeps_an_unsummed_value(
     # value on Lake County FL's 597,666 sales (2026-09-12).
     spine = pd.DataFrame({'parcel_id_admin2': ['A', 'A', 'B']})
     ref = pd.DataFrame({'parcel_id_admin2': ['A', 'B'], 'land_value': [100.0, 50.0]})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
     with pytest.warns(UserWarning, match="'parcel_id_admin2' is not unique"):
         state = links.link_by_id(
             _state(spine),
@@ -337,11 +338,11 @@ def test_count_mode_accumulates_across_sources(monkeypatch):
     second = pd.DataFrame({'parcel_id_local': ['A', 'C']})
     state = _state(spine)
 
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: first)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: first)
     state = links.link_by_id(state, 'tx_state', mode='count')
     assert state.spine['n_transactions'].tolist() == [2, 1, 0]
 
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: second)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: second)
     state = links.link_by_id(state, 'tx_county', mode='count')
 
     assert state.spine['n_transactions'].tolist() == [3, 1, 1]
@@ -356,9 +357,9 @@ def test_aggregate_mode_accumulates_record_counts(monkeypatch):
     second = pd.DataFrame({'parcel_id_local': ['C'], 'land_value': [4.0]})
     state = _state(spine)
 
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: first)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: first)
     state = links.link_by_id(state, 'roll_a', mode='aggregate', columns=['land_value'])
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: second)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: second)
     state = links.link_by_id(state, 'roll_b', mode='aggregate', columns=['land_value'])
 
     assert state.spine['n_records_per_key'].tolist() == [2, 1, 1]
@@ -369,7 +370,7 @@ def test_count_mode_replaces_a_restored_count_on_the_first_write(monkeypatch):
     # run's first source replaces it, never adding to a stale tally.
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'n_transactions': [9, 9]})
     ref = pd.DataFrame({'parcel_id_local': ['A']})
-    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    patch_links(monkeypatch, 'get_entities', lambda *a, **k: ref)
 
     state = links.link_by_id(_state(spine), 'tx', mode='count')
 

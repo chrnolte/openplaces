@@ -15,6 +15,7 @@ from openplaces.recipe import get_output_path
 
 TARGET = 'US_footprint-openplaces-2026'
 SPINE = 'US_footprint-spine-2026'
+BUILDING_SPINE = 'US_building-spine-2026'
 NSI = 'US_building-nsi-2026'
 # Brunswick's current id. Its pre-2026 form, 'US-NC-BR', is a string
 # prefix of it and used to select it from the spine by accident.
@@ -69,14 +70,16 @@ def test_plan_upstream_propagation(dag, data_root):
 
 
 def test_plan_inputs_newer(dag, data_root):
-    spine_path = _write_parquet(get_output_path(SPINE, admin_id=COUNTY))
+    # NSI is an input of the building spine, which runs the evidence
+    # steps since slice b2 (the footprint spine projects its result).
+    spine_path = _write_parquet(get_output_path(BUILDING_SPINE, admin_id=COUNTY))
     old = time.time() - 3600
     os.utime(spine_path, (old, old))
     # An input of the spine, newer than the spine output: the direct mtime
     # reason wins over the propagated upstream-scheduled one
     _write_parquet(get_output_path(NSI, admin_id=COUNTY))
     plan = dag.plan().set_index(['recipe_id', 'admin_id'])
-    spine = plan.loc[(SPINE, COUNTY)]
+    spine = plan.loc[(BUILDING_SPINE, COUNTY)]
     assert bool(spine['will_run'])
     assert spine['reason'] == 'inputs newer than output'
 

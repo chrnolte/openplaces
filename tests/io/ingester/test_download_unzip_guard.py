@@ -9,7 +9,7 @@ with or without the flag, because `unzip` has no skip-if-extracted branch.
 
 from __future__ import annotations
 
-import openplaces.io.ingester as ingester_module
+import openplaces.io.ingester.download as ingester_download
 from openplaces.io.ingester import Ingester
 
 
@@ -62,9 +62,9 @@ def _make_ingester(tmp_path, *, downloaded_name, data_name, monkeypatch):
         # post-extraction existence check sees what it expects.
         data.write_text('extracted')
 
-    monkeypatch.setattr(ingester_module, 'unzip', _fake_unzip)
+    monkeypatch.setattr(ingester_download, 'unzip', _fake_unzip)
     monkeypatch.setattr(
-        ingester_module, 'download', lambda url, target, **k: downloaded
+        ingester_download, 'download', lambda url, target, **k: downloaded
     )
     return ing, calls
 

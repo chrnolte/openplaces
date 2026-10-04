@@ -132,8 +132,8 @@ def show_entities_raster(
 
     # Canvas.polygons rasterizes raw x/y with no notion of projection; data
     # at rest is EPSG:4326 (lon/lat degrees), which visibly distorts aspect
-    # ratio away from the equator. Reproject to match the convention already
-    # used for basemap-style plots in openplaces.viz.maps.
+    # ratio away from the equator. Reproject to EPSG:3857, the same
+    # projection openplaces.viz.maps.show_building draws in.
     gdf = gdf.to_crs(epsg=3857)
 
     # Pin x_range/y_range explicitly (rather than letting Canvas auto-range

@@ -40,7 +40,7 @@
 # mobile-home personal-property accounts (X classes, mostly park
 # spaces) have no polygon and stay unplaced. Placing them by situs
 # address is deferred (see the plan, section 7, decision 5, and the
-# patent constraints recorded there).
+# design limits recorded there).
 #
 # ZERO VERSUS MISSING. A property with an MA row gets 0 for every kind
 # it does not hold; a property with no MA row at all (land only,

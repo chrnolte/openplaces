@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import Point
 
-import openplaces.io.ingester as ingester_module
+import openplaces.io.ingester.download as ingester_download
 from openplaces.io import unzip
 from openplaces.io.ingester import Ingester
 
@@ -175,7 +175,7 @@ def test_ingester_finds_a_member_of_a_nested_archive(tmp_path, monkeypatch):
         'partition_id_to_download': None,
     }
     monkeypatch.setattr(
-        ingester_module,
+        ingester_download,
         'download',
         lambda *a, **k: pytest.fail('the download is already on disk'),
     )

@@ -17,11 +17,8 @@ import pytest
 from shapely.geometry import Polygon
 
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import (
-    derive_group_count,
-    derive_group_rank,
-    derive_indicators,
-)
+from openplaces.io.curator.group_context import derive_group_count, derive_group_rank
+from openplaces.io.curator.inferers import derive_indicators
 from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import get_recipe_by_id
 

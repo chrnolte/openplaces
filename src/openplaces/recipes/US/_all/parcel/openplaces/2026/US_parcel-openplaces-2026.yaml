@@ -193,12 +193,16 @@ pipeline:
     minimum: 0
 
   # These parcel_id_assessor values are non-taxable placeholders, not real
-  # parcels (found empirically in Carteret County, NC): WATER (water
-  # bodies), ROW (road rights-of-way). Confirmed via direct data checks
-  # that these rows carry no use code and no value -- unlike e.g. STATE
-  # LAND or CALO (Cape Lookout National Seashore), which are real,
-  # valuable land despite unusual assessor IDs, and must not be swept in
-  # here. Idiosyncratic per source -- see
+  # parcels (first found in Carteret County, NC): WATER (water bodies),
+  # ROW (road rights-of-way). Confirmed via direct data checks that
+  # these rows carry no use code and no value -- unlike e.g. STATE LAND
+  # or CALO (Cape Lookout National Seashore), which are real, valuable
+  # land despite unusual assessor IDs, and must not be swept in here.
+  # A national rule, not a county's: measured 2026-09-29 on the 86 CHEER
+  # counties plus Somerville, Vilas and Lake, the two values occur in
+  # nine counties (Vilas WI 83 rows, Chowan NC 13, Harnett NC 9), so a
+  # county patch recipe (recipes/README.md) would be the wrong home. A
+  # value one source alone uses belongs in that county's patch. See
   # notebooks/01_setup/04_detect_phantom_parcel_ids.ipynb to find
   # candidates in newly ingested counties before adding them. Runs
   # before impute_from_group_statistic so these rows never pollute its

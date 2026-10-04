@@ -25,9 +25,13 @@ ENTITY_TYPES = ['parcel', 'footprint', 'property', 'transaction']
 
 
 def _curate_recipe_ids():
+    """Curate recipes with a pipeline of their own: a patch recipe
+    (`patches:`) amends one of these and is checked through it."""
     ids = []
     for entity_type in ENTITY_TYPES:
         found = find_recipes(entity_type, stage='curate')
+        if 'patches' in found.columns:
+            found = found[found['patches'] == '']
         ids.extend(found['recipe_id'].tolist())
     return sorted(set(ids))
 

@@ -35,7 +35,12 @@ from openplaces.io.cleanup import (
 )
 from openplaces.io.readers import get_admin, get_admin_ids
 from openplaces.io.steps import make_loader, make_register
-from openplaces.recipe import get_output_path, get_recipe_by_id, saves_geometry
+from openplaces.recipe import (
+    apply_recipe_patches,
+    get_output_path,
+    get_recipe_by_id,
+    saves_geometry,
+)
 from openplaces.table import require_unique_index
 from openplaces.timing import get_timer
 
@@ -499,11 +504,11 @@ _load_top_level_steps = make_loader(__name__, __path__)
 
 def _load_steps() -> None:
     """Import every step module once: the top-level modules and the
-    `links` sub-package, which the shared loader skips by design (it
-    keeps the enricher's detectors out of the import) and whose package
-    file imports its own modules."""
+    `attributes` and `links` sub-packages, which the shared loader skips
+    by design (it keeps the enricher's detectors out of the import) and
+    whose package files import their own modules."""
     _load_top_level_steps()
-    from openplaces.io.harmonizer import links  # noqa: F401
+    from openplaces.io.harmonizer import attributes, links  # noqa: F401
 
 
 def _missing_link_sidecars(recipe, admin_id) -> list[Path]:
@@ -736,7 +741,13 @@ class Harmonizer:
 
     def _harmonize_one(self, admin_id: AdminId | None, reprocess: bool = False) -> None:
         """Build a :class:`HarmonizeState` and execute the recipe pipeline."""
-        pipeline = self.recipe.get('pipeline')
+        # The recipe as this unit runs it: a county's or state's patch
+        # recipe amends the pipeline here, once per unit. The checkpoint
+        # chain and the link fingerprints read the patched pipeline, so
+        # a changed patch invalidates that unit's checkpoint and sidecars
+        # and no other unit's.
+        recipe, applied_patches = apply_recipe_patches(self.recipe, admin_id)
+        pipeline = recipe.get('pipeline')
         if not pipeline:
             warnings.warn(
                 f"Recipe has no 'pipeline' section; nothing to do for {admin_id}."
@@ -744,13 +755,15 @@ class Harmonizer:
             return
 
         state = HarmonizeState(
-            recipe=self.recipe,
+            recipe=recipe,
             admin_id=admin_id,
             verbose=self.verbose,
             timer=self._timer,
             save_statistics=self.save_statistics,
             reprocess=reprocess,
         )
+        if applied_patches:
+            state.metadata['recipe_patches'] = list(applied_patches)
 
         # A pipeline step marked 'checkpoint: true' persists the spine
         # after it runs; a later rerun whose config chain up to that
@@ -771,9 +784,9 @@ class Harmonizer:
         )
         resume_from = 0
         if checkpoint_index is not None:
-            chain = _checkpoint_chain(self.recipe, pipeline, checkpoint_index, admin_id)
+            chain = _checkpoint_chain(recipe, pipeline, checkpoint_index, admin_id)
             restored = _load_attribute_checkpoint(
-                self.recipe, admin_id, chain, verbose=self.verbose
+                recipe, admin_id, chain, verbose=self.verbose
             )
             if restored is not None:
                 state.spine, handoff = restored

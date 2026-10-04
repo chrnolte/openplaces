@@ -13,6 +13,7 @@ import pandas as pd
 import openplaces.io.harmonizer.links as links
 from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
+from tests.links_patching import patch_links
 
 
 def _state(admin_id, spine=None, verbose=False):
@@ -95,7 +96,7 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
             _recipe_row('US-CA', 'other', '2020'),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-MA-SOM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -114,7 +115,7 @@ def test_find_admin_scoped_recipe_ids_keeps_distinct_filename_suffixes(monkeypat
             _recipe_row('US-TX-VIC', 'victoriacad', '2026', 'improvement-detail'),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-TX-VIC')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -132,7 +133,7 @@ def test_find_admin_scoped_recipe_ids_orders_by_specificity_then_version(monkeyp
             _recipe_row('US-NC', 'nconemap', '2025'),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-NC-CUM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -157,7 +158,7 @@ def test_find_admin_scoped_recipe_ids_specificity_beats_newer_version(monkeypatc
             _recipe_row('US-NC-BL', 'bladenco', '2020'),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-NC-BL')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -173,7 +174,7 @@ def test_find_admin_scoped_recipe_ids_version_tiebreaks_same_specificity(monkeyp
             _recipe_row('US-NC-BL', 'bladenco', '2026'),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-NC-BL')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -190,7 +191,7 @@ def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
             ),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     state = _state('US-MA-SOM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
@@ -213,7 +214,7 @@ def test_find_admin_scoped_recipe_ids_keeps_a_supplement(monkeypatch):
             ),
         ]
     )
-    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+    patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
 
     ids = links._find_admin_scoped_recipe_ids(_state('US-TX-VIC'), 'parcel')
 
@@ -282,10 +283,10 @@ def test_supplements_only_joins_detail_columns_onto_their_roll(monkeypatch):
         assert recipe_id in frames, f'{recipe_id} should not be loaded'
         return frames[recipe_id]
 
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, 'get_entities', _get_entities)
-    monkeypatch.setattr(links, 'restrict_to_admin_by_name', lambda df, *a: df)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, 'get_entities', _get_entities)
+    patch_links(monkeypatch, 'restrict_to_admin_by_name', lambda df, *a: df)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     state = _state('US-XX-YY', spine=pd.DataFrame({'parcel_id_local': ['a', 'b', 'c']}))
     state.metadata['spine_source_recipe_ids'] = {_ROLL}
@@ -352,8 +353,8 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     refs = {
         'nconemap': pd.DataFrame(
@@ -370,8 +371,10 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
             }
         ),
     }
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: refs[recipe_id]
+    patch_links(
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
@@ -409,8 +412,8 @@ def test_link_by_id_auto_discover_track_provenance_records_winning_source(
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     refs = {
         'nconemap': pd.DataFrame(
@@ -420,8 +423,10 @@ def test_link_by_id_auto_discover_track_provenance_records_winning_source(
             {'parcel_id_local': ['A', 'B'], 'value': [150.0, 250.0]}
         ),
     }
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: refs[recipe_id]
+    patch_links(
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
@@ -461,8 +466,8 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     ref = pd.DataFrame(
         {
@@ -472,8 +477,8 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
         },
         index=pd.Index(['mh-park', 'canalfront'], name='parcel_id'),
     )
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    patch_links(
+        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
     )
 
     spine = pd.DataFrame(
@@ -519,8 +524,8 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     ref = pd.DataFrame(
         {
@@ -529,8 +534,8 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
         },
         index=pd.Index(['old-house', 'new-house'], name='parcel_id'),
     )
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    patch_links(
+        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
     )
 
     spine = pd.DataFrame(
@@ -575,12 +580,12 @@ def test_link_by_id_auto_discover_keep_column_fallback_fills_gap_from_other_sour
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'year_built': [1998.0, 2005.0]})
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    patch_links(
+        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
     )
 
     spine = pd.DataFrame(
@@ -620,8 +625,8 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     ref = pd.DataFrame(
         {
@@ -630,8 +635,8 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
         },
         index=pd.Index(['old-house', 'new-house'], name='parcel_id'),
     )
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    patch_links(
+        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
     )
 
     spine = pd.DataFrame(
@@ -670,8 +675,8 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
             'aggregation_function': None,
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     refs = {
         'source-a': pd.DataFrame(
@@ -685,7 +690,7 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
     def _fake_get_entities(recipe_id, admin_id, layer=None):
         return refs[recipe_id]
 
-    monkeypatch.setattr(links, 'get_entities', _fake_get_entities)
+    patch_links(monkeypatch, 'get_entities', _fake_get_entities)
 
     spine = pd.DataFrame(
         {'parcel_id_local': ['A', 'B'], 'parcel_id_admin2': ['A', 'C']}
@@ -721,8 +726,8 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
             'aggregation_function': {'land_area_ac': 'sum', 'year_built': 'min'},
         },
     ]
-    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
-    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+    patch_links(monkeypatch, '_discover_link_sources', lambda *a, **k: matches)
+    patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
 
     refs = {
         # Registry default for both columns is 'mean': (10+20)/2 = 15.
@@ -742,8 +747,10 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
             }
         ),
     }
-    monkeypatch.setattr(
-        links, 'get_entities', lambda recipe_id, admin_id, layer=None: refs[recipe_id]
+    patch_links(
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})

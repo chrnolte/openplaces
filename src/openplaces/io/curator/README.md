@@ -99,10 +99,11 @@ Steps are organized by the nature of the transformation:
   itself: the share of its group (any id column it already carries, e.g.
   `census_block_id`) whose evidence reads as a given class, excluding the
   row itself. It is a **groupby, deliberately not a spatial operation** — no
-  buffering, no boundary union, no nearest-neighbor search — both because
-  geometric neighbor/"community" detection is a patented technique shape in
-  this domain (see the patent-risk section of AGENTS.md) and because aggregating within a
-  published administrative unit is older, plainer practice. It exists
+  buffering, no boundary union, no nearest-neighbor search — because
+  geometric neighbor or "community" detection is kept out of this
+  repository by design (see "Design limits" in AGENTS.md) and because
+  aggregating within a published administrative unit is older, plainer
+  practice. It exists
   because `flag_manufactured_home_communities` counts per *parcel* and so
   cannot see a subdivided community where every home has its own lot. Feed
   it only evidence a downstream vote has not written, or the class
@@ -127,13 +128,20 @@ Steps are organized by the nature of the transformation:
 - `filters.py` — (stub) remove records that do not belong in the canonical
   dataset
 - `transactions.py` — steps for the transaction entity, which **grade and
-  flag and never drop**: `derive_document_id` (the deed behind a row, spelled
-  per source; a part that is empty or all zeros names no document, since
-  Florida's roll writes a single space for book and page and that once folded
-  1,333 sales of one county into a single "deed"; scoped by record kind, so a
-  deed and the last-sale row citing its book and page are never aggregated as
-  one sale of two parcels), `count_parcels_per_document`,
-  `aggregate_multi_parcel_sales`, `collapse_double_closings` (compared within
+  flag and never drop**. Since 2026-09-29 the rows arrive from
+  `US_transaction-spine-2026` already as the entity: one row per recorded
+  sale, indexed by `transaction_id`, with the sale period, the document id
+  (the deed behind a row, spelled per source; a part that is empty or all
+  zeros names no document, since Florida's roll writes a single space for
+  book and page and that once folded 1,333 sales of one county into a single
+  "deed"; scoped by record kind, so a deed and the last-sale row citing its
+  book and page are never aggregated as one sale of two parcels) and the
+  parcel count on every row. `derive_sale_period`, `dedup_transactions`,
+  `derive_document_id`, `count_parcels_per_document`,
+  `aggregate_multi_parcel_sales` and `assign_transaction_ids` stay
+  registered here as wrappers over `io/sale_records.py` for a recipe that
+  still lists them; the national recipe does not, and never re-mints an id.
+  What runs here: `collapse_double_closings` (compared within
   one record kind) and `flag_sales_matching_other_kind`
   (`sale_matches_deed`: exact equality of parcel, year, month and price, no
   tolerance and no score). `sale_arms_length_confidence` is graded per source
@@ -169,8 +177,10 @@ Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),
 `provenance.py` (`{col}_source` sidecars), `land_value.py` (land-value
 estimation, split out because it is expected to grow), `diagnostics.py`
-(cache-written conflict reports), and `validation.py` — scoring a curated
-classification against hand-labelled points. `validation.py`'s
+(cache-written conflict reports), and `validation/` — scoring a curated
+classification against hand-labelled points (a package since 2026-09-29:
+`linking`, `accuracy`, `reports`, `references`, `context`; every name
+re-exported from `openplaces.io.curator.validation`). `validation/linking.py`'s
 `link_points_to_entities` links by address first and distance only as a
 fallback; because a house and its shed share one address, callers break the
 resulting ties with `prefer_column`/`prefer_values` (e.g. rank

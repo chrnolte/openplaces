@@ -5,6 +5,7 @@ import pytest
 
 import openplaces.io.harmonizer as harmonizer_mod
 import openplaces.io.ingester as ingester_mod
+import openplaces.io.ingester.scope as ingester_scope
 from openplaces.config import cfg
 from openplaces.core.schema import AdminId
 from openplaces.io import cleanup as cl
@@ -59,8 +60,10 @@ def _valid_nsi_receipt():
 
 def _ingester(monkeypatch):
     """Bare Ingester with just what _resolve_output_admin_ids needs."""
+    # _resolve_output_admin_ids lives in the scope mixin since the
+    # 2026-09-29 split and looks get_admin up there.
     monkeypatch.setattr(
-        ingester_mod,
+        ingester_scope,
         'get_admin',
         lambda admin_id, level: pd.DataFrame(index=[COUNTY]),
     )

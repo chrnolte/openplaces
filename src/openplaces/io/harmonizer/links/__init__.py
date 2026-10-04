@@ -14,25 +14,20 @@ dag, the curator, entity_links and the tests import them from this
 package.
 
 **Patching.** A function looks names up in its own module's globals, so a
-patch on this package would not reach `link_by_id`'s `get_entities`
-(AGENTS.md, module layer hierarchy). Until 2026-09-29 this package was
-one module and about 130 test sites patch names on it
-(`monkeypatch.setattr(links, 'get_entities', ...)`, `find_recipes`,
-`overlay_polygons`, `_apply_remap_csvs`), so the package forwards: an
-attribute set on it is also set on every submodule whose namespace holds
-that name, and an attribute it does not define is read from the first
-submodule that has it. That keeps every existing patch meaningful, at the
-cost of a package that is not a plain module. The debt is in
-plans/stage-contract-audit.md: tests move to patching the submodule the
-step lives in, and the forwarder goes.
+patch on this package does not reach `link_by_id`'s `get_entities`
+(AGENTS.md, module layer hierarchy). A test patches the submodule the
+step lives in, or every submodule binding the name through
+`tests.links_patching.patch_links`. Between 2026-09-29 and 2026-09-30
+the package forwarded attribute assignments to its submodules through a
+class swap, to keep the tests written against the single module working;
+that forwarder is gone, and this is a plain package.
 """
 
 from __future__ import annotations
 
-import sys as _sys  # noqa: E402
-import types as _types  # noqa: E402
-
-from openplaces.io.harmonizer.links import (  # noqa: E402
+# The submodules themselves, so `links.by_id` and its siblings are
+# attributes of the package (the tests' patch helper reads them).
+from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     _shared,
     additions,
     address_ranges,
@@ -127,39 +122,3 @@ from openplaces.io.harmonizer.links.spatial import (  # noqa: F401
     link_to_reference,
     snap_chained_links,
 )
-
-_SUBMODULES = (
-    _shared,
-    spatial,
-    sidecars,
-    points,
-    discovery,
-    combine,
-    by_id,
-    address_ranges,
-    additions,
-    condo_clusters,
-    overlaps,
-)
-
-
-class _ForwardingPackage(_types.ModuleType):
-    """The package as a patch target: see the module docstring."""
-
-    def __getattr__(self, name):
-        for module in _SUBMODULES:
-            if name in vars(module):
-                return vars(module)[name]
-        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-
-    def __setattr__(self, name, value):
-        for module in _SUBMODULES:
-            if name in vars(module):
-                setattr(module, name, value)
-        super().__setattr__(name, value)
-
-    def __delattr__(self, name):
-        super().__delattr__(name)
-
-
-_sys.modules[__name__].__class__ = _ForwardingPackage

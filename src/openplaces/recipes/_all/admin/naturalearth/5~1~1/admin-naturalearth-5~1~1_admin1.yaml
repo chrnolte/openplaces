@@ -1,0 +1,82 @@
+# Natural Earth 1:10m admin-0 map units, ingested as openplaces admin
+# level 1, for the dependencies and overseas departments geoBoundaries'
+# CGAZ has no row for.
+#
+# Public domain, and the one open world layer that draws Guadeloupe,
+# Jersey or Aruba as units of their own. It is coarser than CGAZ
+# (1:10m), so it only fills in: admin-geoboundaries-6~0~0_admin1 ranks
+# first (newer version at the same global scope), merge_global takes a
+# unit from here only where CGAZ has none, and the harmonize step
+# carve_lumped_territories hands the territory the CGAZ polygon parts
+# it covers, keeping CGAZ's coastline where CGAZ drew the island inside
+# its sovereign.
+#
+# The map-units layer, not the countries layer: only map units split
+# France's overseas departments (GP, MQ, RE, GF, YT) from France. A
+# unit is keyed by its own code (GU_A3) and then its sovereign's
+# (ADM0_A3), with the remap below for geo-units whose own code is not
+# the spine's. Rows sharing an id are dissolved: the eight US Minor
+# Outlying Islands rows, Gaza and the West Bank, Svalbard and Jan
+# Mayen, Akrotiri and Dhekelia.
+#
+# Measured 2026-09-30 on admin-naturalearth-5~1~1: of the 64 spine
+# level-1 units CGAZ lacks, this fills 51. Left without a polygon: the
+# Caspian Sea (XN), GADM's disputed buckets Z1-Z9, and three units
+# the spine carries but whose shape is contested, so no polygon is
+# asserted for them until the maintainer decides: Northern Cyprus
+# (CYN -> ZN), the Paracel Islands (PFA -> XP) and the Spratly Islands
+# (PGA -> XS). Adding their remap lines below is all that takes.
+#
+# The CDN serves the current release under an unversioned path; the
+# version below is the VERSION.txt in the archive when this was
+# checked. Re-check it when re-downloading.
+
+description: >-
+  Natural Earth 1:10m admin-0 map units (admin level 1), for
+  dependencies and overseas departments CGAZ does not draw.
+
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: naturalearth
+    portal_url: "https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-details/"
+    download_url: "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_map_units.zip"
+    # "All versions of Natural Earth raster + vector map data found on
+    # this website are in the public domain." Checked 2026-09-30.
+    license: "public domain"
+    terms_url: "https://www.naturalearthdata.com/about/terms-of-use/"
+    redistribution_restricted: false
+  version: 5~1~1
+
+compressed_file_name: "ne_10m_admin_0_map_units.zip"
+uncompressed_file_name: "ne_10m_admin_0_map_units.shp"
+
+columns:
+  name: NAME
+  admin1_id_a3: GU_A3
+  admin1_id_naturalearth: ADM0_A3
+
+keep_unnamed_columns: False
+
+create_index:
+  function: "openplaces.io.admin.admin1_id_index_from_codes"
+  args:
+    code_columns: [admin1_id_a3, admin1_id_naturalearth]
+    remap:
+      ALD: ALA  # Aland
+      NSV: SJM  # Svalbard
+      NJM: SJM  # Jan Mayen
+      GAZ: PSE  # Gaza
+      WEB: PSE  # West Bank
+      NLY: BES  # Caribbean Netherlands
+      WSB: XAD  # Akrotiri
+      ESB: XAD  # Dhekelia
+      CLP: XCL  # Clipperton
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin1
