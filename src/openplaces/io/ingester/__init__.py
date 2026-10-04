@@ -111,7 +111,8 @@ def _transform_partition_key(value, spec: dict) -> str:
         The resolved partition key.
     spec : dict
         ``operation`` plus ``args``: ``substring`` ([start, stop]),
-        ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]).
+        ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]),
+        ``replace`` ([old, new], every occurrence).
     """
     value = str(value)
     operation = spec.get('operation')
@@ -119,7 +120,13 @@ def _transform_partition_key(value, spec: dict) -> str:
     # Each operation's arity, checked before indexing: a short `args` list
     # otherwise raised a bare IndexError naming neither the recipe key nor
     # the operation that wanted more arguments.
-    arity = {'substring': 2, 'zfill': 1, 'add_prefix': 1, 'add_suffix': 1}
+    arity = {
+        'substring': 2,
+        'zfill': 1,
+        'add_prefix': 1,
+        'add_suffix': 1,
+        'replace': 2,
+    }
     if operation in arity and len(args) < arity[operation]:
         raise ValueError(
             f"partition_key_transformation operation '{operation}' needs "
@@ -133,9 +140,15 @@ def _transform_partition_key(value, spec: dict) -> str:
         return f'{args[0]}{value}'
     if operation == 'add_suffix':
         return f'{value}{args[0]}'
+    if operation == 'replace':
+        # USGS names NHD state files with underscores for spaces
+        # ('NHD_H_North_Dakota_State_GPKG.zip'), which neither
+        # admin_key_transform option produces.
+        return value.replace(args[0], args[1])
     raise ValueError(
         f'Unknown partition_key_transformation operation {operation!r}; '
-        "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix'."
+        "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix', "
+        "'replace'."
     )
 
 
@@ -1696,25 +1709,35 @@ class Ingester:
                     '`download_url_source` was provided, but '
                     '`download_by` is not defined.'
                 )
-            # Scrape website providing download URLs
-            req = urllib.request.Request(
-                source.download_url_source, headers=request_headers()
-            )
-            ssl_context = (
-                None if source.verify_ssl else ssl._create_unverified_context()
-            )
-            with urllib.request.urlopen(req, context=ssl_context) as response:
-                html = response.read().decode('utf8')
-
+            # Scrape website providing download URLs. A failed scrape is
+            # not fatal yet: when the file is already on disk (found by
+            # `compressed_file_name`, which may be a wildcard), the
+            # ingest proceeds from it. The error is raised at download
+            # time, only if a download is needed. Until 2026-10-01 a
+            # changed page broke every ingest of the recipe, files on
+            # disk included (FEMA USA Structures).
             download_url_source_regex = self._resolve_placeholders(
                 source.download_url_source_regex
             )
-            download_url_found = re.compile(download_url_source_regex).findall(html)
-
-            if not download_url_found:
-                raise ValueError(
-                    f'Could not extract {download_url_source_regex} from html:\n{html}'
+            try:
+                req = urllib.request.Request(
+                    source.download_url_source, headers=request_headers()
                 )
+                ssl_context = (
+                    None if source.verify_ssl else ssl._create_unverified_context()
+                )
+                with urllib.request.urlopen(req, context=ssl_context) as response:
+                    html = response.read().decode('utf8')
+                download_url_found = re.compile(download_url_source_regex).findall(html)
+                if not download_url_found:
+                    raise ValueError(
+                        f'Could not extract {download_url_source_regex} from '
+                        f'{source.download_url_source} (page length {len(html)})'
+                    )
+            except (OSError, ValueError) as err:
+                self.download_partition['download_url'] = None
+                self.download_partition['download_url_error'] = err
+                return
 
             download_url = download_url_found[0]
 
@@ -2005,6 +2028,8 @@ class Ingester:
                 self.download_partition['unavailable'] = True
                 return
 
+            if self.download_partition.get('download_url_error') is not None:
+                raise self.download_partition['download_url_error']
             self._catch_missing_download_url_error()
 
             if self.verbose:

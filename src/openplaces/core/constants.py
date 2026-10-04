@@ -202,6 +202,10 @@ SHAPEFILE_EXTENSIONS = [
 # Extensions for compressed files
 ZIP_EXTENSIONS = {
     '.zip',
+    # io.archives.unzip extracts 7z through the 7-Zip executable; without
+    # this entry the ingester never treated a .7z download as an archive
+    # (the NHDPlus V2 national geodatabase, 2026-09-30).
+    '.7z',
     '.jar',
     '.kmz',
     '.bz2',

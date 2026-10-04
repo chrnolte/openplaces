@@ -1,0 +1,54 @@
+feature_code_nhd,feature_type_nhd,description,feature_class,is_lake_lagos,is_lake_lakesense,is_river_places,is_open_water,feature_type_3dhp
+31200,312,Bay/Inlet,bay_inlet,False,False,False,True,
+33600,336,Canal/Ditch,canal_ditch,False,False,False,True,Canal
+33601,336,Canal/Ditch: Canal/Ditch Type = Aqueduct,canal_ditch,False,False,False,True,Canal
+33603,336,Canal Ditch: Canal Ditch Type = Stormwater,canal_ditch,False,False,False,True,Canal
+36100,361,Playa,other,False,False,False,False,
+36400,364,Foreshore,other,False,False,False,False,
+37800,378,Ice Mass,other,False,False,False,False,
+39000,390,Lake/Pond,lake_pond,True,True,False,True,Lake
+39001,390,Lake/Pond: Hydrographic Category = Intermittent,lake_pond,False,False,False,True,Lake
+39004,390,Lake/Pond: Hydrographic Category = Perennial,lake_pond,True,True,False,True,Lake
+39005,390,Lake/Pond: Hydrographic Category = Intermittent; Stage = High Water Elevation,lake_pond,False,False,False,True,Lake
+39006,390,Lake/Pond: Hydrographic Category = Intermittent; Stage = Date of Photography,lake_pond,False,False,False,True,Lake
+39009,390,Lake/Pond: Hydrographic Category = Perennial; Stage = Average Water Elevation,lake_pond,True,True,False,True,Lake
+39010,390,Lake/Pond: Hydrographic Category = Perennial; Stage = Normal Pool,lake_pond,True,True,False,True,Lake
+39011,390,Lake/Pond: Hydrographic Category = Perennial; Stage = Date of Photography,lake_pond,True,True,False,True,Lake
+39012,390,Lake/Pond: Hydrographic Category = Perennial; Stage = Spillway Elevation,lake_pond,True,True,False,True,Lake
+40300,403,Inundation Area,other,False,False,False,False,
+40307,403,Inundation Area: Inundation Control Status = Not Controlled,other,False,False,False,False,
+40308,403,Inundation Area: Inundation Control Status = Controlled,other,False,False,False,False,
+40309,403,Inundation Area: Inundation Control Status = Controlled; Stage = Flood Elevation,other,False,False,False,False,
+43100,431,Rapids,river,False,False,True,True,
+43600,436,Reservoir,reservoir,True,True,False,True,Lake
+43601,436,Reservoir: Reservoir Type = Aquaculture,reservoir,False,False,False,True,Lake
+43603,436,Reservoir: Reservoir Type = Decorative Pool,pool,False,True,False,False,Lake
+43604,436,Reservoir: Reservoir Type = Tailings Pond; Construction Material = Earthen,reservoir,False,False,False,True,Lake
+43605,436,Reservoir: Reservoir Type = Tailings Pond,reservoir,False,False,False,True,Lake
+43606,436,Reservoir: Reservoir Type = Disposal,reservoir,False,False,False,True,Lake
+43607,436,Reservoir: Reservoir Type = Evaporator,reservoir,False,False,False,True,Lake
+43608,436,Reservoir: Reservoir Type = Swimming Pool,pool,False,True,False,False,Lake
+43609,436,Reservoir: Reservoir Type = Cooling Pond,reservoir,False,False,False,True,Lake
+43610,436,Reservoir: Reservoir Type = Filtration Pond,reservoir,False,False,False,True,Lake
+43611,436,Reservoir: Reservoir Type = Settling Pond,reservoir,False,False,False,True,Lake
+43612,436,Reservoir: Reservoir Type = Sewage Treatment Pond,reservoir,False,False,False,True,Lake
+43613,436,Reservoir: Reservoir Type = Water Storage; Construction Material = Nonearthen,reservoir,True,True,False,True,Lake
+43614,436,Reservoir: Reservoir Type = Water Storage; Construction Material = Earthen; Hydrographic Category = Intermittent,reservoir,False,False,False,True,Lake
+43615,436,Reservoir: Reservoir Type = Water Storage; Construction Material = Earthen; Hydrographic Category = Perennial,reservoir,True,True,False,True,Lake
+43617,436,Reservoir: Reservoir Type = Water Storage,reservoir,True,True,False,True,Lake
+43618,436,Reservoir: Construction Material = Earthen,reservoir,True,True,False,True,Lake
+43619,436,Reservoir: Construction Material = Nonearthen,reservoir,True,True,False,True,Lake
+43621,436,Reservoir: Reservoir Type = Water Storage; Hydrographic Category = Perennial,reservoir,True,True,False,True,Lake
+43623,436,Reservoir: Reservoir Type = Evaporator; Construction Material = Earthen,reservoir,False,False,False,True,Lake
+43624,436,Reservoir; Reservoir Type = Treatment,reservoir,False,False,False,True,Lake
+43625,436,Reservoir: Reservoir Type = Disposal; Construction Material = Earthen,reservoir,False,False,False,True,Lake
+43626,436,Reservoir: Reservoir Type = Disposal; Construction Material = Nonearthen,reservoir,False,False,False,True,Lake
+44500,445,Sea/Ocean,sea_ocean,False,False,False,True,Ocean or Great Lake
+46000,460,Stream/River,river,False,False,True,True,River
+46003,460,Stream/River: Hydrographic Category = Intermittent,river,False,False,False,True,River
+46006,460,Stream/River: Hydrographic Category = Perennial,river,False,False,True,True,River
+46007,460,Stream/River: Hydrographic Category = Ephemeral,river,False,False,False,True,River
+46600,466,Swamp/Marsh,swamp_marsh,False,False,False,False,
+46601,466,Swamp/Marsh: Hydrographic Category = Intermittent,swamp_marsh,False,False,False,False,
+46602,466,Swamp/Marsh: Hydrographic Category = Perennial,swamp_marsh,False,False,False,False,
+49300,493,Estuary,estuary,False,False,False,True,River

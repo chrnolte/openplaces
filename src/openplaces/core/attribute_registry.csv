@@ -187,7 +187,7 @@ centroid_y,Centroid y coordinate in the spine CRS,,float,first,,parcel,enrich
 n_buildings_per_ha,Buildings per hectare of parcel lot area,,float,mean,,parcel,enrich
 lat,Centroid latitude (WGS84),degrees,float,first,,,harmonize
 long,Centroid longitude (WGS84),degrees,float,first,,,harmonize
-area_km2,Admin area,km2,float,sum,,,curate
+area_km2,"Area of the row's own polygon in km2 (an admin unit; a waterbody, as its source states it)",km2,float,sum,,,ingest
 area_sqmi,Admin area,sqmi,float,sum,,,curate
 elevation,Average elevation,m,float,mean,,,enrich
 slope,Average slope of a parcel or surface,deg,float,mean,,,enrich
@@ -196,9 +196,28 @@ precipitation_winter,"Average precipitation, Dec-Feb (30yr normal)",mm,float,mea
 temperature_mean_summer,"Average temperature, Jun-Aug (30yr normal)",C,float,mean,,,enrich
 temperature_mean_winter,"Average temperature, Dec-Feb (30yr normal)",C,float,mean,,,enrich
 coastal_water_share,Share of coastal waters within a radius,fraction (0-1),float,mean,,,enrich
-lake_distance,Distance to nearest lake larger than 4ha,m,float,mean,,,enrich
-lake_frontage,Approximate lake frontage,m,float,sum,,parcel,enrich
-river_frontage,Approximate river frontage,m,float,sum,,parcel,enrich
+lake_distance,"Distance from the parcel's primary building to the nearest lake at or above a size floor (4 ha by default; the recipe states it). Earlier values from the places model were a parcel-average raster distance",m,float,mean,,,enrich
+lake_frontage,"Lake shoreline length the parcel holds: shoreline segments allocated to the nearest parcel within a tolerance (earlier places values: buffer-ring area divided by its width)",m,float,sum,,parcel,enrich
+river_frontage,"River shoreline length the parcel holds, allocated like lake_frontage",m,float,sum,,parcel,enrich
+lake_distance_parcel,"Distance from the parcel's edge to the nearest lake at or above the size floor, 0 for a parcel touching one: the best building site, before setbacks",m,float,mean,,parcel,enrich
+lake_id,NHD waterbody id of the largest lake the parcel fronts,,string,first,,parcel,enrich
+lake_area_ha,Area of the largest lake the parcel fronts (NHD AreaSqKm),ha,float,max,,parcel,enrich
+lake_id_nearest,NHD waterbody id of the lake nearest the parcel's primary building (or its edge),,string,first,,parcel,enrich
+lake_area_ha_nearest,Area of the lake nearest the parcel's primary building (NHD AreaSqKm),ha,float,mean,,parcel,enrich
+river_distance,Distance from the parcel's primary building to the nearest river polygon,m,float,mean,,parcel,enrich
+river_distance_parcel,"Distance from the parcel's edge to the nearest river polygon, 0 for a parcel touching one",m,float,mean,,parcel,enrich
+waterbody_area_share,"Share of the parcel's area inside NHD waterbody or area polygons (lakes, reservoirs, pools, swamps, rivers)",fraction (0-1),float,mean,,parcel,enrich
+waterbody_id_nhd,"Permanent_Identifier of an NHD High Resolution waterbody or area feature: a numeric string or a braced GUID, kept as text",,string,first,,,ingest
+waterbody_id_nhdplusv2,NHDPlus V2 (medium resolution) waterbody COMID,,string,first,,,ingest
+waterbody_id_hydrolakes,HydroLAKES lake identifier (Hylak_id),,string,first,,,ingest
+waterbody_id_lagos,LAGOS-US lake identifier (lagoslakeid),,string,first,,,ingest
+gnis_id,Geographic Names Information System (GNIS) feature identifier,,string,first,,,ingest
+gnis_name,Feature name as the Geographic Names Information System (GNIS) records it,,string,first,,,ingest
+road_id_tiger,"Census TIGER/Line road edge id (LINEARID)",,str,first,,,ingest
+feature_code_tiger,"Census MAF/TIGER feature class code (MTFCC), e.g. S1400 local road, S1500 vehicular trail",,categorical,first,,,ingest
+feature_code_nhd,"NHD five-digit feature code (FCode): the feature type plus its characteristics, e.g. 39004 perennial lake or pond",,categorical,first,,,ingest
+feature_type_nhd,"NHD three-digit feature type (FType), e.g. 390 lake or pond, 436 reservoir",,categorical,first,,,ingest
+reach_code_nhd,NHD 14-digit reach code of the feature; its first eight digits are the HU8 basin,,string,first,,,ingest
 wetland_share,Share of area covered by wetland polygons,fraction (0-1),float,mean,,,enrich
 public_land_acquisition_share,Share of area overlapping a public land acquisition,fraction (0-1),float,mean,,,enrich
 conservation_easement_share,Share of area under a conservation easement,fraction (0-1),float,mean,,,enrich

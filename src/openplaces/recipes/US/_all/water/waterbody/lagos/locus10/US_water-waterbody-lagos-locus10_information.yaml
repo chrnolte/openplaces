@@ -1,0 +1,49 @@
+# Recipe: LAGOS-US LOCUS v1.0 lake information table
+#
+# Same package as US_water-waterbody-lagos-locus10 (edi.854.1, CC BY
+# 4.0): one row per LAGOS-US lake with its NHD Permanent_Identifier
+# (lake_nhdid, from the 2016 NHD HR snapshot), FCode, reach code and
+# name. This table is the id crosswalk from lagoslakeid to the
+# openplaces lake key; lakes whose NHD id changed after 2016 need the
+# polygon overlap instead.
+#
+# EDI refuses unauthenticated downloads; place lake_information.csv
+# (128 MB) in this recipe's external folder.
+
+description: >-
+  LAGOS-US LOCUS v1.0 lake information: lagoslakeid with its NHD
+  Permanent_Identifier, FCode and name, conterminous US.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: lagos
+    license: "CC-BY-4.0 (stated in the EDI package's intellectual rights)"
+    terms_url: "https://creativecommons.org/licenses/by/4.0/"
+    redistribution_restricted: false
+    portal_url: "https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=854&revision=1"
+    download_url: "https://pasta.lternet.edu/package/data/eml/edi/854/1/007ca4f5ec02bb5809fc661dcfa7a903"
+    doi: "10.6073/pasta/e5c2fb8d77467d3f03de4667ac2173ca"
+  version: locus10
+
+uncompressed_file_name: "lake_information.csv"
+
+csv_dtype:
+  lagoslakeid: str
+  lake_nhdid: str
+  lake_reachcode: str
+
+columns:
+  waterbody_id_lagos: lagoslakeid
+  waterbody_id_nhd: lake_nhdid
+  feature_code_nhd: lake_nhdfcode
+  reach_code_nhd: lake_reachcode
+  gnis_name: lake_namegnis
+
+set_index: waterbody_id_lagos
+
+save_to:
+  data_dir: core
+  filename: information

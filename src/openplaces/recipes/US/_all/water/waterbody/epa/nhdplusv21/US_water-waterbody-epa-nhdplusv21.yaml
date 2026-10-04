@@ -1,0 +1,62 @@
+# Recipe: NHDPlus Version 2.1 waterbodies (medium resolution, 1:100,000)
+#
+# The national seamless geodatabase for the Lower 48 (EPA/USGS), layer
+# NHDWaterbody. Keyed by COMID, the id CyAN and many water-quality
+# products use. Ingested to crosswalk NHD HR lakes (the openplaces lake
+# key) to COMID by polygon overlap: the USGS crosswalk (King 2026,
+# US_reference-usgs-waterbodyxwalk2026_nhdplushr-nhdplusv2) and a
+# polygon overlap reach about the same share of LAGOS-class lakes >= 1
+# ha, because V2 at 1:100,000 lacks most small lakes, not because ids
+# changed. Measured 2026-09-30 on US-FL: overlap 0.368, USGS id
+# crosswalk 0.339.
+#
+# The download is one 7.8 GB 7z; 7z extraction unpacks every member
+# (15 GB of geodatabase), of which this recipe reads one layer. The
+# unpacked data is deleted after the run.
+#
+# FTYPE is text in NHDPlus V2 (LakePond, Reservoir, SwampMarsh,
+# Estuary, Playa, Ice Mass), unlike NHD HR's three-digit code; FCODE is
+# the same five-digit code.
+
+description: >-
+  NHDPlus V2.1 waterbodies (1:100,000), Lower 48, keyed by COMID, for
+  crosswalks to NHD High Resolution lakes.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: epa
+    # Work of the U.S. Government (EPA with USGS), 17 U.S.C. 105.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.epa.gov/waterdata/nhdplus-national-data"
+    download_url: "https://dmap-data-commons-ow.s3.amazonaws.com/NHDPlusV21/Data/NationalData/NHDPlusV21_NationalData_Seamless_Geodatabase_Lower48_07.7z"
+  version: nhdplusv21
+
+compressed_file_name: "NHDPlusV21_NationalData_Seamless_Geodatabase_Lower48_07.7z"
+uncompressed_file_name: "NHDPlusNationalData/NHDPlusV21_National_Seamless_Flattened_Lower48.gdb"
+layer: NHDWaterbody
+
+columns:
+  waterbody_id_nhdplusv2: COMID
+  gnis_id: GNIS_ID
+  gnis_name: GNIS_NAME
+  area_km2: AREASQKM
+  feature_code_nhd: FCODE
+  reach_code_nhd: REACHCODE
+
+force_2d: true
+
+# The national seamless layer repeats some COMIDs (seen 2026-09-30:
+# 625930, 2635696, 2635702 twice each), presumably waterbodies drawn in
+# two processing units. One row per COMID is kept.
+drop_duplicates:
+  - waterbody_id_nhdplusv2
+
+set_index: waterbody_id_nhdplusv2
+
+save_to:
+  data_dir: core

@@ -1,0 +1,91 @@
+# Recipe: NHD High Resolution waterbodies (NHDWaterbody), final release
+#
+# Source: USGS National Hydrography Dataset, High Resolution, state
+# GeoPackage downloads. NHD was retired on 2023-10-01 and is no longer
+# maintained; every state file is the frozen final version, dated
+# 2023-12-27 (checked for ND, TX and VT). Its successor, the 3D
+# Hydrography Program (3DHP), is not the key here: the 3DHP_all
+# specification calls its waterbody id (id3dhp) "not persistent",
+# collapses every LakePond and Reservoir FCode into one class and
+# carries no NHD id (re-checked 2026-09-29). See
+# plans/lake-frontage-and-distance-enrichment.md.
+#
+# Why the GeoPackage and not the Shape download: the Shape zips split
+# NHDWaterbody into 200,000-record parts in the 14 largest states
+# (NHDWaterbody.shp, NHDWaterbody2.shp, ...; _0, _1 in the current
+# release), and places/core/b2_nhd.py lost 28,946 of 69,651 lakes
+# >= 4 ha in those states by reading the first part only
+# (plans/handoff-places-lake-variables-missing-lakes.md). Shapefiles
+# also truncate Permanent_Identifier to Permanent_. The GPKG holds each
+# layer whole.
+#
+# The key is Permanent_Identifier, the id LakeSense and LAGOS-US
+# (lake_nhdid) use: a numeric string or a braced GUID, kept as text.
+#
+# Every FCode is kept. Which codes count as a lake (the places amenity
+# list, the LAGOS-US list) is a parameter of the enrich step, read from
+# a sidecar beside this recipe, so one ingest serves every definition.
+#
+# A state file carries every feature of the HU basins that touch the
+# state, so features beyond its border are included and a lake near a
+# border appears in both states' files under the same id. Consumers
+# dedupe on waterbody_id_nhd.
+#
+# Measured 2026-09-29 on US-DE: 38,749 NHDWaterbody features, CRS
+# EPSG:4269, MultiPolygon Z (dropped to 2D here).
+#
+# Unmapped on purpose: resolution (always High), elevation (sparse),
+# visibilityfilter (cartographic), the *_description columns (labels
+# of codes kept here), SHAPE_Length/SHAPE_Area (empty in the GPKG).
+
+description: >-
+  USGS NHD High Resolution waterbodies (lakes, ponds, reservoirs, swamps),
+  final 2023 release, per state, all feature codes.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: usgs
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.usgs.gov/national-hydrography/access-national-hydrography-products"
+    download_url: "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/State/GPKG/NHD_H_{admin2_name}_State_GPKG.zip"
+  version: nhdhr2023
+
+compressed_file_name: "NHD_H_{admin2_name}_State_GPKG.zip"
+uncompressed_file_name: "NHD_H_{admin2_name}_State_GPKG.gpkg"
+extract_members:
+  - "*.gpkg"
+layer: NHDWaterbody
+
+download_by:
+  admin_level: 2
+  partition_key_transformation:
+    admin2_name:
+      operation: replace
+      args: [" ", "_"]
+
+columns:
+  waterbody_id_nhd: permanent_identifier
+  gnis_id: gnis_id
+  gnis_name: gnis_name
+  feature_type_nhd: ftype
+  feature_code_nhd: fcode
+  reach_code_nhd: reachcode
+  area_km2: areasqkm
+  source_date: fdate
+
+# feature_type_nhd and feature_code_nhd stay the integers the GPKG
+# stores (int32). columns_to_categorical cannot be used on a dataset:
+# its label lookup builds an entity recipe path.
+force_2d: true
+
+set_index: waterbody_id_nhd
+
+save_to:
+  data_dir: core

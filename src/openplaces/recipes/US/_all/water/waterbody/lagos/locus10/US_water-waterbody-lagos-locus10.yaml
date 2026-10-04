@@ -1,0 +1,51 @@
+# Recipe: LAGOS-US LOCUS v1.0 lake polygons
+#
+# Smith, N.J., Webster, K.E., Rodriguez, L., Cheruvelil, K.S. and
+# Soranno, P.A.: LAGOS-US LOCUS v1.0: Data module of location,
+# identifiers, and physical characteristics of lakes and their
+# watersheds in the conterminous U.S. Environmental Data Initiative,
+# doi:10.6073/pasta/e5c2fb8d77467d3f03de4667ac2173ca (package
+# edi.854.1). 479,950 lakes >= 1 ha drawn from the 2016 NHD HR
+# snapshot, keyed by lagoslakeid, in EPSG:5070.
+#
+# The geometry is NHD's, not simplified (measured 2026-09-30 on US-NC:
+# area and perimeter within 1% of the final NHD for 99.96% of lakes;
+# see plans/lagos-locus-versus-nhd-hr-comparison.md). The layer
+# carries only lagoslakeid; the NHD Permanent_Identifier of each lake
+# is in US_water-waterbody-lagos-locus10_information.
+#
+# EDI refuses unauthenticated downloads (HTTP 403, seen 2026-09-30):
+# download gis_locus_v1.0_gdb.zip (2.3 GB) from the portal while
+# logged in and place it, unzipped, in this recipe's external folder.
+
+description: >-
+  LAGOS-US LOCUS v1.0 lake polygons (>= 1 ha, conterminous US), keyed by
+  lagoslakeid, for crosswalks to NHD High Resolution lakes.
+
+admin_id: US
+
+dataset:
+  theme: water-waterbody
+  source:
+    source_id: lagos
+    license: "CC-BY-4.0 (stated in the EDI package's intellectual rights)"
+    terms_url: "https://creativecommons.org/licenses/by/4.0/"
+    redistribution_restricted: false
+    portal_url: "https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=854&revision=1"
+    download_url: "https://pasta.lternet.edu/package/data/eml/edi/854/1/32bfdc6928819f453bfe02589d11890a"
+    doi: "10.6073/pasta/e5c2fb8d77467d3f03de4667ac2173ca"
+  version: locus10
+
+compressed_file_name: "gis_locus_v1.0_gdb.zip"
+uncompressed_file_name: "gis_locus_v1.0.gdb"
+layer: lake
+
+columns:
+  waterbody_id_lagos: lagoslakeid
+
+force_2d: true
+
+set_index: waterbody_id_lagos
+
+save_to:
+  data_dir: core
