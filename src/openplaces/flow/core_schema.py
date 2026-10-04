@@ -42,10 +42,28 @@ STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
 #: inline where each pass is written; a test checks every label below
 #: appears in its source, so the two cannot drift silently.
 LINK_METHODS = {
-    'parcel_id_local': 'the property row names the parcel by its local id',
-    'stacked_units': 'a unit split off a parcel layer names the lot it stands on',
+    'parcel_id_local': (
+        'the row names the parcel (or, for a sale, the property) by its local id'
+    ),
+    'stacked_units': (
+        'a unit split off a parcel layer names the lot it stands on; a sale that '
+        'named a unit reaches the lot the same way'
+    ),
     'stacked_units_crosswalk': (
         'a roll row keyed on a unit reaches the lot the split saw that unit on'
+    ),
+    'assessor_last_sale': (
+        "a sale read off a parcel row's own last-sale fields links to that parcel"
+    ),
+    'address_id_local_city': (
+        'a sale with no parcel number matches a parcel on the town-scoped address key'
+    ),
+    'address_id_local': (
+        'a sale with no parcel number matches a parcel on the county-scoped address key'
+    ),
+    'address_range': (
+        "a sale whose number is a range ('704-706') matches the one parcel either "
+        'half names'
     ),
 }
 

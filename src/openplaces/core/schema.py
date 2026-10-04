@@ -120,6 +120,10 @@ ENTITY_LINK_ORDER = (
     'footprint',
     'building',
     'dwelling',
+    # A sale is the finest: one parcel or property has many sales, and
+    # a deed that conveys several parcels is still one sale. Its link
+    # tables sit beside the transaction spine's output.
+    'transaction',
 )
 
 TOP_LEVEL_THEMES = [

@@ -74,7 +74,7 @@ def test_parcels_per_document_counts_distinct_parcels():
     assert state.curated['n_parcels_per_sale'].tolist() == [2.0, 2.0, 1.0, 1.0]
 
 
-def test_multi_parcel_deed_becomes_one_row_with_area_summed():
+def test_multi_parcel_deed_becomes_one_row_keeping_what_its_parcels_agree_on():
     state = derive_document_id(_state(_sales()), candidates=CANDIDATES)
     state = count_parcels_per_document(state, parcel_column='parcel_id_assessor')
     state = aggregate_multi_parcel_sales(state, weight_column='area_ha')
@@ -84,11 +84,15 @@ def test_multi_parcel_deed_becomes_one_row_with_area_summed():
     # member's label (B, 6 ha) so the entity id is a real row's.
     assert list(curated.index) == ['t2', 't3', 't4']
     deed = curated.loc['t2']
-    assert deed['area_ha'] == pytest.approx(8.0)
     assert deed['price'] == pytest.approx(300000.0)
+    assert deed['sale_year'] == 2020
     assert deed['n_parcels_per_sale'] == 2.0
     assert deed['sale_document_id'] == '100/1'
-    assert deed['parcel_id_assessor'] == 'B'
+    # Since 2026-10-01 nothing one parcel states stands for the deed:
+    # the areas and numbers differ, so the folded row has neither. The
+    # parcels are rows of the transaction-to-parcel link table instead.
+    assert pd.isna(deed['area_ha'])
+    assert pd.isna(deed['parcel_id_assessor'])
     # Single-parcel rows are untouched.
     assert curated.loc['t3', 'area_ha'] == pytest.approx(1.0)
     assert curated.loc['t4', 'sale_document_id'] == '202455'

@@ -895,6 +895,23 @@ class RecipeDAG:
                         )
                     )
                 continue
+            if step.get('step') == 'link_transactions':
+                # The transaction spine writes one link table per side it
+                # names (parcels, properties), beside its own output.
+                from openplaces.geo.link import get_link_owner_recipe_id
+
+                for key, default in (
+                    ('parcel_recipe_id', 'US_parcel-spine-2026'),
+                    ('property_recipe_id', 'US_property-spine-2026'),
+                ):
+                    other_id = step.get(key, default)
+                    if other_id and self._graph_produces(other_id, node_admin):
+                        paths.append(
+                            get_entity_link_path(
+                                get_link_owner_recipe_id(recipe), other_id, node_admin
+                            )
+                        )
+                continue
             if step.get('step') == 'link_to_reference':
                 if step.get('save_link') is False:
                     continue

@@ -460,6 +460,68 @@ def _input_stamp(recipe_id: str, admin_id) -> dict:
     return entry
 
 
+def write_entity_link(
+    path,
+    links: pd.DataFrame,
+    *,
+    writer_recipe_id: str,
+    finer_recipe_id: str,
+    coarser_recipe_id: str,
+    admin_id,
+    step_config: dict,
+    stamped_recipe_ids: tuple[str, ...] | None = None,
+) -> None:
+    """Write a link table with the footer `read_entity_link` checks.
+
+    The footer records the writer, both sides, the admin unit, the step
+    configuration and a size, mtime and content hash of each stamped
+    side's output file, so a reader can tell a link that predates a
+    rebuilt spine (`read_entity_link`).
+
+    Parameters
+    ----------
+    stamped_recipe_ids : tuple of str, optional
+        The outputs whose size, mtime and hash the footer records; both
+        sides by default. A recipe that writes a link table about its own
+        rows in the middle of its pipeline (the transaction spine) leaves
+        itself out: its output is saved after the step, so a stamp of it
+        would describe the previous build and void every reader's check.
+        A rebuild of such a recipe rewrites the link with it, so the
+        other side's stamp is the one that can go stale.
+    """
+    from openplaces.io.harmonizer.links import _with_source_hashes
+
+    if stamped_recipe_ids is None:
+        stamped_recipe_ids = (finer_recipe_id, coarser_recipe_id)
+    fingerprint = {
+        'format': 'id-1',
+        'writer_recipe_id': writer_recipe_id,
+        'finer_recipe_id': finer_recipe_id,
+        'coarser_recipe_id': coarser_recipe_id,
+        'admin_id': str(admin_id) if admin_id is not None else None,
+        'step_config': step_config,
+        'sources': [_input_stamp(rid, admin_id) for rid in stamped_recipe_ids],
+    }
+    to_parquet(
+        links,
+        path,
+        file_metadata={
+            ENTITY_LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint))
+        },
+    )
+
+
+#: Methods of the transaction link tables (io/harmonizer/transactions.py,
+#: `link_transactions`). Listed beside the property-to-parcel methods
+#: above so flow.core_schema's documentation test finds every label in
+#: this module. The parcel-number pass reuses 'parcel_id_local' and the
+#: stacked-units pass 'stacked_units'.
+ASSESSOR_LAST_SALE_METHOD = 'assessor_last_sale'
+ADDRESS_CITY_METHOD = 'address_id_local_city'
+ADDRESS_METHOD = 'address_id_local'
+ADDRESS_RANGE_METHOD = 'address_range'
+
+
 @_register('link_entities_by_id')
 def link_entities_by_id(
     state: HarmonizeState,
@@ -501,8 +563,6 @@ def link_entities_by_id(
     link_method : str, optional
         Label written to every link row. Defaults to *ref_key*.
     """
-    from openplaces.io.harmonizer.links import _with_source_hashes
-
     if state.spine is None:
         warnings.warn('link_entities_by_id: spine is None; skipping.')
         return state
@@ -568,27 +628,17 @@ def link_entities_by_id(
         )
     links = apportion_shares(links, state.spine if ref_is_finer else ref)
 
-    fingerprint = {
-        'format': 'id-1',
-        'writer_recipe_id': own_id,
-        'finer_recipe_id': recipe_id if ref_is_finer else own_owner_id,
-        'coarser_recipe_id': own_owner_id if ref_is_finer else recipe_id,
-        'admin_id': str(state.admin_id) if state.admin_id is not None else None,
-        'step_config': {
+    write_entity_link(
+        path,
+        links,
+        writer_recipe_id=own_id,
+        finer_recipe_id=recipe_id if ref_is_finer else own_owner_id,
+        coarser_recipe_id=own_owner_id if ref_is_finer else recipe_id,
+        admin_id=state.admin_id,
+        step_config={
             'spine_key': spine_key,
             'ref_key': ref_key,
             'link_method': link_method,
-        },
-        'sources': [
-            _input_stamp(recipe_id, state.admin_id),
-            _input_stamp(own_owner_id, state.admin_id),
-        ],
-    }
-    to_parquet(
-        links,
-        path,
-        file_metadata={
-            ENTITY_LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint))
         },
     )
     if state.verbose:

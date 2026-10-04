@@ -269,6 +269,7 @@ def join_temporal_snapshot(
     require_panel: bool = False,
     no_panel_value: str = 'no_panel',
     single_vintage_value: str = 'single_vintage',
+    no_key_value: str = 'no_key',
     mark_unmatched: str | None = None,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
@@ -328,6 +329,11 @@ def join_temporal_snapshot(
         say this**: it cannot distinguish a county with no panel from a
         sale a panel did not match, and the two mean very different
         things to anyone reading the output.
+    no_key_value : str, optional
+        Written into *match_type_column* for an active row whose
+        *join_key* is missing (a multi-parcel deed, whose parcels are
+        link rows rather than a cell since 2026-10-01). Such a row is
+        not matched and not marked by *mark_unmatched* either.
     mark_unmatched : str, optional
         Written into *match_type_column* for active rows this pass left
         unset. Belongs on the last temporal pass of a recipe, where a
@@ -376,6 +382,20 @@ def join_temporal_snapshot(
             curated.loc[active_mask, match_type_column] = no_panel_value
         state.curated = curated
         return state
+
+    # A row without a join key cannot reach any panel row, and since the
+    # spine's fold (2026-10-01) a multi-parcel deed has none: its parcels
+    # are link rows, not a cell. Say so, rather than let `mark_unmatched`
+    # below call it "the panel was read and did not have this property".
+    no_key = active_mask & curated[join_key].isna()
+    if no_key.any() and match_type_column:
+        if match_type_column not in curated.columns:
+            curated[match_type_column] = pd.NA
+        curated.loc[no_key, match_type_column] = no_key_value
+        active_mask &= ~no_key
+        if not active_mask.any():
+            state.curated = curated
+            return state
 
     active = curated.loc[active_mask, [join_key, date_column]].copy()
     active[join_key] = _normalized(active[join_key])
@@ -567,7 +587,7 @@ def derive_document_id(
 @_register('count_parcels_per_document', phase='standardize')
 def count_parcels_per_document(
     state: CurateState,
-    parcel_column: str,
+    parcel_column: str | list[str],
     document_column: str = 'sale_document_id',
     output: str = 'n_parcels_per_sale',
 ) -> CurateState:
@@ -581,8 +601,9 @@ def count_parcels_per_document(
 
     Parameters
     ----------
-    parcel_column : str
-        Column identifying the parcel a row is about.
+    parcel_column : str or list of str
+        Column identifying the parcel a row is about, or several in
+        order of preference (`io.sale_records.count_parcels_per_document`).
     document_column : str, optional
         Column naming the document (default ``sale_document_id``).
     output : str, optional
@@ -631,8 +652,10 @@ def aggregate_multi_parcel_sales(
         Column holding the parcels-per-document count, kept as the
         representative member's value (default ``n_parcels_per_sale``).
     """
-    state.curated, n_rows, n_documents = sale_records.aggregate_multi_parcel_sales(
-        state.curated, document_column, weight_column, count_column
+    state.curated, n_rows, n_documents, _members = (
+        sale_records.aggregate_multi_parcel_sales(
+            state.curated, document_column, weight_column, count_column
+        )
     )
     if state.verbose and n_rows:
         print(

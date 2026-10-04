@@ -84,9 +84,21 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     if links is None or links.empty:
         return None
     finer_id, coarser_id = links.columns[0], links.columns[1]
+    # Which side the curated entity is: the property-to-parcel table
+    # reduces finer rows (properties) onto the coarser curated parcels;
+    # the transaction-to-parcel table reduces the coarser side (parcels)
+    # onto the finer curated sales. The id columns are named for their
+    # entity, and so is the curated index.
+    curated_name = state.curated.index.name
+    if curated_name == finer_id:
+        own_id, other_id = finer_id, coarser_id
+    else:
+        own_id, other_id = coarser_id, finer_id
+    other_ids = links[other_id].astype('string')
+    own_ids = links[own_id].astype('string')
     links = links[
-        links[finer_id].isin(reference.index)
-        & links[coarser_id].isin(state.curated.index)
+        other_ids.isin(pd.Index(reference.index).astype('string'))
+        & own_ids.isin(pd.Index(state.curated.index).astype('string'))
     ]
     if links.empty:
         warnings.warn(
@@ -100,10 +112,12 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     only_units = tokens.map(
         lambda parts: all(p.endswith(STACKED_UNITS_LABEL_SUFFIX) for p in parts)
     )
-    described = set(links.loc[~only_units, coarser_id])
-    links = links[~(only_units & links[coarser_id].isin(described))]
+    described = set(links.loc[~only_units, own_id])
+    links = links[~(only_units & links[own_id].isin(described))]
 
-    rows = values.loc[links[finer_id]].reset_index(drop=True)
+    reference_lookup = values.copy()
+    reference_lookup.index = pd.Index(reference.index).astype('string')
+    rows = reference_lookup.loc[links[other_id].astype('string')].reset_index(drop=True)
     share = links['share'].astype('Float64').reset_index(drop=True)
     for column, function in functions.items():
         if function == 'sum' and share.notna().any():
@@ -111,8 +125,9 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
                 'float64'
             )
             rows[column] = scaled.where(share.notna(), rows[column])
-    group_key = links[coarser_id].reset_index(drop=True)
-    keys = pd.Series(state.curated.index, index=state.curated.index)
+    group_key = links[own_id].astype('string').reset_index(drop=True)
+    index_as_string = pd.Index(state.curated.index).astype('string')
+    keys = pd.Series(index_as_string, index=state.curated.index)
     if state.verbose:
         print(
             f'  aggregate_from_entities: grouped by {path.name} ({len(links):,d} links)'
@@ -174,7 +189,7 @@ def aggregate_from_entities(
     state: CurateState,
     recipe_id: str,
     columns: list | dict,
-    key: str | list[str] = 'parcel_id_local',
+    key: str | list[str] | None = 'parcel_id_local',
     reference_key: str | list[str] | None = None,
     fill_only: bool = True,
     recover: list[str] | None = None,
@@ -187,6 +202,14 @@ def aggregate_from_entities(
     result onto the curated rows by *key*. A parcel's year built becomes
     the earliest of its properties', its living area the sum, a room count
     the sum, without the harmonize stage ever having copied them.
+
+    Where a link table between the two entities exists for the unit
+    (`io.harmonizer.entity_links`), the rows are grouped by it instead of
+    by the key, whichever side of the link the curated entity is: curated
+    parcels take their properties' rows, curated sales take their
+    parcels' rows through the transaction-to-parcel table, each parcel's
+    sums scaled by the sale's `share` of it. With *key* None the link is
+    the only route, and a unit without one is skipped with a warning.
 
     A column named in *recover* is written under a stricter rule, made
     for a value a stacked lot lost at ingest: the lot row keeps only what
@@ -220,11 +243,12 @@ def aggregate_from_entities(
         a class such as `foundation_type`. Where the reference carries
         a `{column}_source` sidecar, the curated column gets one too,
         naming the tokens of the rows its value came from.
-    key : str or list of str, optional
+    key : str or list of str or None, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both
         sides is used, so one recipe serves a source keyed on the local
         parcel id and one keyed on a state-wide id (`parcel_id_admin2`).
+        None: no key join at all; the link table alone places the rows.
     reference_key : str or list of str, optional
         Reference column to group by; defaults to *key*.
     fill_only : bool, optional
@@ -236,7 +260,8 @@ def aggregate_from_entities(
         over *fill_only* for the columns it names.
     """
     curated = state.curated
-    keys_ = [key] if isinstance(key, str) else list(key)
+    link_only = key is None
+    keys_ = [] if link_only else [key] if isinstance(key, str) else list(key)
     reference_keys = (
         keys_
         if reference_key is None
@@ -262,14 +287,14 @@ def aggregate_from_entities(
         ),
         None,
     )
-    if pair is None:
+    if pair is None and not link_only:
         warnings.warn(
             f'aggregate_from_entities: no key of {keys_} is present on both '
             f'the curated table and {recipe_id} for {state.admin_id}; skipping.',
             stacklevel=2,
         )
         return state
-    key, reference_key = pair
+    key, reference_key = pair if pair is not None else (None, None)
     # A source that states none of a column is not an error here: the
     # step fills what the unit's sources can say and leaves the rest.
     present = [c for c in spec if c in available]
@@ -279,7 +304,11 @@ def aggregate_from_entities(
     reference = get_entities(
         recipe_id,
         state.admin_id,
-        columns=[reference_key, *present, *sidecars.values()],
+        columns=[
+            *([reference_key] if reference_key else []),
+            *present,
+            *sidecars.values(),
+        ],
     )
     if reference is None or len(reference) == 0:
         return state
@@ -319,6 +348,13 @@ def aggregate_from_entities(
     linked = _rows_by_link(state, recipe_id, reference, values, functions)
     if linked is not None:
         values, group_key, keys = linked
+    elif link_only:
+        warnings.warn(
+            f'aggregate_from_entities: no link table between this entity and '
+            f'{recipe_id} for {state.admin_id} and no key to join on; skipping.',
+            stacklevel=2,
+        )
+        return state
     else:
         group_key, keys = reference[reference_key], curated[key]
     reduced = _reduce(values, group_key, functions)

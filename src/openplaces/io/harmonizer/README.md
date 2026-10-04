@@ -514,16 +514,14 @@ The step sub-modules:
   silently (0 of Vilas County WI's keyed returns, 0.759 with the scope
   ignored). The source's spelling is a recipe-side regex; a no-op where the
   level does not exist (New England).
-- `link_methods.py` — `record_link_method`: after each `link_by_id` pass of
-  the transaction spine, writes `parcel_link_method`, the name of the first
-  rule that reached the row (`parcel_id_local`, then an exact address key).
-  A fixed label, written once, never a score and never revised (patent
-  shape 4). It re-reads the pass's reference instead of instrumenting
-  `link_by_id`, so a step added between a pass and its label would make the
-  label describe the wrong pass. A sale that reached its parcel through a
-  unit's lot reads `stacked_units` (`via_column`/`via_label`).
+- `link_methods.py` — `record_link_method`: after a `link_by_id` pass,
+  writes `parcel_link_method`, the name of the first rule that reached the
+  row. A fixed label, written once, never a score and never revised (patent
+  shape 4). The transaction spine no longer uses it (its `link_transactions`
+  writes the labels into the link table and the same summary column);
+  kept for a recipe that still joins by `link_by_id` passes.
 - `parcel_link_keys.py` — `derive_parcel_link_key`: the one column
-  (`parcel_link_key`) every parcel join of the transaction spine uses. A
+  (`parcel_link_key`) the transaction link's parcel pass uses. A
   deed for a condo unit states the unit's number, which after the
   ingest-time split is on a property row, not a parcel row; the step looks
   it up in the split's own (unit, lot) pairs and joins on the lot
@@ -533,24 +531,39 @@ The step sub-modules:
   Without the step a re-ingested county loses its condo sales silently
   (Vilas County WI: 1.1% of returns).
 - `transactions.py` — the steps that make the transaction spine's rows the
-  entity (one recorded sale) and mint their ids, at the end of
-  `US_transaction-spine-2026` after every parcel link, in this order:
-  `derive_sale_period`, `dedup_transactions` (exact repeats of one document
-  from overlapping source windows; 15.4% of Lake County FL's rows, all
-  deeds, measured 2026-09-29), `derive_document_id`,
+  entity (one recorded sale), mint their ids and write what each sale
+  conveyed as link tables, at the end of `US_transaction-spine-2026`, in
+  this order: `derive_sale_period`, `dedup_transactions` (exact repeats of
+  one document from overlapping source windows; 15.4% of Lake County FL's
+  rows, all deeds, measured 2026-09-29), `derive_document_id`,
   `count_parcels_per_document`, `aggregate_multi_parcel_sales` (one row per
-  deed, extensive columns summed, the rest from the heaviest parcel) and
-  `assign_transaction_ids` (the document scoped by the admin unit,
-  `US-FL-LA_<document>`, a content fingerprint where no document is named,
-  a suffix only where two rows are still named alike). The fold precedes
-  the ids so a deed's id carries no suffix. The curate stage loads this
-  index and never re-mints; the curate steps of the same names remain as
-  wrappers over the shared frame functions in `io/sale_records.py`. Moved
-  from `US_transaction-openplaces-2026` on 2026-09-29 (the audit's decision
-  that transaction ids are minted in the spine, like property ids). Two
-  curate indicators changed base by the move: the nominal price floor and
-  the disclosure share are measured over deeds now, not over deed-parcel
-  rows.
+  deed, keeping only what every member states alike: price, dates,
+  document, kind; a parcel number, address or key the members state for
+  their own parcel is left missing, and the member rows are kept in
+  `state.metadata['deed_members']`), `assign_transaction_ids` (the document
+  scoped by the admin unit, `US-FL-LA_<document>`, a content fingerprint
+  where no document is named, a suffix only where two rows are still named
+  alike; the members take their deed's id) and **`link_transactions`**, which
+  writes the transaction-to-parcel and transaction-to-property link tables
+  beside the spine's output (`transaction` is the finest entity in
+  `ENTITY_LINK_ORDER`). Its passes are exact key matches, tried in order and
+  each only for rows no earlier pass reached: the parcel key
+  (`parcel_id_local`; `stacked_units` where the record named a unit and
+  reached the lot; `assessor_last_sale` for a roll's last-sale row, whose
+  key is the parcel's own), the town- and county-scoped address keys
+  (`address_id_local_city`, `address_id_local`), the address range
+  (`address_range`, `links.address_ranges.match_address_ranges`). A deed of
+  several parcels gets one link row per parcel with each parcel's area
+  `share` of the deed (`apportion_shares`); the property link is the
+  record's own number against the property spine's. `parcel_link_method` on
+  the spine summarizes the parcel table (`+`-joined where several rules
+  linked one sale). Until 2026-10-01 five `link_by_id` passes stamped use
+  group, values and area onto every sale row and the fold took them from
+  the largest parcel; the curate's `aggregate_from_entities` gathers them
+  through the links now (slice b4 of the review plan). The curate stage
+  loads the spine's index and never re-mints; the curate steps of the same
+  names remain as wrappers over the shared frame functions in
+  `io/sale_records.py`.
 - `last_sales.py` — `append_last_sales`: turn the last-sale fields an
   assessment roll carries into transaction rows
   (`sale_record_kind = assessor_last_sale`; rows already on the spine read
@@ -625,3 +638,9 @@ that reads another recipe's output goes stale unnoticed (the transaction
 `tests/recipe/test_parcel_spine_step_order.py` pins both). Curate's
 `aggregate_from_entities` reads the table; see the stacked-units paragraph
 in `src/openplaces/io/ingester/README.md` for the passes the ingest-time split adds.
+The transaction spine writes two more tables the same way
+(`link_transactions`, above): transaction-to-parcel and
+transaction-to-property, one row per pair, the deed's parcels each with an
+area `share`. Curate's `aggregate_from_entities` reads them from the
+finer side (`key: null`), so a curated sale takes its parcels' sums, scaled
+by share, and a use class only where its parcels agree.
