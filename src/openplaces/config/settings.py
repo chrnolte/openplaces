@@ -33,6 +33,37 @@ from openplaces.core.constants import (
 )
 
 
+def _child_relative_path(key: str, value) -> Path:
+    """Path of a child bucket relative to its parent bucket.
+
+    Configs written before heap and logs followed the cache spell them
+    relative to data_root (data/cache/_heap, or data/<user>/cache/_heap
+    in multi-user mode). Read literally under the new rule, that would
+    nest a second data/cache tree inside the cache, so such a value is
+    read as the bucket's default name instead.
+
+    Parameters
+    ----------
+    key : str
+        Bucket name with a 'parent' in STANDARD_DIRS.
+    value : str or Path
+        The configured relative path.
+
+    Returns
+    -------
+    Path
+        Path to append to the resolved parent directory.
+    """
+    info = STANDARD_DIRS[key]
+    parts = Path(value).parts
+    legacy = (
+        len(parts) in (3, 4)
+        and parts[0] == 'data'
+        and parts[-2:] == (info['parent'], info['default'])
+    )
+    return Path(info['default']) if legacy else Path(value)
+
+
 class OpenPlacesConfig:
     """Configuration manager with interactive first-use setup."""
 
@@ -519,18 +550,30 @@ class OpenPlacesConfig:
                 )
             self.config['directories']['data_root'] = configured
         root = Path(configured)
+        directories = self.config['directories']
 
-        for dir_key, dir_value in self.config['directories'].items():
+        # Buckets with a parent resolve after every other bucket, so a
+        # relative heap or logs path lands under the resolved cache.
+        def has_parent(key):
+            return key in STANDARD_DIRS and 'parent' in STANDARD_DIRS[key]
+
+        for dir_key in sorted(directories, key=has_parent):
+            dir_value = directories[dir_key]
             if dir_key == 'data_root':
                 # Shortcut to ensure the data root is a `Path` object
                 dir_path = root
             else:
                 dir_path = Path(dir_value)
 
-            if not dir_path.is_absolute():
+            if not dir_path.is_absolute() and has_parent(dir_key):
+                parent = STANDARD_DIRS[dir_key]['parent']
+                dir_path = directories[parent] / _child_relative_path(
+                    dir_key, dir_value
+                )
+            elif not dir_path.is_absolute():
                 # Relative paths are relative to root
                 dir_path = root / dir_path
-            self.config['directories'][dir_key] = dir_path.resolve()
+            directories[dir_key] = dir_path.resolve()
 
     def get_dir(self, name: str) -> Path:
         """
