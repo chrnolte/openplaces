@@ -159,6 +159,9 @@ pipeline:
           wetland_share_fmv2026: wetland_share
           coastal_water_share_2500m_fmv2026: coastal_water_share_2500m
           coastal_water_share_50m_fmv2026: coastal_water_share_50m
+          lake_frontage_fmv2026: lake_frontage
+          river_frontage_fmv2026: river_frontage
+          lake_distance_fmv2026: lake_distance
           highway_distance_fmv2026: highway_distance
           paved_road_distance_fmv2026: paved_road_distance
           building_footprint_share_1000m_fmv2026: building_footprint_share_1000m
@@ -177,26 +180,6 @@ pipeline:
           land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
           aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
           aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
-      # Lake and river linkage from NHD High Resolution (final 2023),
-      # replacing the fmv2026 lake_frontage, river_frontage and
-      # lake_distance (maintainer's decision D4, 2026-09-29): those came
-      # from places files that lost 28,946 of 69,651 lakes >= 4 ha in 14
-      # states, and measured something else (a 25 m ring's area; a
-      # parcel-average raster distance). The definitions change, so a
-      # model fitted on fmv2026 values must be re-fitted.
-      - recipe_id: US_parcel_water-waterbody-usgs-nhdhr2023
-        columns:
-          lake_frontage_nhdhr2023: lake_frontage
-          lake_id_nhdhr2023: lake_id
-          lake_area_ha_nhdhr2023: lake_area_ha
-          lake_distance_nhdhr2023: lake_distance
-          lake_distance_parcel_nhdhr2023: lake_distance_parcel
-          lake_id_nearest_nhdhr2023: lake_id_nearest
-          lake_area_ha_nearest_nhdhr2023: lake_area_ha_nearest
-          river_frontage_nhdhr2023: river_frontage
-          river_distance_nhdhr2023: river_distance
-          river_distance_parcel_nhdhr2023: river_distance_parcel
-          waterbody_area_share_nhdhr2023: waterbody_area_share
 
   # An assessed value is never negative. NC OneMap computes improvement
   # as total minus land, which goes negative wherever assessed land
