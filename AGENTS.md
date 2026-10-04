@@ -421,10 +421,14 @@ values until it is rerun**.
 **A property's id is the account number its assessor issued**, scoped by
 its admin unit (`assign_entity_ids`), and rows sharing an id merge into
 one. **Relationships between entities are link tables**, one row per
-pair (`link_entities_by_id` for property to parcel); `link_method` is a
-fixed label, never a score, and no link is removed once written. Both
-are described in full in
-`src/openplaces/io/harmonizer/README.md`.
+pair (`link_entities_by_id` for property to parcel, `link_transactions`
+for transaction to parcel and to property); `link_method` is a fixed
+label, never a score, and no link is removed once written. **A
+transaction carries what its document states and nothing it
+conveyed**: a deed of several parcels is one spine row and several link
+rows with area shares, and the curate gathers property and parcel data
+through the links (`aggregate_from_entities` with `key: null`). Both are
+described in full in `src/openplaces/io/harmonizer/README.md`.
 
 ### Recipes (`recipe/`, `src/openplaces/recipes/`)
 

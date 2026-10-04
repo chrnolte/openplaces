@@ -200,6 +200,91 @@ def test_a_link_table_replaces_the_key_join(monkeypatch):
     assert out.loc['pd', 'year_built'] == 1970
 
 
+def test_a_curated_entity_on_the_finer_side_gathers_its_parcels(monkeypatch):
+    """Curated sales take their parcels' values through the
+    transaction-to-parcel table: a one-parcel sale its parcel's, a deed
+    of two parcels their sums scaled by the sale's area share, a use
+    class only where the parcels agree. No key column is needed."""
+    parcels = pd.DataFrame(
+        {
+            'area_ha': [1.0, 3.0, 0.5],
+            'land_value': [100.0, 300.0, 50.0],
+            'use_group': ['Residential', 'Commercial', 'Residential'],
+            'land_value_source': ['roll', 'roll', 'layer'],
+        },
+        index=pd.Index(['pa', 'pb', 'pc'], name='parcel_id'),
+    )
+    links = pd.DataFrame(
+        {
+            'transaction_id': ['t1', 't1', 't2', 't3'],
+            'parcel_id': ['pa', 'pb', 'pc', 'pa'],
+            'link_method': ['parcel_id_local'] * 3 + ['parcel_id_local_shared_key'],
+            'link_source': ['s'] * 4,
+            'share': pd.array([0.25, 0.75, None, None], dtype='Float64'),
+            'share_basis': ['area', 'area', None, None],
+        }
+    )
+    from pathlib import Path
+
+    from openplaces.geo import link as geo_link
+    from openplaces.io.harmonizer import entity_links
+
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': parcels[
+            [c for c in columns if c in parcels.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=parcels.columns),
+    )
+    monkeypatch.setattr(geo_link, 'get_link_owner_recipe_id', lambda recipe: 'tx')
+    monkeypatch.setattr(
+        geo_link, 'get_entity_link_path', lambda a, b, admin_id=None: Path('link')
+    )
+    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: links)
+
+    curated = pd.DataFrame(
+        {'price': [1000.0, 200.0, 5.0]},
+        index=pd.Index(['t1', 't2', 't3'], name='transaction_id'),
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'US_parcel-spine-2026',
+        key=None,
+        columns={'area_ha': 'sum', 'land_value': 'sum', 'use_group': 'agree'},
+    )
+    out = state.curated
+    # Sums over the deed's parcels, scaled by share: 0.25 + 2.25, 25 + 225.
+    assert out.loc['t1', 'area_ha'] == 2.5
+    assert out.loc['t1', 'land_value'] == 250.0
+    assert pd.isna(out.loc['t1', 'use_group'])
+    assert out.loc['t2', 'area_ha'] == 0.5
+    assert out.loc['t2', 'use_group'] == 'Residential'
+    # A shared-key link is left out of the gather.
+    assert pd.isna(out.loc['t3', 'land_value'])
+    # Provenance follows the parcels' sidecars.
+    assert out.loc['t1', 'land_value_source'] == 'roll'
+    assert out.loc['t2', 'land_value_source'] == 'layer'
+
+
+def test_link_only_with_no_link_table_skips_with_a_warning(monkeypatch, properties):
+    from openplaces.io.harmonizer import entity_links
+
+    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: None)
+    curated = pd.DataFrame(
+        {'price': [1.0]}, index=pd.Index(['t1'], name='transaction_id')
+    )
+    with pytest.warns(UserWarning, match='no link table'):
+        state = aggregation.aggregate_from_entities(
+            _state(curated), 'r', key=None, columns={'year_built': 'min'}
+        )
+    assert 'year_built' not in state.curated.columns
+
+
 def test_no_shared_key_skips_with_a_warning(properties):
     curated = pd.DataFrame({'parcel_id_admin2': ['p1']})
     with pytest.warns(UserWarning, match='no key'):

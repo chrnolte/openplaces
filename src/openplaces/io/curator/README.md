@@ -57,7 +57,12 @@ Steps are organized by the nature of the transformation:
 - `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
   `impute_from_group_statistic`, `impute_occupancy_type`)
 - `aggregation.py` — reduce another entity's rows onto the curated rows
-  they belong to (`aggregate_from_entities`): a parcel's `year_built` is
+  they belong to (`aggregate_from_entities`), on either side of a link
+  table: a curated parcel takes its properties' rows through the
+  property-to-parcel table, a curated sale its parcels' rows through the
+  transaction-to-parcel table (`key: null`, link only, each parcel's sums
+  scaled by the sale's `share` of it, a class kept only where the deed's
+  parcels agree). A parcel's `year_built` is
   the earliest of its properties', its `living_area_sqft` and
   `gross_floor_area_sqft` their sums, read from
   `US_property-spine-2026` by `parcel_id_local` with the registry's rule
@@ -141,6 +146,15 @@ Steps are organized by the nature of the transformation:
   `aggregate_multi_parcel_sales` and `assign_transaction_ids` stay
   registered here as wrappers over `io/sale_records.py` for a recipe that
   still lists them; the national recipe does not, and never re-mints an id.
+  What a sale conveyed arrives through the spine's link tables, gathered
+  by `aggregate_from_entities` at the top of the recipe (the property's
+  own values first, since a property is what a sale conveys, then the
+  parcel's sums, agreed classes and area filling what no property
+  supplied), not through spine columns: since 2026-10-01 a multi-parcel deed's
+  row carries no parcel number of its own, so the key-based steps below
+  (`collapse_double_closings`, the deed-echo flag, the temporal joins,
+  which mark such a row `no_key`) see only single-parcel sales; reaching
+  the panel per linked parcel is the next step for the temporal join.
   What runs here: `collapse_double_closings` (compared within
   one record kind) and `flag_sales_matching_other_kind`
   (`sale_matches_deed`: exact equality of parcel, year, month and price, no

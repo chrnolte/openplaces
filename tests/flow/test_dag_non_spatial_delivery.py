@@ -48,6 +48,26 @@ def test_every_declared_output_is_a_path_the_bundle_knows():
     assert declared == set(bundle.values()) - {bundle['canonical']}
 
 
+def test_the_transaction_spine_declares_its_link_tables():
+    """`link_transactions` writes one link table per side it names, beside
+    the spine's output, and the DAG declares both as the job's outputs."""
+    from openplaces.geo.link import get_entity_link_path
+    from openplaces.recipe import get_output_path
+
+    dag = RecipeDAG(TARGET, admin_ids=['US-WI-VI'])
+    spine = 'US_transaction-spine-2026'
+    outputs = set(dag.extra_outputs('harmonize', spine, 'US-WI-VI'))
+    parcel_link = get_entity_link_path(spine, 'US_parcel-spine-2026', 'US-WI-VI')
+    property_link = get_entity_link_path(spine, 'US_property-spine-2026', 'US-WI-VI')
+    assert parcel_link in outputs
+    assert property_link in outputs
+    # Beside the transaction spine, the finer entity.
+    assert parcel_link.parent == get_output_path(spine, admin_id='US-WI-VI').parent
+    # And the curate job reads them.
+    inputs = set(dag.input_paths('curate', TARGET, 'US-WI-VI'))
+    assert parcel_link in inputs
+
+
 def test_planning_the_whole_graph_does_not_raise():
     """`extra_outputs` runs for every node, which is where it bit."""
     dag = RecipeDAG(TARGET, admin_ids=['US-WI'], deliver=True)

@@ -17,7 +17,7 @@ import re
 
 import pandas as pd
 
-from openplaces.table import add_unique_suffix, aggregate_rows, normalize_issued_id
+from openplaces.table import add_unique_suffix, normalize_issued_id
 
 _NON_ALNUM = re.compile(r'[^0-9A-Za-z]')
 
@@ -158,21 +158,55 @@ def derive_document_id(
 
 def count_parcels_per_document(
     frame: pd.DataFrame,
-    parcel_column: str,
+    parcel_column: str | list[str],
     document_column: str = 'sale_document_id',
     output: str = 'n_parcels_per_sale',
 ) -> pd.DataFrame:
     """Count the distinct parcels each recorded document covered, on every row.
 
+    *parcel_column* names the column identifying a row's parcel, or
+    several in order of preference, a row taking the first it has a
+    value in. Count on the normalized number before the assessor's own
+    spelling: a source published over several years spells one parcel
+    two ways (Lake County FL's deed feed writes `01-18-24-...` in one
+    vintage and the bare digits in another), and counted on the
+    spelling those rows read as a two-parcel deed. Measured 2026-10-01
+    on US-FL-LA: 119,027 of 157,087 multi-parcel documents were one
+    parcel under two spellings.
+
     Run after the source's duplicate rows are removed, or a document
-    listed twice for the same parcel counts as two. A frame lacking
-    either column is returned as it is.
+    listed twice for the same parcel counts as two. A frame lacking the
+    document column, or every parcel column, is returned as it is.
     """
-    if document_column not in frame.columns or parcel_column not in frame.columns:
+    if isinstance(parcel_column, str):
+        parcel_column = [parcel_column]
+    present = [c for c in parcel_column if c in frame.columns]
+    if document_column not in frame.columns or not present:
         return frame
-    counts = frame.groupby(document_column, dropna=True)[parcel_column].nunique()
+    key = frame[present[0]].astype('string')
+    for column in present[1:]:
+        key = key.fillna(frame[column].astype('string'))
+    counts = key.groupby(frame[document_column], dropna=True).nunique()
     frame[output] = frame[document_column].map(counts).astype('float')
     return frame
+
+
+def _agree_per_group(members: pd.DataFrame, by: str) -> pd.DataFrame:
+    """One row per group: a column's value where every member states the
+    same one, missing where they differ.
+
+    The rule the stacked-units split applies to a lot's units and the
+    curate stage to a parcel's properties (`aggregation.AGREE`): a deed
+    of three parcels has one price and one date, which every row repeats,
+    and three parcel numbers, which no single cell can hold.
+    """
+    grouped = members.groupby(by, sort=False, dropna=True)
+    first = grouped.first()
+    distinct = grouped.nunique(dropna=True)
+    out = first.where(distinct <= 1)
+    # `first` skips missing values; a column every member leaves empty
+    # has distinct 0 and stays empty, which `where` preserves.
+    return out
 
 
 def aggregate_multi_parcel_sales(
@@ -180,47 +214,57 @@ def aggregate_multi_parcel_sales(
     document_column: str = 'sale_document_id',
     weight_column: str | None = None,
     count_column: str = 'n_parcels_per_sale',
-) -> tuple[pd.DataFrame, int, int]:
+) -> tuple[pd.DataFrame, int, int, pd.DataFrame]:
     """Emit one row per recorded document instead of one per parcel.
 
     The rows of a multi-parcel deed are right about the price and wrong
-    about the area: the source repeats one price on every parcel the
-    deed covered. Grouped by document, the parcels become one observation
-    whose extensive columns (an area, a count) are summed and whose other
-    columns are taken from the row with the largest *weight_column* (the
-    registry's aggregation rule decides which is which, through
-    `table.aggregate_rows`). Rows with no document id, or alone on
-    theirs, are kept as they are. The aggregated row keeps the index
-    label of its heaviest member, and *count_column* is kept as that
-    member's value. Returns the frame, the number of rows folded and the
-    number of documents they became.
+    about the parcel: the source repeats one price on every parcel the
+    deed conveyed, and the parcels differ. Grouped by document, the rows
+    become one sale that keeps what every member states alike (the
+    price, the dates, the document, the parties' kind) and nothing a
+    member states for its parcel alone: a column whose members disagree
+    is left missing on the folded row. The parcels themselves become
+    rows of the transaction-to-parcel link table, written by
+    `link_transactions` from the *members* this function returns, which
+    is where a reader finds the deed's parcels and their shares. Until
+    2026-10-01 the folded row took its other columns from the member
+    with the largest *weight_column*, which named one of several unlike
+    parcels as if it were the deed's (the maintainer's objection).
+
+    Rows with no document id, or alone on theirs, are kept as they are.
+    The folded row keeps the index label of its first member (or of the
+    heaviest, when *weight_column* is given), and *count_column* is kept
+    as that member's value. Returns the frame, the number of rows
+    folded, the number of documents they became, and the member rows
+    themselves (every column, plus the document they fold into), empty
+    where nothing folded.
     """
+    empty = frame.iloc[0:0]
     if document_column not in frame.columns:
-        return frame, 0, 0
+        return frame, 0, 0, empty
     has_document = frame[document_column].notna()
     shared = has_document & frame[document_column].duplicated(keep=False)
     if not shared.any():
-        return frame, 0, 0
+        return frame, 0, 0, empty
     members = frame.loc[shared].copy()
     if weight_column is not None and weight_column in members.columns:
-        members = members.sort_values(weight_column, ascending=False)
-    # The representative row's label, taken before the registry-driven
-    # aggregation, which keeps only columns the registry knows.
+        members = members.sort_values(weight_column, ascending=False, kind='stable')
     label = members.index.to_series().groupby(members[document_column]).first()
-    aggregated = aggregate_rows(
-        members,
-        by=document_column,
-        aggregation_function={count_column: 'first'},
-    )
-    aggregated[document_column] = aggregated.index
-    aggregated.index = pd.Index(
-        label.reindex(aggregated.index).to_numpy(), name=frame.index.name
+    folded = _agree_per_group(members, document_column)
+    folded[document_column] = folded.index
+    if count_column in members.columns:
+        # The count is the same on every member; keep it even where a
+        # member's copy is missing.
+        first_count = members.groupby(document_column, sort=False)[count_column].first()
+        folded[count_column] = first_count.reindex(folded.index)
+    folded.index = pd.Index(
+        label.reindex(folded.index).to_numpy(), name=frame.index.name
     )
     kept = frame.loc[~shared]
-    result = pd.concat([kept, aggregated.reindex(columns=kept.columns)])
+    result = pd.concat([kept, folded.reindex(columns=kept.columns)])
     # Back in input order, so the step is stable under a later sort.
     result = result.loc[frame.index[frame.index.isin(result.index)]]
-    return result, int(shared.sum()), len(aggregated)
+    return result, int(shared.sum()), len(folded), members
 
 
 def mint_transaction_ids(

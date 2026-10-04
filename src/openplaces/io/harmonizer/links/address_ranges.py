@@ -23,56 +23,45 @@ from openplaces.io.harmonizer.links.combine import (
 from openplaces.io.readers import get_entities
 
 
-@_register('link_address_ranges')
-def link_address_ranges(
-    state: HarmonizeState,
-    recipe_id: str,
-    columns: list[str] | dict[str, str] | None = None,
+def match_address_ranges(
+    spine: pd.DataFrame,
+    ref: pd.DataFrame,
+    admin_id,
+    *,
     street_column: str = 'address_street',
     number_column: str = 'address_number',
     admin4_column: str = 'admin4_id',
-    suffix: str | None = None,
-) -> HarmonizeState:
-    """Resolve multi-unit address ranges left unmatched by :func:`link_by_id`.
+    attempt: pd.Series | None = None,
+) -> tuple[dict, list, int]:
+    """Resolve each spine row's address number to one reference row.
 
-    A raw address number like ``'704-706'`` (a standard multi-unit/multi-
-    family deed notation, preserved by
-    :func:`~openplaces.geo.address.normalize_address_components` rather than
-    squashed into ``'704706'``) never matches a parcel reference's own
-    single-number ``address_id_local`` key via the ordinary
-    :func:`link_by_id` steps -- no real parcel has that combined number. This
-    step splits the range (:func:`~openplaces.geo.address.split_number_range`)
-    and tries each individual number against *recipe_id*'s own
-    ``admin4|street|number`` key components (the same construction
-    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local` uses)
-    instead. It also handles the mirror case: a *reference* row whose own
-    number is a range (e.g. a parcel recorded as ``'20-22 Main St'``) while
-    the spine lists a single plain number that's one of the two halves --
-    for spine rows :func:`link_by_id` left unmatched, each reference range
-    is likewise registered under both of its individual numbers.
+    The matching `link_address_ranges` describes, as a function over two
+    frames so that the transaction link table can use it: a spine number
+    that is a range (`704-706`) tries each half; a reference number that
+    is a range is registered under both halves; a row resolves only
+    where exactly one distinct reference row matches.
 
-    A multi-family range normally corresponds to one parcel: if exactly one
-    distinct reference row resolves (from either side's range, or a plain
-    match), link it (gap-fill only, via :func:`_write_prioritized`, so an
-    already-linked row is never touched). If more than one distinct
-    reference row resolves -- ambiguous, and not expected in the normal case
-    -- the row is left unmatched rather than guessed at; every such row this
-    call finds is reported in a single warning with a small sample, since
-    arbitrarily picking one parcel over the other would be wrong until the
-    ambiguity is looked at deliberately.
+    Parameters
+    ----------
+    spine, ref : pandas.DataFrame
+        The two tables, each with *street_column*, *number_column* and,
+        where it exists, *admin4_column*.
+    admin_id : AdminId or str or None
+        The unit being processed; its country code picks the street
+        canonicalization.
+    attempt : pandas.Series of bool, optional
+        Spine rows to try. Default: every row whose number is a range,
+        plus every plain-numbered row.
 
-    Parameters mirror :func:`link_by_id`'s naming for the columns it shares
-    (*street_column*/*number_column*/*admin4_column* also match
-    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local`'s
-    defaults, so a recipe using those defaults on both sides needs none of
-    them repeated here).
+    Returns
+    -------
+    (matches, ambiguous, n_range_attempted)
+        `matches` maps a spine index label to the reference index label
+        it resolved to; `ambiguous` lists the rows that matched more
+        than one distinct reference row, with their keys.
     """
-    if state.spine is None or number_column not in state.spine.columns:
-        return state
-
     from openplaces.geo.address import canonicalize_for_match, split_number_range
 
-    spine = state.spine
     split = (
         spine[number_column]
         .astype('string')
@@ -80,24 +69,7 @@ def link_address_ranges(
     )
     is_range = split.notna()
 
-    try:
-        ref = get_entities(recipe_id, state.admin_id)
-    except (FileNotFoundError, OSError, KeyError, ValueError):
-        if state.verbose:
-            print(
-                f'  link_address_ranges: no {recipe_id} for {state.admin_id}; skipping.'
-            )
-        return state
-    if ref is not None:
-        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
-    if (
-        ref is None
-        or street_column not in ref.columns
-        or number_column not in ref.columns
-    ):
-        return state
-
-    admin_str = str(state.admin_id) if state.admin_id else ''
+    admin_str = str(admin_id) if admin_id else ''
     admin_levels = AdminId(admin_str).levels if admin_str else ()
     admin1_id = admin_levels[0] if admin_levels else None
 
@@ -152,10 +124,121 @@ def link_address_ranges(
         _register_key(ref_key_to_rows, prefix + num1, row_id)
         _register_key(ref_key_to_rows, prefix + num2, row_id)
 
+    _, _, spine_canon_street, spine_admin4 = _base_key(spine)
+    if attempt is None:
+        attempt = is_range | spine[number_column].notna()
+
+    matched_index: dict = {}
+    ambiguous_rows = []
+    n_range_attempted = 0
+    for position, idx in enumerate(spine.index):
+        if not bool(attempt.iloc[position]):
+            continue
+        if bool(is_range.iloc[position]):
+            n_range_attempted += 1
+            num1, num2 = split.iloc[position]
+            candidates = [num1, num2]
+        else:
+            candidates = [str(spine[number_column].iloc[position]).strip().upper()]
+        prefix = f'{spine_admin4.iloc[position]}|{spine_canon_street.iloc[position]}|'
+
+        distinct_rows: list = []
+        matched_keys: list = []
+        for key in dict.fromkeys(prefix + c for c in candidates):
+            for row_id in ref_key_to_rows.get(key, []):
+                if row_id not in distinct_rows:
+                    distinct_rows.append(row_id)
+                    matched_keys.append(key)
+
+        if len(distinct_rows) == 1:
+            matched_index[position] = distinct_rows[0]
+        elif len(distinct_rows) > 1:
+            ambiguous_rows.append(
+                {
+                    'street': spine_canon_street.iloc[position],
+                    'number': spine[number_column].iloc[position],
+                    'matched_keys': matched_keys,
+                }
+            )
+    return matched_index, ambiguous_rows, n_range_attempted
+
+
+@_register('link_address_ranges')
+def link_address_ranges(
+    state: HarmonizeState,
+    recipe_id: str,
+    columns: list[str] | dict[str, str] | None = None,
+    street_column: str = 'address_street',
+    number_column: str = 'address_number',
+    admin4_column: str = 'admin4_id',
+    suffix: str | None = None,
+) -> HarmonizeState:
+    """Resolve multi-unit address ranges left unmatched by :func:`link_by_id`.
+
+    A raw address number like ``'704-706'`` (a standard multi-unit/multi-
+    family deed notation, preserved by
+    :func:`~openplaces.geo.address.normalize_address_components` rather than
+    squashed into ``'704706'``) never matches a parcel reference's own
+    single-number ``address_id_local`` key via the ordinary
+    :func:`link_by_id` steps -- no real parcel has that combined number. This
+    step splits the range (:func:`~openplaces.geo.address.split_number_range`)
+    and tries each individual number against *recipe_id*'s own
+    ``admin4|street|number`` key components (the same construction
+    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local` uses)
+    instead. It also handles the mirror case: a *reference* row whose own
+    number is a range (e.g. a parcel recorded as ``'20-22 Main St'``) while
+    the spine lists a single plain number that's one of the two halves --
+    for spine rows :func:`link_by_id` left unmatched, each reference range
+    is likewise registered under both of its individual numbers.
+
+    A multi-family range normally corresponds to one parcel: if exactly one
+    distinct reference row resolves (from either side's range, or a plain
+    match), link it (gap-fill only, via :func:`_write_prioritized`, so an
+    already-linked row is never touched). If more than one distinct
+    reference row resolves -- ambiguous, and not expected in the normal case
+    -- the row is left unmatched rather than guessed at; every such row this
+    call finds is reported in a single warning with a small sample, since
+    arbitrarily picking one parcel over the other would be wrong until the
+    ambiguity is looked at deliberately.
+
+    Parameters mirror :func:`link_by_id`'s naming for the columns it shares
+    (*street_column*/*number_column*/*admin4_column* also match
+    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local`'s
+    defaults, so a recipe using those defaults on both sides needs none of
+    them repeated here).
+    """
+    if state.spine is None or number_column not in state.spine.columns:
+        return state
+
+    from openplaces.geo.address import split_number_range
+
+    spine = state.spine
+    is_range = (
+        spine[number_column]
+        .astype('string')
+        .map(lambda v: split_number_range(v) if pd.notna(v) else None)
+        .notna()
+    )
+
+    try:
+        ref = get_entities(recipe_id, state.admin_id)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        if state.verbose:
+            print(
+                f'  link_address_ranges: no {recipe_id} for {state.admin_id}; skipping.'
+            )
+        return state
+    if ref is not None:
+        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
+    if (
+        ref is None
+        or street_column not in ref.columns
+        or number_column not in ref.columns
+    ):
+        return state
+
     pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
     output_names = [f'{o}{suffix}' if suffix else o for _, o in pairs]
-
-    _, _, spine_canon_street, spine_admin4 = _base_key(spine)
 
     existing = [n for n in output_names if n in spine.columns]
     already_matched = (
@@ -168,36 +251,18 @@ def link_address_ranges(
     if not attempt_rows.any():
         return state
 
-    matched_index: dict = {}
-    ambiguous_rows = []
-    n_range_attempted = 0
-    for idx in spine.index[attempt_rows]:
-        if is_range.loc[idx]:
-            n_range_attempted += 1
-            num1, num2 = split.loc[idx]
-            candidates = [num1, num2]
-        else:
-            candidates = [str(spine.loc[idx, number_column]).strip().upper()]
-        prefix = f'{spine_admin4.loc[idx]}|{spine_canon_street.loc[idx]}|'
-
-        distinct_rows: list = []
-        matched_keys: list = []
-        for key in dict.fromkeys(prefix + c for c in candidates):
-            for row_id in ref_key_to_rows.get(key, []):
-                if row_id not in distinct_rows:
-                    distinct_rows.append(row_id)
-                    matched_keys.append(key)
-
-        if len(distinct_rows) == 1:
-            matched_index[idx] = distinct_rows[0]
-        elif len(distinct_rows) > 1:
-            ambiguous_rows.append(
-                {
-                    'street': spine_canon_street.loc[idx],
-                    'number': spine.loc[idx, number_column],
-                    'matched_keys': matched_keys,
-                }
-            )
+    matched_positions, ambiguous_rows, n_range_attempted = match_address_ranges(
+        spine,
+        ref,
+        state.admin_id,
+        street_column=street_column,
+        number_column=number_column,
+        admin4_column=admin4_column,
+        attempt=attempt_rows,
+    )
+    matched_index = {
+        spine.index[position]: row_id for position, row_id in matched_positions.items()
+    }
 
     if ambiguous_rows:
         warnings.warn(

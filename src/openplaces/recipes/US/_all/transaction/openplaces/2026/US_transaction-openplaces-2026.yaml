@@ -48,12 +48,68 @@ save_to:
 pipeline:
   # The rows arrive as the entity: one row per recorded sale, indexed
   # by `transaction_id`, with `sale_year`, `sale_month`,
-  # `sale_document_id` and `n_parcels_per_sale` on every row. Until
-  # 2026-09-29 this recipe derived the period, dropped exact repeats of
-  # a document, named the document, counted its parcels, folded a
-  # multi-parcel deed into one row and minted the id last; those steps
-  # run at the end of US_transaction-spine-2026 now, and this recipe
-  # never re-mints an id (plans/stage-contract-audit.md).
+  # `sale_document_id` and `n_parcels_per_sale` on every row, and the
+  # parcels and properties each sale conveyed in the spine's link tables
+  # rather than in its columns. Until 2026-09-29 this recipe derived the
+  # period, dropped exact repeats of a document, named the document,
+  # counted its parcels, folded a multi-parcel deed into one row and
+  # minted the id last; those steps run at the end of
+  # US_transaction-spine-2026 now, and this recipe never re-mints an id
+  # (plans/stage-contract-audit.md).
+
+  # What the sale conveyed, gathered through the spine's two link tables
+  # (`link_transactions`). The spine's parcel-value passes that used to
+  # write these columns went on 2026-10-01 (slice b4 of the review
+  # plan): the sale carries what the document states, the parcel and
+  # the property what they state, and these gathers are where they
+  # meet. Pairs found on a key shared by very many rows (`*_shared_key`)
+  # are left out, as every reader of a link table leaves them out of a
+  # sum.
+  #
+  # The property first, where the record names one: a property is the
+  # unit of ownership a sale conveys, and its row states the values of
+  # exactly what changed hands, a condo unit's own among them (its lot's
+  # parcel row deliberately carries no unit's value, io/stacked_units.py;
+  # on Collier County FL 288,597 of 916,076 sales are such units,
+  # 2026-09-21). A deed of several properties takes their sums for the
+  # extensive columns, the earliest year built, and a use class only
+  # where every one agrees. `use_group_code` rides along because a roll
+  # states the use as a code and nothing on the property side produces
+  # the decoded `use_group` for Florida's DOR codes yet.
+  #
+  # Reading the property before the parcel also keeps a parcel-side
+  # fault out of the sale: Lake County FL's parcel spine carries, as a
+  # parcel's `land_value`, the sum of its roll's panel over 23 tax years
+  # (measured 2026-10-01, one parcel: roll 393,250, parcel spine
+  # 3,692,478; plans/open-items-outside-the-entity-transition.md).
+  - step: aggregate_from_entities
+    recipe_id: US_property-spine-2026
+    key: null
+    columns:
+      land_value: sum
+      improvement_value: sum
+      n_dwellings: sum
+      year_built: min
+      use_group: agree
+      use_subgroup: agree
+      use_group_code: agree
+
+  # Then the parcel, filling what no property supplied (`fill_only`, the
+  # default): a state with no roll (Wisconsin, Massachusetts) takes its
+  # parcel's values, and every sale takes its parcels' area, which only
+  # a parcel states. A deed of several parcels sums each parcel's figure
+  # scaled by the sale's area share of it.
+  - step: aggregate_from_entities
+    recipe_id: US_parcel-spine-2026
+    key: null
+    columns:
+      area_ha: sum
+      land_value: sum
+      improvement_value: sum
+      n_dwellings: sum
+      year_built: min
+      use_group: agree
+      use_subgroup: agree
 
   # A second document for the same parcel at the same price within a
   # month is usually the other leg of a double closing. Whether to
@@ -375,13 +431,13 @@ pipeline:
         threshold_column: sale_nominal_price_floor
         restrict: {column: use_group_code, equals: Single Family}
 
-  # Price over the assessed value of everything the deed conveyed. The
-  # spine folded a multi-parcel deed into one row (its land and
-  # improvement values summed across the deed's parcels), so the ratio
-  # is on the whole deed; a multi-parcel deed's price over one parcel's
-  # assessed value was the defect the fold removes. Since the fold moved
-  # to the spine (2026-09-29) the nominal floor and disclosure share
-  # above are measured over deeds, not over deed-parcel rows.
+  # Price over the assessed value of everything the deed conveyed: the
+  # land and improvement values gathered above are summed over the
+  # deed's parcels, so the ratio is on the whole deed; a multi-parcel
+  # deed's price over one parcel's assessed value was the defect the
+  # fold removes. Since the fold moved to the spine (2026-09-29) the
+  # nominal floor and disclosure share above are measured over deeds,
+  # not over deed-parcel rows.
   - step: derive_indicators
     indicators:
       - output: sale_price_to_assessed_ratio
@@ -411,6 +467,10 @@ pipeline:
   # ones, because a reader has to be able to tell a value taken from the
   # sale year from one taken from a neighboring year, from a county with
   # no panel at all. `tax_year` rides along as the vintage actually used.
+  # A multi-parcel deed has no single `parcel_id_assessor` since the
+  # spine's fold stopped picking one parcel's (2026-10-01); it reads
+  # `no_key` here. Reaching the panel per linked parcel is the next step
+  # for this join (plans/core-schema-and-stage-contracts-review.md, b4).
   - step: join_temporal_snapshot
     phase_override: >-
       a gather that needs sale_year from derive_sale_period and the

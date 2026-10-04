@@ -1,0 +1,34 @@
+# Patch: Massachusetts names a recorded document by its book and page.
+#
+# A Massachusetts registry's instrument number is a sequence restarted
+# every year, so the same number names a different deed in each year
+# the crawl covers, while the book and page name one recording. Under
+# the national candidate order (instrument number first) two unrelated
+# deeds read as one multi-parcel document and were folded into one
+# sale. Measured 2026-10-01 on US-MA-SOM: 187 instrument numbers are
+# shared by 375 deed rows, 186 of them across different years with
+# different book and page, 1 on one date (a true multi-parcel deed).
+# The assessor's last-sale rows (MassGIS) cite the deed's book and page
+# too, so their scoped documents are unaffected.
+#
+# The sale's id is its document, so Massachusetts ids read
+# `US-MA-SOM_<book>-<page>` from this patch on.
+
+admin_id: US-MA
+stage: harmonize
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_transaction-spine-2026
+pipeline_patch:
+  - set: derive_document_id
+    params:
+      candidates:
+        - [book, page]
+        - [sale_clerk_instrument]
+        - [instrument_number]
+        - [sale_book, sale_page]
