@@ -1,0 +1,47 @@
+# Enrichment recipe: attach the CHEER Inventory v0 building attributes onto
+# the footprint spine by polygon overlap. The Texas twin of
+# US-NC_footprint_building-cheer-v0; see that recipe for the shape of the
+# `entity`/`dataset` pair and the `null_with` rationale.
+#
+# The Texas file covers Harris and Jefferson counties only; every other
+# county has no reference buildings and gets no evidence.
+
+description: >-
+  CHEER Inventory v0 roof shape, foundation, construction, garage, and story
+  evidence attached to Texas footprints.
+
+stage: enrich
+admin_id: US-TX
+
+entity:
+  entity_type: footprint
+
+dataset: building-cheer-v0
+
+# Matching is geometric, so the spine must be loaded with its geometry.
+spine_geom: true
+
+reference_building_recipe_id: US-TX_building-cheer-v0
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_footprints_from_reference_buildings
+    # Attached as `{column}_building_cheer`.
+    columns:
+      - roof_shape
+      - roof_shape_confidence
+      - roof_shape_2
+      - roof_shape_confidence_2
+      - roof_shape_3
+      - roof_shape_confidence_3
+      - foundation_type
+      - construction_type
+      - has_garage
+      - n_stories
+      - year_built
+    null_with:
+      roof_shape_confidence: roof_shape
+      roof_shape_confidence_2: roof_shape_2
+      roof_shape_confidence_3: roof_shape_3

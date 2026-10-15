@@ -1,0 +1,76 @@
+# Recipe to import the CHEER Inventory v0 building inventory for Texas.
+#
+# The source file is not downloadable: it is a CHEER/SimCenter deliverable
+# placed by hand in the recipe's external directory. With no
+# `compressed_file_name`, the Ingester reads `uncompressed_file_name`
+# straight from there. The schema is identical to the North Carolina file
+# (US-NC_building-cheer-v0); see that recipe for the column notes.
+
+description: >-
+  CHEER Inventory v0 buildings for Harris and Jefferson counties, Texas, with
+  modeled roof shape, foundation, construction, garage, and story count.
+
+admin_id: US-TX
+
+entity:
+  entity_type: building
+  source:
+    source_id: cheer
+    portal_url: "https://www.designsafe-ci.org/"
+  version: v0
+
+# Placed by hand; see the header note.
+uncompressed_file_name: "Inventory_v0_TX.parquet"
+
+# Processed as one statewide pass (243 MB), then split into per-county
+# outputs by `save_to.admin_level` below, as for North Carolina.
+process_by:
+  admin_level: 2
+
+# Columns: `openplaces` variable name -> variable name in imported table
+columns:
+  building_id_ubid: bid
+  admin3_id_admin1: county
+  year_built: yr_built
+  area_m2: fp_m2
+  foundation_type: foundation
+  construction_type: construction
+  n_stories: num_story
+  has_garage: garage
+  roof_shape: roof_shape_1
+  roof_shape_2: roof_shape_2
+  roof_shape_3: roof_shape_3
+  roof_shape_confidence: roof_sig_1
+  roof_shape_confidence_2: roof_sig_2
+  roof_shape_confidence_3: roof_sig_3
+
+# As in North Carolina, the roof-shape columns are never null and carry two
+# non-classes instead ('Unknown' on 77,188 rows of roof_shape_1, 'No
+# Structure' on 78,939). Both mean "no roof shape" and become null here.
+null_value_strings:
+  - "Unknown"
+  - "No Structure"
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - foundation_type
+  - construction_type
+  - roof_shape
+  - roof_shape_2
+  - roof_shape_3
+
+# Translate the source's raw county FIPS into `openplaces` admin_ids, so
+# `save_to.admin_level` below has an `admin3_id` column to split on. The
+# file holds two counties: 48201 (Harris) and 48245 (Jefferson).
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "admin-openplaces-2026_admin3"
+
+# `bid` is an Open Location Code, verified unique across all 1,651,303 rows.
+set_index: building_id_ubid
+
+save_to:
+  data_dir: cache
+  # Split the statewide pass into one file per county.
+  admin_level: 3
