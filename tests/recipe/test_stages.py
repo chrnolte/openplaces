@@ -45,9 +45,11 @@ def test_curation_recipe_declares_predecessors():
         'US_footprint_built-n-stories-brails-2026',
         # Region-scoped: a precomputed statewide inventory standing
         # in for the per-image classifications above wherever it has
-        # coverage. merge_enrichments skips a spec with no evidence
-        # for the admin unit, so a run outside NC is unaffected.
+        # coverage (NC statewide; Harris and Jefferson TX).
+        # merge_enrichments skips a spec with no evidence for the
+        # admin unit, so a run outside those units is unaffected.
         'US-NC_footprint_building-cheer-v0',
+        'US-TX_footprint_building-cheer-v0',
         # Also NC-only, and skipped the same way: the NCDPS per-building
         # construction years the year_built reconcile ranks above NSI.
         'US-NC_footprint_footprint-ncdps-2023',
