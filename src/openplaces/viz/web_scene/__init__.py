@@ -79,8 +79,10 @@ STATIC_DIR = files('openplaces.viz.web_scene') / 'static'
 # deck.gl's standalone bundle, pinned; the page loads nothing else.
 DECK_GL_URL = 'https://cdn.jsdelivr.net/npm/deck.gl@9.1.14/dist.min.js'
 TOOLTIP_KINDS = ('text', 'money', 'money_per_area', 'year', 'count')
-# The page's only heading (maintainer, 2026-10-15).
-DEFAULT_TITLE = 'How land and building value is distributed'
+# The page's heading and the smaller line under it (maintainer,
+# 2026-10-16).
+DEFAULT_TITLE = 'Land and building values'
+DEFAULT_SUBTITLE = 'as seen by the tax assessor'
 
 
 @dataclass(frozen=True)
@@ -149,6 +151,10 @@ class SceneLayer:
         not a coverage, such as building outlines; a coverage (parcels)
         is simplified inside `show_value_terrain_layer` instead, so
         neighbors keep their shared edges.
+    per_dwelling_label : str, optional
+        Offer a second view coloring this layer by `value_column` per
+        dwelling (`n_dwellings`), under this legend label. Features
+        without dwellings have no value in that view.
     """
 
     name: str
@@ -164,6 +170,7 @@ class SceneLayer:
     stack_on: str | None = None
     render: dict = field(default_factory=dict)
     simplify_m: float | None = None
+    per_dwelling_label: str | None = None
 
 
 # The notebook's scene (notebooks/09_show/03_show_land_and_building_
@@ -208,6 +215,9 @@ VALUE_SCENE_LAYERS = (
                 'money_per_area',
                 imputed_from='land_value_imputed_source',
             ),
+            # Shown only when several records share the outline
+            # (`merge_identical_outlines`).
+            TooltipField('n_records_on_outline', 'Records on this lot', 'count'),
         ),
         render={
             'drop_corridors': True,
@@ -227,8 +237,9 @@ VALUE_SCENE_LAYERS = (
         # to the costliest buildings.
         vmin=50,
         vmax=5_000,
-        cmap='cmr.amber',
-        cmap_range=(0.2, 0.95),
+        # Sunset's buildings (the page colors from `default_palettes`).
+        cmap='plasma',
+        cmap_range=(0.3, 1.0),
         stack_on='parcels',
         tooltip=(
             TooltipField('address', 'Address'),
@@ -246,13 +257,27 @@ VALUE_SCENE_LAYERS = (
                 'money_per_area',
                 imputed_from='structure_value_source',
             ),
+            TooltipField('n_dwellings', 'Dwellings', 'count'),
+            TooltipField(
+                'structure_value_per_dwelling',
+                'Building value per dwelling',
+                'money',
+                imputed_from='structure_value_source',
+            ),
+            TooltipField('n_records_on_outline', 'Records on this outline', 'count'),
         ),
+        per_dwelling_label='Building value per dwelling',
         # A building whose height was capped keeps its color: the
         # notebook's translucent magenta marker read as a pink wash
         # over exactly the tallest towers.
         render={
             'height_clip_percentile': 99.999,
-            'alpha': 0.9,
+            # Opaque: translucent walls blend with whatever was drawn
+            # before them, so a wall's shade depended on draw order,
+            # i.e. on the row order of the data, and whole blocks
+            # showed dark back walls through their fronts (seen
+            # 2026-10-16 on Soden St, Cambridge).
+            'alpha': 1.0,
             'clipped_fill_rgba': None,
         },
         # Outlines from building structure layers trace every jog of a
@@ -439,7 +464,9 @@ def _triangulate_one(polygon):
         return shapely.GeometryCollection()
 
 
-def encode_scene_file(geometry, base, height, value, stack=None) -> tuple[bytes, list]:
+def encode_scene_file(
+    geometry, base, height, value, stack=None, extra=None
+) -> tuple[bytes, list]:
     """Encode one unit's features in the binary layout (module docstring).
 
     Parameters
@@ -458,6 +485,10 @@ def encode_scene_file(geometry, base, height, value, stack=None) -> tuple[bytes,
         Per feature, the part of `base` that is the extrusion of the
         layer below (a building on its parcel). With that layer
         switched off, the page lowers the feature by it.
+    extra : dict of str to array-like, optional
+        Further per-feature arrays, written under their names as they
+        come (float32 or uint8), e.g. `estimated` (1 where the value is
+        openplaces' own fill) or `value_dwelling`.
 
     Returns
     -------
@@ -488,6 +519,9 @@ def encode_scene_file(geometry, base, height, value, stack=None) -> tuple[bytes,
         'value': np.asarray(value, dtype='<f4'),
         **({} if stack is None else {'stack': np.asarray(stack, dtype='<f4')}),
     }
+    for name, array in (extra or {}).items():
+        array = np.asarray(array)
+        arrays[name] = array.astype('u1' if array.dtype.kind in 'bu' else '<f4')
     entries, offset = [], 0
     for name, array in arrays.items():
         entries.append(
@@ -567,6 +601,150 @@ def _tooltip_values(gdf, layer: SceneLayer) -> dict:
     return values
 
 
+RECORDS_COLUMN = 'n_records_on_outline'
+
+
+LANDMARK_REACH_M = 40.0
+
+
+def landmark_positions(landmarks, rendered) -> list:
+    """Where each landmark's marker stands: on the tallest top drawn
+    within `LANDMARK_REACH_M` of its point, so a tower's label sits on
+    its roof and an airport's on its ground.
+
+    Parameters
+    ----------
+    landmarks : sequence of dict
+        Each with `name`, `kind`, `longitude`, `latitude`.
+    rendered : sequence of TerrainLayer
+        The scene's layers as rendered (`show_value_terrain_layer`),
+        whose `total_elevation` is each feature's top.
+
+    Returns
+    -------
+    list of dict
+        `name`, `kind`, `position` ([longitude, latitude, top]) and
+        `ground`, the base of the bottom layer there, which the page
+        takes off when the terrain is switched off.
+    """
+    out = []
+    for mark in landmarks:
+        missing = {'name', 'kind', 'longitude', 'latitude'} - set(mark)
+        if missing:
+            raise ValueError(f'Landmark {mark!r} lacks {sorted(missing)}.')
+        point = gpd.GeoSeries(
+            [shapely.Point(mark['longitude'], mark['latitude'])], crs=4326
+        )
+        top, ground = 0.0, 0.0
+        for i, layer in enumerate(rendered):
+            gdf = layer.gdf
+            if gdf.empty:
+                continue
+            here = point.to_crs(gdf.crs if gdf.crs.is_projected else 5070)
+            shapes = gdf.geometry if gdf.crs.is_projected else gdf.geometry.to_crs(5070)
+            near = shapes.distance(here.iloc[0]).to_numpy() <= LANDMARK_REACH_M
+            if near.any():
+                top = max(top, float(np.nanmax(layer.total_elevation[near])))
+                if i == 0:
+                    base = layer.total_elevation - layer.rendered_elevation
+                    ground = float(np.nanmin(base[near]))
+        out.append(
+            {
+                'name': str(mark['name']),
+                'kind': str(mark['kind']),
+                'position': [
+                    round(float(mark['longitude']), 6),
+                    round(float(mark['latitude']), 6),
+                    round(top, 1),
+                ],
+                'ground': round(ground, 1),
+            }
+        )
+    return out
+
+
+def crop_to_area(gdf, area):
+    """Keep the features whose center lies inside *area*.
+
+    A display step: features are kept whole, never clipped, so nothing
+    is drawn with a shape its source does not have. The center is the
+    plain centroid in an equal-area projection (EPSG:5070 within the
+    US), not a point moved inside the feature.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Features in any CRS.
+    area : shapely geometry
+        In longitude and latitude (EPSG:4326).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+    """
+    if gdf.empty:
+        return gdf
+    area = shapely.make_valid(area)
+    shapely.prepare(area)
+    centers = gdf.geometry.to_crs(5070).centroid.to_crs(4326).to_numpy()
+    return gdf[
+        shapely.contains_xy(area, shapely.get_x(centers), shapely.get_y(centers))
+    ]
+
+
+def merge_identical_outlines(gdf, layer):
+    """One feature per outline: records with identical polygons merged.
+
+    Several records can share one outline, e.g. the accounts or units
+    of a lot that the parcel layer repeats once per record. Drawn as
+    they come, their walls coincide exactly at different heights and
+    the GPU cannot order them: they flicker as the camera moves.
+    Measured 2026-10-16 on US-NC-DUR: one 46,153 m2 lot outline came
+    eleven times. Merged, the feature carries the summed value (the
+    lot's whole value over its area, which is what a per-area color
+    of that lot means), the first record's other fields, the imputed
+    mark if any record's value was imputed, and in `RECORDS_COLUMN`
+    how many records it stands for (None when one).
+
+    Grouping by identical geometry is a display step here; design
+    limit L2 keeps grouping by identical geometry allowed.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        One layer's rows.
+    layer : SceneLayer
+        Its value column and tooltip fields.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+    """
+    gdf = gdf.copy()
+    keys = pd.Series(
+        shapely.to_wkb(shapely.normalize(gdf.geometry.to_numpy())), index=gdf.index
+    )
+    counts = keys.map(keys.value_counts())
+    gdf[RECORDS_COLUMN] = counts.where(counts > 1).astype('Int64')
+    if not (counts > 1).any():
+        return gdf
+    first = ~keys.duplicated()
+    out = gdf[first].copy()
+    values = gdf[layer.value_column]
+    summed = values.fillna(0).groupby(keys.to_numpy()).sum()
+    any_value = values.notna().groupby(keys.to_numpy()).any()
+    out[layer.value_column] = (
+        keys[first].map(summed).where(keys[first].map(any_value)).to_numpy()
+    )
+    for column in {t.imputed_from for t in layer.tooltip if t.imputed_from}:
+        if column not in gdf.columns:
+            continue
+        flagged = is_imputed(gdf[column]).groupby(keys.to_numpy()).any()
+        merged = keys[first].map(flagged).to_numpy()
+        out.loc[merged, column] = 'merged+imputed'
+    return out
+
+
 def layer_cmap(layer) -> mpl.colors.Colormap:
     """The colormap of *layer* (a SceneLayer or PaletteLayer), cut to
     its `cmap_range`. `cmap` is a colormap name or a tuple of color
@@ -599,12 +777,28 @@ class PaletteLayer:
         reads in a city and in a rural county alike.
     cmap_range : tuple of float
         The part of the colormap used (`SceneLayer.cmap_range`).
+    alpha : float, optional
+        Opacity of the fills under this palette; None keeps the layer's
+        own (`SceneLayer.render`).
+    line_rgba : tuple of int, optional
+        Color of the outlines drawn along every edge of the extruded
+        features (deck.gl's wireframe); None draws none.
+    line_cmap : str or tuple of str, optional
+        Colors the outlines by each feature's value instead, on the
+        same scale as the fills (`cmap` then usually holds dark tints
+        of the same hues, so the edges carry the color).
+    line_alpha : float
+        Opacity of the value-colored outlines.
     """
 
     cmap: str
     vmin: float | None = None
     vmax: float | None = None
     cmap_range: tuple[float, float] = (0.0, 1.0)
+    alpha: float | None = None
+    line_rgba: tuple[int, int, int, int] | None = None
+    line_cmap: str | tuple | None = None
+    line_alpha: float = 0.9
 
 
 def _nice(value: float, up: bool) -> float:
@@ -655,6 +849,20 @@ class Palette:
         CSS background of the page.
     boundary_rgba : tuple of int
         Color of the town borders.
+    theme : str
+        `dark` or `light`: whether the page under the scene is dark or
+        light, for marks drawn over it (the pinned tooltip's leader).
+    blend : str
+        `normal`, or `additive`: translucent fills add their light to
+        what is behind them and write no depth, so overlaps glow and
+        the result does not depend on the order features are drawn in.
+        Translucent fills blended normally do depend on it: walls
+        showed their back faces block by block (seen 2026-10-16).
+    material : dict, optional
+        deck.gl lighting of the extrusions (`ambient`, `diffuse`,
+        `shininess`); None keeps deck.gl's own, which shades walls
+        well below their color. A light palette needs mostly ambient
+        light or its pastels turn gray on the walls.
     """
 
     id: str
@@ -666,66 +874,34 @@ class Palette:
         '#05070d 100%)'
     )
     boundary_rgba: tuple[int, int, int, int] = (235, 240, 255, 90)
+    theme: str = 'dark'
+    blend: str = 'normal'
+    material: dict | None = None
 
 
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
-    """The page's color options (maintainer's request, 2026-10-15).
+    """The page's color options (maintainer's choice, 2026-10-16).
 
-    The first is the scene's own coloring (`SceneLayer.cmap`). The
-    others keep the cool-ground-under-warm-buildings idea in other
-    hues. The notebook's pair of rainbows, which the page first
-    shipped, was dropped as too loud (maintainer, 2026-10-15); Pastel
-    takes its place as the playful option.
+    Landscape (the default, first), Sunset, Neon and Pastel. The
+    first view stays warm and light at its dearest places: the
+    maintainer turned down every variant that bought building-to-land
+    contrast with blue or dark grounds, or with a dark, stark top of
+    the scale ("looks sad"). Contrast was scored on the color pairs
+    that meet on the map (every building against the parcel containing
+    it, at both values' places on their scales), by the OKLab distance
+    between the two colors. Measured 2026-10-16 on the four published
+    scenes (673,329 pairs): 5th percentile (x100) 7.8 for Landscape's
+    tops (its sand and terracotta middle is close to its amber
+    buildings; walls 17.7), 20.0 for Sunset, 13.9 for Pastel.
     """
-    own = Palette(
-        id='gold',
-        label='Gold',
-        layers={
-            layer.name: PaletteLayer(layer.cmap, cmap_range=layer.cmap_range)
-            for layer in layers
-        },
-    )
-    # Kept after a review on three NC counties and Boston (maintainer,
-    # 2026-10-16); Ember (its ground went black in rural counties),
-    # Aurora (a heavy violet ground) and Slate were dropped.
-    others = [
-        # More hue than Gold, still in order of lightness (maintainer,
-        # 2026-10-15: Gold liked, Slate too plain, Original too loud).
-        Palette(
-            id='sunset',
-            label='Sunset',
-            layers={
-                'parcels': PaletteLayer('cmr.ocean', cmap_range=(0.05, 0.85)),
-                'buildings': PaletteLayer('plasma', cmap_range=(0.3, 1.0)),
-            },
-        ),
-        # Between Gold and the notebook's rainbows (maintainer,
-        # 2026-10-15): soft, playful hues, but each ramp still rises in
-        # lightness so the order reads. Ground: deep slate to sage.
-        # Buildings: lavender, pink, peach, butter.
-        Palette(
-            id='pastel',
-            label='Pastel',
-            layers={
-                'parcels': PaletteLayer(
-                    # Topped at a mid sage: a paler top washed out
-                    # downtown buildings (US-NC-DUR, 2026-10-16).
-                    ('#1f2a3d', '#2c4556', '#43696d', '#6b9a8c')
-                ),
-                'buildings': PaletteLayer(
-                    ('#a98bd6', '#d79bd0', '#f2a7b8', '#ffc4a3', '#ffe08f', '#fff4b8')
-                ),
-            },
-        ),
-    ]
-    # Natural land colors (maintainer, 2026-10-16): green and blue out
-    # in the country, through sand, to terracotta and brick red where
-    # land is dearest, in muted tones. Unlike the other grounds this
-    # ramp is not monotone in lightness (sand is its lightest step), so
-    # land order reads by hue, as on a relief map. Buildings take the
-    # cool side, dusty lavender to near-white, so they never share a
-    # hue with the red center and stay ordered by lightness.
-    others.append(
+    names = {layer.name for layer in layers}
+    palettes = [
+        # Natural land colors (maintainer, 2026-10-16): green and blue
+        # out in the country, through sand, to terracotta and brick red
+        # where land is dearest, in muted tones. Not monotone in
+        # lightness (sand is its lightest step), so land order reads by
+        # hue, as on a relief map. Buildings run dark amber to pale
+        # gold, ordered by lightness.
         Palette(
             id='landscape',
             label='Landscape',
@@ -741,16 +917,148 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#a8443f',
                     )
                 ),
-                # Gold's buildings (maintainer, 2026-10-16: lavender to
-                # white read as all white, plum to lilac as dull).
                 'buildings': PaletteLayer('cmr.amber', cmap_range=(0.2, 0.95)),
             },
-        )
-    )
-    names = {layer.name for layer in layers}
-    order = ['landscape', 'sunset', 'pastel']
-    others = sorted(others, key=lambda p: order.index(p.id))
-    return [own] + [p for p in others if set(p.layers) == names]
+        ),
+        # A teal ground under buildings running magenta, orange,
+        # yellow: lightness rises with value in both, so the order
+        # reads without color vision. The ground starts above the
+        # ocean map's near-black, which vanished into the page.
+        Palette(
+            id='sunset',
+            label='Sunset',
+            layers={
+                'parcels': PaletteLayer('cmr.ocean', cmap_range=(0.18, 0.88)),
+                'buildings': PaletteLayer('plasma', cmap_range=(0.3, 1.0)),
+            },
+        ),
+        # City lights at night ("nightlights of Tokyo"): neon edges on
+        # dark, solid faces. The value sets the hue of a feature's edges
+        # at one brightness: land from blue to cyan and aqua, buildings
+        # from amber through orange and red to hot pink and magenta at
+        # the dearest center. Faces are dark tints of the same hues,
+        # opaque and unshaded. The first versions blended see-through
+        # fills additively: brightness then followed how many faces
+        # overlapped, i.e. density, not value, and stacked violets and
+        # magentas all summed to pink (maintainer, 2026-10-16).
+        Palette(
+            id='neon',
+            label='Neon',
+            layers={
+                # The land speaks through its faces, in very dark hues:
+                # black in the outskirts, deep indigo and blue, deep
+                # teal at the dearest land. Its outlines are the same
+                # hues a little brighter, so lots stay apart without
+                # the bright blue lines that competed with the
+                # buildings' glow (maintainer, 2026-10-16).
+                'parcels': PaletteLayer(
+                    (
+                        '#000000',
+                        '#0b0a26',
+                        '#16123f',
+                        '#16245a',
+                        '#0f3a5e',
+                        '#0b4e5a',
+                        '#0d5f55',
+                    ),
+                    line_cmap=(
+                        '#141428',
+                        '#1d1a48',
+                        '#2a2270',
+                        '#2a3d90',
+                        '#1d5f94',
+                        '#167e88',
+                        '#1a9884',
+                    ),
+                    line_alpha=0.85,
+                ),
+                # A broad run of hues (maintainer, 2026-10-16: wider,
+                # with green, "matrix-like", the cheapest darker): a dim
+                # dark green at the bottom, bright green, lime, amber,
+                # red, hot pink, violet at the top.
+                'buildings': PaletteLayer(
+                    (
+                        '#010803',
+                        '#031406',
+                        '#0e1404',
+                        '#140e02',
+                        '#170504',
+                        '#16040c',
+                        '#0e0416',
+                    ),
+                    line_cmap=(
+                        '#0c4a1c',
+                        '#1fd14f',
+                        '#c6f03a',
+                        '#ffb02e',
+                        '#ff4a3d',
+                        '#ff2fb0',
+                        '#b54dff',
+                    ),
+                    line_alpha=0.95,
+                ),
+            },
+            # Faces unshaded and without highlights, so their dark tints
+            # stay dark: with `shininess` 0 the specular term is 1 on
+            # every face and laid a gray sheen over the whole scene.
+            material={
+                'ambient': 1.0,
+                'diffuse': 0.0,
+                'shininess': 32,
+                'specularColor': [0, 0, 0],
+            },
+            no_value_rgba=(14, 14, 30, 255),
+            background=(
+                'radial-gradient(ellipse 80% 70% at 50% 45%, #0d0820 0%, '
+                '#05030d 50%, #000000 100%)'
+            ),
+            boundary_rgba=(120, 200, 255, 150),
+        ),
+        # A light, airy page: land from white through sky, mint, butter
+        # and peach to pink and lilac, growing more colorful toward the
+        # dearest land, with thin gray lot lines; pastel buildings
+        # (lavender, periwinkle, sea green, rose, apricot). The dearest
+        # places stay light and warm, never dark. The land ramp spans
+        # 2.7 times the earlier near-white one (OKLab path 42 vs 15),
+        # at some cost to roof contrast (5th percentile 13.9 vs 17.4).
+        Palette(
+            id='pastel',
+            label='Pastel',
+            layers={
+                'parcels': PaletteLayer(
+                    (
+                        '#ffffff',
+                        '#e6f4ff',
+                        '#cfeee8',
+                        '#e9f5c4',
+                        '#fff0b0',
+                        '#ffd3b0',
+                        '#ffb8c9',
+                        '#e7b0ef',
+                    ),
+                    line_rgba=(150, 150, 165, 70),
+                ),
+                'buildings': PaletteLayer(
+                    ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866')
+                ),
+            },
+            no_value_rgba=(236, 234, 229, 255),
+            background=(
+                'radial-gradient(ellipse 80% 70% at 50% 45%, #ffffff 0%, '
+                '#fbfaf7 60%, #f3f1ec 100%)'
+            ),
+            boundary_rgba=(90, 96, 120, 120),
+            theme='light',
+            # Mostly ambient: walls a little darker than roofs, not gray.
+            material={
+                'ambient': 0.75,
+                'diffuse': 0.35,
+                'shininess': 32,
+                'specularColor': [20, 20, 20],
+            },
+        ),
+    ]
+    return [p for p in palettes if set(p.layers) == names]
 
 
 def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) -> dict:
@@ -774,10 +1082,18 @@ def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) ->
         out[name] = {
             'vmin': spec.vmin if spec.vmin is not None else auto[0],
             'vmax': spec.vmax if spec.vmax is not None else auto[1],
-            'alpha': round(255 * alphas.get(name, 1.0)),
+            'alpha': round(
+                255 * (spec.alpha if spec.alpha is not None else alphas.get(name, 1.0))
+            ),
             'lut': [mpl.colors.to_hex(c / 255) for c in rgb],
             'scale': 'log1p',
+            'line': list(spec.line_rgba) if spec.line_rgba else None,
         }
+        if spec.line_cmap is not None:
+            line = layer_cmap(PaletteLayer(spec.line_cmap))
+            line_rgb = (line(np.linspace(0, 1, stops))[:, :3] * 255).round()
+            out[name]['line_lut'] = [mpl.colors.to_hex(c / 255) for c in line_rgb]
+            out[name]['line_alpha'] = round(255 * spec.line_alpha)
     return {
         'id': palette.id,
         'label': palette.label,
@@ -785,6 +1101,9 @@ def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) ->
         'no_value': list(palette.no_value_rgba),
         'background': palette.background,
         'boundary': list(palette.boundary_rgba),
+        'theme': palette.theme,
+        'blend': palette.blend,
+        'material': palette.material,
     }
 
 
@@ -898,6 +1217,51 @@ def land_borders(admin_ids, land=None, tolerance_m=5.0, land_buffer_m=25.0) -> l
             crs=units.crs,
         )
     return list(borders.to_crs(4326))
+
+
+def border_paths(lines, land) -> list:
+    """Border lines as page paths, set on the ground of the scene.
+
+    A border has no height of its own. On a draped scene each vertex
+    takes the ground height (`z`) of the nearest parcel vertex, so the
+    line runs roughly flush with the bottoms of the parcels beside it
+    rather than at sea level beneath them; on a flat scene `z` is 0.
+    The page draws borders with depth testing, so parcels and
+    buildings in front of a border hide it.
+
+    Parameters
+    ----------
+    lines : sequence of shapely.LineString
+        In longitude and latitude (`land_borders`).
+    land : geopandas.GeoDataFrame
+        The scene's bottom layer as rendered (draped parcels carry Z).
+
+    Returns
+    -------
+    list of list
+        Per line, `[longitude, latitude, z]` per vertex.
+    """
+    from scipy.spatial import cKDTree
+
+    if not lines:
+        return []
+    ground = land.geometry.to_crs(4326).to_numpy()
+    tree = None
+    if len(ground) and shapely.has_z(ground).any():
+        vertices = shapely.get_coordinates(ground, include_z=True)
+        vertices = vertices[np.isfinite(vertices[:, 2])]
+        # Degrees scaled to about equal meters for the nearest query.
+        scale = np.cos(np.radians(vertices[:, 1].mean()))
+        tree = cKDTree(np.column_stack([vertices[:, 0] * scale, vertices[:, 1]]))
+    paths = []
+    for line in lines:
+        xy = np.asarray(line.coords)[:, :2]
+        z = np.zeros(len(xy))
+        if tree is not None:
+            _, nearest = tree.query(np.column_stack([xy[:, 0] * scale, xy[:, 1]]))
+            z = vertices[nearest, 2]
+        paths.append(np.column_stack([np.round(xy, 6), np.round(z, 1)]).tolist())
+    return paths
 
 
 def tour_foci(
@@ -1045,6 +1409,9 @@ def build_web_scene(
     terrain_exaggeration=1.0,
     n_foci=6,
     palettes=None,
+    crop=None,
+    local_only=False,
+    landmarks=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -1084,6 +1451,23 @@ def build_web_scene(
     palettes : sequence of Palette, optional
         Color options the page offers, the first one shown by default.
         Defaults to `default_palettes(layers)`.
+    crop : shapely geometry, optional
+        An area in longitude and latitude (EPSG:4326), e.g. a land
+        market region: only features whose center lies inside it are
+        drawn. Features are kept whole, never cut, so a lot on the edge
+        is in or out by where its center falls. `admin_ids` then names
+        the units to read, which may reach beyond the area.
+    local_only : bool
+        Mark the scene as never to be published (`deploy_web_scene`
+        refuses it), e.g. when `crop` comes from a source that may not
+        be redistributed.
+    landmarks : sequence of dict, optional
+        Named places drawn as labeled markers with a short tooltip:
+        each with `name`, `kind` (a few words, e.g. "Airport"),
+        `longitude` and `latitude`. A landmark is a fixed, editorial
+        label, not a search result: the page offers no way to look one
+        up. Its marker stands on the top of the tallest feature drawn
+        within 40 m (`landmark_positions`).
     verbose : bool
 
     Returns
@@ -1148,6 +1532,11 @@ def build_web_scene(
             notices[layer.recipe] = '\n\n'.join(
                 bundle_notice(layer.recipe, name) for name in regions
             )
+        if crop is not None:
+            gdf = crop_to_area(gdf, crop)
+            if verbose:
+                print(f'{layer.name}: {len(gdf):,} features inside the crop')
+        gdf = merge_identical_outlines(gdf, layer)
         stack_on = rendered[layer.stack_on] if layer.stack_on else None
         terrain = show_value_terrain_layer(
             gdf,
@@ -1180,6 +1569,34 @@ def build_web_scene(
             )
             geometry = work
         geometry = geometry.to_crs(4326).to_numpy()
+        raw_value = out[layer.value_column].to_numpy(dtype=float)
+        views = {}
+        extra = {}
+        if layer.per_dwelling_label:
+            # The value per dwelling: a display ratio of the feature's
+            # own two fields, none where it has no dwellings.
+            dwellings = out['n_dwellings'].to_numpy(dtype=float)
+            has = (dwellings > 0) & (raw_value > 0)
+            per_dwelling = np.full(len(raw_value), np.nan)
+            per_dwelling[has] = raw_value[has] / dwellings[has]
+            out[f'{layer.value_column}_per_dwelling'] = per_dwelling
+            extra['value_dwelling'] = per_dwelling
+            low, high = scene_bounds(per_dwelling)
+            views['dwelling'] = {
+                'label': layer.per_dwelling_label,
+                'unit': 'dwelling',
+                'vmin': low,
+                'vmax': high,
+            }
+        # Which values openplaces filled itself (the `imputed` mark in
+        # the value's `_source`); the page can draw them as no value.
+        source = f'{layer.value_column}_source'
+        estimated = (
+            is_imputed(out[source]).to_numpy()
+            if source in out.columns
+            else np.zeros(len(out), dtype=bool)
+        )
+        extra['estimated'] = estimated.astype(np.uint8)
         values = _tooltip_values(out, layer)
         # No value: a dark slate that recedes into the page, not the
         # renderer's mid gray, which read as a dull patch in the scene.
@@ -1200,6 +1617,7 @@ def build_web_scene(
                 terrain.rendered_elevation[rows],
                 per_area[rows],
                 stack=terrain.stack_elevation[rows] if layer.stack_on else None,
+                extra={name: array[rows] for name, array in extra.items()},
             )
             stem = f'{layer.name}_{admin_id}'
             (data_dir / f'{stem}.bin').write_bytes(gzip.compress(data, 9))
@@ -1231,13 +1649,23 @@ def build_web_scene(
                     for tip in layer.tooltip
                 ],
                 'files': files_by_unit,
+                # Other colorings of this layer (`per_dwelling_label`).
+                'views': views,
+                'n_estimated': int(estimated.sum()),
             }
         )
 
+    land = rendered[layers[0].name].gdf
     boundaries = [
-        {'path': np.round(np.asarray(line.coords)[:, :2], 6).tolist()}
-        for line in land_borders(admin_ids, land=rendered[layers[0].name].gdf)
+        {'path': path}
+        for path in border_paths(land_borders(admin_ids, land=land), land)
     ]
+    marks = landmark_positions(
+        landmarks or [], [rendered[layer.name] for layer in layers]
+    )
+    if verbose:
+        for mark in marks:
+            print(f'landmark {mark["name"]}: top {mark["position"][2]:.0f} m')
 
     center = admin.union_all().centroid
     bottom = layers[0]
@@ -1249,6 +1677,7 @@ def build_web_scene(
     )
     manifest = {
         'title': title or DEFAULT_TITLE,
+        'subtitle': DEFAULT_SUBTITLE,
         'build_id': build_id,
         'built': datetime.now(UTC).isoformat(timespec='seconds'),
         'units': [names.get(a, a) for a in admin_ids],
@@ -1269,6 +1698,8 @@ def build_web_scene(
         },
         'notices': notices,
         'preview': region is None,
+        'local_only': bool(local_only),
+        'landmarks': marks,
         'deck_gl_url': DECK_GL_URL,
         'palettes': [palette_manifest(p, layers, bounds) for p in palettes],
         'tour': foci,
@@ -1497,6 +1928,12 @@ def deploy_web_scene(
             'without the delivery withholding; it is never published. '
             'Build from a delivery region to publish.'
         )
+    if manifest.get('local_only'):
+        raise ValueError(
+            f'{output_dir} was built for local use only (`local_only`, e.g. '
+            'cropped to an area that may not be redistributed); it is never '
+            'published.'
+        )
     settings = load_deploy_settings(env_file)
     env = _rclone_env(settings)
     if subpath:
@@ -1579,8 +2016,8 @@ def deploy_web_scene(
 
 def deploy_landing(output_dir, env_file=None, go=False):
     """Upload a landing page (`landing.build_landing`) to the configured
-    path: its page and card images only; the scenes in the folders
-    beside it are never touched."""
+    path: its page, card images and list of places only; the scenes in
+    the folders beside it are never touched."""
     output_dir = Path(output_dir)
     settings = load_deploy_settings(env_file)
     env = _rclone_env(settings)
@@ -1596,6 +2033,8 @@ def deploy_landing(output_dir, env_file=None, go=False):
         '+ /index.html',
         '--filter',
         '+ /thumbs/**',
+        '--filter',
+        '+ /places.json',
         '--filter',
         '- **',
         *dry,

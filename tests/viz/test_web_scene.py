@@ -106,8 +106,13 @@ def test_page_has_no_input_control_and_no_background_map():
     # off); neither selects features by their attributes.
     assert not re.search(r'<(input|select|textarea|form|button)\b', page, re.I)
     assert not re.search(r"createElement\('(input|select|textarea|form)", script)
-    assert len(re.findall(r"createElement\('button'\)", script)) == 2
-    assert 'dataset.palette' in script and 'dataset.layer' in script
+    # The pinned tooltip's close button is the third; the fourth picks
+    # the coloring (per area or per dwelling, with or without
+    # openplaces' estimates), which recolors every feature and hides
+    # none.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 4
+    for kind in ('dataset.palette', 'dataset.layer', 'dataset.close', 'dataset.choice'):
+        assert kind in script
     # Only the scene's own layers; nothing that draws a background map.
     for text in (page, script):
         assert not re.search(
@@ -159,6 +164,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
             'year_built': [1925],
             'structure_value': [300_000.0],
             'structure_value_source': ['assessor'],
+            'n_dwellings': [3.0],
         },
         geometry=[box(230_010, 900_010, 230_030, 900_030)],
         crs='EPSG:26986',
@@ -224,6 +230,14 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     # The building stands on its parcel's extrusion.
     assert arrays['base'][0] > 0
     assert header['n_features'] == 1
+    # Per dwelling: its own value over its own dwellings.
+    assert arrays['value_dwelling'][0] == pytest.approx(100_000.0)
+    assert manifest['layers'][1]['views']['dwelling']['unit'] == 'dwelling'
+    # Which values openplaces filled: the second parcel's land value.
+    parcel_path = out / manifest['layers'][0]['files']['US-XX-BBB']['geometry']
+    _, parcel_arrays = decode_scene_file(gzip.decompress(parcel_path.read_bytes()))
+    assert list(parcel_arrays['estimated']) == [1]
+    assert manifest['layers'][0]['n_estimated'] == 1
 
 
 def test_tour_starts_at_the_densest_center_and_skips_lone_parcels():
@@ -277,21 +291,39 @@ def test_deploy_settings_come_from_the_env_file(tmp_path, monkeypatch):
 
 def test_palettes_take_scene_bounds_and_color_stops():
     palettes = web_scene.default_palettes()
-    assert palettes[0].id == 'gold'
-    assert 'original' not in {p.id for p in palettes}
-    pastel = next(p for p in palettes if p.id == 'pastel')
+    # Landscape first: the page's default is the first palette.
+    assert [p.id for p in palettes] == ['landscape', 'sunset', 'neon', 'pastel']
     manifest = web_scene.palette_manifest(
-        pastel,
+        palettes[1],
         web_scene.VALUE_SCENE_LAYERS,
         {'parcels': (1_000.0, 100_000.0), 'buildings': (20.0, 500.0)},
     )
     parcels = manifest['layers']['parcels']
     assert (parcels['vmin'], parcels['vmax']) == (1_000.0, 100_000.0)
     assert len(parcels['lut']) == 256
+    # Opaque: translucent walls shade by draw order.
+    assert manifest['layers']['buildings']['alpha'] == 255
     # Color stops: the ramp starts and ends on the first and last stop.
-    assert manifest['layers']['buildings']['lut'][0] == '#a98bd6'
-    assert manifest['layers']['buildings']['lut'][-1] == '#fff4b8'
-    assert manifest['layers']['buildings']['alpha'] == round(255 * 0.9)
+    landscape = web_scene.palette_manifest(palettes[0], web_scene.VALUE_SCENE_LAYERS)
+    assert landscape['layers']['parcels']['lut'][0] == '#3f6e8c'
+    assert landscape['layers']['parcels']['lut'][-1] == '#a8443f'
+    assert landscape['layers']['parcels']['line'] is None
+    assert landscape['blend'] == 'normal'
+    # Neon: value-colored edges on dark, opaque, unshaded faces, blended
+    # normally, so brightness does not follow how many faces overlap.
+    neon = web_scene.palette_manifest(palettes[2], web_scene.VALUE_SCENE_LAYERS)
+    buildings = neon['layers']['buildings']
+    assert buildings['alpha'] == 255
+    assert buildings['line_lut'][0] == '#0c4a1c'
+    assert buildings['line_lut'][-1] == '#b54dff'
+    assert len(buildings['line_lut']) == len(buildings['lut'])
+    assert neon['material']['diffuse'] == 0.0
+    assert neon['blend'] == 'normal'
+    # The light page carries its own no-value and border colors.
+    pastel = web_scene.palette_manifest(palettes[3], web_scene.VALUE_SCENE_LAYERS)
+    assert '#ffffff' in pastel['background']
+    assert pastel['no_value'][:3] == [236, 234, 229]
+    assert pastel['theme'] == 'light'
 
 
 def test_scene_bounds_round_outward():
@@ -315,6 +347,84 @@ def test_landing_page_is_links_only(tmp_path):
     # Navigation between pre-built pages: no search, filter or picker.
     assert not re.search(r'<(input|select|textarea|form|button|script)\b', page, re.I)
     assert re.findall(r'href="([^"]+)"', page) == ['aaa/', 'bbb/']
+    places = json.loads((out / 'places.json').read_text(encoding='utf-8'))
+    assert [p['slug'] for p in places] == ['aaa', 'bbb']
+
+
+def test_place_menu_is_links_only():
+    script = (STATIC / 'viewer.js').read_text(encoding='utf-8')
+    start = script.index('function buildPlaceNav')
+    body = script[start : script.index('\n}\n', start)]
+    # The menu of other places and the back link are anchors to pages
+    # built ahead of time; no form control, nothing fetched but the
+    # site's list of places.
+    assert "createElement('a')" in body
+    assert not re.search(r"createElement\('(input|select|textarea|form|button)", body)
+    assert 'fetch(' not in body
+
+
+def test_border_paths_sit_on_the_nearest_parcel_ground():
+    line = shapely.LineString([(0.0, 0.0), (0.001, 0.0)])
+    draped = gpd.GeoDataFrame(
+        geometry=[
+            shapely.Polygon([(0, 0, 30), (0.0002, 0, 30), (0.0002, 0.0002, 30)]),
+            shapely.Polygon([(0.001, 0, 50), (0.0012, 0, 50), (0.0012, 0.0002, 50)]),
+        ],
+        crs='EPSG:4326',
+    )
+    (path,) = web_scene.border_paths([line], draped)
+    assert [z for _, _, z in path] == [30.0, 50.0]
+    flat = draped.set_geometry(shapely.force_2d(draped.geometry))
+    (path,) = web_scene.border_paths([line], flat)
+    assert [z for _, _, z in path] == [0.0, 0.0]
+
+
+def test_crop_keeps_whole_features_by_their_center():
+    # Two lots in longitude and latitude; the area covers the first
+    # one's center and only a corner of the second.
+    lots = gpd.GeoDataFrame(
+        geometry=[box(-71.10, 42.30, -71.09, 42.31), box(-71.08, 42.30, -71.07, 42.31)],
+        crs='EPSG:4326',
+    )
+    area = box(-71.105, 42.295, -71.078, 42.315)
+    kept = web_scene.crop_to_area(lots, area)
+    assert list(kept.index) == [0]
+    # Kept whole, not clipped to the area.
+    assert kept.geometry.iloc[0].equals(lots.geometry.iloc[0])
+
+
+def test_local_only_scene_is_never_deployed(tmp_path):
+    (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
+    (tmp_path / 'scene.json').write_text(
+        json.dumps({'build_id': 'x', 'preview': False, 'local_only': True}),
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='local use only'):
+        web_scene.deploy_web_scene(tmp_path, go=False)
+
+
+def test_identical_outlines_merge_into_one_feature():
+    layer = web_scene.VALUE_SCENE_LAYERS[0]
+    lot = box(0, 0, 10, 10)
+    gdf = gpd.GeoDataFrame(
+        {
+            'land_value_imputed': [100.0, 50.0, 7.0],
+            'land_value_imputed_source': ['assessor', 'assessor+imputed', 'assessor'],
+        },
+        geometry=[
+            lot,
+            shapely.Polygon(list(lot.exterior.coords)[::-1]),
+            box(20, 0, 30, 10),
+        ],
+        crs='EPSG:26986',
+    )
+    out = web_scene.merge_identical_outlines(gdf, layer)
+    assert len(out) == 2
+    merged = out.iloc[0]
+    assert merged['land_value_imputed'] == 150.0
+    assert merged[web_scene.RECORDS_COLUMN] == 2
+    assert 'imputed' in merged['land_value_imputed_source']
+    assert pd.isna(out.iloc[1][web_scene.RECORDS_COLUMN])
 
 
 def test_scenes_do_not_carry_the_landing_template(tmp_path, monkeypatch):

@@ -7,6 +7,8 @@
 'use strict';
 
 const AREA_UNIT_LABELS = {ac: 'acre', ha: 'ha', sqft: 'sq ft', m2: 'm²'};
+// Words on the layer buttons; a layer not listed shows its label.
+const LAYER_SWITCH_LABELS = {parcels: 'Land', buildings: 'Buildings'};
 // Soft white: present, but never competing with the values' colors.
 const BOUNDARY_COLOR = [235, 240, 255, 90];
 
@@ -65,15 +67,32 @@ function decodeScene(buffer) {
 // end of the outer ring to the start of its first hole. The top faces
 // come from `triangles`, which index all vertices, so they do not
 // depend on how objects are cut.
-function buildBinary({arrays}, dropStack = false) {
+// The ground under a feature, in meters: its vertices' own heights
+// on a draped layer (their mean is `base`), else what is left of
+// `base` without the lift from the layer below.
+function groundOf(arrays, feature) {
+  if (arrays.z) {
+    return arrays.base[feature];
+  }
+  return arrays.base[feature] - (arrays.stack ? arrays.stack[feature] : 0);
+}
+
+// Where a feature's extrusion starts: `base`, lowered by its lift when
+// the layer below is switched off, and by its ground when the terrain
+// is switched off.
+function featureBase(arrays, feature, dropStack, flat) {
+  const lift = dropStack && arrays.stack ? arrays.stack[feature] : 0;
+  return arrays.base[feature] - lift - (flat ? groundOf(arrays, feature) : 0);
+}
+
+function buildBinary({arrays}, dropStack = false, flat = false) {
   const {xy, ring_offsets: rings, part_ring_offsets: partRings} = arrays;
   // A draped layer carries each vertex's own ground height in `z`;
   // a flat one stands every vertex at its feature's `base`.
   const {part_feature: partFeature, base, z: vertexZ, triangles} = arrays;
   // `stack`: the lift a feature gets from the layer below it; dropped
   // when that layer is switched off, so buildings rest on the ground.
-  const {height, stack} = arrays;
-  const lower = dropStack && stack ? stack : null;
+  const {height} = arrays;
   const nParts = partFeature.length;
   const nRings = rings.length - 1;
   const nVertices = xy.length / 2;
@@ -85,12 +104,11 @@ function buildBinary({arrays}, dropStack = false) {
     for (let r = partRings[p]; r < partRings[p + 1]; r++) {
       ringFeature[r] = feature;
     }
+    const start = vertexZ ? 0 : featureBase(arrays, feature, dropStack, flat);
     for (let v = rings[partRings[p]]; v < rings[partRings[p + 1]]; v++) {
       positions[3 * v] = xy[2 * v];
       positions[3 * v + 1] = xy[2 * v + 1];
-      positions[3 * v + 2] = vertexZ
-        ? vertexZ[v]
-        : base[feature] - (lower ? lower[feature] : 0);
+      positions[3 * v + 2] = vertexZ ? (flat ? 0 : vertexZ[v]) : start;
       elevations[v] = height[feature];
     }
   }
@@ -121,6 +139,10 @@ function hexToRgb(hex) {
 function preparePalette(palette) {
   for (const spec of Object.values(palette.layers)) {
     spec.rgb = spec.lut.map(hexToRgb);
+    // Edges colored by value (`line_lut`), on the fills' scale.
+    if (spec.line_lut) {
+      spec.lineSpec = {...spec, rgb: spec.line_lut.map(hexToRgb), alpha: spec.line_alpha};
+    }
   }
   return palette;
 }
@@ -159,6 +181,47 @@ function choosePalette(palettes) {
     palettes.find((p) => p.id === stored) ||
     palettes[0]
   );
+}
+
+// The center of a feature's outline, in longitude and latitude: the
+// area-weighted centroid of its outer rings (shoelace formula), so the
+// pinned tooltip sits on the same spot wherever the polygon is clicked.
+// Falls back to the mean of the vertices for a degenerate outline.
+function featureCenter(entry, feature) {
+  const {xy, ring_offsets: rings, part_ring_offsets: partRings} = entry.decoded.arrays;
+  const partFeature = entry.decoded.arrays.part_feature;
+  const [ox, oy] = entry.origin;
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let p = 0; p < partFeature.length; p++) {
+    if (partFeature[p] !== feature) {
+      continue;
+    }
+    // The part's outer ring only; holes barely move the center.
+    const v0 = rings[partRings[p]];
+    const v1 = rings[partRings[p] + 1];
+    for (let v = v0; v < v1 - 1; v++) {
+      const x0 = xy[2 * v];
+      const y0 = xy[2 * v + 1];
+      const x1 = xy[2 * v + 2];
+      const y1 = xy[2 * v + 3];
+      const cross = x0 * y1 - x1 * y0;
+      area += cross;
+      cx += (x0 + x1) * cross;
+      cy += (y0 + y1) * cross;
+      sx += x0;
+      sy += y0;
+      n += 1;
+    }
+  }
+  if (Math.abs(area) > 1e-14) {
+    return [ox + cx / (3 * area), oy + cy / (3 * area)];
+  }
+  return n ? [ox + sx / n, oy + sy / n] : [ox, oy];
 }
 
 // Load at most this many files at once: each one is decompressed and
@@ -207,6 +270,11 @@ function formatValue(value, kind, unit) {
 function tooltipHtml(layerInfo, index) {
   const rows = layerInfo.spec.tooltip.map((tip) => {
     const value = layerInfo.values[tip.column][index];
+    // A count without a value means "not applicable" (e.g. records on
+    // a lot shared by none): the row is left out.
+    if (tip.kind === 'count' && (value === null || value === undefined)) {
+      return '';
+    }
     let text = formatValue(value, tip.kind, layerInfo.spec.unit);
     const imputed = layerInfo.values[`${tip.column}__imputed`];
     if (tip.imputed && imputed && imputed[index] && value !== null) {
@@ -246,19 +314,10 @@ function compactMoney(v) {
 function drawLegend(container, legend) {
   const block = document.createElement('div');
   block.className = legend.shown === false ? 'legend hidden' : 'legend';
-  // The label switches its whole layer on and off (display only: it
-  // never selects features by their attributes).
-  const label = document.createElement('button');
-  label.type = 'button';
+  const label = document.createElement('div');
   label.className = 'legend-label';
-  label.dataset.layer = legend.name;
-  label.setAttribute('aria-pressed', String(legend.shown !== false));
-  label.title = legend.shown === false ? 'Show' : 'Hide';
   label.textContent =
     `${legend.label} per ${AREA_UNIT_LABELS[legend.unit] || legend.unit}`;
-  if (legend.onToggle) {
-    label.addEventListener('click', legend.onToggle);
-  }
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 1;
@@ -478,10 +537,91 @@ function startTour(deckgl, view, foci, element) {
   return {stop, ready};
 }
 
+// A back link to the site's landing page and a small menu of the other
+// places. Both are plain links to pages built ahead of time, exactly
+// like the landing page's cards: nothing is searched, filtered or
+// looked up (see the landing page's legal note in plans/). A link
+// carries the current view along: with the tour stopped, the zoom,
+// pitch and bearing (set at the next place's main center); and which
+// layers are off. The palette carries over by itself (stored per site).
+function buildPlaceNav(places, deckgl, isTouring, shown) {
+  if (!places.length) {
+    return;
+  }
+  const here = location.pathname.split('/').filter(Boolean).pop();
+  const back = document.createElement('a');
+  back.id = 'home-link';
+  back.href = '../';
+  back.textContent = '←';
+  back.title = 'All places';
+  back.setAttribute('aria-label', 'All places');
+  document.getElementById('title-panel').prepend(back);
+
+  const menu = document.createElement('details');
+  menu.id = 'place-menu';
+  const summary = document.createElement('summary');
+  const current = places.find((p) => p.slug === here);
+  summary.textContent = current ? current.title : 'Places';
+  const list = document.createElement('div');
+  list.className = 'place-list';
+  for (const place of places) {
+    if (place.slug === here) {
+      continue;
+    }
+    const link = document.createElement('a');
+    link.dataset.slug = place.slug;
+    link.textContent = place.title;
+    link.href = `../${place.slug}/`;
+    list.appendChild(link);
+  }
+  menu.append(summary, list);
+
+  const hrefFor = (slug) => {
+    const query = new URLSearchParams();
+    if (!isTouring()) {
+      let viewport = null;
+      try {
+        viewport = deckgl.getViewports()[0];
+      } catch (error) {
+        viewport = null;
+      }
+      if (viewport) {
+        query.set('tour', '0');
+        query.set('zoom', viewport.zoom.toFixed(2));
+        query.set('pitch', viewport.pitch.toFixed(1));
+        query.set('bearing', viewport.bearing.toFixed(1));
+      }
+    }
+    const hidden = Object.keys(shown).filter((name) => !shown[name]);
+    if (hidden.length) {
+      query.set('hide', hidden.join(','));
+    }
+    const text = query.toString();
+    return `../${slug}/${text ? `?${text}` : ''}`;
+  };
+  const refresh = () => {
+    for (const link of list.children) {
+      link.href = hrefFor(link.dataset.slug);
+    }
+  };
+  menu.addEventListener('toggle', refresh);
+  list.addEventListener('pointerdown', refresh);
+  document.getElementById('legend-panel').prepend(menu);
+}
+
 async function main() {
+  const params = new URLSearchParams(location.search);
   const scene = await (await fetch('scene.json', {cache: 'no-cache'})).json();
   document.title = scene.title;
   document.getElementById('title').textContent = scene.title;
+  if (scene.subtitle) {
+    document.getElementById('subtitle').textContent = scene.subtitle;
+  }
+  // The other places of the site (`places.json`, written with the
+  // landing page beside the scenes); absent for a lone scene.
+  const places = await fetch('../places.json', {cache: 'no-cache'})
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
   const notices = document.getElementById('notices');
   for (const [recipe, text] of Object.entries(scene.notices)) {
     const pre = document.createElement('pre');
@@ -491,47 +631,181 @@ async function main() {
   const palettes = scene.palettes.map(preparePalette);
   let palette = choosePalette(palettes);
   const legendPanel = document.getElementById('legend-panel');
+  // One button per layer, switching the whole layer on or off (display
+  // only: it never selects features by their attributes).
+  const layerSwitch = document.createElement('div');
+  layerSwitch.id = 'layer-switch';
   const switcher = document.createElement('div');
   switcher.id = 'palette-switch';
   const legends = document.createElement('div');
-  legendPanel.append(switcher, legends);
-  // Which layers are switched on; `toggleLayer` is set once deck.gl
-  // exists.
-  const shown = Object.fromEntries(scene.layers.map((l) => [l.name, true]));
+  legendPanel.append(layerSwitch, switcher, legends);
+  // Which layers are switched on, from the address when another place
+  // passed its settings on (`?hide=buildings`); `toggleLayer` is set
+  // once deck.gl exists.
+  const hiddenAtStart = (params.get('hide') || '').split(',');
+  const shown = Object.fromEntries(
+    scene.layers.map((l) => [l.name, !hiddenAtStart.includes(l.name)])
+  );
+  // A scene built on terrain gets a third switch, `terrain`, which
+  // lays everything flat at sea level; it rides along in `shown` (and
+  // in `?hide=`) like a layer.
+  const hasTerrain = Boolean(scene.terrain && scene.terrain.terrain_exaggeration);
+  const switches = scene.layers.map((l) => [l.name, LAYER_SWITCH_LABELS[l.name] || l.label]);
+  if (hasTerrain) {
+    shown.terrain = !hiddenAtStart.includes('terrain');
+    switches.push(['terrain', 'Terrain']);
+  }
+  // Named landmarks (`scene.landmarks`), a switch of their own.
+  const landmarks = scene.landmarks || [];
+  if (landmarks.length) {
+    shown.landmarks = !hiddenAtStart.includes('landmarks');
+    switches.push(['landmarks', 'Landmarks']);
+  }
+  let flatGround = hasTerrain && !shown.terrain;
   let toggleLayer = () => {};
+  for (const [name, label] of switches) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip';
+    button.dataset.layer = name;
+    button.textContent = label;
+    button.addEventListener('click', () => toggleLayer(name));
+    layerSwitch.appendChild(button);
+  }
+  const markLayerSwitch = () => {
+    for (const button of layerSwitch.children) {
+      const on = shown[button.dataset.layer];
+      button.classList.toggle('active', on);
+      button.setAttribute('aria-pressed', String(on));
+    }
+  };
+  markLayerSwitch();
+
+  // Two display choices, both recoloring every feature and hiding none:
+  // the value per area or per dwelling (where a layer offers it), and
+  // the values as the assessor recorded them or with openplaces' own
+  // fills (`estimated`), which "Assessment" draws as no value.
+  let valueView = params.get('view') === 'dwelling' ? 'dwelling' : 'area';
+  let withEstimates = params.get('values') !== 'assessed';
+  const hasDwellingView = scene.layers.some((l) => l.views && l.views.dwelling);
+  const viewSwitch = document.createElement('div');
+  viewSwitch.id = 'view-switch';
+  const choices = [];
+  if (hasDwellingView) {
+    choices.push(['view', 'area', 'Per area'], ['view', 'dwelling', 'Per dwelling']);
+  }
+  if (scene.layers.some((l) => l.n_estimated > 0)) {
+    choices.push(['values', 'estimates', 'With estimates'], ['values', 'assessed', 'Assessment']);
+  }
+  let setChoice = () => {};
+  for (const [group, id, label] of choices) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.group = group;
+    button.dataset.choice = id;
+    button.textContent = label;
+    button.title = id === 'assessed'
+      ? 'Values the assessor recorded; values openplaces filled in are drawn as no value'
+      : '';
+    button.addEventListener('click', () => setChoice(group, id));
+    viewSwitch.appendChild(button);
+  }
+  layerSwitch.after(viewSwitch);
+  const markViewSwitch = () => {
+    for (const button of viewSwitch.children) {
+      const on = button.dataset.group === 'view'
+        ? button.dataset.choice === valueView
+        : (button.dataset.choice === 'estimates') === withEstimates;
+      button.classList.toggle('active', on);
+      button.setAttribute('aria-pressed', String(on));
+    }
+  };
+  markViewSwitch();
+  // A layer's coloring under the current choices: its scale (bounds,
+  // unit) and the value of each feature.
+  const layerScale = (layer, spec) => {
+    const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
+    return view
+      ? {...spec, vmin: view.vmin, vmax: view.vmax, unit: 'dwelling'}
+      : {...spec, unit: layer.unit};
+  };
+  const featureValues = (entry) => {
+    const {arrays} = entry.decoded;
+    const view = valueView === 'dwelling' && entry.spec.views && entry.spec.views.dwelling;
+    let values = view && arrays.value_dwelling ? arrays.value_dwelling : entry.featureValue;
+    if (!withEstimates && arrays.estimated) {
+      values = values.map((v, i) => (arrays.estimated[i] ? 0 : v));
+    }
+    return values;
+  };
+
   const drawLegends = () => {
     legends.replaceChildren();
     for (const layer of scene.layers) {
-      const spec = palette.layers[layer.name];
+      const spec = layerScale(layer, palette.layers[layer.name]);
       drawLegend(legends, {
-        name: layer.name,
         shown: shown[layer.name],
-        onToggle: () => toggleLayer(layer.name),
-        label: layer.label,
-        unit: layer.unit,
+        label: withEstimates ? layer.label : `${layer.label} (assessed)`,
+        unit: spec.unit,
         vmin: spec.vmin,
         vmax: spec.vmax,
         // 32 stops are plenty for a gradient bar.
-        colors: spec.lut.filter((_, i) => i % 8 === 0 || i === spec.lut.length - 1),
+        // Where the edges carry the value, the legend shows theirs.
+        colors: (spec.line_lut || spec.lut).filter(
+          (_, i) => i % 8 === 0 || i === spec.lut.length - 1,
+        ),
       });
     }
   };
   document.body.style.background = palette.background;
+  document.body.classList.toggle('light-page', palette.theme === 'light');
   drawLegends();
 
   await loadScript(scene.deck_gl_url);
   const {Deck, SolidPolygonLayer, PathLayer, COORDINATE_SYSTEM} = deck;
+  const {LightingEffect, AmbientLight, DirectionalLight} = deck;
+  const {ScatterplotLayer, TextLayer} = deck;
 
   // The tour runs while the files load, so the layers rise into a
   // moving view; ?tour=0 in the address, or a system setting for
   // reduced motion, opens a still view instead.
   const tour =
-    new URLSearchParams(location.search).get('tour') !== '0' &&
+    params.get('tour') !== '0' &&
     !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // A view passed on from another place (zoom, pitch, bearing), set at
+  // this place's first tour stop, its main center.
+  const passed = ['zoom', 'pitch', 'bearing'].every((k) => params.has(k));
+  const center = scene.tour && scene.tour.length ? scene.tour[0] : scene.view;
+  const startView = passed
+    ? {
+      longitude: center.longitude,
+      latitude: center.latitude,
+      zoom: Number(params.get('zoom')),
+      pitch: Number(params.get('pitch')),
+      bearing: Number(params.get('bearing')),
+    }
+    : scene.view;
 
   const layerInfo = new Map();
+  // The pinned tooltip's feature (see `togglePin` below).
+  let pin = null;
+  let togglePin = () => {};
+  let placePin = () => {};
+  // Light fixed in the world: a sun from the southwest, high up, a
+  // weaker fill from the northeast so the far walls are not black, and
+  // ambient light. Without it deck.gl lights from the camera, and a
+  // wall's shade followed its place on the screen: the walls of two
+  // neighbors facing each other were both dark whenever the camera
+  // looked between them (seen 2026-10-16 on Sewall Ave, Brookline).
+  // Directions are those the light travels in (x east, y north, z up).
+  const lighting = new LightingEffect({
+    ambient: new AmbientLight({color: [255, 255, 255], intensity: 1.0}),
+    sun: new DirectionalLight({color: [255, 250, 240], intensity: 1.1, direction: [1, 1.2, -1.6]}),
+    fill: new DirectionalLight({color: [235, 240, 255], intensity: 0.35, direction: [-1, -0.6, -0.8]}),
+  });
   const deckgl = new Deck({
     parent: document.getElementById('scene'),
+    effects: [lighting],
     initialViewState: tour
       ? {
         ...scene.view,
@@ -539,21 +813,104 @@ async function main() {
         pitch: TOUR.farPitch,
         maxPitch: 85,
       }
-      : {...scene.view, maxPitch: 85},
+      : {...startView, maxPitch: 85},
     // On touch screens two fingers rotate (twist) and tilt (drag up
     // or down together) as well as zoom (pinch); deck.gl leaves the
     // twist off by default.
     controller: {touchRotate: true, dragRotate: true},
     layers: [],
     // Binary layers report the picked part's index, not an object.
-    getTooltip: ({index, layer}) => {
+    getTooltip: ({index, layer, object}) => {
+      // A landmark's own name and kind, written into the page.
+      if (layer && layer.id.startsWith('landmark') && object) {
+        return {html: `<b>${escapeHtml(object.name)}</b><br>${escapeHtml(object.kind)}`};
+      }
       if (index < 0 || !layer || !layerInfo.has(layer.id)) {
         return null;
       }
       const info = layerInfo.get(layer.id);
-      return {html: tooltipHtml(info, info.objectFeature[index])};
+      const feature = info.objectFeature[index];
+      // The pinned feature already shows its values.
+      if (pin && pin.layerId === layer.id && pin.feature === feature) {
+        return null;
+      }
+      return {html: tooltipHtml(info, feature)};
     },
+    // Deferred: both are set once the layers they read exist.
+    onClick: (picked) => togglePin(picked),
+    onAfterRender: () => placePin(),
   });
+
+  // A clicked feature's tooltip stays, attached to the point clicked,
+  // until the same feature is clicked again or the tooltip is closed.
+  // It shows only the fields shipped with that feature, as the hover
+  // tooltip does; nothing is looked up.
+  const pinBox = document.createElement('div');
+  pinBox.className = 'pinned-tip deck-tooltip';
+  pinBox.hidden = true;
+  document.body.appendChild(pinBox);
+  // The line from the tooltip down to the point it belongs to.
+  const pinLeader = document.createElement('div');
+  pinLeader.className = 'pin-leader';
+  pinLeader.hidden = true;
+  document.body.appendChild(pinLeader);
+  const unpin = () => {
+    pin = null;
+    pinBox.hidden = true;
+    pinLeader.hidden = true;
+  };
+  togglePin = ({index, layer}) => {
+    if (index < 0 || !layer || !layerInfo.has(layer.id)) {
+      return;
+    }
+    const info = layerInfo.get(layer.id);
+    const feature = info.objectFeature[index];
+    if (pin && pin.layerId === layer.id && pin.feature === feature) {
+      unpin();
+      return;
+    }
+    // Anchor at the top of the feature, so the tooltip sits on it in 3D.
+    const entry = layers.find((e) => e.id === layer.id);
+    const arrays = entry ? entry.decoded.arrays : null;
+    const top = arrays
+      ? featureBase(arrays, feature, !shown[bottom], flatGround) + arrays.height[feature]
+      : 0;
+    const [longitude, latitude] = featureCenter(entry, feature);
+    pin = {layerId: layer.id, feature, position: [longitude, latitude, top]};
+    pinBox.innerHTML = tooltipHtml(info, feature);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'pin-close';
+    close.dataset.close = 'tooltip';
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '×';
+    close.addEventListener('click', unpin);
+    pinBox.prepend(close);
+    pinBox.hidden = false;
+    pinLeader.hidden = false;
+    placePin();
+  };
+  placePin = () => {
+    if (!pin) {
+      return;
+    }
+    let viewport = null;
+    try {
+      viewport = deckgl.getViewports()[0];
+    } catch (error) {
+      viewport = null;
+    }
+    if (!viewport) {
+      return;
+    }
+    const [x, y] = viewport.project(pin.position);
+    const visible = Number.isFinite(x) && Number.isFinite(y);
+    const at = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    for (const element of [pinBox, pinLeader]) {
+      element.style.visibility = visible ? 'visible' : 'hidden';
+      element.style.transform = at;
+    }
+  };
 
   // A device that runs out of graphics memory drops the drawing
   // context: say so, rather than leave a black screen.
@@ -563,6 +920,11 @@ async function main() {
       setStatus('This device ran out of graphics memory. Reload to try again.');
     });
   }
+  // Right-drag rotates the view; without this the browser's menu opens
+  // when the button is let go. Only on the scene: panels keep theirs.
+  document.getElementById('scene').addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
 
   const tourControl = tour
     ? startTour(deckgl, scene.view, scene.tour, document.getElementById('scene'))
@@ -571,28 +933,73 @@ async function main() {
   // For measuring the page (frame rate, load time) from a test browser.
   window.openplacesScene = {deck: deckgl, loaded: false, stopTour: tourControl.stop};
 
+  // Whether the tour still runs; it stops on the visitor's first touch.
+  let touring = tour;
+  for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
+    (type === 'keydown' ? window : document.getElementById('scene')).addEventListener(
+      type,
+      () => {
+        touring = false;
+      },
+      {once: true, passive: true},
+    );
+  }
+  buildPlaceNav(places, deckgl, () => touring, shown);
+
+  // Borders lie on the ground (their `z`, the height of the nearest
+  // parcel vertex, `border_paths`), a meter up so they do not sink into
+  // it, and are hidden by whatever stands in front of them. With the
+  // terrain off they lie at sea level with everything else.
+  const borderPath = (d) => d.path.map(([x, y, z]) => [x, y, (flatGround ? 0 : z || 0) + 1]);
   const makeBoundaries = () => new PathLayer({
     id: 'boundaries',
     data: scene.boundaries,
-    getPath: (d) => d.path,
+    getPath: borderPath,
     getColor: palette.boundary || BOUNDARY_COLOR,
     getWidth: 1.5,
     widthUnits: 'pixels',
-    // Drawn over the scene, so terrain and extrusions never hide it.
-    parameters: {depthTest: false},
-    updateTriggers: {getColor: palette.id},
+    updateTriggers: {getColor: palette.id, getPath: flatGround},
   });
   let boundaries = makeBoundaries();
 
   // One loaded file: its deck.gl layer is rebuilt (same id, so deck.gl
   // only recomputes the colors) whenever the palette changes.
   const makeLayer = (entry) => {
-    const colors = featureColors(
-      entry.featureValue,
-      palette.layers[entry.spec.name],
-      palette.no_value,
-    );
+    const spec = layerScale(entry.spec, palette.layers[entry.spec.name]);
+    const values = featureValues(entry);
+    const colors = featureColors(values, spec, palette.no_value);
+    const lineColors = spec.lineSpec
+      ? featureColors(
+        values,
+        {...spec.lineSpec, vmin: spec.vmin, vmax: spec.vmax},
+        [0, 0, 0, 0],
+      )
+      : null;
+    // A palette may draw every edge (`line`) and blend its fills
+    // additively (`blend`): light adds up, no depth is written, so the
+    // result does not depend on draw order (see `Palette.blend`).
+    const additive = palette.blend === 'additive';
     return new SolidPolygonLayer({
+      ...(palette.material ? {material: palette.material} : {}),
+      wireframe: Boolean(spec.line || lineColors),
+      getLineColor: lineColors
+        ? (_, {index}) => {
+          const f = entry.objectFeature[index];
+          return lineColors.subarray(4 * f, 4 * f + 4);
+        }
+        : spec.line || [0, 0, 0, 0],
+      parameters: additive
+        ? {
+          blend: true,
+          blendColorOperation: 'add',
+          blendColorSrcFactor: 'src-alpha',
+          blendColorDstFactor: 'one',
+          blendAlphaOperation: 'add',
+          blendAlphaSrcFactor: 'one',
+          blendAlphaDstFactor: 'one-minus-src-alpha',
+          depthWriteEnabled: false,
+        }
+        : {},
       id: entry.id,
       data: entry.data,
       coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
@@ -601,19 +1008,81 @@ async function main() {
       _normalize: false,
       _windingOrder: 'CCW',
       extruded: true,
-      wireframe: false,
       pickable: true,
       visible: shown[entry.spec.name],
       getFillColor: (_, {index}) => {
         const f = entry.objectFeature[index];
         return colors.subarray(4 * f, 4 * f + 4);
       },
-      updateTriggers: {getFillColor: palette.id},
+      updateTriggers: {
+        getFillColor: [palette.id, valueView, withEstimates],
+        getLineColor: [palette.id, valueView, withEstimates],
+      },
     });
+  };
+  // Landmarks: a dot on the roof (or ground) of the place, its name
+  // above it, drawn over everything else so a tower never hides its
+  // own label. With the terrain off they drop by their ground height.
+  const landmarkData = () => landmarks.map((mark) => {
+    const [x, y, z] = mark.position;
+    return {...mark, at: [x, y, z - (flatGround ? mark.ground || 0 : 0) + 2]};
+  });
+  const makeLandmarks = () => {
+    if (!landmarks.length) {
+      return [];
+    }
+    const data = landmarkData();
+    const light = palette.theme === 'light';
+    return [
+      new ScatterplotLayer({
+        id: 'landmark-dots',
+        data,
+        getPosition: (d) => d.at,
+        getRadius: 25,
+        radiusUnits: 'meters',
+        radiusMinPixels: 3,
+        radiusMaxPixels: 6,
+        getFillColor: light ? [30, 34, 48, 230] : [255, 255, 255, 235],
+        stroked: true,
+        getLineColor: light ? [255, 255, 255, 230] : [10, 14, 24, 200],
+        lineWidthMinPixels: 2,
+        pickable: true,
+        parameters: {depthTest: false},
+        updateTriggers: {getPosition: flatGround, getFillColor: palette.id},
+      }),
+      new TextLayer({
+        id: 'landmark-labels',
+        data,
+        getPosition: (d) => d.at,
+        getText: (d) => d.name,
+        // Sized on the ground, so labels shrink with distance: about
+        // 9 px across a whole town, 15 px down among the buildings.
+        getSize: 70,
+        sizeUnits: 'meters',
+        sizeMinPixels: 9,
+        sizeMaxPixels: 15,
+        getPixelOffset: [0, -13],
+        getColor: light ? [20, 24, 36, 255] : [255, 255, 255, 255],
+        background: true,
+        getBackgroundColor: light ? [255, 255, 255, 215] : [8, 11, 20, 200],
+        backgroundPadding: [6, 3],
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        fontWeight: 600,
+        pickable: true,
+        parameters: {depthTest: false},
+        updateTriggers: {getPosition: flatGround, getColor: palette.id},
+      }),
+    ];
   };
   const layers = [];
   const redraw = () => {
-    deckgl.setProps({layers: [...layers.map((l) => l.layer), boundaries]});
+    deckgl.setProps({
+      layers: [
+        ...layers.map((l) => l.layer),
+        boundaries,
+        ...(shown.landmarks ? makeLandmarks() : []),
+      ],
+    });
   };
 
   const setPalette = (next) => {
@@ -625,6 +1094,7 @@ async function main() {
       // for this visit only.
     }
     document.body.style.background = palette.background;
+    document.body.classList.toggle('light-page', palette.theme === 'light');
     for (const button of switcher.children) {
       button.classList.toggle('active', button.dataset.palette === palette.id);
     }
@@ -638,14 +1108,39 @@ async function main() {
   // The bottom layer (land) lifts the layers stacked on it; with it
   // switched off they are rebuilt resting on the ground.
   const bottom = scene.layers[0].name;
+  setChoice = (group, id) => {
+    if (group === 'view') {
+      valueView = id;
+    } else {
+      withEstimates = id === 'estimates';
+    }
+    for (const entry of layers) {
+      entry.layer = makeLayer(entry);
+    }
+    markViewSwitch();
+    drawLegends();
+    redraw();
+  };
   toggleLayer = (name) => {
     shown[name] = !shown[name];
+    // A pinned tooltip goes with its layer, and with any switch that
+    // moves the buildings (land lowers them, terrain flattens all).
+    if (pin) {
+      unpin();
+    }
+    if (name === 'terrain') {
+      flatGround = !shown.terrain;
+      boundaries = makeBoundaries();
+    }
     for (const entry of layers) {
-      if (name === bottom && entry.decoded.arrays.stack) {
-        entry.data = buildBinary(entry.decoded, !shown[bottom]).data;
+      const moves =
+        name === 'terrain' || (name === bottom && entry.decoded.arrays.stack);
+      if (moves) {
+        entry.data = buildBinary(entry.decoded, !shown[bottom], flatGround).data;
       }
       entry.layer = makeLayer(entry);
     }
+    markLayerSwitch();
     drawLegends();
     redraw();
   };
@@ -693,7 +1188,7 @@ async function main() {
     }
     const decoded = decodeScene(geometry);
     const values = JSON.parse(new TextDecoder().decode(tooltip));
-    const {objectFeature, data} = buildBinary(decoded, !shown[bottom]);
+    const {objectFeature, data} = buildBinary(decoded, !shown[bottom], flatGround);
     const id = `${spec.name}-${unit}`;
     layerInfo.set(id, {spec, values, objectFeature});
     const entry = {

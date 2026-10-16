@@ -17,7 +17,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from openplaces.viz.web_scene import DEFAULT_TITLE
+from openplaces.viz.web_scene import DEFAULT_SUBTITLE, DEFAULT_TITLE
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,13 @@ def capture_thumbnail(scene_dir, target, width=960, height=600) -> Path:
     return target
 
 
-def build_landing(places, output_dir, title=DEFAULT_TITLE, thumbnails=True) -> Path:
+def build_landing(
+    places,
+    output_dir,
+    title=DEFAULT_TITLE,
+    subtitle=DEFAULT_SUBTITLE,
+    thumbnails=True,
+) -> Path:
     """Write the landing page and its card images.
 
     Parameters
@@ -106,6 +112,8 @@ def build_landing(places, output_dir, title=DEFAULT_TITLE, thumbnails=True) -> P
         under its slug.
     title : str
         Page heading.
+    subtitle : str
+        Smaller line under the heading.
     thumbnails : bool
         Photograph each scene (`capture_thumbnail`); False keeps the
         images already in `output_dir/thumbs`.
@@ -131,8 +139,18 @@ def build_landing(places, output_dir, title=DEFAULT_TITLE, thumbnails=True) -> P
     page = (Path(__file__).parent / 'static' / 'landing.html').read_text(
         encoding='utf-8'
     )
-    page = page.replace('{{TITLE}}', html.escape(title)).replace(
-        '{{CARDS}}', '\n'.join(cards)
+    page = (
+        page.replace('{{TITLE}}', html.escape(title))
+        .replace('{{SUBTITLE}}', html.escape(subtitle))
+        .replace('{{CARDS}}', '\n'.join(cards))
     )
     (output_dir / 'index.html').write_text(page, encoding='utf-8')
+    # Read by each scene for its back link and its menu of the other
+    # places (viewer.js `buildPlaceNav`).
+    (output_dir / 'places.json').write_text(
+        json.dumps(
+            [{'slug': p.slug, 'title': p.title, 'subtitle': p.subtitle} for p in places]
+        ),
+        encoding='utf-8',
+    )
     return output_dir
