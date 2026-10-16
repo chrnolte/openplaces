@@ -15,6 +15,20 @@ entity:
   source:
     source_id: massgis
     portal_url: "https://www.mass.gov/forms/massgis-request-statewide-parcel-data"
+    # MassGIS FAQ (read 2026-10-15 via its Wayback copy of 2026-04-20;
+    # mass.gov answers 403 to scripted requests): "the data are in the
+    # public domain and therefore can be used by anyone for any
+    # purpose." The layer's ArcGIS item
+    # (73d4c766167848b795f1048cad3919c7) adds that assessor mapping
+    # "is a representation of property boundaries, not an
+    # authoritative source."
+    license: >-
+      Public domain (MassGIS FAQ). Credit requested: "MassGIS (Bureau of
+      Geographic Information), Commonwealth of Massachusetts EOTSS".
+      Parcel boundaries are not an authoritative boundary record.
+    terms_url: "https://www.mass.gov/info-details/massgis-frequently-asked-questions"
+    redistribution_restricted: false
+    resale_restricted: false
   version: 2025
 
 # Name of compressed file (set to skip re-downloading)

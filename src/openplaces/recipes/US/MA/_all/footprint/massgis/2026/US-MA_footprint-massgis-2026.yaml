@@ -18,6 +18,17 @@ entity:
     portal_url: "https://www.mass.gov/info-details/massgis-data-building-structures-2-d#downloads"
     # Link to download
     download_url: "https://s3.us-east-1.amazonaws.com/download.massgis.digital.mass.gov/gdbs/structures_gdb.zip"
+    # The ArcGIS item's licenseInfo (bc057a0853b54ebd8df5c00657fffcba,
+    # read 2026-10-15): "a matter of public record and may be used by
+    # anyone for their purposes", with the credit line below; the
+    # MassGIS FAQ calls its data public domain.
+    license: >-
+      Public domain (MassGIS FAQ; public record per the layer's ArcGIS
+      item). Credit requested: "MassGIS (Bureau of Geographic
+      Information), Commonwealth of Massachusetts EOTSS".
+    terms_url: "https://www.mass.gov/info-details/massgis-frequently-asked-questions"
+    redistribution_restricted: false
+    resale_restricted: false
   version: 2026
 
 # Name of compressed file (set to skip re-downloading)

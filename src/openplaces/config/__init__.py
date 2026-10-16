@@ -35,6 +35,7 @@ from openplaces.config.identity import (  # noqa: F401
     IDENTITY_NOTICE,
     PROJECT_URL,
     build_user_agent,
+    identity_problem,
     prompt_identity,
 )
 from openplaces.config.settings import (  # noqa: F401
@@ -189,9 +190,14 @@ def set_identity(nickname: str | None, place: str | None) -> str:
     str
         The User-Agent that will now be sent.
     """
+    problem = identity_problem(nickname, place)
+    if problem is not None:
+        raise ValueError(problem)
     write_identity(cfg.user_config_path, nickname, place)
-    reload_config()
-    return cfg.user_agent
+    # Report from the reloaded configuration: `reload_config` rebinds
+    # `_cfg`, not this module's `cfg`, which still holds the old one
+    # (it printed the previous identity as the new one, 2026-10-16).
+    return reload_config().user_agent
 
 
 def get_usage_profile() -> dict:

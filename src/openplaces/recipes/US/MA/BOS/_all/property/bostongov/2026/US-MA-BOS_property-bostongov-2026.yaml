@@ -103,6 +103,7 @@ entity:
     license: "ODC Public Domain Dedication and License (PDDL)"
     terms_url: "https://opendatacommons.org/licenses/pddl/"
     redistribution_restricted: false
+    resale_restricted: false
     portal_url: "https://data.boston.gov/dataset/property-assessment"
     download_url: "https://data.boston.gov/dataset/e02c44d2-3c64-459c-8fe2-e1ce5f38a035/resource/ee73430d-96c0-423e-ad21-c4cfb54c8961/download/fy2026-property-assessment-data_rev.csv"
   version: 2026

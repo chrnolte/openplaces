@@ -123,6 +123,7 @@ entity:
       without charge."
     terms_url: "https://data.cambridgema.gov/download/tif9-pmiw/application/pdf"
     redistribution_restricted: false
+    resale_restricted: false
     portal_url: "https://data.cambridgema.gov/Assessing/Cambridge-Property-Database-FY2026/waa7-ibdu"
     download_url: "https://data.cambridgema.gov/api/views/waa7-ibdu/rows.csv?accessType=DOWNLOAD"
   version: 2026
