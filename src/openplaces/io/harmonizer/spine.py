@@ -26,7 +26,7 @@ from openplaces.io.harmonizer import (
     _rename_right_index,
     restrict_to_admin_by_name,
 )
-from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import raise_if_coverage_complete
@@ -948,6 +948,16 @@ def _resolve_geographic_reference(state, link):
             # children (the census admin4 recipe excludes those states
             # by design), and the caller already leaves the column
             # null for a reference with no coverage.
+            return None
+        except FileNotFoundError:
+            # The same absence reaches here when the per-unit geometry
+            # file is looked up before the spine: a town with no admin4
+            # children has no admin4 file either. Only that case is
+            # absent coverage; a unit that has children whose layer was
+            # never built must still fail, or its column would ship
+            # empty without a word.
+            if get_admin_ids(admin_level, state.admin_id, allow_empty=True):
+                raise
             return None
     else:
         bbox = tuple(state.spine.total_bounds) if state.spine is not None else None
