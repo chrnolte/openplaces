@@ -109,9 +109,15 @@ def test_page_has_no_input_control_and_no_background_map():
     # The pinned tooltip's close button is the third; the fourth picks
     # the coloring (per area or per dwelling, with or without
     # openplaces' estimates), which recolors every feature and hides
-    # none.
-    assert len(re.findall(r"createElement\('button'\)", script)) == 4
-    for kind in ('dataset.palette', 'dataset.layer', 'dataset.close', 'dataset.choice'):
+    # none. The fifth and sixth fold the controls away and back.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 6
+    for kind in (
+        'dataset.palette',
+        'dataset.layer',
+        'dataset.close',
+        'dataset.choice',
+        'dataset.fold',
+    ):
         assert kind in script
     # Only the scene's own layers; nothing that draws a background map.
     for text in (page, script):
@@ -160,7 +166,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
         {
             'admin3_id': ['US-XX-AAA'],
             'address': ['1 Example St'],
-            'occupancy_type': ['single_family'],
+            'occupancy_type': ['Single-Family'],
             'year_built': [1925],
             'structure_value': [300_000.0],
             'structure_value_source': ['assessor'],
@@ -233,6 +239,9 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     # Per dwelling: its own value over its own dwellings.
     assert arrays['value_dwelling'][0] == pytest.approx(100_000.0)
     assert manifest['layers'][1]['views']['dwelling']['unit'] == 'dwelling'
+    # A home: per dwelling, not on the non-residential ramp.
+    assert list(arrays['nonresidential']) == [0]
+    assert manifest['layers'][1]['views']['dwelling']['other']['unit'] == 'sqft'
     # Which values openplaces filled: the second parcel's land value.
     parcel_path = out / manifest['layers'][0]['files']['US-XX-BBB']['geometry']
     _, parcel_arrays = decode_scene_file(gzip.decompress(parcel_path.read_bytes()))

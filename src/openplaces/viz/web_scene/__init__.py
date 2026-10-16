@@ -153,8 +153,12 @@ class SceneLayer:
         neighbors keep their shared edges.
     per_dwelling_label : str, optional
         Offer a second view coloring this layer by `value_column` per
-        dwelling (`n_dwellings`), under this legend label. Features
-        without dwellings have no value in that view.
+        dwelling (`n_dwellings`), under this legend label. In that view
+        a non-residential feature (`occupancy_type` outside
+        `RESIDENTIAL_OCCUPANCY` and `ACCESSORY_OCCUPANCY`) keeps its
+        value per area on a ramp of its own (the palette's
+        `other_cmap`), since it has one dwelling or none; accessory
+        buildings and homes without a dwelling count have no value.
     """
 
     name: str
@@ -189,6 +193,27 @@ class SceneLayer:
 # $3.0M and p99 $51M, so $50K-$50M puts the median mid-ramp; the
 # notebook's $250-$10M left nine parcels in ten in its top fifth.
 ZERO_VALUE_RGBA = (34, 40, 54, 255)
+# Occupancy types (curated footprints' `occupancy_type`) that hold
+# homes, and those that are accessory to a home (sheds, garages). The
+# per-dwelling view colors the first per dwelling, leaves the second
+# without a value, and colors every other type per area on its own ramp.
+RESIDENTIAL_OCCUPANCY = frozenset(
+    {
+        'Single-Family',
+        'Townhome',
+        'Multi-Family',
+        'Low-Rise Multi-Family',
+        'Mid-Rise Multi-Family',
+        'High-Rise Multi-Family',
+        'Manufactured Home',
+    }
+)
+ACCESSORY_OCCUPANCY = frozenset({'Secondary', 'Garage'})
+# A curated column flagging outlines drawn abnormally tall for what is
+# mapped there (the sliver-value-allocation work decides which; the
+# maintainer's rule of 2026-10-16). The page keeps their height, so
+# they are not overlooked, and draws them see-through.
+GHOST_COLUMN = 'height_unconfirmed'
 VALUE_SCENE_LAYERS = (
     SceneLayer(
         name='parcels',
@@ -789,6 +814,10 @@ class PaletteLayer:
         of the same hues, so the edges carry the color).
     line_alpha : float
         Opacity of the value-colored outlines.
+    other_cmap, other_line_cmap : str or tuple of str, optional
+        Fill and outline ramps for the non-residential features of a
+        layer with a per-dwelling view (`SceneLayer.per_dwelling_label`),
+        in hues the layer's main ramp does not use.
     """
 
     cmap: str
@@ -799,6 +828,8 @@ class PaletteLayer:
     line_rgba: tuple[int, int, int, int] | None = None
     line_cmap: str | tuple | None = None
     line_alpha: float = 0.9
+    other_cmap: str | tuple | None = None
+    other_line_cmap: str | tuple | None = None
 
 
 def _nice(value: float, up: bool) -> float:
@@ -879,6 +910,14 @@ class Palette:
     material: dict | None = None
 
 
+# deck.gl's default lighting weights without its specular highlight:
+# the highlight depends on where the camera is, so two walls facing the
+# same way shaded differently by their place on the screen (maintainer,
+# 2026-10-16: "the direction of the shadows is still inconsistent").
+# Matte, a wall's shade depends on the direction it faces alone.
+MATTE = {'ambient': 0.35, 'diffuse': 0.6, 'shininess': 32, 'specularColor': [0, 0, 0]}
+
+
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
     """The page's color options (maintainer's choice, 2026-10-16).
 
@@ -905,6 +944,7 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
         Palette(
             id='landscape',
             label='Landscape',
+            material=MATTE,
             layers={
                 'parcels': PaletteLayer(
                     (
@@ -917,7 +957,14 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#a8443f',
                     )
                 ),
-                'buildings': PaletteLayer('cmr.amber', cmap_range=(0.2, 0.95)),
+                # Non-residential buildings in the per-dwelling view:
+                # slate blue to ice, a hue neither the amber buildings
+                # nor the sand and terracotta ground use.
+                'buildings': PaletteLayer(
+                    'cmr.amber',
+                    cmap_range=(0.2, 0.95),
+                    other_cmap=('#2f3a6b', '#4a63a8', '#7e9bd6', '#c4d6f5'),
+                ),
             },
         ),
         # A teal ground under buildings running magenta, orange,
@@ -927,9 +974,16 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
         Palette(
             id='sunset',
             label='Sunset',
+            material=MATTE,
             layers={
                 'parcels': PaletteLayer('cmr.ocean', cmap_range=(0.18, 0.88)),
-                'buildings': PaletteLayer('plasma', cmap_range=(0.3, 1.0)),
+                # Non-residential: grays to silver, apart from the
+                # magenta-to-yellow homes and the teal ground.
+                'buildings': PaletteLayer(
+                    'plasma',
+                    cmap_range=(0.3, 1.0),
+                    other_cmap=('#3b3f4a', '#6b7280', '#a5adba', '#e6e9ef'),
+                ),
             },
         ),
         # City lights at night ("nightlights of Tokyo"): neon edges on
@@ -996,6 +1050,10 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#b54dff',
                     ),
                     line_alpha=0.95,
+                    # Non-residential: cyan to white edges on the same
+                    # dark faces.
+                    other_cmap=('#03141a', '#04202a', '#062a36'),
+                    other_line_cmap=('#0a5a6e', '#00b8e0', '#7ff0ff', '#f0ffff'),
                 ),
             },
             # Faces unshaded and without highlights, so their dark tints
@@ -1038,8 +1096,11 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                     ),
                     line_rgba=(150, 150, 165, 70),
                 ),
+                # Non-residential: sage to slate, quieter than the
+                # pastel homes.
                 'buildings': PaletteLayer(
-                    ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866')
+                    ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866'),
+                    other_cmap=('#d5dcd6', '#a9b8ad', '#7c9086', '#566a64'),
                 ),
             },
             no_value_rgba=(236, 234, 229, 255),
@@ -1089,11 +1150,18 @@ def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) ->
             'scale': 'log1p',
             'line': list(spec.line_rgba) if spec.line_rgba else None,
         }
+
+        def ramp(cmap):
+            rgb = layer_cmap(PaletteLayer(cmap))(np.linspace(0, 1, stops))[:, :3]
+            return [mpl.colors.to_hex(c) for c in rgb]
+
         if spec.line_cmap is not None:
-            line = layer_cmap(PaletteLayer(spec.line_cmap))
-            line_rgb = (line(np.linspace(0, 1, stops))[:, :3] * 255).round()
-            out[name]['line_lut'] = [mpl.colors.to_hex(c / 255) for c in line_rgb]
+            out[name]['line_lut'] = ramp(spec.line_cmap)
             out[name]['line_alpha'] = round(255 * spec.line_alpha)
+        if spec.other_cmap is not None:
+            out[name]['other_lut'] = ramp(spec.other_cmap)
+        if spec.other_line_cmap is not None:
+            out[name]['other_line_lut'] = ramp(spec.other_line_cmap)
     return {
         'id': palette.id,
         'label': palette.label,
@@ -1505,6 +1573,7 @@ def build_web_scene(
         }
 
     rendered = {}
+    estimated_by_layer = {}
     bounds = {}
     manifest_layers = []
     notices = {}
@@ -1579,14 +1648,38 @@ def build_web_scene(
             has = (dwellings > 0) & (raw_value > 0)
             per_dwelling = np.full(len(raw_value), np.nan)
             per_dwelling[has] = raw_value[has] / dwellings[has]
+            occupancy = out['occupancy_type'].astype('string')
+            residential = occupancy.isin(RESIDENTIAL_OCCUPANCY).to_numpy()
+            accessory = occupancy.isin(ACCESSORY_OCCUPANCY).to_numpy()
+            other = ~residential & ~accessory & occupancy.notna().to_numpy()
+            # Homes per dwelling only; everything else drawn otherwise.
+            per_dwelling[~residential] = np.nan
             out[f'{layer.value_column}_per_dwelling'] = per_dwelling
             extra['value_dwelling'] = per_dwelling
+            extra['nonresidential'] = other.astype(np.uint8)
             low, high = scene_bounds(per_dwelling)
+            # The same bounds as the per-area view, so a building's
+            # color means the same value in both. Bounds of the
+            # non-residential values alone ran from $1 to $10,000 per
+            # sq ft in Boston (2026-10-16), most of it washed out.
+            per_area_all = out[f'{layer.value_column}_per_{layer.area_unit}'].to_numpy(
+                dtype=float
+            )
+            other_low, other_high = scene_bounds(
+                np.where(raw_value > 0, per_area_all, np.nan)
+            )
             views['dwelling'] = {
                 'label': layer.per_dwelling_label,
                 'unit': 'dwelling',
                 'vmin': low,
                 'vmax': high,
+                # Non-residential buildings, per area, own ramp.
+                'other': {
+                    'label': 'Non-residential building value',
+                    'unit': layer.area_unit,
+                    'vmin': other_low,
+                    'vmax': other_high,
+                },
             }
         # Which values openplaces filled itself (the `imputed` mark in
         # the value's `_source`); the page can draw them as no value.
@@ -1597,6 +1690,33 @@ def build_web_scene(
             else np.zeros(len(out), dtype=bool)
         )
         extra['estimated'] = estimated.astype(np.uint8)
+        estimated_by_layer[layer.name] = estimated
+        if layer.stack_on and estimated_by_layer.get(layer.stack_on) is not None:
+            # Whether the feature below (whose extrusion lifts this one)
+            # was estimated: in the assessment view that feature drops
+            # to the ground, and this one with it. The same largest-
+            # overlap match that set the lift (`stack_elevation`).
+            from openplaces.viz.terrain import _match_largest_overlap
+
+            below = rendered[layer.stack_on]
+            extra['on_estimated'] = (
+                _match_largest_overlap(
+                    out,
+                    below.gdf,
+                    estimated_by_layer[layer.stack_on].astype(float),
+                )
+                > 0.5
+            ).astype(np.uint8)
+        # Outlines curate flags as drawn too tall for what is mapped
+        # there (`GHOST_COLUMN`): the page draws them see-through at
+        # full height, behind a switch of their own.
+        ghost = (
+            out[GHOST_COLUMN].fillna(False).astype(bool).to_numpy()
+            if GHOST_COLUMN in out.columns
+            else np.zeros(len(out), dtype=bool)
+        )
+        if ghost.any():
+            extra['ghost'] = ghost.astype(np.uint8)
         values = _tooltip_values(out, layer)
         # No value: a dark slate that recedes into the page, not the
         # renderer's mid gray, which read as a dull patch in the scene.
@@ -1652,6 +1772,7 @@ def build_web_scene(
                 # Other colorings of this layer (`per_dwelling_label`).
                 'views': views,
                 'n_estimated': int(estimated.sum()),
+                'n_ghosts': int(ghost.sum()),
             }
         )
 

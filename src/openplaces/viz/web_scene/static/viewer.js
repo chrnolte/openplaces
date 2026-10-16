@@ -36,6 +36,8 @@ async function fetchGzip(url) {
 }
 
 const TYPED = {f4: Float32Array, u4: Uint32Array, u1: Uint8Array};
+// Opacity of an outline drawn too tall for what is mapped there.
+const GHOST_ALPHA = 56;
 
 // The layout is described in the openplaces.viz.web_scene docstring.
 function decodeScene(buffer) {
@@ -78,21 +80,28 @@ function groundOf(arrays, feature) {
 }
 
 // Where a feature's extrusion starts: `base`, lowered by its lift when
-// the layer below is switched off, and by its ground when the terrain
-// is switched off.
-function featureBase(arrays, feature, dropStack, flat) {
-  const lift = dropStack && arrays.stack ? arrays.stack[feature] : 0;
+// the layer below is switched off (or, in the assessment view, when the
+// feature below it was estimated and so lies flat), and by its ground
+// when the terrain is switched off.
+function featureBase(arrays, feature, dropStack, flat, assessed = false) {
+  const lowered = dropStack || (assessed && arrays.on_estimated && arrays.on_estimated[feature]);
+  const lift = lowered && arrays.stack ? arrays.stack[feature] : 0;
   return arrays.base[feature] - lift - (flat ? groundOf(arrays, feature) : 0);
 }
 
-function buildBinary({arrays}, dropStack = false, flat = false) {
+// How tall a feature stands: no height in the assessment view where
+// its value was openplaces' own estimate (`estimated`).
+function featureHeight(arrays, feature, assessed = false) {
+  return assessed && arrays.estimated && arrays.estimated[feature] ? 0 : arrays.height[feature];
+}
+
+function buildBinary({arrays}, dropStack = false, flat = false, assessed = false) {
   const {xy, ring_offsets: rings, part_ring_offsets: partRings} = arrays;
   // A draped layer carries each vertex's own ground height in `z`;
   // a flat one stands every vertex at its feature's `base`.
   const {part_feature: partFeature, base, z: vertexZ, triangles} = arrays;
   // `stack`: the lift a feature gets from the layer below it; dropped
   // when that layer is switched off, so buildings rest on the ground.
-  const {height} = arrays;
   const nParts = partFeature.length;
   const nRings = rings.length - 1;
   const nVertices = xy.length / 2;
@@ -104,12 +113,13 @@ function buildBinary({arrays}, dropStack = false, flat = false) {
     for (let r = partRings[p]; r < partRings[p + 1]; r++) {
       ringFeature[r] = feature;
     }
-    const start = vertexZ ? 0 : featureBase(arrays, feature, dropStack, flat);
+    const start = vertexZ ? 0 : featureBase(arrays, feature, dropStack, flat, assessed);
+    const tall = featureHeight(arrays, feature, assessed);
     for (let v = rings[partRings[p]]; v < rings[partRings[p + 1]]; v++) {
       positions[3 * v] = xy[2 * v];
       positions[3 * v + 1] = xy[2 * v + 1];
       positions[3 * v + 2] = vertexZ ? (flat ? 0 : vertexZ[v]) : start;
-      elevations[v] = height[feature];
+      elevations[v] = tall;
     }
   }
   return {
@@ -142,6 +152,13 @@ function preparePalette(palette) {
     // Edges colored by value (`line_lut`), on the fills' scale.
     if (spec.line_lut) {
       spec.lineSpec = {...spec, rgb: spec.line_lut.map(hexToRgb), alpha: spec.line_alpha};
+    }
+    // Non-residential features in the per-dwelling view.
+    if (spec.other_lut) {
+      spec.otherRgb = spec.other_lut.map(hexToRgb);
+    }
+    if (spec.other_line_lut) {
+      spec.otherLineRgb = spec.other_line_lut.map(hexToRgb);
     }
   }
   return palette;
@@ -606,7 +623,9 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
   };
   menu.addEventListener('toggle', refresh);
   list.addEventListener('pointerdown', refresh);
-  document.getElementById('legend-panel').prepend(menu);
+  // At the very top, in the title box, apart from the display controls
+  // (and still there when they are folded away).
+  document.getElementById('title-panel').appendChild(menu);
 }
 
 async function main() {
@@ -639,6 +658,45 @@ async function main() {
   switcher.id = 'palette-switch';
   const legends = document.createElement('div');
   legendPanel.append(layerSwitch, switcher, legends);
+  // The controls and legend fold away (a third of a phone's screen);
+  // folded, a "Controls" chip waits beside "Sources". Remembered per
+  // browser, like the palette.
+  const minimize = document.createElement('button');
+  minimize.type = 'button';
+  minimize.id = 'legend-minimize';
+  minimize.dataset.fold = 'minimize';
+  minimize.textContent = '–';
+  minimize.title = 'Minimize controls';
+  minimize.setAttribute('aria-label', 'Minimize controls');
+  legendPanel.prepend(minimize);
+  const restore = document.createElement('button');
+  restore.type = 'button';
+  restore.id = 'controls-chip';
+  restore.className = 'panel';
+  restore.dataset.fold = 'restore';
+  restore.textContent = 'Controls';
+  restore.setAttribute('aria-label', 'Show controls');
+  document.getElementById('corner').appendChild(restore);
+  const setFolded = (folded) => {
+    document.body.classList.toggle('controls-min', folded);
+    restore.hidden = !folded;
+    try {
+      localStorage.setItem('openplaces-controls-min', folded ? '1' : '0');
+    } catch (error) {
+      // Private windows may refuse storage; the choice lasts this visit.
+    }
+  };
+  minimize.addEventListener('click', () => setFolded(true));
+  restore.addEventListener('click', () => setFolded(false));
+  // Folded unless this browser unfolded them before (maintainer,
+  // 2026-10-16: minimized by default).
+  let startFolded = true;
+  try {
+    startFolded = localStorage.getItem('openplaces-controls-min') !== '0';
+  } catch (error) {
+    startFolded = true;
+  }
+  setFolded(startFolded);
   // Which layers are switched on, from the address when another place
   // passed its settings on (`?hide=buildings`); `toggleLayer` is set
   // once deck.gl exists.
@@ -654,6 +712,12 @@ async function main() {
   if (hasTerrain) {
     shown.terrain = !hiddenAtStart.includes('terrain');
     switches.push(['terrain', 'Terrain']);
+  }
+  // Outlines curate flags as drawn too tall for what is mapped there
+  // (`ghost`): see-through at full height, with a switch of their own.
+  if (scene.layers.some((l) => l.n_ghosts > 0)) {
+    shown.ghosts = !hiddenAtStart.includes('ghosts');
+    switches.push(['ghosts', 'Unconfirmed tall outlines']);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
   const landmarks = scene.landmarks || [];
@@ -685,11 +749,17 @@ async function main() {
   // the value per area or per dwelling (where a layer offers it), and
   // the values as the assessor recorded them or with openplaces' own
   // fills (`estimated`), which "Assessment" draws as no value.
-  let valueView = params.get('view') === 'dwelling' ? 'dwelling' : 'area';
+  // Per dwelling, with estimates, by default (maintainer, 2026-10-16),
+  // where a layer offers it.
+  let valueView = params.get('view') === 'area' ? 'area' : 'dwelling';
   let withEstimates = params.get('values') !== 'assessed';
   const hasDwellingView = scene.layers.some((l) => l.views && l.views.dwelling);
+  // Two rows: per area or per dwelling, then with estimates or the
+  // assessment alone.
   const viewSwitch = document.createElement('div');
   viewSwitch.id = 'view-switch';
+  const valuesSwitch = document.createElement('div');
+  valuesSwitch.id = 'values-switch';
   const choices = [];
   if (hasDwellingView) {
     choices.push(['view', 'area', 'Per area'], ['view', 'dwelling', 'Per dwelling']);
@@ -708,11 +778,11 @@ async function main() {
       ? 'Values the assessor recorded; values openplaces filled in are drawn as no value'
       : '';
     button.addEventListener('click', () => setChoice(group, id));
-    viewSwitch.appendChild(button);
+    (group === 'view' ? viewSwitch : valuesSwitch).appendChild(button);
   }
-  layerSwitch.after(viewSwitch);
+  layerSwitch.after(viewSwitch, valuesSwitch);
   const markViewSwitch = () => {
-    for (const button of viewSwitch.children) {
+    for (const button of [...viewSwitch.children, ...valuesSwitch.children]) {
       const on = button.dataset.group === 'view'
         ? button.dataset.choice === valueView
         : (button.dataset.choice === 'estimates') === withEstimates;
@@ -729,10 +799,17 @@ async function main() {
       ? {...spec, vmin: view.vmin, vmax: view.vmax, unit: 'dwelling'}
       : {...spec, unit: layer.unit};
   };
-  const featureValues = (entry) => {
+  // The non-residential part of a layer's per-dwelling view, if shown.
+  const otherView = (entry) => {
+    const view = valueView === 'dwelling' && entry.spec.views && entry.spec.views.dwelling;
+    return view && view.other && entry.decoded.arrays.nonresidential ? view.other : null;
+  };
+  const featureValues = (entry, perArea = false) => {
     const {arrays} = entry.decoded;
     const view = valueView === 'dwelling' && entry.spec.views && entry.spec.views.dwelling;
-    let values = view && arrays.value_dwelling ? arrays.value_dwelling : entry.featureValue;
+    let values = view && arrays.value_dwelling && !perArea
+      ? arrays.value_dwelling
+      : entry.featureValue;
     if (!withEstimates && arrays.estimated) {
       values = values.map((v, i) => (arrays.estimated[i] ? 0 : v));
     }
@@ -755,6 +832,19 @@ async function main() {
           (_, i) => i % 8 === 0 || i === spec.lut.length - 1,
         ),
       });
+      // Per dwelling: a second bar for non-residential buildings.
+      const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
+      const ramp = spec.other_line_lut || spec.other_lut;
+      if (view && view.other && ramp) {
+        drawLegend(legends, {
+          shown: shown[layer.name],
+          label: withEstimates ? view.other.label : `${view.other.label} (assessed)`,
+          unit: view.other.unit,
+          vmin: view.other.vmin,
+          vmax: view.other.vmax,
+          colors: ramp.filter((_, i) => i % 8 === 0 || i === ramp.length - 1),
+        });
+      }
     }
   };
   document.body.style.background = palette.background;
@@ -764,7 +854,7 @@ async function main() {
   await loadScript(scene.deck_gl_url);
   const {Deck, SolidPolygonLayer, PathLayer, COORDINATE_SYSTEM} = deck;
   const {LightingEffect, AmbientLight, DirectionalLight} = deck;
-  const {ScatterplotLayer, TextLayer} = deck;
+  const {ScatterplotLayer, TextLayer, DataFilterExtension} = deck;
 
   // The tour runs while the files load, so the layers rise into a
   // moving view; ?tour=0 in the address, or a system setting for
@@ -791,17 +881,17 @@ async function main() {
   let pin = null;
   let togglePin = () => {};
   let placePin = () => {};
-  // Light fixed in the world: a sun from the southwest, high up, a
-  // weaker fill from the northeast so the far walls are not black, and
-  // ambient light. Without it deck.gl lights from the camera, and a
-  // wall's shade followed its place on the screen: the walls of two
-  // neighbors facing each other were both dark whenever the camera
-  // looked between them (seen 2026-10-16 on Sewall Ave, Brookline).
-  // Directions are those the light travels in (x east, y north, z up).
+  // One sun fixed in the world, from the southwest, plus even ambient
+  // light: every building has one bright side (facing the sun), the
+  // opposite side darkest, and the two between at mid shade. Two lights
+  // from opposite directions (deck.gl's default, and a sun with a
+  // northeast fill tried here) leave the two walls at right angles to
+  // them both dark, so a building showed dark faces on opposite sides
+  // (maintainer, 2026-10-16, Sudbury St, Boston). Directions are those
+  // the light travels in (x east, y north, z up).
   const lighting = new LightingEffect({
-    ambient: new AmbientLight({color: [255, 255, 255], intensity: 1.0}),
-    sun: new DirectionalLight({color: [255, 250, 240], intensity: 1.1, direction: [1, 1.2, -1.6]}),
-    fill: new DirectionalLight({color: [235, 240, 255], intensity: 0.35, direction: [-1, -0.6, -0.8]}),
+    ambient: new AmbientLight({color: [255, 255, 255], intensity: 1.05}),
+    sun: new DirectionalLight({color: [255, 250, 240], intensity: 1.25, direction: [1, 1.2, -1.2]}),
   });
   const deckgl = new Deck({
     parent: document.getElementById('scene'),
@@ -870,10 +960,12 @@ async function main() {
       return;
     }
     // Anchor at the top of the feature, so the tooltip sits on it in 3D.
-    const entry = layers.find((e) => e.id === layer.id);
+    // A ghost is picked in its own layer (`<id>-ghosts`).
+    const entry = layers.find((e) => e.id === layer.id || `${e.id}-ghosts` === layer.id);
     const arrays = entry ? entry.decoded.arrays : null;
     const top = arrays
-      ? featureBase(arrays, feature, !shown[bottom], flatGround) + arrays.height[feature]
+      ? featureBase(arrays, feature, !shown[bottom], flatGround, !withEstimates) +
+        featureHeight(arrays, feature, !withEstimates)
       : 0;
     const [longitude, latitude] = featureCenter(entry, feature);
     pin = {layerId: layer.id, feature, position: [longitude, latitude, top]};
@@ -968,26 +1060,94 @@ async function main() {
     const spec = layerScale(entry.spec, palette.layers[entry.spec.name]);
     const values = featureValues(entry);
     const colors = featureColors(values, spec, palette.no_value);
-    const lineColors = spec.lineSpec
+    let lineColors = spec.lineSpec
       ? featureColors(
         values,
         {...spec.lineSpec, vmin: spec.vmin, vmax: spec.vmax},
         [0, 0, 0, 0],
       )
       : null;
+    // Per dwelling, non-residential buildings keep their value per
+    // area, on the palette's second ramp and their own bounds.
+    const other = otherView(entry);
+    if (other && spec.otherRgb) {
+      const otherValues = featureValues(entry, true);
+      const flags = entry.decoded.arrays.nonresidential;
+      const scale = {vmin: other.vmin, vmax: other.vmax, alpha: spec.alpha};
+      const fill = featureColors(otherValues, {...scale, rgb: spec.otherRgb}, palette.no_value);
+      const edge = spec.otherLineRgb && lineColors
+        ? featureColors(
+          otherValues,
+          {...scale, rgb: spec.otherLineRgb, alpha: spec.line_alpha},
+          [0, 0, 0, 0],
+        )
+        : null;
+      for (let i = 0; i < flags.length; i++) {
+        if (flags[i]) {
+          colors.set(fill.subarray(4 * i, 4 * i + 4), 4 * i);
+          if (edge) {
+            lineColors.set(edge.subarray(4 * i, 4 * i + 4), 4 * i);
+          }
+        }
+      }
+    }
     // A palette may draw every edge (`line`) and blend its fills
     // additively (`blend`): light adds up, no depth is written, so the
     // result does not depend on draw order (see `Palette.blend`).
     const additive = palette.blend === 'additive';
-    return new SolidPolygonLayer({
+    // Ghosts (`ghost`): left out of the solid layer and drawn in a
+    // layer of their own, their own color, mostly transparent, writing
+    // no depth, so whatever stands behind them still shows. Switched
+    // off, that layer is hidden. Both layers select by the same
+    // per-feature flag (deck.gl's data filter, which discards the
+    // left-out features' fragments; a zero alpha would still write
+    // depth and hide what is behind).
+    const ghosts = entry.decoded.arrays.ghost;
+    const ghostFilter = (keep) => (ghosts
+      ? {
+        extensions: [new DataFilterExtension({filterSize: 1})],
+        getFilterValue: (_, {index}) => ghosts[entry.objectFeature[index]],
+        filterRange: keep === 'ghosts' ? [1, 1] : [0, 0],
+      }
+      : {});
+    const shared = {
+      data: entry.data,
+      coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
+      coordinateOrigin: entry.origin,
+      positionFormat: 'XYZ',
+      _normalize: false,
+      _windingOrder: 'CCW',
+      extruded: true,
+      visible: shown[entry.spec.name],
+    };
+    // Edges as a layer of their own, drawn after the faces, with the
+    // faces pushed back a little in depth: drawn as the faces' own
+    // wireframe they shared the faces' depth, and near buildings
+    // showed broken, dotted outlines where the faces won the depth test
+    // (maintainer, 2026-10-16). WebGL's polygon offset moves filled
+    // triangles only, never lines, so it is the faces that move.
+    const outline = spec.line || lineColors
+      ? new SolidPolygonLayer({
+        ...shared,
+        id: `${entry.id}-edges`,
+        filled: false,
+        wireframe: true,
+        pickable: false,
+        getLineColor: lineColors
+          ? (_, {index}) => {
+            const f = entry.objectFeature[index];
+            return lineColors.subarray(4 * f, 4 * f + 4);
+          }
+          : spec.line,
+        updateTriggers: {getLineColor: [palette.id, valueView, withEstimates]},
+      })
+      : null;
+    const faces = new SolidPolygonLayer({
       ...(palette.material ? {material: palette.material} : {}),
-      wireframe: Boolean(spec.line || lineColors),
-      getLineColor: lineColors
-        ? (_, {index}) => {
-          const f = entry.objectFeature[index];
-          return lineColors.subarray(4 * f, 4 * f + 4);
-        }
-        : spec.line || [0, 0, 0, 0],
+      ...(outline
+        ? {getPolygonOffset: ({layerIndex}) => [1, 4 - layerIndex * 100]}
+        : {}),
+      wireframe: false,
       parameters: additive
         ? {
           blend: true,
@@ -1016,9 +1176,37 @@ async function main() {
       },
       updateTriggers: {
         getFillColor: [palette.id, valueView, withEstimates],
-        getLineColor: [palette.id, valueView, withEstimates],
       },
+      ...ghostFilter('solid'),
     });
+    const out = outline ? [faces, outline] : [faces];
+    if (ghosts) {
+      out.push(new SolidPolygonLayer({
+        ...shared,
+        id: `${entry.id}-ghosts`,
+        visible: shown[entry.spec.name] && shown.ghosts !== false,
+        pickable: true,
+        wireframe: true,
+        ...(palette.material ? {material: palette.material} : {}),
+        getFillColor: (_, {index}) => {
+          const f = entry.objectFeature[index];
+          const c = colors.subarray(4 * f, 4 * f + 4);
+          return [c[0], c[1], c[2], GHOST_ALPHA];
+        },
+        getLineColor: (_, {index}) => {
+          const f = entry.objectFeature[index];
+          const c = (lineColors || colors).subarray(4 * f, 4 * f + 4);
+          return [c[0], c[1], c[2], 140];
+        },
+        parameters: {depthWriteEnabled: false},
+        updateTriggers: {
+          getFillColor: [palette.id, valueView, withEstimates],
+          getLineColor: [palette.id, valueView, withEstimates],
+        },
+        ...ghostFilter('ghosts'),
+      }));
+    }
+    return out;
   };
   // Landmarks: a dot on the roof (or ground) of the place, its name
   // above it, drawn over everything else so a tower never hides its
@@ -1078,7 +1266,8 @@ async function main() {
   const redraw = () => {
     deckgl.setProps({
       layers: [
-        ...layers.map((l) => l.layer),
+        // Each entry is its faces and, under some palettes, its edges.
+        ...layers.flatMap((l) => l.layer),
         boundaries,
         ...(shown.landmarks ? makeLandmarks() : []),
       ],
@@ -1113,8 +1302,16 @@ async function main() {
       valueView = id;
     } else {
       withEstimates = id === 'estimates';
+      // Estimated features change height, so the pin and the geometry
+      // follow.
+      if (pin) {
+        unpin();
+      }
     }
     for (const entry of layers) {
+      if (group === 'values') {
+        entry.data = buildBinary(entry.decoded, !shown[bottom], flatGround, !withEstimates).data;
+      }
       entry.layer = makeLayer(entry);
     }
     markViewSwitch();
@@ -1136,7 +1333,7 @@ async function main() {
       const moves =
         name === 'terrain' || (name === bottom && entry.decoded.arrays.stack);
       if (moves) {
-        entry.data = buildBinary(entry.decoded, !shown[bottom], flatGround).data;
+        entry.data = buildBinary(entry.decoded, !shown[bottom], flatGround, !withEstimates).data;
       }
       entry.layer = makeLayer(entry);
     }
@@ -1188,9 +1385,16 @@ async function main() {
     }
     const decoded = decodeScene(geometry);
     const values = JSON.parse(new TextDecoder().decode(tooltip));
-    const {objectFeature, data} = buildBinary(decoded, !shown[bottom], flatGround);
+    const {objectFeature, data} = buildBinary(
+      decoded,
+      !shown[bottom],
+      flatGround,
+      !withEstimates,
+    );
     const id = `${spec.name}-${unit}`;
     layerInfo.set(id, {spec, values, objectFeature});
+    // Ghosts are drawn in a layer of their own with the same features.
+    layerInfo.set(`${id}-ghosts`, layerInfo.get(id));
     const entry = {
       id,
       unit,

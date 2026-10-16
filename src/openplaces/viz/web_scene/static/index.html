@@ -49,14 +49,14 @@
   }
   #home-link:hover { color: #fff; }
   /* The menu of other places: plain links (viewer.js buildPlaceNav). */
-  #place-menu { margin-bottom: 10px; font-size: 13px; }
+  #place-menu { margin-top: 8px; font-size: 13px; }
   #place-menu summary { cursor: pointer; font-weight: 600; }
   #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   #place-menu a { color: var(--muted); text-decoration: none; }
   #place-menu a:hover { color: var(--text); }
-  #layer-switch, #view-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  #view-switch:empty { display: none; }
-  #layer-switch button, #view-switch button, #palette-switch button {
+  #layer-switch, #view-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #view-switch:empty, #values-switch:empty { display: none; }
+  #layer-switch button, #view-switch button, #values-switch button, #palette-switch button {
     font: inherit;
     font-size: 12px;
     color: var(--muted);
@@ -68,7 +68,7 @@
   }
   #layer-switch button::before { content: "\2610  "; }
   #layer-switch button.active::before { content: "\2611  "; }
-  #layer-switch button.active, #view-switch button.active, #palette-switch button.active {
+  #layer-switch button.active, #view-switch button.active, #values-switch button.active, #palette-switch button.active {
     color: var(--text);
     border-color: rgba(255, 255, 255, 0.6);
     background: rgba(255, 255, 255, 0.08);
@@ -81,13 +81,49 @@
   .legend canvas { width: 100%; height: 12px; display: block; border-radius: 2px; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-  #about-panel {
+  #corner {
+    position: fixed;
     top: 16px;
     right: 16px;
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+  }
+  #about-panel {
+    position: static;
     max-width: min(460px, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
     overflow: auto;
   }
+  /* Minimized controls: the panel hides, a chip waits beside Sources. */
+  .controls-min #legend-panel { display: none; }
+  #controls-chip {
+    position: static;
+    flex: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    border: 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #controls-chip[hidden] { display: none; }
+  #legend-minimize {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  #legend-minimize:hover { color: var(--text); }
+  #legend-panel { padding-top: 14px; }
   #about-panel summary { cursor: pointer; font-weight: 600; }
   #about-panel pre { white-space: pre-wrap; font-size: 11px; color: var(--muted); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
@@ -151,10 +187,11 @@
   }
   .deck-tooltip .estimated { color: #ffd166; }
   @media (max-width: 640px) {
-    #about-panel { top: auto; bottom: 16px; right: 16px; left: 16px; max-height: 40vh; }
+    #corner { top: auto; bottom: 16px; left: 16px; right: 16px; align-items: flex-end; }
+    #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
+    #controls-chip { padding: 6px 10px; }
     #title-panel h1 { font-size: 16px; }
-    #legend-panel { bottom: 64px; }
-    #about-panel { padding: 6px 10px; }
+    #legend-panel { bottom: 64px; max-height: calc(100vh - 160px); overflow: auto; }
   }
 </style>
 </head>
@@ -166,12 +203,16 @@
   <div id="status">Loading...</div>
 </div>
 <div id="legend-panel" class="panel"></div>
-<!-- Closed by default; MassGIS asks for credit wherever its data are
-     shown, and the sources' notices live here. -->
-<details id="about-panel" class="panel">
-  <summary>Sources</summary>
-  <div id="notices"></div>
-</details>
+<!-- The corner holds "Sources" and, when the controls are minimized,
+     the chip that brings them back (viewer.js). -->
+<div id="corner">
+  <!-- Closed by default; MassGIS asks for credit wherever its data
+       are shown, and the sources' notices live here. -->
+  <details id="about-panel" class="panel">
+    <summary>Sources</summary>
+    <div id="notices"></div>
+  </details>
+</div>
 <script src="viewer.js"></script>
 </body>
 </html>
