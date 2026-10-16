@@ -355,6 +355,18 @@ pipeline:
     non_residential_classes:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
        Agricultural, RV Park]
+    # A large building standing on several lots keeps its share of each
+    # lot's value even where the crosswalk trimmed the link (see
+    # _readmittable_trimmed_links); otherwise a lot's whole value went
+    # to a kiosk or stair tower beside it.
+    readmit_trimmed_links: true
+    # Where the mapped footprints cover under a fifth of the ground area
+    # the roll states (floor area over stories), they keep only their
+    # share and the unmapped building's value stays unallocated: it
+    # remains on the parcel, where a map can show it as the parcel's
+    # value less its footprints' (no polygon is added here).
+    floor_area_columns: [gross_floor_area_sqft, living_area_sqft]
+    stories_column: n_stories
 
   # The denominator of the manufactured-home value test: the parcel's own
   # value, undivided.

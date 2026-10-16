@@ -197,7 +197,11 @@ Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{sou
 ---
 
 #### `resolve_overlaps` (links/overlaps.py)
-`clean_polygons()` then `resolve_overlapping_polygons()`. Writes: `spine`.
+`clean_polygons()` then `resolve_overlapping_polygons()`, which drops the smaller
+polygon of each pair overlapping by at least half of the smaller one, including a
+structure nested in a larger building. Runs after `link_to_reference` has written the
+parcel link sidecar, so the sidecar still lists the dropped ids;
+`apportion_curated_values` skips them. Writes: `spine`.
 
 ---
 
@@ -270,7 +274,18 @@ them instead.
 **Lochhead Table 4 (dwelling suppression)**: when a parcel has ≥1 dwelling-linked
 footprint, zero out `area_fraction` for footprints **without** dwelling evidence so they
 receive no `improvement_value`/`n_dwelling_units`. Also suppresses `land_value` for those
-IDs. (Implemented in `apportion_reference_values`.)
+IDs. A footprint whose `priority_on_parcel` is `primary` is exempt: the priority step's
+`dwelling_override_ratio` keeps a large building primary beside a small dwelling-point
+footprint so that the value splits between them by area. (Implemented in
+`apportion_reference_values`.)
+
+The curate step adds two rules on top (both recipe options of
+`apportion_curated_values`): `readmit_trimmed_links` lets a trimmed overlap rejoin a
+parcel's split when it is larger than all of the parcel's linked overlaps together (a
+building on several lots), and `floor_area_columns`/`stories_column` scale the shares
+down where the mapped footprints cover under a fifth of the ground area the roll
+states (`ref_built_area`); the rest stays on the parcel, unallocated to any
+footprint.
 
 **Inferred footprints**: attributed separately from `metadata['inferred_from_{rid}']`
 with direct column assignment (no area weighting).

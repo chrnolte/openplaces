@@ -36,6 +36,26 @@ def test_misspelled_prefer_higher_column_raises():
         )
 
 
+@pytest.mark.parametrize('large_first', [True, False])
+def test_identical_nested_pair_keeps_the_larger_polygon(large_first):
+    # A small roof structure nested in a large building, both with the
+    # same attributes: the pair counts as identical, and the large
+    # building must survive whichever side of the pair it is on.
+    large = box(0, 0, 0.001, 0.001)
+    small = box(0.0004, 0.0004, 0.00045, 0.00045)
+    geoms = [large, small] if large_first else [small, large]
+    gdf = gpd.GeoDataFrame(
+        {'fid': ['a', 'b'], 'geometry_source': ['massgis', 'massgis']},
+        geometry=geoms,
+        crs='epsg:4326',
+    ).set_index('fid')
+
+    result = resolve_overlapping_polygons(gdf, keep=False)
+
+    assert len(result) == 1
+    assert result.geometry.iloc[0].equals(large)
+
+
 def test_prefer_higher_keeps_the_higher_value():
     gdf = _overlapping()
 

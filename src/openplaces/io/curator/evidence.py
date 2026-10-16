@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from openplaces.core.constants import M2_TO_SQFT
 from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
 from openplaces.io import read_parquet
 from openplaces.io.curator import CurateState, _register
@@ -184,6 +185,160 @@ def _apportioned_sources(
     return out
 
 
+def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2):
+    """Trimmed overlaps larger than everything still linked to their parcel.
+
+    The harmonize crosswalk drops a footprint's link to a parcel when the
+    overlap is below 1/6 of the footprint's largest overlap, on the
+    premise that the parcel has a building of its own and the overlap is
+    an edge or a displacement. A large building standing on several
+    lots breaks that premise: 740 m2 of a 9,000 m2 building on a lot
+    whose only linked footprint is 14 m2 is trimmed, and the lot's whole
+    building value then goes to the 14 m2 piece. A trimmed pair is
+    readmitted when its overlap exceeds the total overlap of the
+    parcel's linked footprints, which is where the premise fails;
+    displaced neighbors (the trim's real target) overlap less than the
+    neighbor's own building and stay out. Pairs that snap_chained_links
+    removed ('snapped minor') stay out too, since that step established
+    that their parcel holds its own building. So does every pair on a
+    parcel with no linked footprint at all: such a parcel carries the
+    harmonize stage's whole-parcel stand-in where it is improved, and
+    a neighbor's edge readmitted there took the stand-in's value away
+    (measured 2026-10-15 on US-TX-GAL: 191 stand-ins left at zero).
+
+    Measured 2026-10-15 on boston-inner-core: 61 of 1,154 footprints
+    above $3,500 of structure value per sq ft owed it to a trimmed
+    neighbor of this kind.
+    """
+    is_linked = links['link'].notna()
+    linked_area = links[is_linked].groupby(ref_key)['area_intersection_m2'].sum()
+    trimmed = links[
+        ~is_linked
+        & links[ref_key].notna()
+        & (links['area_intersection_m2'] >= min_area_m2)
+    ]
+    if 'link_chain' in trimmed.columns:
+        trimmed = trimmed[trimmed['link_chain'].ne('snapped minor').fillna(True)]
+    largest = linked_area.reindex(trimmed[ref_key]).fillna(0.0).to_numpy()
+    return trimmed[
+        (largest > 0) & (trimmed['area_intersection_m2'].to_numpy() > largest)
+    ]
+
+
+def _stated_built_area(ref, ref_key, floor_area_columns, stories_column):
+    """Building ground area (m2) a reference's own record states.
+
+    Floor area over story count, from the first of *floor_area_columns*
+    that holds a positive, non-imputed value, capped at the reference's
+    own area. A record with no original floor area or story count states
+    nothing and gets no value, so the apportionment leaves it alone.
+    """
+    from openplaces.core.provenance import is_imputed
+    from openplaces.io.curator.provenance import source_column
+
+    r = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+
+    def _original(col):
+        if col not in r.columns:
+            return pd.Series(float('nan'), index=r.index)
+        values = pd.to_numeric(r[col], errors='coerce').astype(float)
+        side = source_column(col)
+        if side in r.columns:
+            values = values.mask(is_imputed(r[side]).to_numpy())
+        return values.where(values > 0)
+
+    floor = pd.Series(float('nan'), index=r.index)
+    for col in floor_area_columns:
+        floor = floor.fillna(_original(col))
+    stories = _original(stories_column).where(lambda s: s >= 1)
+    area = floor / M2_TO_SQFT / stories
+    if 'area_ha' in r.columns:
+        area = area.clip(upper=pd.to_numeric(r['area_ha'], errors='coerce') * 1e4)
+    return area.dropna()
+
+
+def _linked_pairs(
+    state,
+    *,
+    entity_type,
+    link_recipe_id,
+    ref_key,
+    readmit_trimmed_links,
+    min_trimmed_area_m2,
+    step,
+):
+    """Footprint-reference pairs from the harmonize link sidecar.
+
+    Only link-labeled pairs (kept by the harmonize crosswalk's sliver
+    thresholds) take part, matching what the harmonize attribution saw,
+    plus, with *readmit_trimmed_links*, the trimmed pairs
+    :func:`_readmittable_trimmed_links` selects. Pairs whose entity is
+    not in ``state.curated`` are dropped. Shared by every step that
+    needs a parcel's mapped area, so they all count the same overlaps.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, str, str)
+        The pairs (entity id column, ``parcel_id``,
+        ``area_intersection_m2``), the entity id column's name, and the
+        resolved reference recipe id.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the sidecar is missing: curation cannot recompute the
+        overlay, so re-run harmonize with ``save_link: true`` first.
+    """
+    from openplaces.io.harmonizer.links import _resolve_reference_recipe
+
+    resolved_id, _ = _resolve_reference_recipe(
+        link_recipe_id, entity_type, state.admin_id
+    )
+    if resolved_id is None:
+        raise ValueError(
+            f'{step}: no reference recipe found for '
+            f'entity_type={entity_type!r} and {state.admin_id}.'
+        )
+    # The sidecar is keyed by the recipe that ran the link steps -- the
+    # geospine when the spine is split into geometry and attribute
+    # recipes.
+    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
+    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
+    if not sidecar_path.exists():
+        raise FileNotFoundError(
+            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
+            f'{entity_recipe_id} with save_link enabled on the overlay step '
+            'so curation can apportion the curated values.'
+        )
+
+    links = pd.read_parquet(sidecar_path)
+    curated = state.curated
+    id_col = curated.index.name
+    if id_col not in links.columns:
+        # The sidecar records the harmonizer's working spine id column;
+        # fall back to the first (index) column
+        id_col = links.columns[0]
+
+    all_links = links[links[id_col].isin(curated.index)]
+    if 'link' in links.columns:
+        links = all_links[all_links['link'].notna()]
+        if readmit_trimmed_links:
+            links = pd.concat(
+                [
+                    links,
+                    _readmittable_trimmed_links(
+                        all_links, id_col, ref_key, min_trimmed_area_m2
+                    ),
+                ]
+            )
+    else:
+        links = all_links
+    pairs = links[[id_col, ref_key, 'area_intersection_m2']].rename(
+        columns={ref_key: 'parcel_id'}
+    )
+    return pairs, id_col, resolved_id
+
+
 @_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
@@ -197,6 +352,10 @@ def apportion_curated_values(
     dwelling_column: str = 'n_dwellings_overture',
     land_use_column: str | None = None,
     non_residential_classes: list[str] | None = None,
+    readmit_trimmed_links: bool = False,
+    min_trimmed_area_m2: float = 10.0,
+    floor_area_columns: list[str] | None = None,
+    stories_column: str | None = None,
 ) -> CurateState:
     """Apportion a curated reference entity's values over the n:m link sidecar.
 
@@ -266,6 +425,24 @@ def apportion_curated_values(
         loading dock, or a retail strip's several units, are all real
         value-bearing structures with no single dwelling to anchor a
         residential-style split to.
+    readmit_trimmed_links : bool, optional
+        Let a trimmed overlap (a footprint's link to a parcel that the
+        harmonize crosswalk dropped as below 1/6 of the footprint's
+        largest overlap) take part in that parcel's split when it is
+        larger than the overlap of all the parcel's linked footprints
+        together. Default False. See :func:`_readmittable_trimmed_links`.
+    min_trimmed_area_m2 : float, optional
+        Smallest trimmed overlap that can be readmitted (default 10, the
+        crosswalk's own minimum).
+    floor_area_columns : list of str, optional
+        Floor-area columns (square feet) on the curated reference, in
+        order of preference, from which the reference's stated building
+        ground area is derived together with *stories_column*. Passed to
+        :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`
+        as *ref_built_area*. Values marked imputed are not used.
+    stories_column : str, optional
+        Story-count column on the curated reference. Both this and
+        *floor_area_columns* are needed to derive the stated area.
 
     Raises
     ------
@@ -273,8 +450,6 @@ def apportion_curated_values(
         When the sidecar is missing: curation cannot recompute the overlay,
         so re-run harmonize with ``save_link: true`` first.
     """
-    from openplaces.io.harmonizer.links import _resolve_reference_recipe
-
     unknown = [c for c in columns if c not in APPORTIONED_VALUE_COLUMNS]
     if unknown:
         raise ValueError(
@@ -327,41 +502,22 @@ def apportion_curated_values(
                 f"curated reference '{recipe_id}'; skipping equal-area rule."
             )
 
-    resolved_id, _ = _resolve_reference_recipe(
-        link_recipe_id, entity_type, state.admin_id
-    )
-    if resolved_id is None:
-        raise ValueError(
-            f'apportion_curated_values: no reference recipe found for '
-            f'entity_type={entity_type!r} and {state.admin_id}.'
-        )
-    # The sidecar is keyed by the recipe that ran the link steps -- the
-    # geospine when the spine is split into geometry and attribute recipes.
-    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
-    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
-    if not sidecar_path.exists():
-        raise FileNotFoundError(
-            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
-            f'{entity_recipe_id} with save_link enabled on the overlay step '
-            'so curation can apportion the curated values.'
-        )
-
-    links = pd.read_parquet(sidecar_path)
     curated = state.curated
-    id_col = curated.index.name
-    if id_col not in links.columns:
-        # The sidecar records the harmonizer's working spine id column;
-        # fall back to the first (index) column
-        id_col = links.columns[0]
-
-    # Only link-labeled pairs (kept by the harmonize crosswalk's sliver
-    # thresholds) participate, matching what the harmonize attribution saw.
-    if 'link' in links.columns:
-        links = links[links['link'].notna()]
-    pairs = links[[id_col, ref_key, 'area_intersection_m2']].rename(
-        columns={ref_key: 'parcel_id'}
+    pairs, id_col, _ = _linked_pairs(
+        state,
+        entity_type=entity_type,
+        link_recipe_id=link_recipe_id,
+        ref_key=ref_key,
+        readmit_trimmed_links=readmit_trimmed_links,
+        min_trimmed_area_m2=min_trimmed_area_m2,
+        step='apportion_curated_values',
     )
-    pairs = pairs[pairs[id_col].isin(curated.index)]
+
+    stated_area = (
+        _stated_built_area(ref, ref_key, floor_area_columns, stories_column)
+        if floor_area_columns and stories_column
+        else None
+    )
 
     # Synthetic fallback rows postdate the sidecar; add them as their
     # reference's sole full-weight link.
@@ -403,6 +559,7 @@ def apportion_curated_values(
             else None
         ),
         equal_area_ref_ids=equal_area_ref_ids,
+        ref_built_area=stated_area,
     )
 
     from openplaces.io.curator.provenance import record_sources

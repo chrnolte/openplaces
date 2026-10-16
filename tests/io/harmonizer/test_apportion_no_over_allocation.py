@@ -113,7 +113,7 @@ class TestWholeValueIsSplitNotRepeated:
         entirely; its share goes to the remaining principals, not nowhere."""
         pairs = _pairs([('f1', 'p1', 100.0), ('f2', 'p1', 100.0)])
         ref = pd.DataFrame({'land_value': [300_000.0]}, index=['p1'])
-        priority = pd.Series({'f1': 'primary', 'f2': 'primary'})
+        priority = pd.Series({'f1': 'primary', 'f2': 'secondary'})
 
         out = _apportion(pairs, ref, priority=priority, dwelling_linked_ids={'f1'})
 

@@ -42,14 +42,15 @@ def test_straddling_entity_sums_shares_from_both_references():
 
 
 def test_dwelling_suppression_renormalizes_and_suppresses_land_value():
-    # F2 has dwelling evidence, F1 does not: F1's share is zeroed and F2
-    # takes the whole parcel value; F1's land_value is suppressed too.
+    # F2 has dwelling evidence, F1 does not and is secondary, as the
+    # priority step makes it: F1's share is zeroed and F2 takes the
+    # whole parcel value; F1's land_value is suppressed too.
     pairs = _pairs([('F1', 'P1', 300.0), ('F2', 'P1', 100.0)])
     ref = pd.DataFrame(
         {'improvement_value': [400000.0], 'land_value': [50000.0]},
         index=pd.Index(['P1']),
     )
-    priority = pd.Series(['primary', 'primary'], index=['F1', 'F2'])
+    priority = pd.Series(['secondary', 'primary'], index=['F1', 'F2'])
     out = apportion_reference_values(
         pairs,
         ref,
@@ -57,10 +58,61 @@ def test_dwelling_suppression_renormalizes_and_suppresses_land_value():
         priority=priority,
         dwelling_linked_ids={'F2'},
     )
-    assert out.loc['F1', 'improvement_value'] == 0.0
+    assert pd.isna(out.loc['F1', 'improvement_value'])
     assert out.loc['F2', 'improvement_value'] == 400000.0
     assert pd.isna(out.loc['F1', 'land_value'])
     assert out.loc['F2', 'land_value'] == 50000.0
+
+
+def test_primary_entity_beside_a_dwelling_point_keeps_its_area_share():
+    # The priority step keeps a large building primary beside a smaller
+    # dwelling-point footprint (dwelling_override_ratio) so that the
+    # value splits by area; suppression must not undo that and hand
+    # the whole value to the small one.
+    pairs = _pairs([('F1', 'P1', 300.0), ('F2', 'P1', 100.0), ('F3', 'P1', 50.0)])
+    ref = pd.DataFrame({'improvement_value': [400000.0]}, index=pd.Index(['P1']))
+    priority = pd.Series(['primary', 'primary', 'secondary'], index=['F1', 'F2', 'F3'])
+    out = apportion_reference_values(
+        pairs,
+        ref,
+        spine_id_col='fid',
+        priority=priority,
+        dwelling_linked_ids={'F2'},
+    )
+    assert out.loc['F1', 'improvement_value'] == 300000.0
+    assert out.loc['F2', 'improvement_value'] == 100000.0
+    assert pd.isna(out.loc['F3', 'improvement_value'])
+
+
+def test_stated_built_area_scales_shares_where_little_is_mapped():
+    # A 14 m2 structure is all the spine maps on a parcel whose record
+    # states 1,400 m2 of building ground area: it receives 1% of the
+    # value, and the rest stays unallocated rather than landing on it.
+    pairs = _pairs([('F1', 'P1', 14.0)])
+    ref = pd.DataFrame({'improvement_value': [100e6]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(
+        pairs, ref, spine_id_col='fid', ref_built_area=pd.Series({'P1': 1400.0})
+    )
+    assert out.loc['F1', 'improvement_value'] == 1e6
+
+
+def test_stated_built_area_leaves_moderate_gaps_alone():
+    # Mapped 300 m2 of a stated 1,000 m2 (coverage 0.3): within the
+    # noise of floor area over story count, so the shares stand.
+    pairs = _pairs([('F1', 'P1', 200.0), ('F2', 'P1', 100.0), ('F3', 'P2', 50.0)])
+    ref = pd.DataFrame(
+        {'improvement_value': [300000.0, 80000.0]}, index=pd.Index(['P1', 'P2'])
+    )
+    out = apportion_reference_values(
+        pairs,
+        ref,
+        spine_id_col='fid',
+        ref_built_area=pd.Series({'P1': 1000.0}),
+    )
+    assert out.loc['F1', 'improvement_value'] == 200000.0
+    assert out.loc['F2', 'improvement_value'] == 100000.0
+    # No stated area: unchanged.
+    assert out.loc['F3', 'improvement_value'] == 80000.0
 
 
 def test_secondary_entity_gets_missing_improvement_and_zero_dwellings():
@@ -181,7 +233,7 @@ def test_equal_area_ref_ids_exempts_dwelling_linked_suppression():
         {'improvement_value': [400000.0], 'land_value': [50000.0]},
         index=pd.Index(['P1']),
     )
-    priority = pd.Series(['primary', 'primary'], index=['F1', 'F2'])
+    priority = pd.Series(['secondary', 'primary'], index=['F1', 'F2'])
     out = apportion_reference_values(
         pairs,
         ref,
@@ -293,7 +345,7 @@ def test_land_value_imputed_without_priority_requires_sole_entity_on_reference()
 def test_land_value_imputed_suppressed_by_dwelling_linked_rule():
     pairs = _pairs([('F1', 'P1', 300.0), ('F2', 'P1', 100.0)])
     ref = pd.DataFrame({'land_value_imputed': [50000.0]}, index=pd.Index(['P1']))
-    priority = pd.Series(['primary', 'primary'], index=['F1', 'F2'])
+    priority = pd.Series(['secondary', 'primary'], index=['F1', 'F2'])
     out = apportion_reference_values(
         pairs,
         ref,
