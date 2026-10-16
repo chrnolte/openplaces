@@ -148,9 +148,58 @@ additional_layers:
         expression: "land_area_sqft * land_area_sqft_factor"
         inputs: [land_area_sqft, land_area_sqft_factor]
         output: land_area_sqft
+      # Boston's BLD_AREA is a placeholder, 0 or 1, on accounts the city
+      # roll gives a real GROSS_AREA (US-MA-BOS_property-bostongov-2026)
+      # or none: a 13-story office of 178,130 sq ft carries 0, the
+      # Common 1. Emptied here so the city roll's value replaces it and
+      # no step reads 1 sq ft as a building. RES_AREA carries the same
+      # 1 on exempt accounts with no building (hospital campus lots).
+      - type: unary
+        operation: null_if_equal
+        input: gross_floor_area_sqft
+        args: {value: 0}
+        output: gross_floor_area_sqft
+        admin_ids: [US-MA-BOS]
+      - type: unary
+        operation: null_if_equal
+        input: gross_floor_area_sqft
+        args: {value: 1}
+        output: gross_floor_area_sqft
+        admin_ids: [US-MA-BOS]
+      - type: unary
+        operation: null_if_equal
+        input: living_area_sqft
+        args: {value: 1}
+        output: living_area_sqft
+        admin_ids: [US-MA-BOS]
+      # Accounts whose lot key (LOC_ID) names a polygon that is not
+      # where their land or building is, listed one by one with the
+      # evidence in the sidecar beside the Boston recipe tree: an
+      # account moves to the lot it sits on, or to none ('none') where
+      # the cadastre draws no polygon for it, so its values reach no
+      # parcel instead of piling onto a small neighbor (the garage under
+      # the Common put $44.7M on a 75 m2 entrance kiosk). Only listed
+      # accounts change; the rest keep LOC_ID.
+      - type: remap_file
+        input: property_id_assessor
+        crosswalk_id: US-MA-BOS_parcel-massgis-2025_lot-corrections
+        output: parcel_id_admin2_corrected
+        admin_ids: [US-MA-BOS]
+      - type: aggregate
+        operation: coalesce
+        inputs: [parcel_id_admin2_corrected, parcel_id_admin2]
+        output: parcel_id_admin2
+        admin_ids: [US-MA-BOS]
+      - type: unary
+        operation: null_if_equal
+        input: parcel_id_admin2
+        args: {value: none}
+        output: parcel_id_admin2
+        admin_ids: [US-MA-BOS]
     drop_columns:
       - land_area_sqft_factor
       - land_area_units
+      - parcel_id_admin2_corrected
     columns_to_categorical:
       - city
       - zip

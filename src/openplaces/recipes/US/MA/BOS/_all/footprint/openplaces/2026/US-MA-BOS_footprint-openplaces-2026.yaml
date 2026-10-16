@@ -1,0 +1,39 @@
+# Patch: Boston's exempt accounts with no building record share their
+# improvement value over the lot, not onto a kiosk.
+#
+# Boston's roll (US-MA-BOS_property-bostongov-2026) states the gross
+# floor area of every building it records, so an account without one
+# is an account the roll records no building on. Exempt hospital and
+# dormitory accounts of that kind still carry improvement value, and
+# the footprint layer maps only a small structure on their lots, which
+# then took the whole value. Measured 2026-10-16 on US-MA-BOS: 3|5655,
+# $52.0M on 164 m2 of outline; 8|1419, $33.5M on 12 m2; 4|1963|10,
+# $26.2M on 84 m2.
+#
+# The rule acts on exempt use codes (9xx) only, and only where the
+# linked outlines total under 500 m2: on a campus whose outlines are
+# thousands of m2 they are the buildings the value belongs to, even
+# though the roll states no floor area for them. Measured 2026-10-16 on
+# US-MA-BOS: 435 lots, $203M of improvements (without the size cap 512
+# lots and $467M, among them an 8.9 ha school with 7,402 m2 of
+# outline; without the use filter 721 lots and $696M, offices whose
+# floor area the roll omits). Boston only: elsewhere a roll without
+# floor area says nothing about whether a building exists.
+
+admin_id: US-MA-BOS
+stage: curate
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_footprint-openplaces-2026
+pipeline_patch:
+  - set: apportion_curated_values
+    params:
+      lot_area_when_unstated:
+        column: use_group_code
+        pattern: '9\d\d'
+        max_mapped_m2: 500

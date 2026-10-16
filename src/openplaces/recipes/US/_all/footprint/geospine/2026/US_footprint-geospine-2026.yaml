@@ -52,6 +52,11 @@ pipeline:
         label: microsoft
       - auto_discover: true
         entity_type: footprint
+        # FEMA USA Structures outlines are the lowest-quality footprints
+        # the project reads (maintainer, 2026-10-16) and map nothing
+        # under 450 sq ft; they never enter a footprint spine. Their
+        # occupancy attributes still reach footprints as evidence.
+        exclude_sources: [fema]
     thresholds:
       min_area_m2: 10.0
       overlap_iou_max: 0.02

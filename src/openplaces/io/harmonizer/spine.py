@@ -284,6 +284,7 @@ def resolve_spine(
     thresholds: dict | None = None,
     keep_columns: list[str] | None = None,
     track_provenance: list[str] | None = None,
+    evidence_resolution: bool = False,
 ) -> HarmonizeState:
     """Build the primary entity spine from multiple prioritized sources.
 
@@ -303,6 +304,9 @@ def resolve_spine(
     sources : list of dict
         Ordered source entries.  Each entry is either
         ``{'recipe_id': str, 'label': str}`` or ``{'auto_discover': True}``.
+        The auto-discover entry may carry ``exclude_sources``, a list of
+        source ids whose recipes are never discovered as spine sources
+        (they stay available to every other step).
     thresholds : dict, optional
         ``overlap_iou_max`` (float, default 0.02) — maximum IoU to treat two
         footprints as overlapping duplicates.
@@ -345,6 +349,14 @@ def resolve_spine(
         directly here, so a later ``link_by_id(auto_discover=True,
         track_provenance=[...])`` step covering the same columns has a
         correct baseline to build on rather than a blank sidecar.
+    evidence_resolution : bool, optional
+        Before each later source is merged, let one of its outlines
+        replace spine pieces that cover under a third of it, unless it
+        crosses more lots than they do (lots from the unit's
+        auto-discovered parcel ingest). Each replacing outline records
+        why in `spine_resolution`. Default False, and no recipe sets
+        it: independent layers sided with the dropped outlines in its
+        test, see :mod:`openplaces.io.harmonizer.spine_resolution`.
     """
     if not sources:
         warnings.warn(f'resolve_spine: no sources configured for {state.admin_id}.')
@@ -428,10 +440,33 @@ def resolve_spine(
     for col in track_cols & set(spine.columns):
         _record_source(spine, col, spine[col].notna(), first_label)
 
+    lots = _load_lots(state) if evidence_resolution else None
     for src in loaded[1:]:
         recipe_id = src['recipe_id']
         label = src.get('label', recipe_id)
         candidate = source_gdfs[recipe_id]
+
+        forced = None
+        if evidence_resolution:
+            from openplaces.io.harmonizer.spine_resolution import (
+                choose_between_sources,
+            )
+
+            drop, taken = choose_between_sources(spine, candidate, lots)
+            if len(taken):
+                spine = spine.drop(index=drop)
+                forced = candidate.loc[taken.index, _spine_cols(candidate)].copy()
+                forced['spine_resolution'] = taken.to_numpy()
+                _stamp_geometry_source(forced, label, keep_columns)
+                for col in track_cols & set(forced.columns):
+                    _record_source(forced, col, forced[col].notna(), label)
+                candidate = candidate.drop(index=taken.index)
+                if state.verbose:
+                    counts = taken.value_counts().to_dict()
+                    print(
+                        f'  Resolve {label}: {len(drop):,d} spine outlines replaced '
+                        f'by {len(taken):,d} ({counts})'
+                    )
 
         overlap = overlay_polygons(
             spine,
@@ -481,6 +516,9 @@ def resolve_spine(
                 f'Data may need to be re-ingested.'
             )
             to_add.index.name = spine.index.name
+        if forced is not None:
+            forced.index.name = spine.index.name
+            to_add = pd.concat([to_add, forced])
         spine = pd.concat([spine, to_add]).sort_index()
 
         if state.verbose:
@@ -609,6 +647,35 @@ def _stamp_geometry_source(frame, label: str, keep_columns: list[str]) -> None:
         frame['geometry_source'] = frame['geometry_source'].fillna(label)
         return
     frame['geometry_source'] = label
+
+
+def _load_lots(state) -> gpd.GeoSeries | None:
+    """Lot polygons for the evidence tests: the unit's parcel ingest.
+
+    The most admin-specific auto-discovered parcel ingest that loads
+    with geometry; bundled layers (a property table inside a parcel
+    recipe) are skipped. None when the unit has no parcel layer, which
+    disables the lot-line tests rather than the resolution.
+    """
+    found = _expand_auto_discover(
+        [{'auto_discover': True, 'entity_type': 'parcel'}], state
+    )
+    for src in found:
+        if src.get('layer'):
+            continue
+        try:
+            gdf = get_entities(src['recipe_id'], state.admin_id, geom=True)
+        except Exception:
+            continue
+        if gdf is not None and 'geometry' in gdf and len(gdf):
+            if state.verbose:
+                print(f'  Lots for evidence resolution: {src["recipe_id"]}')
+            return gdf.geometry
+    warnings.warn(
+        f'resolve_spine: no parcel layer for {state.admin_id}; evidence '
+        'resolution runs without its lot-line tests.'
+    )
+    return None
 
 
 def _admin_specificity(recipe_id: str) -> int:
@@ -834,6 +901,14 @@ def _expand_auto_discover(
 
     sentinel = next((s for s in sources if s.get('auto_discover')), {})
     sentinel_entity_type = sentinel.get('entity_type')
+    # Sources (by source_id) that may still serve as references through
+    # other steps but must never supply this spine's rows: FEMA's USA
+    # Structures outlines are the lowest-quality footprints the project
+    # reads, so they stay out of every footprint spine while their
+    # occupancy attributes keep reaching footprints through the links
+    # (maintainer, 2026-10-16). `exclude_from_auto_discover` on the
+    # recipe would cut those links too.
+    excluded_sources = {str(s) for s in sentinel.get('exclude_sources') or ()}
     entity_type = sentinel_entity_type or (
         str(entity_obj.entity_type) if entity_obj is not None else ''
     )
@@ -842,6 +917,8 @@ def _expand_auto_discover(
     ranked: list[tuple[int, str, dict]] = []
     for _, row in df.iterrows():
         if row['exclude_from_auto_discover']:
+            continue
+        if str(row['source_id']) in excluded_sources:
             continue
         if row.get('supplements'):
             # Adds columns to another recipe's entities, never rows to

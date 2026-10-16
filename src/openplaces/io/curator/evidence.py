@@ -185,7 +185,7 @@ def _apportioned_sources(
     return out
 
 
-def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2):
+def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2, orphaned_refs=()):
     """Trimmed overlaps larger than everything still linked to their parcel.
 
     The harmonize crosswalk drops a footprint's link to a parcel when the
@@ -200,7 +200,15 @@ def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2):
     displaced neighbors (the trim's real target) overlap less than the
     neighbor's own building and stay out. Pairs that snap_chained_links
     removed ('snapped minor') stay out too, since that step established
-    that their parcel holds its own building. So does every pair on a
+    that their parcel holds its own building, unless the parcel is in
+    *orphaned_refs*: that building's outline was linked and then left
+    the spine (`resolve_overlaps` drops a roof tier nested in the lower
+    tier around it, and the link sidecar is written before that), so
+    the evidence the snap rested on is gone. Measured 2026-10-16 on
+    US-MA-BOS: a 13-story office lot whose 1,264 m2 tower roof was
+    dropped in favor of the 3,084 m2 lower tier around it (which the
+    snap had assigned to the neighboring lot) held $52.4M on a 185 m2
+    remnant. So does every pair on a
     parcel with no linked footprint at all: such a parcel carries the
     harmonize stage's whole-parcel stand-in where it is improved, and
     a neighbor's edge readmitted there took the stand-in's value away
@@ -218,20 +226,32 @@ def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2):
         & (links['area_intersection_m2'] >= min_area_m2)
     ]
     if 'link_chain' in trimmed.columns:
-        trimmed = trimmed[trimmed['link_chain'].ne('snapped minor').fillna(True)]
+        trimmed = trimmed[
+            trimmed['link_chain'].ne('snapped minor').fillna(True)
+            | trimmed[ref_key].isin(orphaned_refs)
+        ]
     largest = linked_area.reindex(trimmed[ref_key]).fillna(0.0).to_numpy()
     return trimmed[
         (largest > 0) & (trimmed['area_intersection_m2'].to_numpy() > largest)
     ]
 
 
-def _stated_built_area(ref, ref_key, floor_area_columns, stories_column):
+def _stated_built_area(
+    ref, ref_key, floor_area_columns, stories_column, lot_area_refs=None
+):
     """Building ground area (m2) a reference's own record states.
 
     Floor area over story count, from the first of *floor_area_columns*
     that holds a positive, non-imputed value, capped at the reference's
     own area. A record with no original floor area or story count states
     nothing and gets no value, so the apportionment leaves it alone.
+
+    A reference in *lot_area_refs* that states no floor area in any of
+    the columns gets its own area instead: its improvement value is
+    read as spread over the lot, so outlines covering a small part of
+    the lot keep only that part (see the *lot_area_when_unstated*
+    option of :func:`apportion_curated_values`). A record that states
+    floor area but no story count still states nothing.
     """
     from openplaces.core.provenance import is_imputed
     from openplaces.io.curator.provenance import source_column
@@ -253,7 +273,11 @@ def _stated_built_area(ref, ref_key, floor_area_columns, stories_column):
     stories = _original(stories_column).where(lambda s: s >= 1)
     area = floor / M2_TO_SQFT / stories
     if 'area_ha' in r.columns:
-        area = area.clip(upper=pd.to_numeric(r['area_ha'], errors='coerce') * 1e4)
+        lot = pd.to_numeric(r['area_ha'], errors='coerce') * 1e4
+        area = area.clip(upper=lot)
+        if lot_area_refs is not None:
+            use_lot = floor.isna() & r.index.isin(list(lot_area_refs))
+            area = area.where(~use_lot, lot)
     return area.dropna()
 
 
@@ -319,15 +343,23 @@ def _linked_pairs(
         # fall back to the first (index) column
         id_col = links.columns[0]
 
-    all_links = links[links[id_col].isin(curated.index)]
+    present = links[id_col].isin(curated.index)
+    all_links = links[present]
     if 'link' in links.columns:
+        # Parcels that lost a linked outline between the overlay and
+        # the spine (see _readmittable_trimmed_links).
+        orphaned = links.loc[~present & links['link'].notna(), ref_key].unique()
         links = all_links[all_links['link'].notna()]
         if readmit_trimmed_links:
             links = pd.concat(
                 [
                     links,
                     _readmittable_trimmed_links(
-                        all_links, id_col, ref_key, min_trimmed_area_m2
+                        all_links,
+                        id_col,
+                        ref_key,
+                        min_trimmed_area_m2,
+                        orphaned_refs=orphaned,
                     ),
                 ]
             )
@@ -356,6 +388,7 @@ def apportion_curated_values(
     min_trimmed_area_m2: float = 10.0,
     floor_area_columns: list[str] | None = None,
     stories_column: str | None = None,
+    lot_area_when_unstated: dict | None = None,
 ) -> CurateState:
     """Apportion a curated reference entity's values over the n:m link sidecar.
 
@@ -443,6 +476,23 @@ def apportion_curated_values(
     stories_column : str, optional
         Story-count column on the curated reference. Both this and
         *floor_area_columns* are needed to derive the stated area.
+    lot_area_when_unstated : dict, optional
+        Read a reference that states no floor area at all as stating
+        its own area, so its improvement value is shared over the lot
+        and its outlines keep only the part they cover (the rest stays
+        unallocated, through *ref_built_area*). Keys: ``column`` and
+        ``pattern`` (a regular expression its values must match in
+        full) select the references, and ``max_mapped_m2`` limits it to
+        references whose linked outlines total less than that area.
+        Default None (off). Set only in a county patch recipe, for a
+        roll that states the floor area of every building it records,
+        so that a record without one is an account the roll records no
+        building on: an exempt hospital account with $33.5M of
+        improvements whose only mapped outline is 12 m2. The size cap
+        is what keeps campuses out: there the outlines, thousands of
+        m2, are the buildings the value belongs to even though the
+        roll states no floor area for them, and the lot share would
+        strip it from them.
 
     Raises
     ------
@@ -513,8 +563,43 @@ def apportion_curated_values(
         step='apportion_curated_values',
     )
 
+    lot_area_refs = None
+    if lot_area_when_unstated:
+        rule = lot_area_when_unstated
+        unknown_keys = set(rule) - {'column', 'pattern', 'max_mapped_m2'}
+        if unknown_keys or 'column' not in rule or 'pattern' not in rule:
+            raise ValueError(
+                'apportion_curated_values: lot_area_when_unstated takes '
+                "'column', 'pattern' and optionally 'max_mapped_m2'; got "
+                f'{sorted(rule)}.'
+            )
+        if rule['column'] not in ref.columns:
+            raise ValueError(
+                f'apportion_curated_values: lot_area_when_unstated column '
+                f'{rule["column"]!r} is not on the curated reference.'
+            )
+        selector = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key)
+        matches = (
+            selector[rule['column']]
+            .astype('string')
+            .str.fullmatch(rule['pattern'])
+            .fillna(False)
+            .to_numpy()
+        )
+        lot_area_refs = set(selector.loc[matches, ref_key])
+        if rule.get('max_mapped_m2') is not None:
+            mapped = pairs.groupby('parcel_id')['area_intersection_m2'].sum()
+            large = set(mapped.index[mapped >= float(rule['max_mapped_m2'])])
+            lot_area_refs -= large
+
     stated_area = (
-        _stated_built_area(ref, ref_key, floor_area_columns, stories_column)
+        _stated_built_area(
+            ref,
+            ref_key,
+            floor_area_columns,
+            stories_column,
+            lot_area_refs=lot_area_refs,
+        )
         if floor_area_columns and stories_column
         else None
     )

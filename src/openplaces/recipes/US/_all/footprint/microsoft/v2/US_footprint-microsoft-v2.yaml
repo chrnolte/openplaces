@@ -25,6 +25,12 @@ entity:
     redistribution_restricted: false
   version: v2
 
+# Microsoft publishes one file per state for all 50, so a unit without
+# this ingest is an ingest that never ran: the footprint geospine
+# raises instead of building without it. Measured 2026-10-16: 68 of the
+# 69 built Massachusetts towns had been built without it.
+coverage: complete
+
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "{admin2_name}.geojson.zip"
 
