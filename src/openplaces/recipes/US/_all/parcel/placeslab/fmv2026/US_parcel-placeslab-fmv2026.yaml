@@ -35,9 +35,14 @@ entity:
   source:
     source_id: placeslab
     portal_url: "https://drive.google.com/drive/folders/1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ"
-    # Public Drive folder. Scraped via google_drive_scraper using
-    # scraper_options.file_path.
+    # Drive folder, scraped via google_drive_scraper using
+    # scraper_options.file_path. The predictions come from a model
+    # trained on licensed inputs (ZTRAX, CoreLogic, Regrid), so its
+    # columns are withheld from deliveries until the maintainer and
+    # Boston University decide whether they may be shown publicly.
+    # license and terms_url are left for that decision.
     download_url_scraper: google_drive_scraper
+    redistribution_restricted: true
   version: fmv2026
 
 # admin_key_column specifies the raw column name {admin3_id_admin1}
