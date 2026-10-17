@@ -290,8 +290,14 @@ def _measured_floors(frame, stories_column, height_column, story_height_m):
     The larger of the two where both are known: a measured height is
     the firmer of the two, and a stated count can be a tag left at its
     default (an outline of 103.8 m by Lidar stated at 1 floor, US-MA-BOS
-    `3|470`, 2026-10-16). Rounded up, at least one; missing where
-    neither is known.
+    `3|470`, 2026-10-16). A height counts the nearest whole number of
+    floors (half up), at least one; a stated fraction rounds up. Missing
+    where neither is known.
+
+    Rounding a height up counted a roof as a floor: a one-story house
+    with a pitched roof measured at 4 m read as two floors, and on a lot
+    split by floor area its value moved toward the pitched or taller
+    roofs beside a flat annex of 3.4 m (maintainer, 2026-10-17).
     """
     stated = pd.Series(np.nan, index=frame.index, dtype=float)
     if stories_column and stories_column in frame.columns:
@@ -299,7 +305,8 @@ def _measured_floors(frame, stories_column, height_column, story_height_m):
     from_height = pd.Series(np.nan, index=frame.index, dtype=float)
     if height_column and height_column in frame.columns:
         height = pd.to_numeric(frame[height_column], errors='coerce').astype(float)
-        from_height = height / float(story_height_m)
+        ratio = (height / float(story_height_m)).where(height > 0)
+        from_height = np.floor(ratio + 0.5).clip(lower=1)
     floors = pd.concat([stated, from_height], axis=1).max(axis=1)
     return np.ceil(floors.where(floors > 0)).clip(lower=1)
 
@@ -394,9 +401,10 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
 
     Read from the enrich recipe's own evidence file rather than from
     ``state.curated``: the apportionment runs before merge_enrichments
-    gathers evidence into the curated table. Floors are the stated
-    count, else the height over *story_height_m*; rounded up, at least
-    one. None when the unit has no such evidence.
+    gathers evidence into the curated table. Floors are the larger of
+    the stated count and the height over *story_height_m* rounded to
+    the nearest floor, at least one (`_measured_floors`). None when the
+    unit has no such evidence.
     """
     unknown = set(floor_weight) - {
         'recipe_id',
@@ -668,10 +676,12 @@ def apportion_curated_values(
         tower takes the tower's value and its one-story podium a
         podium's. Keys: ``recipe_id``, an enrich recipe whose evidence
         carries per-building heights; ``stories_column`` and
-        ``height_column`` on that evidence (floors are the story count,
-        else the height over ``story_height_m``, default 3.5). A
-        reference with any entity of unknown height keeps the area
-        split (see ``volume_weight`` in
+        ``height_column`` on that evidence (floors are the larger of the
+        story count and the height over ``story_height_m``, default 3.5,
+        rounded to the nearest floor). ``unmeasured_max_m2`` (default
+        100) counts an unmeasured outline below that area as one floor.
+        A reference with any larger entity of unknown height keeps the
+        area split (see ``volume_weight`` in
         :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`).
         Default None (off).
 
