@@ -31,13 +31,46 @@
     padding: 12px 14px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
-  #title-panel { top: 16px; left: 16px; max-width: min(420px, calc(100vw - 32px)); }
-  #title-panel h1 { font-size: 18px; margin: 0; }
-  #subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  #title-panel { top: 16px; left: 16px; max-width: min(420px, calc(100vw - 32px)); padding: 8px 12px; }
+  #title-panel h1 { font-size: 17px; margin: 0; }
   #status:empty { display: none; }
-  #legend-panel { bottom: 16px; left: 16px; width: min(360px, calc(100vw - 32px)); }
-  #title-panel { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; }
+  #title-panel { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
   #title-panel > :not(#home-link) { grid-column: 2; }
+  #place-panel { top: 16px; right: 16px; padding: 8px 12px; max-width: calc(50vw - 24px); }
+  #place-panel[hidden] { display: none; }
+  /* The display controls open above the bottom bar, at the right. */
+  #legend-panel {
+    right: 16px;
+    bottom: 80px;
+    width: min(360px, calc(100vw - 32px));
+    max-height: calc(100vh - 180px);
+    overflow: auto;
+  }
+  #bottom-bar {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+  }
+  #bottom-bar > * { pointer-events: auto; }
+  #legend-box { position: static; width: min(340px, 100%); margin-right: auto; padding: 8px 12px; }
+  #legend-box:not([open]) { width: auto; }
+  #legend-box summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  #legend-box summary::before { content: "\25B8"; }
+  #legend-box[open] summary::before { content: "\25BE"; }
+  #legend-box summary::-webkit-details-marker { display: none; }
+  #legend-box summary { list-style: none; }
+  #legend-box[open] summary { margin-bottom: 6px; }
+  #legend-box summary #palette-switch { margin: 0; gap: 4px; }
+  #legend-box summary #palette-switch button { padding: 1px 7px; font-weight: 400; }
+  .footnote { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+  .legend-none { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+  .legend-none span { width: 14px; height: 10px; border-radius: 2px; border: 1px solid rgba(128, 128, 128, 0.5); }
   #home-link {
     grid-row: 1 / span 3;
     align-self: start;
@@ -49,13 +82,14 @@
   }
   #home-link:hover { color: #fff; }
   /* The menu of other places: plain links (viewer.js buildPlaceNav). */
-  #place-menu { margin-top: 8px; font-size: 13px; }
+  #place-menu { font-size: 13px; }
   #place-menu summary { cursor: pointer; font-weight: 600; }
   #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   #place-menu a { color: var(--muted); text-decoration: none; }
   #place-menu a:hover { color: var(--text); }
   #layer-switch, #view-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   #view-switch:empty, #values-switch:empty { display: none; }
+  .switch-label { font-size: 12px; color: var(--muted); align-self: center; }
   #layer-switch button, #view-switch button, #values-switch button, #palette-switch button {
     font: inherit;
     font-size: 12px;
@@ -81,23 +115,14 @@
   .legend canvas { width: 100%; height: 12px; display: block; border-radius: 2px; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-  #corner {
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    display: flex;
-    flex-direction: row-reverse;
-    align-items: flex-start;
-    gap: 8px;
-    max-width: calc(100vw - 32px);
-  }
   #about-panel {
     position: static;
     max-width: min(460px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
+    max-height: 50vh;
     overflow: auto;
+    padding: 8px 12px;
   }
-  /* Minimized controls: the panel hides, a chip waits beside Sources. */
+  /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
   #controls-chip {
     position: static;
@@ -108,8 +133,9 @@
     border: 0;
     cursor: pointer;
     white-space: nowrap;
+    padding: 8px 12px;
   }
-  #controls-chip[hidden] { display: none; }
+  body:not(.controls-min) #controls-chip { outline: 1px solid rgba(255, 255, 255, 0.5); }
   #legend-minimize {
     position: absolute;
     top: 6px;
@@ -187,11 +213,19 @@
   }
   .deck-tooltip .estimated { color: #ffd166; }
   @media (max-width: 640px) {
-    #corner { top: auto; bottom: 16px; left: 16px; right: 16px; align-items: flex-end; }
+    /* Phone: the legend takes the bar's first row, the chips the
+       second; the controls open above the whole bar (its height is
+       set by viewer.js). */
+    #legend-box[open] { width: 100%; margin-right: 0; }
+    #legend-box { padding: 6px 10px; }
+    #legend-box .legend { margin-bottom: 4px; }
+    #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
     #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
     #controls-chip { padding: 6px 10px; }
-    #title-panel h1 { font-size: 16px; }
-    #legend-panel { bottom: 64px; max-height: calc(100vh - 160px); overflow: auto; }
+    #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
+    #title-panel h1 { font-size: 14px; }
+    #place-panel { padding: 6px 10px; }
+    #legend-panel { left: 16px; right: 16px; width: auto; }
   }
 </style>
 </head>
@@ -199,13 +233,20 @@
 <div id="scene"></div>
 <div id="title-panel" class="panel">
   <h1 id="title">Land and building values</h1>
-  <div id="subtitle">as seen by the tax assessor</div>
   <div id="status">Loading...</div>
 </div>
+<!-- Top right: the menu of places (viewer.js buildPlaceNav). -->
+<div id="place-panel" class="panel" hidden></div>
+<!-- The display controls, opened from the "Controls" chip below. -->
 <div id="legend-panel" class="panel"></div>
-<!-- The corner holds "Sources" and, when the controls are minimized,
-     the chip that brings them back (viewer.js). -->
-<div id="corner">
+<!-- The bottom bar: the legend, the "Controls" chip (viewer.js) and
+     "Sources". -->
+<div id="bottom-bar">
+  <!-- The legend: open by default, can be folded. -->
+  <details id="legend-box" class="panel" open>
+    <summary>Legend</summary>
+    <div id="legends"></div>
+  </details>
   <!-- Closed by default; MassGIS asks for credit wherever its data
        are shown, and the sources' notices live here. -->
   <details id="about-panel" class="panel">

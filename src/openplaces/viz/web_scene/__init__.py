@@ -83,6 +83,8 @@ TOOLTIP_KINDS = ('text', 'money', 'money_per_area', 'year', 'count')
 # The page's heading and the smaller line under it (maintainer,
 # 2026-10-16).
 DEFAULT_TITLE = 'Land and building values'
+# The palette a first visit shows (maintainer, 2026-10-16: Pastel).
+DEFAULT_PALETTE = 'pastel'
 DEFAULT_SUBTITLE = 'as seen by the tax assessor'
 
 
@@ -155,11 +157,16 @@ class SceneLayer:
     per_dwelling_label : str, optional
         Offer a second view coloring this layer by `value_column` per
         dwelling (`n_dwellings`), under this legend label. In that view
-        a non-residential feature (`occupancy_type` outside
-        `RESIDENTIAL_OCCUPANCY` and `ACCESSORY_OCCUPANCY`) keeps its
-        value per area on a ramp of its own (the palette's
-        `other_cmap`), since it has one dwelling or none; accessory
-        buildings and homes without a dwelling count have no value.
+        every feature with a value that is not a home (`occupancy_type`
+        outside `RESIDENTIAL_OCCUPANCY`) keeps its value per area on a
+        ramp of its own (the palette's `other_cmap`), since it has one
+        dwelling or none; homes without a dwelling count and features
+        without a value have no value.
+    recorded_column : str, optional
+        The value as the source recorded it, before openplaces' own
+        fills (read from the bundle, or its evidence supplement). The
+        assessment view shows it where `value_column` was estimated,
+        so a feature with a recorded value never disappears there.
     """
 
     name: str
@@ -176,6 +183,7 @@ class SceneLayer:
     render: dict = field(default_factory=dict)
     simplify_m: float | None = None
     per_dwelling_label: str | None = None
+    recorded_column: str | None = None
 
 
 # The notebook's scene (notebooks/09_show/03_show_land_and_building_
@@ -195,9 +203,8 @@ class SceneLayer:
 # notebook's $250-$10M left nine parcels in ten in its top fifth.
 ZERO_VALUE_RGBA = (34, 40, 54, 255)
 # Occupancy types (curated footprints' `occupancy_type`) that hold
-# homes, and those that are accessory to a home (sheds, garages). The
-# per-dwelling view colors the first per dwelling, leaves the second
-# without a value, and colors every other type per area on its own ramp.
+# homes. The per-dwelling view colors these per dwelling and every
+# other type with a value per area on a ramp of its own.
 RESIDENTIAL_OCCUPANCY = frozenset(
     {
         'Single-Family',
@@ -209,7 +216,19 @@ RESIDENTIAL_OCCUPANCY = frozenset(
         'Manufactured Home',
     }
 )
-ACCESSORY_OCCUPANCY = frozenset({'Secondary', 'Garage'})
+# Curated parcels' `land_use_class` values that hold homes; a lot
+# counts as residential in the per-dwelling view only with one of these
+# and dwellings on it.
+RESIDENTIAL_LAND_USE = frozenset(
+    {
+        'Single-Family',
+        'Multi-Family',
+        'Condominium',
+        'Townhome',
+        'Multiple Single-Family',
+        'Manufactured Home',
+    }
+)
 # A curated column flagging outlines drawn abnormally tall for what is
 # mapped there (the sliver-value-allocation work decides which; the
 # maintainer's rule of 2026-10-16). The page keeps their height, so
@@ -241,10 +260,20 @@ VALUE_SCENE_LAYERS = (
                 'money_per_area',
                 imputed_from='land_value_imputed_source',
             ),
+            TooltipField('n_dwellings', 'Dwellings', 'count'),
+            TooltipField(
+                'land_value_imputed_per_dwelling',
+                'Land value per dwelling',
+                'money',
+                imputed_from='land_value_imputed_source',
+            ),
             # Shown only when several records share the outline
             # (`merge_identical_outlines`).
             TooltipField('n_records_on_outline', 'Records on this lot', 'count'),
         ),
+        # Lots count the dwellings of the homes on them where the roll
+        # states none (`_count_dwellings_from_above`).
+        per_dwelling_label='Land value per dwelling',
         render={
             'drop_corridors': True,
             'height_clip_percentile': 99.9999,
@@ -293,6 +322,11 @@ VALUE_SCENE_LAYERS = (
             TooltipField('n_records_on_outline', 'Records on this outline', 'count'),
         ),
         per_dwelling_label='Building value per dwelling',
+        # The roll's improvement value, apportioned to the outline but
+        # without the land estimate subtracted: a condo's whole value
+        # (maintainer, 2026-10-16: 131-135 Willow Ave vanished in the
+        # assessment view though the roll values it).
+        recorded_column='improvement_value_parcel',
         # A building whose height was capped keeps its color: the
         # notebook's translucent magenta marker read as a pink wash
         # over exactly the tallest towers.
@@ -343,6 +377,22 @@ def refuse_personal_fields(layers) -> None:
                         f'Scene layer {layer.name!r} would show the personal '
                         f'column {column!r}. A web scene never carries one.'
                     )
+
+
+def read_evidence_columns(recipe, region, columns) -> pd.DataFrame:
+    """Columns of a bundle's evidence supplement, indexed like the bundle
+    (empty where the bundle has none or lacks them)."""
+    try:
+        path = delivery_paths(recipe, region=region).get('evidence')
+    except KeyError:
+        # A region this recipe does not deliver has no supplement.
+        return pd.DataFrame()
+    if path is None or not Path(path).exists():
+        return pd.DataFrame()
+    import pyarrow.parquet as pq
+
+    present = [c for c in columns if c in pq.read_schema(path).names]
+    return pd.read_parquet(path, columns=present) if present else pd.DataFrame()
 
 
 def read_bundle(recipe, region, admin_ids=None) -> gpd.GeoDataFrame:
@@ -628,6 +678,55 @@ def _tooltip_values(gdf, layer: SceneLayer) -> dict:
 
 
 RECORDS_COLUMN = 'n_records_on_outline'
+
+
+def _count_dwellings_from_above(gdfs: dict, layers) -> None:
+    """Give a layer offering a per-dwelling view (`per_dwelling_label`)
+    and lacking dwelling counts the dwellings of the homes standing on
+    it.
+
+    Lots rarely state their dwellings (measured 2026-10-16: 20% of
+    boston-inner-core parcels, none in western-nc), while buildings
+    mostly do. A display step: each home (`RESIDENTIAL_OCCUPANCY`) of
+    the layer stacked on this one counts toward the feature that
+    contains its centroid; a feature's own count wins where it states
+    one. Written to `n_dwellings` of the layer's frame, in place.
+    """
+    for layer in layers:
+        if not layer.per_dwelling_label:
+            continue
+        above = next((u for u in layers if u.stack_on == layer.name), None)
+        if above is None:
+            continue
+        below, homes = gdfs[layer.name], gdfs[above.name]
+        if 'n_dwellings' not in homes.columns or 'occupancy_type' not in homes.columns:
+            continue
+        homes = homes[
+            homes['occupancy_type']
+            .astype('string')
+            .isin(RESIDENTIAL_OCCUPANCY)
+            .fillna(False)
+            & (homes['n_dwellings'].fillna(0) > 0)
+        ]
+        counted = pd.Series(0.0, index=below.index)
+        if len(homes) and len(below):
+            points = gpd.GeoDataFrame(
+                {'n': homes['n_dwellings'].astype(float).to_numpy()},
+                geometry=homes.geometry.to_crs(5070).centroid.to_numpy(),
+                crs=5070,
+            )
+            lots = gpd.GeoDataFrame(
+                geometry=below.geometry.to_crs(5070).to_numpy(), crs=5070
+            )
+            hit = gpd.sjoin(points, lots, predicate='within', how='inner')
+            sums = hit.groupby('index_right')['n'].sum()
+            counted.iloc[sums.index.to_numpy()] = sums.to_numpy()
+        own = (
+            below['n_dwellings'].astype(float)
+            if 'n_dwellings' in below.columns
+            else pd.Series(np.nan, index=below.index)
+        )
+        below['n_dwellings'] = own.where(own > 0, counted.where(counted > 0))
 
 
 def _without_filters(flags) -> list[str]:
@@ -1022,7 +1121,9 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
         # gold, ordered by lightness.
         Palette(
             id='landscape',
-            label='Landscape',
+            # Shorter on the chip (maintainer, 2026-10-16); the id stays
+            # `landscape`, so stored choices and `?palette=` still work.
+            label='Earth',
             material=MATTE,
             layers={
                 'parcels': PaletteLayer(
@@ -1034,7 +1135,9 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#e8a77c',
                         '#cf6a55',
                         '#a8443f',
-                    )
+                    ),
+                    # Lots without homes, per dwelling view: grays.
+                    other_cmap=('#3d4148', '#6a6f78', '#9aa0a8', '#cdd1d6'),
                 ),
                 # Non-residential buildings in the per-dwelling view:
                 # slate blue to ice, a hue neither the amber buildings
@@ -1055,7 +1158,11 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             label='Sunset',
             material=MATTE,
             layers={
-                'parcels': PaletteLayer('cmr.ocean', cmap_range=(0.18, 0.88)),
+                'parcels': PaletteLayer(
+                    'cmr.ocean',
+                    cmap_range=(0.18, 0.88),
+                    other_cmap=('#2e3238', '#55595f', '#81858b', '#b3b6ba'),
+                ),
                 # Non-residential: grays to silver, apart from the
                 # magenta-to-yellow homes and the teal ground.
                 'buildings': PaletteLayer(
@@ -1104,6 +1211,8 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#1a9884',
                     ),
                     line_alpha=0.85,
+                    other_cmap=('#050505', '#111111', '#1c1c1c'),
+                    other_line_cmap=('#1a1a1a', '#333333', '#4d4d4d', '#666666'),
                 ),
                 # A broad run of hues (maintainer, 2026-10-16: wider,
                 # with green, "matrix-like", the cheapest darker): a dim
@@ -1174,12 +1283,17 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#e7b0ef',
                     ),
                     line_rgba=(150, 150, 165, 70),
+                    # Lots without homes, per dwelling view: pale grays.
+                    other_cmap=('#f4f4f2', '#e1e1de', '#cdcdc9', '#b8b8b3'),
                 ),
-                # Non-residential: sage to slate, quieter than the
-                # pastel homes.
+                # Non-residential: warm grays, quieter than the pastel
+                # homes. The top tier of the homes' ramp ends in
+                # a pastel yellow (maintainer, 2026-10-16).
                 'buildings': PaletteLayer(
-                    ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866'),
-                    other_cmap=('#d5dcd6', '#a9b8ad', '#7c9086', '#566a64'),
+                    ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866', '#ffe066'),
+                    # Warm grays: sage read as the homes' sea green
+                    # (5 Maxwells Grn looked non-residential).
+                    other_cmap=('#dedbd6', '#b9b5ae', '#928d85', '#6b665f'),
                 ),
             },
             no_value_rgba=(236, 234, 229, 255),
@@ -1660,6 +1774,7 @@ def build_web_scene(
     bounds = {}
     manifest_layers = []
     notices = {}
+    gdfs = {}
     for layer in layers:
         if region is None:
             from openplaces.io.readers import get_entities
@@ -1676,7 +1791,13 @@ def build_web_scene(
                 members = set(_region_members(layer.recipe, name))
                 wanted = [a for a in admin_ids if a in members]
                 if wanted:
-                    parts.append(read_bundle(layer.recipe, name, wanted))
+                    part = read_bundle(layer.recipe, name, wanted)
+                    if layer.recorded_column and layer.recorded_column not in part:
+                        extra = read_evidence_columns(
+                            layer.recipe, name, [layer.recorded_column]
+                        )
+                        part = part.join(extra, how='left')
+                    parts.append(part)
             if not parts:
                 raise ValueError(f'No unit of {admin_ids} is in {regions}.')
             gdf = pd.concat(parts)
@@ -1688,7 +1809,11 @@ def build_web_scene(
             gdf = crop_to_area(gdf, crop)
             if verbose:
                 print(f'{layer.name}: {len(gdf):,} features inside the crop')
-        gdf = merge_identical_outlines(gdf, layer)
+        gdfs[layer.name] = merge_identical_outlines(gdf, layer)
+    _count_dwellings_from_above(gdfs, layers)
+
+    for layer in layers:
+        gdf = gdfs[layer.name]
         stack_on = rendered[layer.stack_on] if layer.stack_on else None
         terrain = show_value_terrain_layer(
             gdf,
@@ -1731,10 +1856,32 @@ def build_web_scene(
             has = (dwellings > 0) & (raw_value > 0)
             per_dwelling = np.full(len(raw_value), np.nan)
             per_dwelling[has] = raw_value[has] / dwellings[has]
-            occupancy = out['occupancy_type'].astype('string')
-            residential = occupancy.isin(RESIDENTIAL_OCCUPANCY).to_numpy()
-            accessory = occupancy.isin(ACCESSORY_OCCUPANCY).to_numpy()
-            other = ~residential & ~accessory & occupancy.notna().to_numpy()
+            if 'occupancy_type' in out.columns:
+                occupancy = out['occupancy_type'].astype('string')
+                residential = occupancy.isin(RESIDENTIAL_OCCUPANCY).to_numpy()
+                known = occupancy.notna().to_numpy()
+            else:
+                # Lots: residential only where two sources agree, the
+                # roll's land use and dwellings (its own count, or homes
+                # standing on it). A park, river bank or public campus
+                # holding a stray residential outline stays
+                # non-residential (maintainer, 2026-10-16: the
+                # Esplanade, the Fens).
+                land_use = (
+                    out['land_use_class'].astype('string')
+                    if 'land_use_class' in out.columns
+                    else pd.Series(pd.NA, index=out.index, dtype='string')
+                )
+                residential = (dwellings > 0) & land_use.isin(
+                    RESIDENTIAL_LAND_USE
+                ).to_numpy()
+                known = np.ones(len(out), dtype=bool)
+            # Everything that is not a home and carries a value, accessory
+            # types included: campus buildings classed "Secondary" on a
+            # one-lot university carry $3M-$146M each (Harvard Yard,
+            # seen 2026-10-16) and drew as "no value" when every
+            # accessory type did.
+            other = ~residential & known & (raw_value > 0)
             # Homes per dwelling only; everything else drawn otherwise.
             per_dwelling[~residential] = np.nan
             out[f'{layer.value_column}_per_dwelling'] = per_dwelling
@@ -1758,7 +1905,7 @@ def build_web_scene(
                 'vmax': high,
                 # Non-residential buildings, per area, own ramp.
                 'other': {
-                    'label': 'Non-residential building value',
+                    'label': f'Non-residential {layer.label.lower()}',
                     'unit': layer.area_unit,
                     'vmin': other_low,
                     'vmax': other_high,
@@ -1773,6 +1920,20 @@ def build_web_scene(
             else np.zeros(len(out), dtype=bool)
         )
         extra['estimated'] = estimated.astype(np.uint8)
+        if layer.recorded_column and layer.recorded_column in out.columns:
+            # Per area as the source recorded it, where the shown value
+            # was estimated; the same area as the shown value's ratio.
+            recorded = out[layer.recorded_column].to_numpy(dtype=float)
+            shown_per_area = out[
+                f'{layer.value_column}_per_{layer.area_unit}'
+            ].to_numpy(dtype=float)
+            area = np.where(raw_value > 0, raw_value / shown_per_area, np.nan)
+            extra['value_assessed'] = np.where(
+                estimated & (recorded > 0) & (area > 0), recorded / area, np.nan
+            )
+            # A feature with a recorded value is not an estimate there.
+            estimated = estimated & ~(recorded > 0)
+            extra['estimated'] = estimated.astype(np.uint8)
         estimated_by_layer[layer.name] = estimated
         if layer.stack_on and estimated_by_layer.get(layer.stack_on) is not None:
             # Whether the feature below (whose extrusion lifts this one)
@@ -1906,6 +2067,12 @@ def build_web_scene(
         'landmarks': marks,
         'deck_gl_url': DECK_GL_URL,
         'palettes': [palette_manifest(p, layers, bounds) for p in palettes],
+        # Shown first unless the visitor chose another before.
+        'default_palette': (
+            DEFAULT_PALETTE
+            if any(p.id == DEFAULT_PALETTE for p in palettes)
+            else palettes[0].id
+        ),
         'tour': foci,
         'terrain': {
             'elevation_recipe': elevation_recipe,
