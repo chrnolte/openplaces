@@ -264,3 +264,23 @@ def test_top_level_edge_from_a_fabricated_recipe():
     recipe['reference_footprint_recipe_id'] = 'US-XX_footprint-fabricated-2026'
     upstream = _upstream_ids(get_recipe_dependencies(recipe))
     assert 'US-XX_footprint-fabricated-2026' in upstream
+
+
+def test_scan_keeps_the_newest_vintage_and_every_transaction_window():
+    # Mirrors spine._expand_auto_discover: one parcel recipe per
+    # (admin, source, suffix), every transaction version.
+    from openplaces.recipe.dependencies import _scan_ingest_recipe_ids
+
+    parcels = {s['recipe_id'] for s in _scan_ingest_recipe_ids('parcel')}
+    assert 'US-FL_parcel-floridagio-2026' in parcels
+    assert 'US-FL_parcel-floridagio-2025' not in parcels
+    assert 'US-VA_parcel-vgin-2025' not in parcels
+    assert {
+        'US-PA-DA_parcel-dauphinco-2026',
+        'US-PA-DA_parcel-dauphinco-2026_characteristics',
+    } <= parcels
+    sales = {s['recipe_id'] for s in _scan_ingest_recipe_ids('transaction')}
+    assert {
+        'US-WI_transaction-widor-2020',
+        'US-WI_transaction-widor-2026',
+    } <= sales

@@ -9,8 +9,12 @@
 # 1:1-vs-1:n distinction (contrast with the genuinely 1:n Tax Roll Table,
 # US-PA-DA_property-dauphinco-2026).
 #
-# Distinguished from the primary geometry recipe by version (`2026pc`), not
-# `source_id` -- both are the same Dauphin County source. Deliberately has no
+# Distinguished from the primary geometry recipe by its filename suffix
+# (`_characteristics`), not `source_id` -- both are the same Dauphin
+# County source. Until 2026-10-17 it was told apart by version
+# (`2026pc`), which auto-discovery reads as a newer vintage of the same
+# table: keeping the newest vintage only would have dropped the
+# geometry recipe in its favor. Deliberately has no
 # `exclude_from_auto_discover`: this non-spatial recipe is swept into
 # resolve_spine's auto_discover geometry-source expansion too, but the
 # resulting `get_entities(..., geom=True)` failure is caught there and only
@@ -37,7 +41,7 @@ entity:
     source_id: dauphinco
     portal_url: "https://data-dauphinco.opendata.arcgis.com/datasets/dauphinco::parcel-characteristics"
     download_url: "https://data-dauphinco.opendata.arcgis.com/api/download/v1/items/0596c7d380da423a92e23e7f304c9387/csv?layers=0"
-  version: "2026pc"
+  version: "2026"
 
 # Direct CSV download (not zipped): no compressed_file_name needed, but
 # uncompressed_file_name must still be set so the ingester can locate the
@@ -133,3 +137,4 @@ parcel_id_local:
 
 save_to:
   data_dir: core
+  filename: characteristics
