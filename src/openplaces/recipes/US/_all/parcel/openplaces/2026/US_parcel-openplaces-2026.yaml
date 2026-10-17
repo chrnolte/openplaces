@@ -782,3 +782,7 @@ share:
       # reads its counties out of these, as the footprint recipe ships.
       - western-nc
       - cheer-eastern-nc
+      # Houston, the viewer's first Texas place (2026-10-17). Harris
+      # alone rather than cheer-coastal-tx, which the footprint recipe
+      # ships, so this recipe still reads each county from one region.
+      - harris-tx

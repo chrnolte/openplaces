@@ -456,7 +456,9 @@ The step sub-modules:
   join), `sidecars.py` (fingerprints and sidecar files), `by_id.py`
   (`link_by_id`), `discovery.py` (auto-discovered sources and remap
   sidecars), `combine.py` (prioritized writes onto the spine),
-  `address_ranges.py`, `additions.py` (`infer_spine_additions`),
+  `roll_values.py` (an assessment roll's values, tax year and label kept
+  together; prior-year fill; a coarser source's values emptied where a
+  covering roll omits the account), `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones
   included, and is a plain package: a test patches the submodule a step
