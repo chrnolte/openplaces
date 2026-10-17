@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Land and building values</title>
+<title>Land &amp; structure value</title>
 <style>
   :root {
     --bg: #05070d;
@@ -22,7 +22,9 @@
     color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  #scene { position: fixed; inset: 0; }
+  /* All touch gestures go to the page's own handlers (no browser
+     scroll or zoom on the scene). */
+  #scene { position: fixed; inset: 0; touch-action: none; }
   .panel {
     box-sizing: border-box;
     position: fixed;
@@ -38,6 +40,24 @@
   #title-panel > :not(#home-link) { grid-column: 2; }
   #place-panel { top: 16px; right: 16px; padding: 8px 12px; max-width: calc(50vw - 24px); }
   #place-panel[hidden] { display: none; }
+  /* The compass sits under the places menu, top right. */
+  #compass {
+    top: 64px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font: inherit;
+  }
+  #compass .needle { grid-area: 1 / 1; font-size: 13px; color: #ff6b6b; line-height: 1; transition: transform 0.1s linear; transform-origin: 50% 70%; }
+  #compass .n { grid-area: 1 / 1; font-size: 9px; font-weight: 700; margin-top: 16px; color: var(--muted); }
+  #place-panel[hidden] ~ #compass { top: 16px; }
   /* The display controls open above the bottom bar, at the right. */
   #legend-panel {
     right: 16px;
@@ -68,7 +88,7 @@
   #legend-box[open] summary { margin-bottom: 6px; }
   #legend-box summary #palette-switch { margin: 0; gap: 4px; }
   #legend-box summary #palette-switch button { padding: 1px 7px; font-weight: 400; }
-  .footnote { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+  .footnote { color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
   .legend-none { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
   .legend-none span { width: 14px; height: 10px; border-radius: 2px; border: 1px solid rgba(128, 128, 128, 0.5); }
   #home-link {
@@ -124,7 +144,7 @@
   }
   /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
-  #controls-chip {
+  #controls-chip, #share-chip {
     position: static;
     flex: none;
     font: inherit;
@@ -221,7 +241,7 @@
     #legend-box .legend { margin-bottom: 4px; }
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
     #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
-    #controls-chip { padding: 6px 10px; }
+    #controls-chip, #share-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #title-panel h1 { font-size: 14px; }
     #place-panel { padding: 6px 10px; }
@@ -232,7 +252,7 @@
 <body>
 <div id="scene"></div>
 <div id="title-panel" class="panel">
-  <h1 id="title">Land and building values</h1>
+  <h1 id="title">Land &amp; structure value</h1>
   <div id="status">Loading...</div>
 </div>
 <!-- Top right: the menu of places (viewer.js buildPlaceNav). -->

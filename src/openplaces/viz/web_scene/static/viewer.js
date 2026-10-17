@@ -634,14 +634,10 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
         query.set('bearing', viewport.bearing.toFixed(1));
       }
     }
-    // Ghosts are off by default, so they travel as `show`, the rest
-    // (on by default) as `hide`.
-    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
+    // Everything is on by default; what is off travels as `hide`.
+    const hidden = Object.keys(shown).filter((name) => !shown[name]);
     if (hidden.length) {
       query.set('hide', hidden.join(','));
-    }
-    if (shown.ghosts) {
-      query.set('show', 'ghosts');
     }
     const text = query.toString();
     return `../${slug}/${text ? `?${text}` : ''}`;
@@ -761,22 +757,21 @@ async function main() {
   const shown = Object.fromEntries(
     scene.layers.map((l) => [l.name, !hiddenAtStart.includes(l.name)])
   );
-  // A scene built on terrain gets a third switch, `terrain`, which
-  // lays everything flat at sea level; it rides along in `shown` (and
-  // in `?hide=`) like a layer.
+  // Terrain is always on: no switch (maintainer, 2026-10-16); the
+  // address can still lay a scene flat (`?hide=terrain`).
   const hasTerrain = Boolean(scene.terrain && scene.terrain.terrain_exaggeration);
   const switches = scene.layers.map((l) => [l.name, LAYER_SWITCH_LABELS[l.name] || l.label]);
   if (hasTerrain) {
     shown.terrain = !hiddenAtStart.includes('terrain');
-    switches.push(['terrain', 'Terrain']);
   }
   // Outlines curate flags as drawn too tall for what is mapped there
   // (`ghost`): see-through at full height, behind a switch of their
-  // own, "Ghosts*", off unless the address asks (`?show=ghosts`), with
-  // a footnote under the switches (maintainer, 2026-10-16).
+  // own, "Ghosts*", on unless the address hides them, with its
+  // footnote under the switches in the same panel (maintainer,
+  // 2026-10-16).
   const hasGhosts = scene.layers.some((l) => l.n_ghosts > 0);
   if (hasGhosts) {
-    shown.ghosts = (params.get('show') || '').split(',').includes('ghosts');
+    shown.ghosts = !hiddenAtStart.includes('ghosts');
     switches.push(['ghosts', 'Ghosts*']);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
@@ -800,8 +795,8 @@ async function main() {
     const note = document.createElement('p');
     note.className = 'footnote';
     note.textContent = '* Unexplained high building value per area';
-    // With the legend, under its bars.
-    legends.after(note);
+    // In the controls panel, right under the switch it explains.
+    layerSwitch.after(note);
   }
   const markLayerSwitch = () => {
     for (const button of layerSwitch.children) {
@@ -816,9 +811,9 @@ async function main() {
   // the value per area or per dwelling (where a layer offers it), and
   // the values as the assessor recorded them or with openplaces' own
   // fills (`estimated`), which "Assessment" draws as no value.
-  // Per dwelling, with estimates, by default (maintainer, 2026-10-16),
-  // where a layer offers it.
-  let valueView = params.get('view') === 'area' ? 'area' : 'dwelling';
+  // Per footprint area, imputed, by default (maintainer, 2026-10-17);
+  // per dwelling where the address asks (`?view=dwelling`).
+  let valueView = params.get('view') === 'dwelling' ? 'dwelling' : 'area';
   let withEstimates = params.get('values') !== 'assessed';
   const hasDwellingView = scene.layers.some((l) => l.views && l.views.dwelling);
   // Two rows: per area or per dwelling, then with estimates or the
@@ -829,18 +824,20 @@ async function main() {
   valuesSwitch.id = 'values-switch';
   const choices = [];
   if (hasDwellingView) {
-    // "Value:" per dwelling first, then per footprint area.
+    // "Value:" per footprint area first, then per dwelling.
     const label = document.createElement('span');
     label.className = 'switch-label';
     label.textContent = 'Value:';
     viewSwitch.appendChild(label);
     choices.push(
-      ['view', 'dwelling', 'Per dwelling'],
       ['view', 'area', 'Per footprint area'],
+      ['view', 'dwelling', 'Per dwelling'],
     );
   }
   if (scene.layers.some((l) => l.n_estimated > 0)) {
-    choices.push(['values', 'estimates', 'With estimates'], ['values', 'assessed', 'Assessment']);
+    // "Imputed": the assessment with openplaces' fills (maintainer,
+    // 2026-10-16); a third, "Our estimates", is planned.
+    choices.push(['values', 'estimates', 'Imputed'], ['values', 'assessed', 'Assessment']);
   }
   let setChoice = () => {};
   for (const [group, id, label] of choices) {
@@ -958,9 +955,13 @@ async function main() {
     params.get('tour') !== '0' &&
     !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // A view passed on from another place (zoom, pitch, bearing), set at
-  // this place's first tour stop, its main center.
+  // this place's first tour stop, its main center; a shared link also
+  // carries the center (`lon`, `lat`, the share button).
   const passed = ['zoom', 'pitch', 'bearing'].every((k) => params.has(k));
-  const center = scene.tour && scene.tour.length ? scene.tour[0] : scene.view;
+  const shared = params.has('lon') && params.has('lat');
+  const center = shared
+    ? {longitude: Number(params.get('lon')), latitude: Number(params.get('lat'))}
+    : scene.tour && scene.tour.length ? scene.tour[0] : scene.view;
   const startView = passed
     ? {
       longitude: center.longitude,
@@ -976,6 +977,7 @@ async function main() {
   let pin = null;
   let togglePin = () => {};
   let placePin = () => {};
+  let turnCompass = () => {};
   // One sun fixed in the world, from the southwest, plus even ambient
   // light: every building has one bright side (facing the sun), the
   // opposite side darkest, and the two between at mid shade. Two lights
@@ -1023,7 +1025,10 @@ async function main() {
     },
     // Deferred: both are set once the layers they read exist.
     onClick: (picked) => togglePin(picked),
-    onAfterRender: () => placePin(),
+    onAfterRender: () => {
+      placePin();
+      turnCompass();
+    },
   });
 
   // A clicked feature's tooltip stays, attached to the point clicked,
@@ -1133,6 +1138,182 @@ async function main() {
   }
   buildPlaceNav(places, deckgl, () => touring, shown);
 
+  // Tilt with two fingers moving up or down together (maintainer,
+  // 2026-10-17). deck.gl has the gesture, but its pinch claims nearly
+  // every two-finger drag, so the tilt rarely starts on a phone. Here
+  // a two-finger drag is taken as a tilt once both fingers have moved
+  // the same way vertically while their spread stayed about the same;
+  // from then on its moves go to the tilt and not to deck.gl. Any
+  // other two-finger gesture (pinch, twist) is left to deck.gl.
+  const touches = new Map();
+  let tilt = null;
+  const sceneElement = document.getElementById('scene');
+  const spread = () => {
+    const [a, b] = [...touches.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  sceneElement.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') {
+      return;
+    }
+    touches.set(event.pointerId, {x: event.clientX, y: event.clientY, x0: event.clientX, y0: event.clientY});
+    tilt = null;
+    if (touches.size === 2) {
+      tilt = {decided: false, spread0: spread(), pitch0: deckgl.getViewports()[0].pitch};
+      for (const t of touches.values()) {
+        t.x0 = t.x;
+        t.y0 = t.y;
+      }
+    }
+  }, true);
+  sceneElement.addEventListener('pointermove', (event) => {
+    const t = touches.get(event.pointerId);
+    if (!t) {
+      return;
+    }
+    t.x = event.clientX;
+    t.y = event.clientY;
+    if (!tilt || touches.size !== 2) {
+      return;
+    }
+    const [a, b] = [...touches.values()];
+    const dyA = a.y - a.y0;
+    const dyB = b.y - b.y0;
+    if (!tilt.decided) {
+      const change = Math.abs(spread() - tilt.spread0);
+      const vertical = Math.abs(dyA) > 10 && Math.abs(dyB) > 10 && Math.sign(dyA) === Math.sign(dyB);
+      if (vertical && change < 0.5 * Math.min(Math.abs(dyA), Math.abs(dyB))) {
+        tilt.decided = 'tilt';
+        if (touring) {
+          tourControl.stop();
+          touring = false;
+        }
+      } else if (change > 20) {
+        tilt.decided = 'other';
+      }
+    }
+    if (tilt.decided === 'tilt') {
+      event.stopPropagation();
+      event.preventDefault();
+      const v = deckgl.getViewports()[0];
+      const pitch = Math.max(0, Math.min(85, tilt.pitch0 - ((dyA + dyB) / 2) * 0.35));
+      deckgl.setProps({
+        initialViewState: {
+          longitude: v.longitude,
+          latitude: v.latitude,
+          zoom: v.zoom,
+          bearing: v.bearing,
+          pitch,
+          maxPitch: 85,
+        },
+      });
+    }
+  }, {capture: true, passive: false});
+  const release = (event) => {
+    touches.delete(event.pointerId);
+    if (touches.size < 2) {
+      tilt = null;
+    }
+  };
+  sceneElement.addEventListener('pointerup', release, true);
+  sceneElement.addEventListener('pointercancel', release, true);
+
+  // Share: a link to this page with the camera and the display choices
+  // in its address. It names only a viewpoint and settings; no feature,
+  // key or record (design limit L3).
+  const shareButton = document.createElement('button');
+  shareButton.type = 'button';
+  shareButton.id = 'share-chip';
+  shareButton.className = 'panel';
+  shareButton.dataset.share = 'link';
+  shareButton.textContent = 'Share';
+  shareButton.setAttribute('aria-label', 'Share a link to this view');
+  bar.insertBefore(shareButton, document.getElementById('about-panel'));
+
+  // Compass: its needle points north as the view turns; a click turns
+  // the view back to north up (the tilt stays).
+  const compass = document.createElement('button');
+  compass.type = 'button';
+  compass.id = 'compass';
+  compass.className = 'panel';
+  compass.dataset.compass = 'north';
+  compass.title = 'Turn north up';
+  compass.setAttribute('aria-label', 'Turn north up');
+  compass.innerHTML = '<span class="needle">▲</span><span class="n">N</span>';
+  document.getElementById('place-panel').after(compass);
+  const needle = compass.querySelector('.needle');
+  let lastBearing = null;
+  turnCompass = () => {
+    let viewport = null;
+    try {
+      viewport = deckgl.getViewports()[0];
+    } catch (error) {
+      return;
+    }
+    if (!viewport || viewport.bearing === lastBearing) {
+      return;
+    }
+    lastBearing = viewport.bearing;
+    needle.style.transform = `rotate(${-viewport.bearing}deg)`;
+  };
+  compass.addEventListener('click', () => {
+    if (touring) {
+      tourControl.stop();
+      touring = false;
+    }
+    const v = deckgl.getViewports()[0];
+    deckgl.setProps({
+      initialViewState: {
+        longitude: v.longitude,
+        latitude: v.latitude,
+        zoom: v.zoom,
+        pitch: v.pitch,
+        bearing: 0,
+        maxPitch: 85,
+        transitionDuration: 600,
+        transitionInterpolator: new deck.LinearInterpolator(['bearing']),
+      },
+    });
+  });
+  const shareLink = () => {
+    const v = deckgl.getViewports()[0];
+    const query = new URLSearchParams({
+      tour: '0',
+      lon: v.longitude.toFixed(5),
+      lat: v.latitude.toFixed(5),
+      zoom: v.zoom.toFixed(2),
+      pitch: v.pitch.toFixed(1),
+      bearing: v.bearing.toFixed(1),
+      palette: palette.id,
+      view: valueView,
+      values: withEstimates ? 'imputed' : 'assessed',
+    });
+    const hidden = Object.keys(shown).filter((name) => !shown[name]);
+    if (hidden.length) {
+      query.set('hide', hidden.join(','));
+    }
+    return `${location.origin}${location.pathname}?${query}`;
+  };
+  shareButton.addEventListener('click', async () => {
+    const url = shareLink();
+    try {
+      if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+        await navigator.share({title: document.title, url});
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      shareButton.textContent = 'Link copied';
+    } catch (error) {
+      // Clipboard refused (an insecure page, a denied permission):
+      // show the link so it can be copied by hand.
+      window.prompt('Copy this link:', url);
+      return;
+    }
+    setTimeout(() => {
+      shareButton.textContent = 'Share';
+    }, 2000);
+  });
+
   // Borders lie on the ground (their `z`, the height of the nearest
   // parcel vertex, `border_paths`), a meter up so they do not sink into
   // it, and are hidden by whatever stands in front of them. With the
@@ -1227,7 +1408,10 @@ async function main() {
     // together into thick, dotted lines where lots stand tall
     // (maintainer, 2026-10-16). Value-colored edges (Neon) keep the
     // wireframe: there the struts are the look.
-    const topEdges = spec.line && !lineColors
+    // Lots (the bottom layer) take top-edge lines whether the line is
+    // one color (Pastel) or follows each lot's value (Earth, Neon).
+    const lotLines = entry.spec.name === bottom && lineColors;
+    const topEdges = (spec.line && !lineColors) || lotLines
       ? new PathLayer({
         id: `${entry.id}-edges`,
         data: topOutlines(entry),
@@ -1235,12 +1419,17 @@ async function main() {
         coordinateOrigin: entry.origin,
         positionFormat: 'XYZ',
         _pathType: 'loop',
-        getColor: spec.line,
+        getColor: lotLines
+          ? (_, {index}) => {
+            const f = entry.objectFeature[index];
+            return lineColors.subarray(4 * f, 4 * f + 4);
+          }
+          : spec.line,
         getWidth: 1,
         widthUnits: 'pixels',
         visible: shown[entry.spec.name],
         pickable: false,
-        updateTriggers: {getColor: palette.id},
+        updateTriggers: {getColor: [palette.id, valueView, withEstimates]},
       })
       : null;
     const outline = topEdges || (lineColors

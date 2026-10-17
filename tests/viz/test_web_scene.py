@@ -109,14 +109,18 @@ def test_page_has_no_input_control_and_no_background_map():
     # The pinned tooltip's close button is the third; the fourth picks
     # the coloring (per area or per dwelling, with or without
     # openplaces' estimates), which recolors every feature and hides
-    # none. The fifth and sixth fold the controls away and back.
-    assert len(re.findall(r"createElement\('button'\)", script)) == 6
+    # none. The fifth and sixth fold the controls away and back; the
+    # seventh shares a link to the view (camera and settings only); the
+    # eighth turns the view north up.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 8
     for kind in (
         'dataset.palette',
         'dataset.layer',
         'dataset.close',
         'dataset.choice',
         'dataset.fold',
+        'dataset.share',
+        'dataset.compass',
     ):
         assert kind in script
     # Only the scene's own layers; nothing that draws a background map.
@@ -254,6 +258,29 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     assert aaa['value_dwelling'][0] == pytest.approx(50_000.0 / 3)
     assert np.isnan(parcel_arrays['value_dwelling'][0])
     assert manifest['layers'][0]['n_estimated'] == 1
+
+
+def test_large_unclassed_lot_with_one_counted_home_is_not_residential(tmp_path):
+    # Land use says Multi-Family, one outline counted as a home, but
+    # neither the roll's own count nor its use group confirms it.
+    lots = gpd.GeoDataFrame(
+        {
+            'land_use_class': ['Multi-Family', 'Multi-Family'],
+            'use_group': [None, 'residential'],
+            'n_dwellings': [np.nan, np.nan],
+        },
+        geometry=[box(0, 0, 1000, 1000), box(2000, 0, 2020, 20)],
+        crs='EPSG:26986',
+    )
+    homes = gpd.GeoDataFrame(
+        {'occupancy_type': ['Multi-Family', 'Multi-Family'], 'n_dwellings': [1.0, 3.0]},
+        geometry=[box(500, 500, 510, 510), box(2005, 5, 2015, 15)],
+        crs='EPSG:26986',
+    )
+    frames = {'parcels': lots, 'buildings': homes}
+    web_scene._count_dwellings_from_above(frames, web_scene.VALUE_SCENE_LAYERS)
+    assert list(frames['parcels']['n_dwellings']) == [1.0, 3.0]
+    assert frames['parcels'][web_scene.ROLL_DWELLINGS].isna().all()
 
 
 def test_public_land_with_a_stray_home_is_not_residential():

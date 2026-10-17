@@ -82,7 +82,7 @@ DECK_GL_URL = 'https://cdn.jsdelivr.net/npm/deck.gl@9.1.14/dist.min.js'
 TOOLTIP_KINDS = ('text', 'money', 'money_per_area', 'year', 'count')
 # The page's heading and the smaller line under it (maintainer,
 # 2026-10-16).
-DEFAULT_TITLE = 'Land and building values'
+DEFAULT_TITLE = 'Land & structure value'
 # The palette a first visit shows (maintainer, 2026-10-16: Pastel).
 DEFAULT_PALETTE = 'pastel'
 DEFAULT_SUBTITLE = 'as seen by the tax assessor'
@@ -229,6 +229,9 @@ RESIDENTIAL_LAND_USE = frozenset(
         'Manufactured Home',
     }
 )
+# Lots' dwelling count as the roll states it, beside the count taken
+# from the homes standing on the lot (`_count_dwellings_from_above`).
+ROLL_DWELLINGS = 'n_dwellings_roll'
 # A curated column flagging outlines drawn abnormally tall for what is
 # mapped there (the sliver-value-allocation work decides which; the
 # maintainer's rule of 2026-10-16). The page keeps their height, so
@@ -726,6 +729,9 @@ def _count_dwellings_from_above(gdfs: dict, layers) -> None:
             if 'n_dwellings' in below.columns
             else pd.Series(np.nan, index=below.index)
         )
+        # The roll's own count, kept apart: it confirms a home where a
+        # count from outlines alone does not (`ROLL_DWELLINGS`).
+        below[ROLL_DWELLINGS] = own.where(own > 0)
         below['n_dwellings'] = own.where(own > 0, counted.where(counted > 0))
 
 
@@ -1138,6 +1144,19 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                     ),
                     # Lots without homes, per dwelling view: grays.
                     other_cmap=('#3d4148', '#6a6f78', '#9aa0a8', '#cdd1d6'),
+                    # Thin lot lines, each a little darker than its own
+                    # lot (maintainer, 2026-10-16): the ramp's stops at
+                    # 82% of their brightness.
+                    line_cmap=(
+                        '#345a73',
+                        '#4e7e75',
+                        '#749771',
+                        '#b2ad83',
+                        '#be8966',
+                        '#aa5746',
+                        '#8a3834',
+                    ),
+                    line_alpha=0.9,
                 ),
                 # Non-residential buildings in the per-dwelling view:
                 # slate blue to ice, a hue neither the amber buildings
@@ -1872,9 +1891,35 @@ def build_web_scene(
                     if 'land_use_class' in out.columns
                     else pd.Series(pd.NA, index=out.index, dtype='string')
                 )
-                residential = (dwellings > 0) & land_use.isin(
-                    RESIDENTIAL_LAND_USE
-                ).to_numpy()
+                # A third check: the roll states dwellings itself, or
+                # its use group is residential or mixed. A land use of
+                # "Multi-Family" on an exempt or unclassed lot with one
+                # outline counted as a home is not enough (125 Arborway,
+                # the Arnold Arboretum: 157 acres, one counted dwelling;
+                # maintainer, 2026-10-16). Public housing keeps its
+                # roll's own count; a homeowners' association's common
+                # land fails the use-group test.
+                roll_count = (
+                    out[ROLL_DWELLINGS].to_numpy(dtype=float)
+                    if ROLL_DWELLINGS in out.columns
+                    else np.full(len(out), np.nan)
+                )
+                use = (
+                    out['use_group'].astype('string').str.strip().str.lower()
+                    if 'use_group' in out.columns
+                    else pd.Series(pd.NA, index=out.index, dtype='string')
+                )
+                use_says_home = (
+                    (use.str.startswith('res') | use.str.contains('mixed'))
+                    .fillna(False)
+                    .to_numpy()
+                )
+                confirmed = (roll_count > 0) | use_says_home
+                residential = (
+                    (dwellings > 0)
+                    & land_use.isin(RESIDENTIAL_LAND_USE).to_numpy()
+                    & confirmed
+                )
                 known = np.ones(len(out), dtype=bool)
             # Everything that is not a home and carries a value, accessory
             # types included: campus buildings classed "Secondary" on a
