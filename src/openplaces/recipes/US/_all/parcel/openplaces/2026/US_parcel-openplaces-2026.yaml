@@ -215,6 +215,20 @@ pipeline:
     column: parcel_id_assessor
     values: [WATER, ROW]
 
+  # A parcel polygon under 1 m2 (core.constants.GEO_MIN_AREA_M2) is a
+  # sliver from the source's geometry, not a lot. Its value per area is
+  # meaningless and, measured 2026-10-17 on US-NC-BUN: one 0.012 m2
+  # polygon carries a $77,100 land value, about $26B per acre. Measured
+  # 2026-10-17 on US: 1,691 NC, 2,848 TX and 21 MA curated parcels fall
+  # below 1 m2 (median 0.1 m2). Every curated parcel has an area_ha, so
+  # the step drops only slivers. Design limits checked: L20 (one step
+  # closer, approved by the maintainer 2026-10-17; centroids are not
+  # moved and nothing is served for search, so two elements stay
+  # absent).
+  - step: filter_numeric_at_least
+    column: area_ha
+    min: 0.0001
+
   # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
     group_column: use_group_combined
