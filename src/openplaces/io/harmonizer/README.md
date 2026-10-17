@@ -439,6 +439,37 @@ condo-tower merges, NSI points with no outline as rows) is where a building
 stops being one footprint; the re-keying and the projection both refuse rows
 that share a source id, so that slice has to decide the fan-out explicitly.
 
+<!-- The next two paragraphs moved verbatim from AGENTS.md on
+2026-10-17; AGENTS.md keeps the build-order trap. -->
+
+**Build order, and why it is fixed.** A source that holds parcels and
+properties together is separated at ingest (an `additional_layers` entry
+writes its own property table), so by harmonize every property table exists
+independently of any parcel spine. Per admin unit the order is: every
+ingest; `US_property-spine-2026`; the footprint geospine; the building
+geospine (one building per outline) and the building spine, which runs
+the evidence, address and permit steps against the footprint geospine's
+links re-keyed to building ids; the footprint spine, a projection of the
+building spine onto the outlines (`adopt_entity_attributes`, so its
+consumers read unchanged values until they read the building spine); the
+parcel geospine, which reads the ingest-level property tables for
+parcel-level values and the property spine for a count; the parcel spine;
+enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
+from the recipes and a test pins it
+(`test_property_parcel_link_is_written_after_both_of_its_sides`); a script
+that calls stages by hand has to follow it, and **a parcel geospine built
+before one of its county's rolls was ingested silently lacks that roll's
+values until it is rerun**.
+
+The parcel geospine's
+`link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
+copies an explicit list of parcel-level columns (values, use codes,
+`building_style`, `n_dwellings`, address) and nothing else since
+2026-09-12; property-level attributes reach curated parcels through
+`aggregate_from_entities` (curate, `aggregation.py`). A county whose
+geospine predates that still carries the old wider copy until its next
+geometry rerun, which is why the curate step fills only what is empty.
+
 The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
   and assign each row's containing polygon id from a space-partitioning
