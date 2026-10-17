@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from shapely.strtree import STRtree
 
+from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
 from openplaces.core.schema import admin_scope_covers
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
@@ -29,7 +30,7 @@ from openplaces.io.harmonizer import (
 from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
-from openplaces.recipe import raise_if_coverage_complete
+from openplaces.recipe import raise_if_coverage_complete, version_sort_key
 
 
 def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
@@ -859,6 +860,11 @@ def _expand_auto_discover(
     recipe anywhere and would otherwise never resolve. These are appended
     after the standalone recipes, in their own (unordered) discovery order.
 
+    Of the standalone recipes, one per (admin id, source, filename suffix)
+    is kept, the newest version, except for the entity types in
+    `ALL_VERSIONS_ENTITY_TYPES`, whose versions are different records
+    rather than vintages of the same ones.
+
     A recipe declaring ``supplements: <recipe_id>`` is skipped. It details
     another recipe's entities (an improvement-detail table beside its
     appraisal roll, one row per building component) and reaches them
@@ -914,6 +920,19 @@ def _expand_auto_discover(
     )
 
     df = find_recipes(entity_type, stage='ingest')
+    # One recipe per (admin, source, filename suffix), the newest
+    # version: a recipe's version names a vintage of the same table
+    # (Florida's 2025 and 2026 parcel layers), and merging an older
+    # vintage as a further spine source would add the outlines of
+    # parcels since redrawn or retired. The dependency scan
+    # (recipe.dependencies._scan_ingest_recipe_ids) keeps the same one,
+    # so the DAG schedules exactly what is read here. A table that is
+    # not a vintage of another names itself with a filename suffix.
+    # Transactions are the exception: their versions are collection
+    # windows of different sales (Wisconsin's historical files and its
+    # current download), so every version is read.
+    newest_only = entity_type not in ALL_VERSIONS_ENTITY_TYPES
+    newest: dict[tuple[str, str, str], tuple] = {}
     ranked: list[tuple[int, str, dict]] = []
     for _, row in df.iterrows():
         if row['exclude_from_auto_discover']:
@@ -937,14 +956,26 @@ def _expand_auto_discover(
             child_id = row['recipe_id']
             if (child_id, None) not in existing_ids:
                 specificity = rid_str.count('-') + 1
-                ranked.append(
-                    (
-                        specificity,
-                        str(row['version']),
-                        {'recipe_id': child_id, 'label': row['source_id']},
-                    )
+                entry = (
+                    specificity,
+                    str(row['version']),
+                    {'recipe_id': child_id, 'label': row['source_id']},
                 )
                 existing_ids.add((child_id, None))
+                if not newest_only:
+                    ranked.append(entry)
+                    continue
+                key = (
+                    rid_str,
+                    str(row['source_id']),
+                    str(row.get('filename_suffix') or ''),
+                )
+                held = newest.get(key)
+                if held is None or version_sort_key(entry[1]) > version_sort_key(
+                    held[1]
+                ):
+                    newest[key] = entry
+    ranked.extend(newest.values())
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
     discovered: list[dict] = [entry for _specificity, _version, entry in ranked]
 

@@ -25,7 +25,7 @@ uncompressed_file_name: "DC_Parcels.shp"
 
 # Kept lean (geometry + identifiers only): the county's Tax Roll Table
 # (US-PA-DA_property-dauphinco-2026) and Parcel Characteristics
-# (US-PA-DA_parcel-dauphinco-2026pc) recipes are the authoritative sources
+# (US-PA-DA_parcel-dauphinco-2026_characteristics) recipes are the authoritative sources
 # for assessed values, owner, and use -- this layer duplicates most of that
 # on the same rows, but with truncated field names and no fresher update
 # cadence, so it isn't re-imported here.
@@ -50,7 +50,7 @@ transformations:
 # Standardized cross-comparable matching key derived from parcel_id_assessor
 # (auto per-county conversion). Needed for resolve_spine to expose
 # parcel_id_local on the spine, which is what lets the county's other two
-# recipes (parcel-dauphinco-2026pc, property-dauphinco-2026) auto-link onto
+# recipes (parcel-dauphinco-2026_characteristics, property-dauphinco-2026) auto-link onto
 # it as evidence during harmonize.
 parcel_id_local:
   source: parcel_id_assessor
