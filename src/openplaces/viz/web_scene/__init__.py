@@ -2149,7 +2149,9 @@ def build_web_scene(
                 'vmax': high,
                 # Non-residential buildings, per area, own ramp.
                 'other': {
-                    'label': f'Non-residential {layer.label.lower()}',
+                    # Short enough for one legend line with its unit.
+                    'label': 'Non-residential '
+                    + ('buildings' if layer.name == 'buildings' else 'land'),
                     'unit': layer.area_unit,
                     'vmin': other_low,
                     'vmax': other_high,

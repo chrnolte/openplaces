@@ -696,10 +696,13 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
         query.set('bearing', viewport.bearing.toFixed(1));
       }
     }
-    // Everything is on by default; what is off travels as `hide`.
-    const hidden = Object.keys(shown).filter((name) => !shown[name]);
+    // What is off travels as `hide`; ghosts, off by default, as `show`.
+    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
     if (hidden.length) {
       query.set('hide', hidden.join(','));
+    }
+    if (shown.ghosts) {
+      query.set('show', 'ghosts');
     }
     const text = query.toString();
     return `../${slug}/${text ? `?${text}` : ''}`;
@@ -828,7 +831,8 @@ async function main() {
   // 2026-10-16).
   const hasGhosts = scene.layers.some((l) => l.n_ghosts > 0);
   if (hasGhosts) {
-    shown.ghosts = !hiddenAtStart.includes('ghosts');
+    // Off by default (maintainer, 2026-10-17); `?show=ghosts` opens them.
+    shown.ghosts = (params.get('show') || '').split(',').includes('ghosts');
     switches.push(['ghosts', 'Ghosts*']);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
@@ -881,14 +885,12 @@ async function main() {
   valuesSwitch.id = 'values-switch';
   const choices = [];
   if (hasDwellingView) {
-    // "Value:" per footprint area first, then per dwelling.
-    const label = document.createElement('span');
-    label.className = 'switch-label';
-    label.textContent = 'Value:';
-    viewSwitch.appendChild(label);
+    // Per ground area first (the default), then per dwelling. "Ground"
+    // covers both a lot's area and a building's footprint, the two
+    // areas the bars divide by.
     choices.push(
-      ['view', 'area', 'Per footprint area'],
-      ['view', 'dwelling', 'Per dwelling'],
+      ['view', 'area', 'Value per ground area'],
+      ['view', 'dwelling', 'Value per dwelling'],
     );
   }
   if (scene.layers.some((l) => l.n_estimated > 0)) {
@@ -956,11 +958,19 @@ async function main() {
 
   const drawLegends = () => {
     legends.replaceChildren();
+    // Which values the bars show, once, instead of in every label
+    // ("(assessed)" pushed long labels onto two lines).
+    if (!withEstimates) {
+      const which = document.createElement('div');
+      which.className = 'legend-which';
+      which.textContent = 'Assessed values only';
+      legends.appendChild(which);
+    }
     for (const layer of scene.layers) {
       const spec = layerScale(layer, palette.layers[layer.name]);
       drawLegend(legends, {
         shown: shown[layer.name],
-        label: withEstimates ? layer.label : `${layer.label} (assessed)`,
+        label: layer.label,
         unit: spec.unit,
         vmin: spec.vmin,
         vmax: spec.vmax,
@@ -976,7 +986,7 @@ async function main() {
       if (view && view.other && ramp) {
         drawLegend(legends, {
           shown: shown[layer.name],
-          label: withEstimates ? view.other.label : `${view.other.label} (assessed)`,
+          label: view.other.label,
           unit: view.other.unit,
           vmin: view.other.vmin,
           vmax: view.other.vmax,
@@ -1345,7 +1355,10 @@ async function main() {
       view: valueView,
       values: withEstimates ? 'imputed' : 'assessed',
     });
-    const hidden = Object.keys(shown).filter((name) => !shown[name]);
+    if (shown.ghosts) {
+      query.set('show', 'ghosts');
+    }
+    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
     if (hidden.length) {
       query.set('hide', hidden.join(','));
     }
