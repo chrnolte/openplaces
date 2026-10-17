@@ -304,7 +304,8 @@ def test_the_notice_names_the_recipe_roots(terms):
     text = format_notice(RECIPE, terms)
     assert 'Recipes' in text
     assert 'openplaces' in text
-    assert str(BUNDLED_RECIPES_DIR) in text
+    # The folder is a path on the builder's machine; it never ships.
+    assert str(BUNDLED_RECIPES_DIR) not in text
 
 
 # How far a restricted source's data can reach.
