@@ -726,3 +726,41 @@ pipeline:
       - footprint_area_m2_dominant
       - footprint_area_m2_primary
       - land_use_vacancy_score
+
+
+share:
+  columns:
+    - admin3_id
+    - address
+    - census_tract_id
+    - census_blockgroup_id
+    - lat
+    - long
+    # Denominator of every per-area value; the web scene divides by
+    # the polygon's own area, this lets a reader reproduce it.
+    - area_ha
+    - use_group
+    - land_use_class
+    - year_built
+    # Assessed land value, and the same column with openplaces' street-
+    # wise estimate filling the gaps; its `_source` sidecar carries the
+    # `imputed` marker on every filled cell.
+    - land_value
+    - land_value_imputed
+    - improvement_value
+    - total_value
+    - n_dwellings
+  # Only the Boston pilot ships parcels so far (the static 3D value
+  # viewer, plans/static-3d-value-viewer-boston-pilot.md).
+  delivery:
+    admin_level: 2
+    regions:
+      - boston-inner-core
+      # The ring of towns around the viewer's core (2026-10-16).
+      - boston-outer-rings
+      # North Carolina places of the viewer's landing page
+      # (2026-10-16): Durham and Buncombe are in western-nc, New Hanover
+      # in cheer-eastern-nc. A county feeds one region only, so the page
+      # reads its counties out of these, as the footprint recipe ships.
+      - western-nc
+      - cheer-eastern-nc

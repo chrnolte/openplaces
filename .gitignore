@@ -20,6 +20,8 @@ __pycache__/
 
 # Environment / secrets
 *.env
+# Web-host deploy settings (viz.web_scene.load_deploy_settings)
+.env.deploy*
 .secrets/
 .token
 *.key

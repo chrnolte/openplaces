@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Land and building values</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --panel: rgba(8, 11, 20, 0.78);
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --accent: #ff4fd8;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    /* Night sky: a faint blue glow behind the city, falling to near
+       black at the edges, so the scene ends in depth, not flat gray. */
+    background: radial-gradient(ellipse 80% 70% at 50% 45%, #13213d 0%, #0a1222 45%, var(--bg) 100%);
+    background-color: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #scene { position: fixed; inset: 0; }
+  .panel {
+    box-sizing: border-box;
+    position: fixed;
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+  #title-panel { top: 16px; left: 16px; max-width: min(420px, calc(100vw - 32px)); }
+  #title-panel h1 { font-size: 18px; margin: 0; }
+  #subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  #status:empty { display: none; }
+  #legend-panel { bottom: 16px; left: 16px; width: min(360px, calc(100vw - 32px)); }
+  #title-panel { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; }
+  #title-panel > :not(#home-link) { grid-column: 2; }
+  #home-link {
+    grid-row: 1 / span 3;
+    align-self: start;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 22px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  #home-link:hover { color: #fff; }
+  /* The menu of other places: plain links (viewer.js buildPlaceNav). */
+  #place-menu { margin-top: 8px; font-size: 13px; }
+  #place-menu summary { cursor: pointer; font-weight: 600; }
+  #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  #place-menu a { color: var(--muted); text-decoration: none; }
+  #place-menu a:hover { color: var(--text); }
+  #layer-switch, #view-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #view-switch:empty, #values-switch:empty { display: none; }
+  #layer-switch button, #view-switch button, #values-switch button, #palette-switch button {
+    font: inherit;
+    font-size: 12px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    padding: 3px 10px;
+    cursor: pointer;
+  }
+  #layer-switch button::before { content: "\2610  "; }
+  #layer-switch button.active::before { content: "\2611  "; }
+  #layer-switch button.active, #view-switch button.active, #values-switch button.active, #palette-switch button.active {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .legend { margin-bottom: 10px; }
+  .legend:last-child { margin-bottom: 0; }
+  .legend-label { font-weight: 600; margin-bottom: 4px; }
+  .legend.hidden canvas, .legend.hidden .legend-ticks { opacity: 0.25; }
+  .legend.hidden .legend-label { color: var(--muted); }
+  .legend canvas { width: 100%; height: 12px; display: block; border-radius: 2px; }
+  .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
+  .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  #corner {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+  }
+  #about-panel {
+    position: static;
+    max-width: min(460px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+  /* Minimized controls: the panel hides, a chip waits beside Sources. */
+  .controls-min #legend-panel { display: none; }
+  #controls-chip {
+    position: static;
+    flex: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    border: 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #controls-chip[hidden] { display: none; }
+  #legend-minimize {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  #legend-minimize:hover { color: var(--text); }
+  #legend-panel { padding-top: 14px; }
+  #about-panel summary { cursor: pointer; font-weight: 600; }
+  #about-panel pre { white-space: pre-wrap; font-size: 11px; color: var(--muted); }
+  #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
+  .deck-tooltip { font-size: 13px !important; max-width: 320px; }
+  /* A clicked feature's tooltip, placed above its anchor by viewer.js. */
+  .pinned-tip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+    /* 56px above its anchor, joined to it by .pin-leader. */
+    translate: -50% calc(-100% - 56px);
+    background: rgba(8, 11, 20, 0.92);
+    color: var(--text);
+    padding: 10px 28px 10px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+    z-index: 2;
+  }
+  .pinned-tip[hidden] { display: none; }
+  /* A thin line from the pinned tooltip down to the point clicked, with
+     a dot on it; its foot is placed on the anchor by viewer.js. */
+  .pin-leader {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 56px;
+    translate: 0 -56px;
+    background: rgba(255, 255, 255, 0.75);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .pin-leader::after {
+    content: "";
+    position: absolute;
+    left: -3px;
+    bottom: -3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(8, 11, 20, 0.6);
+  }
+  .pin-leader[hidden] { display: none; }
+  /* On a light page (the Paper palette) the leader turns dark. */
+  .light-page .pin-leader { background: rgba(20, 24, 36, 0.8); }
+  .light-page .pin-leader::after { background: #141824; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7); }
+  .pin-close {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .deck-tooltip .estimated { color: #ffd166; }
+  @media (max-width: 640px) {
+    #corner { top: auto; bottom: 16px; left: 16px; right: 16px; align-items: flex-end; }
+    #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
+    #controls-chip { padding: 6px 10px; }
+    #title-panel h1 { font-size: 16px; }
+    #legend-panel { bottom: 64px; max-height: calc(100vh - 160px); overflow: auto; }
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="title-panel" class="panel">
+  <h1 id="title">Land and building values</h1>
+  <div id="subtitle">as seen by the tax assessor</div>
+  <div id="status">Loading...</div>
+</div>
+<div id="legend-panel" class="panel"></div>
+<!-- The corner holds "Sources" and, when the controls are minimized,
+     the chip that brings them back (viewer.js). -->
+<div id="corner">
+  <!-- Closed by default; MassGIS asks for credit wherever its data
+       are shown, and the sources' notices live here. -->
+  <details id="about-panel" class="panel">
+    <summary>Sources</summary>
+    <div id="notices"></div>
+  </details>
+</div>
+<script src="viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --card: rgba(255, 255, 255, 0.04);
+  }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(ellipse 80% 70% at 50% 30%, #13213d 0%, #0a1222 45%, var(--bg) 100%);
+    background-color: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0; }
+  .subtitle { color: var(--muted); font-size: 15px; margin: 4px 0 28px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 18px;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.25s ease, border-color 0.25s ease;
+  }
+  .card:hover, .card:focus-visible {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  .card img { width: 100%; aspect-ratio: 8 / 5; object-fit: cover; display: block; }
+  .name { font-size: 17px; font-weight: 600; padding: 12px 14px 2px; }
+  .sub { color: var(--muted); font-size: 13px; padding: 0 14px 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{TITLE}}</h1>
+  <p class="subtitle">{{SUBTITLE}}</p>
+  <div class="grid">
+{{CARDS}}
+  </div>
+</main>
+</body>
+</html>

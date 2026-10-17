@@ -186,6 +186,7 @@ openplaces = [
     "core/*.csv",
     "geo/*.csv",
     "viz/qgis_map/*.csv",
+    "viz/web_scene/static/*",
 ]
 
 [tool.ruff]

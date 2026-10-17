@@ -20,6 +20,7 @@ from openplaces.config import (
     PROJECT_URL,
     build_user_agent,
     detect_agent,
+    identity_problem,
     write_identity,
 )
 from openplaces.core.constants import VERSION
@@ -125,3 +126,51 @@ def test_blank_answers_clear_the_identity(tmp_path):
     written = yaml.safe_load(config_path.read_text(encoding='utf-8'))
 
     assert written['identity'] == {'nickname': None, 'place': None}
+
+
+# Fabricated identities throughout; none is anyone's address.
+@pytest.mark.parametrize(
+    ('nickname', 'place'),
+    [
+        ('ada', 'example.edu'),
+        ('ada', 'cs.example.ac.uk'),
+        ('ada@example.org', 'Some University'),
+        ('ada', 'someone@example.org'),
+    ],
+)
+def test_an_identity_that_reads_as_an_email_is_refused(nickname, place):
+    assert identity_problem(nickname, place) is not None
+
+
+@pytest.mark.parametrize(
+    ('nickname', 'place'),
+    [
+        ('ada', 'some-university'),
+        ('ada', 'Some University'),
+        ('ada', 'St. Example College'),
+        ('', ''),
+        (None, 'example.edu'),
+    ],
+)
+def test_a_handle_and_an_institution_name_are_accepted(nickname, place):
+    assert identity_problem(nickname, place) is None
+
+
+def test_an_old_email_like_identity_is_not_sent():
+    # Saved before the refusal existed: the place is dropped rather than
+    # sent as the domain half of an address.
+    agent = build_user_agent('ada', 'example.edu')
+    assert 'example.edu' not in agent
+    assert agent.endswith('; ada)')
+    assert '@' not in build_user_agent('ada@example.org', None).split('; ')[-1]
+
+
+def test_set_identity_refuses_before_writing(monkeypatch):
+    from openplaces import config
+
+    def must_not_write(*args, **kwargs):
+        raise AssertionError('an email-like identity was written')
+
+    monkeypatch.setattr(config, 'write_identity', must_not_write)
+    with pytest.raises(ValueError, match='web domain'):
+        config.set_identity('ada', 'example.edu')

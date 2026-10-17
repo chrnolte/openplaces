@@ -92,6 +92,14 @@ class TerrainLayer(NamedTuple):
         `log_height=True`, `height_clip_percentile=None`, or no row
         actually exceeded the cap. Add it to the `Map` alongside `layer` if
         present.
+    fill_color : numpy.ndarray or None
+        Each row's RGBA fill (uint8, shape (n, 4)), row-aligned with
+        `gdf`, ghost rows included. Lets a caller draw the same scene
+        outside lonboard (`viz.web_scene`).
+    stack_elevation : numpy.ndarray or None
+        Each row's lift from `stack_on`, in meters (zeros without it),
+        row-aligned with `gdf`: the part of its base that is the layer
+        below, so a caller can set the rows back on the ground.
     """
 
     layer: SolidPolygonLayer
@@ -104,6 +112,8 @@ class TerrainLayer(NamedTuple):
     clipped_layer: SolidPolygonLayer | None
     ghost_layer: PolygonLayer | None
     interior_layer: SolidPolygonLayer | None = None
+    fill_color: np.ndarray | None = None
+    stack_elevation: np.ndarray | None = None
 
 
 def show_value_terrain_layer(
@@ -184,10 +194,13 @@ def show_value_terrain_layer(
 
     Parameters
     ----------
-    recipe : str or dict
-        Recipe that defines the entity, passed to `get_entities`.
-    admin_id : str, AdminId, or sequence
-        Administrative unit(s) to load.
+    recipe : str, dict or geopandas.GeoDataFrame
+        Recipe that defines the entity, passed to `get_entities`, or the
+        entities themselves already loaded (e.g. a delivery bundle's
+        attributes joined to its polygons), which are rendered as given.
+    admin_id : str, AdminId, sequence or None
+        Administrative unit(s) to load. Ignored when `recipe` is a
+        GeoDataFrame.
     value_column : str
         Column to divide by area and map to color/height.
     area_unit : str, optional
@@ -486,7 +499,11 @@ def show_value_terrain_layer(
     -------
     TerrainLayer
     """
-    gdf = get_entities(recipe, admin_id=admin_id, geom=True, missing=missing)
+    if isinstance(recipe, gpd.GeoDataFrame):
+        gdf = recipe
+        recipe = 'the given entities'
+    else:
+        gdf = get_entities(recipe, admin_id=admin_id, geom=True, missing=missing)
 
     if area_unit is None:
         is_parcel_like = 'area_ha' in gdf.columns and 'area_m2' not in gdf.columns
@@ -768,6 +785,7 @@ def show_value_terrain_layer(
         base_z = base_z + contribution
         extra_z = extra_z + contribution
 
+    stack_elevation = np.zeros(len(gdf))
     if stack_on is not None:
         stack_source = (
             stack_on.rendered_elevation
@@ -775,6 +793,7 @@ def show_value_terrain_layer(
             else stack_on.total_elevation
         )
         contribution = _match_largest_overlap(gdf, stack_on.gdf, stack_source)
+        stack_elevation = contribution
         base_z = base_z + contribution
         extra_z = extra_z + contribution
 
@@ -920,6 +939,8 @@ def show_value_terrain_layer(
         clipped_layer,
         ghost_layer,
         interior_layer,
+        fill_color,
+        stack_elevation,
     )
 
 

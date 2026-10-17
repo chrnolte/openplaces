@@ -161,6 +161,10 @@ share:
     # resolved", never "one section".
     - n_sections
     - structure_value
+    # True where curate flags an outline drawn too tall for what is
+    # mapped there (flag_unconfirmed_height, Massachusetts for now); the
+    # 3D value page draws such outlines see-through.
+    - height_unconfirmed
     - construction_type
     - foundation_type
     - roof_shape

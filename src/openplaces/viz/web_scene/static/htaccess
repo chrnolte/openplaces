@@ -1,0 +1,20 @@
+# Written by openplaces.viz.web_scene; copied to .htaccess on build.
+#
+# The .bin files are gzip data the page decompresses itself, so the
+# server must send them as they are: no type that implies an encoding,
+# and no on-the-fly compression on top.
+AddType application/octet-stream .bin
+<IfModule mod_deflate.c>
+  SetEnvIfNoCase Request_URI \.bin$ no-gzip dont-vary
+</IfModule>
+<IfModule mod_headers.c>
+  # A build's data never change (each build has its own folder); the
+  # page, script and manifest do, and must be revalidated.
+  <FilesMatch "\.bin$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "(index\.html|viewer\.js|scene\.json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+Options -Indexes
