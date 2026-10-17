@@ -66,6 +66,16 @@ that layer like a declared one; the ingester's layer loop skips it
 (`STACKED_UNITS_LAYER_KEY`) because the parcel table's own processing
 wrote it. `stacked_units: false` opts a recipe out.
 
+**A parcel's id is its `geo_id` wherever that hash is unique.**
+Preprocessing suffixes every copy of a shared hash (`X-1`, `X-2`), since
+a stack's rows share one polygon; after the split, a row whose `geo_id`
+no other row carries any more (a collapsed stack, a row shipped twice,
+a unioned lot) is indexed by the bare hash
+(`table_ids.drop_resolved_suffixes`). The footprint overlay keys
+parcels by `geo_id`, so a kept `X-1` named a parcel no table carried
+(Harris County TX, 2026-10-17: 31,585 overlay links). A hash still
+shared keeps its suffixed ids.
+
 **A unit keeps its own keys and names its lot in `lot_id_local`.** Where
 units have their own account numbers, the lot's parcel row cannot carry any
 one of them and takes the lot key, which no tax roll knows (Galveston County
