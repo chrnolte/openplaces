@@ -1018,7 +1018,17 @@ def _resolve_geographic_reference(state, link):
 
     if admin_level is not None:
         try:
-            ref = get_admin(state.admin_id, admin_level, geom=True)
+            # `admin_recipe_id` names the harmonized layer explicitly, and
+            # being a `*_recipe_id` key it is also what makes the workflow
+            # build that layer before this job (recipe.dependencies). The
+            # admin4 layer was never built for NC, and every western-nc
+            # footprint geospine failed here on 2026-10-16.
+            ref = get_admin(
+                state.admin_id,
+                admin_level,
+                recipe=link.get('admin_recipe_id'),
+                geom=True,
+            )
         except ValueError:
             # No units at this level under this admin unit is absent
             # coverage, not an error: a New England town has no admin4

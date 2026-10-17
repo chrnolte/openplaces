@@ -195,7 +195,8 @@ def main(argv=None) -> None:
         default=None,
         help=(
             'Admin unit to process; for deliver and validate, the region '
-            'the bundle covers'
+            'the bundle covers; for ingest, a comma-separated list runs '
+            'them in one pass'
         ),
     )
     parser.add_argument(
@@ -236,6 +237,11 @@ def main(argv=None) -> None:
         return
 
     admin_ids = [args.admin_id] if args.admin_id else None
+    if args.stage == 'ingest' and args.admin_id and ',' in args.admin_id:
+        # A batched ingest (see the Snakefile): one call for every unit
+        # of the run, so a tile or state file shared by them is read
+        # once and each unit's file written in the same pass.
+        admin_ids = [a for a in args.admin_id.split(',') if a]
     module = import_module(STAGE_MODULES[args.stage])
     stage_fn = getattr(module, args.stage)
 

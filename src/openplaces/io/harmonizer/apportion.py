@@ -146,7 +146,12 @@ def apportion_reference_values(
         purpose, so that the value splits between them by area.
     volume_weight : pandas.Series, optional
         Story count per spine id; when given, fractions weight by
-        ``area × max(n_stories, 1)`` instead of area alone.
+        ``area × max(n_stories, 1)`` instead of area alone, on each
+        reference whose linked entities all have a story count. A
+        reference with any entity of unknown height keeps the area
+        split: weighting the known ones while the unknown count as one
+        floor would hand a tower's value to its podium whenever the
+        tower's height is the one missing.
     equal_area_ref_ids : set, optional
         Reference ids (e.g. non-residential parcels, which have no single
         dwelling to anchor a residential-style split to) whose
@@ -197,8 +202,13 @@ def apportion_reference_values(
 
     weight = pd.to_numeric(pairs[area_col], errors='coerce').astype(float)
     if volume_weight is not None:
-        n_eff = volume_weight.reindex(spine_ids).fillna(1.0).clip(lower=1.0).to_numpy()
-        weight = weight * n_eff
+        stories = pd.Series(
+            pd.to_numeric(volume_weight.reindex(spine_ids), errors='coerce').to_numpy(),
+            index=pairs.index,
+        )
+        all_known = stories.notna().groupby(ref_ids.to_numpy()).transform('all')
+        n_eff = stories.where(all_known, 1.0).fillna(1.0).clip(lower=1.0)
+        weight = weight * n_eff.to_numpy()
     fraction = weight / weight.groupby(ref_ids).transform('sum')
 
     def _zero_and_renormalize(base: pd.Series, mask: pd.Series) -> pd.Series:

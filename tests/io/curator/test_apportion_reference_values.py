@@ -96,6 +96,33 @@ def test_stated_built_area_scales_shares_where_little_is_mapped():
     assert out.loc['F1', 'improvement_value'] == 1e6
 
 
+def test_floors_split_a_lot_between_tower_and_podium():
+    # 400 m2 tower of 30 floors and 400 m2 podium of 1: by floor area
+    # the tower takes 30/31 of the value, not half.
+    pairs = _pairs([('TOWER', 'P1', 400.0), ('PODIUM', 'P1', 400.0)])
+    ref = pd.DataFrame({'improvement_value': [31e6]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(
+        pairs,
+        ref,
+        spine_id_col='fid',
+        volume_weight=pd.Series({'TOWER': 30.0, 'PODIUM': 1.0}),
+    )
+    assert out.loc['TOWER', 'improvement_value'] == 30e6
+    assert out.loc['PODIUM', 'improvement_value'] == 1e6
+
+
+def test_a_lot_with_an_unknown_height_keeps_the_area_split():
+    pairs = _pairs([('TOWER', 'P1', 400.0), ('PODIUM', 'P1', 400.0)])
+    ref = pd.DataFrame({'improvement_value': [30e6]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(
+        pairs,
+        ref,
+        spine_id_col='fid',
+        volume_weight=pd.Series({'PODIUM': 1.0}),
+    )
+    assert out.loc['TOWER', 'improvement_value'] == 15e6
+
+
 def test_stated_built_area_leaves_moderate_gaps_alone():
     # Mapped 300 m2 of a stated 1,000 m2 (coverage 0.3): within the
     # noise of floor area over story count, so the shares stand.
