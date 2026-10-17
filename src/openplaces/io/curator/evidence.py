@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -741,6 +743,19 @@ def apportion_curated_values(
         min_trimmed_area_m2=min_trimmed_area_m2,
         step='apportion_curated_values',
     )
+    # A link naming a parcel the curated table lacks passes it no value.
+    # Some are expected (parcels a curate filter dropped); a large count
+    # means the overlay and the parcel table name parcels differently,
+    # which until 2026-10-17 dropped 31,585 links in US-TX-HAR silently.
+    unknown = ~pairs['parcel_id'].isin(ref_values.index)
+    if unknown.any():
+        warnings.warn(
+            f'apportion_curated_values: {int(unknown.sum()):,d} of {len(pairs):,d} '
+            f'links in {state.admin_id} name '
+            f'{pairs.loc[unknown, "parcel_id"].nunique():,d} parcels absent from '
+            'the curated reference; their values are not apportioned.',
+            stacklevel=2,
+        )
 
     lot_area_refs = None
     if lot_area_when_unstated:

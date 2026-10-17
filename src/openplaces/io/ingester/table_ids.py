@@ -18,6 +18,53 @@ from openplaces.recipe import (
 )
 
 
+def drop_resolved_suffixes(parcels: pd.DataFrame) -> pd.DataFrame:
+    """Index each parcel by its `geo_id` where the split made it unique.
+
+    Preprocessing names a parcel by its geometry hash, suffixing every
+    copy of a shared hash (`X-1`, `X-2`) because the rows of a stack
+    share one polygon. The stacked-units split then collapses a stack,
+    or a row the source shipped twice, to the first member, which kept
+    `X-1` although `X` now names one row; a lot whose parts were unioned
+    took a new `geo_id` and kept its first part's index. Everything that
+    keys parcels by geometry (the footprint overlay, the `_geo` sidecar)
+    reads `geo_id`, so such a parcel was linked under an id that no
+    parcel table carried. Measured 2026-10-17 on US-TX-HAR: 5,584 parcel
+    rows indexed apart from their `geo_id`, 31,585 overlay links naming
+    no parcel. A row whose `geo_id` is now unique takes it as its id;
+    a hash still shared by several rows keeps its suffixed ids
+    unchanged, so no surviving id is renumbered.
+
+    Parameters
+    ----------
+    parcels : pandas.DataFrame
+        The split's parcel table, indexed by `parcel_id`. Returned
+        unchanged without a `geo_id` column or under another index name.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The table with the index rewritten where `geo_id` is unique.
+    """
+    if 'geo_id' not in parcels.columns or parcels.index.name != 'parcel_id':
+        return parcels
+    geo_id = parcels['geo_id']
+    resolved = geo_id.notna() & ~geo_id.duplicated(keep=False)
+    current = pd.Series(parcels.index, index=parcels.index)
+    if (current[resolved].astype(str) == geo_id[resolved].astype(str)).all():
+        return parcels
+    index = current.where(~resolved, geo_id.astype(object))
+    if not index.is_unique:
+        warnings.warn(
+            'drop_resolved_suffixes: unsuffixed ids would collide with kept '
+            'ones; the parcel index is left as it was.'
+        )
+        return parcels
+    parcels = parcels.copy()
+    parcels.index = pd.Index(index.to_numpy(), name='parcel_id')
+    return parcels
+
+
 class _TableIdMixin:
     """Methods of :class:`~openplaces.io.ingester.table_ingester.TableIngester`
     (table_ids).
@@ -255,7 +302,13 @@ class _TableIdMixin:
         if self.verbose or result.n_stacks:
             print(f'  stacked units{suffix}: {result.summary()}')
         self.timer.mark(f'Split stacked units{suffix}')
-        return result.parcels, result.properties
+        parcels = result.parcels
+        if not any(
+            key in self.recipe
+            for key in ('set_index', 'create_index', 'index_function')
+        ):
+            parcels = drop_resolved_suffixes(parcels)
+        return parcels, result.properties
 
     def _stacked_units_recipe(self) -> dict:
         """The table recipe of this parcel recipe's implicit property layer.
