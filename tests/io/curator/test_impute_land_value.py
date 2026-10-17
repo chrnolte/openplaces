@@ -830,6 +830,48 @@ def test_a_recorded_total_recovers_land_directly_without_a_rate():
     assert is_imputed(out['land_value_imputed_source']).iloc[-1]
 
 
+def test_a_totals_other_value_is_not_read_as_land():
+    # MassGIS: total = land + building + other. With land 0 the
+    # residual is the other value (yard items), which is not land, so
+    # the rate decides: 200/ha on this 1 ha lot.
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=2_000_000,
+        total_value=2_006_000,
+        other_value=6_000,
+        area_ha=1,
+    )
+    out = impute_land_value(_state(_frame([*donors, condo])), min_group_size=3).curated
+    assert out['land_value_imputed'].iloc[-1] == 200
+    assert (
+        out['land_value_imputed_source'].iloc[-1] != 'total_minus_improvement+imputed'
+    )
+
+
+def test_land_beyond_the_other_value_is_still_recovered():
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    recorded = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=180_000,
+        total_value=250_000,
+        other_value=10_000,
+        area_ha=1,
+    )
+    out = impute_land_value(
+        _state(_frame([*donors, recorded])), min_group_size=3
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == 60_000
+
+
 def test_a_recorded_total_does_not_also_reduce_the_improvement_value():
     # The subtraction exists only for a source that folded land INTO the
     # improvement figure. Where total > improvement it plainly did not, so

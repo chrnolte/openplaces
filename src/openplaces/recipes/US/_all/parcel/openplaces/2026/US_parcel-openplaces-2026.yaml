@@ -77,6 +77,10 @@ pipeline:
       gross_floor_area_sqft: sum
       total_value: sum
       improvement_value: sum
+      # Part of total_value that is neither land nor building (MassGIS
+      # OTHER_VAL); impute_land_value subtracts it before reading the
+      # rest of a total as land.
+      other_value: sum
       n_stories: max
       n_bedrooms: sum
       n_bathrooms: sum
