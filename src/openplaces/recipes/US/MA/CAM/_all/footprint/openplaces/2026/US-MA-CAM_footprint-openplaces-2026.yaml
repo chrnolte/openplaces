@@ -1,0 +1,27 @@
+# Patch: Cambridge outlines no rule classifies correctly, set to values
+# a person checked against a cited source (the sidecar beside this
+# file lists each with its evidence).
+#
+# The one listed case is a long-term care hospital whose lot also holds
+# assisted-living units: the parcel's use reads "apartments over 8
+# units", two address points count two dwellings, and the outline came
+# out Multi-Family with 2. Rooms or units are not published for the
+# building, so it is classed Commercial-Residential and its dwelling
+# count is left missing (maintainer's decision, 2026-10-16).
+
+admin_id: US-MA-CAM
+stage: curate
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_footprint-openplaces-2026
+pipeline_patch:
+  - insert_before: cast_categoricals
+    step:
+      step: apply_reviewed_corrections
+      corrections_id: US-MA-CAM_footprint-openplaces-2026_reviewed-corrections
+      id_column: footprint_id

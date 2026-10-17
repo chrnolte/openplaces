@@ -313,6 +313,7 @@ def flag_unconfirmed_height(
     stories_column: str | None = None,
     height_column: str | None = None,
     story_height_m: float = 3.5,
+    reconciled_stories_column: str | None = None,
 ) -> CurateState:
     """Flag outlines whose value per area no measured height explains.
 
@@ -353,6 +354,14 @@ def flag_unconfirmed_height(
         table.
     story_height_m : float
         Meters per story when only a height is known (default 3.5).
+    reconciled_stories_column : str, optional
+        The curated story count (the roll's or NSI's), used where it
+        exceeds the measured floors. Overture measures no height for
+        about one outline in nine, and without this an 8-story condo
+        building with no Overture height was flagged as a one-floor
+        box. Measured 2026-10-17 on boston-inner-core: flagged outlines
+        fall from 39 to 28; the 11 released are buildings of 2 to 8
+        stories, 6 of them over 400 m2 of outline.
     """
     curated = state.curated
     value = pd.to_numeric(curated.get(value_column), errors='coerce')
@@ -361,6 +370,11 @@ def flag_unconfirmed_height(
         return state
     per_sqft = value / (area * M2_TO_SQFT)
     floors = _measured_floors(curated, stories_column, height_column, story_height_m)
+    if reconciled_stories_column and reconciled_stories_column in curated.columns:
+        reconciled = pd.to_numeric(
+            curated[reconciled_stories_column], errors='coerce'
+        ).clip(lower=1)
+        floors = pd.concat([floors, reconciled], axis=1).max(axis=1)
     per_floor = per_sqft / floors.fillna(1.0)
     flag = (per_sqft > min_value_per_sqft) & (per_floor > max_value_per_floor_sqft)
     known = (value > 0) & (area > 0)

@@ -7,6 +7,7 @@ inference (deriving a brand-new concept).
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
@@ -567,6 +568,87 @@ def suppress_where(
 
     if state.verbose:
         print(f'  suppress_where: suppressed {n_suppressed}.')
+    return state
+
+
+REVIEWED_CORRECTION_SOURCE = 'reviewed_correction'
+
+
+@_register('apply_reviewed_corrections', phase='infer')
+def apply_reviewed_corrections(
+    state: CurateState,
+    corrections_id: str,
+    id_column: str,
+) -> CurateState:
+    """Set listed cells to values a person checked against a cited source.
+
+    For the single entity no rule gets right and no source corrects: a
+    long-term care hospital the address points count as two dwellings,
+    say. Each row of the sidecar names one entity, one column, the value
+    and the evidence, so the correction is reviewable in a diff and the
+    cell says where it came from (``{column}_source`` is
+    ``reviewed_correction``). An empty value sets the cell missing.
+
+    The sidecar is keyed by entity id, and a footprint's id is minted
+    from its outline, so a listed id can vanish when the footprint layer
+    is rebuilt from another source. Such rows are reported, never
+    silently dropped, so the correction can be re-keyed.
+
+    Parameters
+    ----------
+    corrections_id : str
+        Recipe id of the sidecar CSV, with columns *id_column*,
+        ``column``, ``value`` and ``reason``.
+    id_column : str
+        Entity id the sidecar is keyed by: a column of the curated
+        table, or its index name.
+    """
+    import warnings
+
+    from openplaces.io.curator.provenance import source_column
+    from openplaces.recipe import get_recipe_by_id
+
+    table = get_recipe_by_id(corrections_id, dtype=str)
+    curated = state.curated
+    ids = (
+        curated[id_column]
+        if id_column in curated.columns
+        else pd.Series(curated.index, index=curated.index)
+    ).astype('string')
+    applied, missing = 0, []
+    for row in table.itertuples(index=False):
+        entity_id = getattr(row, id_column)
+        mask = (ids == entity_id).fillna(False)
+        if not mask.any():
+            missing.append(entity_id)
+            continue
+        col, value = row.column, row.value
+        if col in curated.columns and pd.api.types.is_numeric_dtype(curated[col]):
+            value = pd.to_numeric(value, errors='raise') if pd.notna(value) else np.nan
+        elif pd.isna(value):
+            value = pd.NA
+        if col not in curated.columns:
+            curated[col] = pd.Series(pd.NA, index=curated.index, dtype=object)
+        elif isinstance(curated[col].dtype, pd.CategoricalDtype):
+            curated[col] = curated[col].astype(object)
+        curated.loc[mask, col] = value
+        side = source_column(col)
+        if side not in curated.columns:
+            curated[side] = pd.Series(pd.NA, index=curated.index, dtype=object)
+        curated[side] = curated[side].astype(object)
+        curated.loc[mask, side] = (
+            REVIEWED_CORRECTION_SOURCE if pd.notna(value) else pd.NA
+        )
+        applied += int(mask.sum())
+    state.curated = curated
+    if missing:
+        warnings.warn(
+            f'apply_reviewed_corrections: {len(missing)} id(s) in '
+            f'{corrections_id} are not in the curated table: {missing}',
+            stacklevel=2,
+        )
+    if state.verbose:
+        print(f'  apply_reviewed_corrections: set {applied} cell(s).')
     return state
 
 
