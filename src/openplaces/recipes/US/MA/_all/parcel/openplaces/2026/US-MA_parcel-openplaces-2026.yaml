@@ -1,0 +1,40 @@
+# Patch: no land-use class on Massachusetts street, rail and water
+# polygons that have no roll record.
+#
+# MassGIS's tax-parcel layer includes polygons that are not tax lots
+# (POLY_TYPE ROW, PRIV_ROW, RAIL_ROW, WATER). Without a roll record,
+# reconcile_land_use gave them the class of whatever FEMA or NSI
+# footprint reached 10 m2 into them, so street networks and reservoirs
+# read Single-Family or Multi-Family. Measured 2026-10-17 on
+# boston-inner-core and boston-outer-rings: 304 such polygons carried a
+# residential class, among them 92 of the 94 lots over 20 ha with a
+# residential class and no value (Winchester's 210 ha ROW polygon read
+# Single-Family). The rows and their evidence columns are kept; only
+# the class goes. A polygon of these types that has a roll record keeps
+# its class. FEE lots without a roll record are not covered here.
+
+admin_id: US-MA
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - insert_after: reconcile_land_use
+    step:
+      step: suppress_where
+      phase_override: >-
+        the polygon type and the roll's absence decide only after the
+        land-use vote has filled the class
+      column: [land_use_class]
+      indicators:
+        - type: in_set
+          column: polygon_type
+          values: [ROW, WATER, RAIL_ROW, PRIV_ROW]
+        - type: in_set
+          column: property_source
+          values: [none, estimated]

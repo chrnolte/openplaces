@@ -180,6 +180,7 @@ n_buildings,Number of buildings on the parcel,,float,sum,,parcel,ingest
 n_land_units,Number of land units,,float,sum,,parcel,ingest
 has_structure,Whether the parcel has a structure,,bool,first,,parcel,ingest
 geometry_source,Dataset the footprint or parcel geometry came from,,categorical,first,,,harmonize
+polygon_type,"The cadastre's own polygon type (MassGIS POLY_TYPE: FEE, TAX, ROW, PRIV_ROW, RAIL_ROW, WATER); a right-of-way or water type marks a polygon that is not a tax lot",,categorical,first,,parcel,ingest
 spine_resolution,"Why resolve_spine took this outline from a later source over the earlier ones it overlaps (fragment replaced); missing where the source ranking decided",,categorical,first,,,harmonize
 geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,harmonize
 source_date,Source last-update date,,datetime,first,,,ingest
