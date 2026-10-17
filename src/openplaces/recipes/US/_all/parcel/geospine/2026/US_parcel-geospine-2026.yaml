@@ -117,6 +117,8 @@ pipeline:
       group_by: parcel_id
     links:
       - admin_level: 4
+        # Named so the workflow builds this layer before the geospine.
+        admin_recipe_id: admin-openplaces-2026_admin4
         output_column: admin4_id
       - recipe_id: US_admin-census-2025_admin4
         output_column: census_subdivision_id

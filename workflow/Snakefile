@@ -181,7 +181,57 @@ rule all:
         [str(p) for p in dag.target_paths()]
 
 
+# One ingest job per staging recipe, covering every admin unit of the
+# run, instead of one job per unit. These recipes stage a shared archive
+# (an OBM tile, a state's Microsoft file, NC OneMap's statewide GDB) and
+# their heap token already ran their units one at a time, each job
+# unpacking and reading the whole archive again for its one unit: in the
+# Boston regions 62 OBM jobs at 2.1 min and 68 Microsoft jobs at
+# 0.9 min, 3.2 hours of serial wall time spent re-reading one tile and
+# one state file (measured 2026-10-16 on boston-inner-core). A single
+# call with all the units reads each archive once and writes every
+# unit's file in the same pass. The cost: one failing unit fails the
+# batch, and every unit of the recipe reruns with it.
+BATCHED_INGESTS = {}
+for _node in dag.nodes():
+    if _node.stage == 'ingest' and _node.recipe_id in HEAP_TOKENS and _node.admin_id:
+        BATCHED_INGESTS.setdefault(_node.recipe_id, []).append(_node)
+BATCHED_INGESTS = {r: n for r, n in BATCHED_INGESTS.items() if len(n) > 1}
+
+for _recipe_id, _nodes in BATCHED_INGESTS.items():
+    _jobs = [(n.stage, n.recipe_id, n.admin_id, n.region) for n in _nodes]
+    _outs = [str(dag.output_path(*j)) for j in _jobs]
+    _outs += [str(p) for j in _jobs for p in dag.extra_outputs(*j)]
+    _ins = sorted({str(p) for j in _jobs for p in dag.input_paths(*j)})
+    _admins = ','.join(sorted(n.admin_id for n in _nodes))
+    _name = f'ingest_{_recipe_id}_batch'
+
+    rule:
+        name:
+            _name
+        input:
+            _ins
+        output:
+            list(dict.fromkeys(_outs)),
+        benchmark:
+            str(Path(cfg.get_dir('logs')) / 'benchmarks' / f'{_name}.tsv')
+        resources:
+            mem_mb=lambda wc, attempt, _r=_recipe_id: mem_mb('ingest', None, _r)
+            * attempt,
+            runtime=STAGE_RUNTIME_MIN['ingest'] * 4,
+            **{
+                token: int(_recipe_id == owner)
+                for owner, token in HEAP_TOKENS.items()
+            },
+        params:
+            cmd=f'python -m openplaces.flow.run_stage ingest {_recipe_id} {_admins}',
+        shell:
+            '{params.cmd}'
+
+
 for node in dag.nodes():
+    if node.stage == 'ingest' and node.recipe_id in BATCHED_INGESTS:
+        continue
     # The region is part of a delivery job's identity: several declared
     # regions can roll up to one admin unit, and the unit alone then
     # names no single bundle.

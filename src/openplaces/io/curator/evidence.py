@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
+from openplaces.core.constants import M2_TO_SQFT
 from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
 from openplaces.io import read_parquet
 from openplaces.io.curator import CurateState, _register
@@ -184,6 +186,343 @@ def _apportioned_sources(
     return out
 
 
+def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2, orphaned_refs=()):
+    """Trimmed overlaps larger than everything still linked to their parcel.
+
+    The harmonize crosswalk drops a footprint's link to a parcel when the
+    overlap is below 1/6 of the footprint's largest overlap, on the
+    premise that the parcel has a building of its own and the overlap is
+    an edge or a displacement. A large building standing on several
+    lots breaks that premise: 740 m2 of a 9,000 m2 building on a lot
+    whose only linked footprint is 14 m2 is trimmed, and the lot's whole
+    building value then goes to the 14 m2 piece. A trimmed pair is
+    readmitted when its overlap exceeds the total overlap of the
+    parcel's linked footprints, which is where the premise fails;
+    displaced neighbors (the trim's real target) overlap less than the
+    neighbor's own building and stay out. Pairs that snap_chained_links
+    removed ('snapped minor') stay out too, since that step established
+    that their parcel holds its own building, unless the parcel is in
+    *orphaned_refs*: that building's outline was linked and then left
+    the spine (`resolve_overlaps` drops a roof tier nested in the lower
+    tier around it, and the link sidecar is written before that), so
+    the evidence the snap rested on is gone. Measured 2026-10-16 on
+    US-MA-BOS: a 13-story office lot whose 1,264 m2 tower roof was
+    dropped in favor of the 3,084 m2 lower tier around it (which the
+    snap had assigned to the neighboring lot) held $52.4M on a 185 m2
+    remnant. So does every pair on a
+    parcel with no linked footprint at all: such a parcel carries the
+    harmonize stage's whole-parcel stand-in where it is improved, and
+    a neighbor's edge readmitted there took the stand-in's value away
+    (measured 2026-10-15 on US-TX-GAL: 191 stand-ins left at zero).
+
+    Measured 2026-10-15 on boston-inner-core: 61 of 1,154 footprints
+    above $3,500 of structure value per sq ft owed it to a trimmed
+    neighbor of this kind.
+    """
+    is_linked = links['link'].notna()
+    linked_area = links[is_linked].groupby(ref_key)['area_intersection_m2'].sum()
+    trimmed = links[
+        ~is_linked
+        & links[ref_key].notna()
+        & (links['area_intersection_m2'] >= min_area_m2)
+    ]
+    if 'link_chain' in trimmed.columns:
+        trimmed = trimmed[
+            trimmed['link_chain'].ne('snapped minor').fillna(True)
+            | trimmed[ref_key].isin(orphaned_refs)
+        ]
+    largest = linked_area.reindex(trimmed[ref_key]).fillna(0.0).to_numpy()
+    return trimmed[
+        (largest > 0) & (trimmed['area_intersection_m2'].to_numpy() > largest)
+    ]
+
+
+def _stated_built_area(
+    ref, ref_key, floor_area_columns, stories_column, lot_area_refs=None
+):
+    """Building ground area (m2) a reference's own record states.
+
+    Floor area over story count, from the first of *floor_area_columns*
+    that holds a positive, non-imputed value, capped at the reference's
+    own area. A record with no original floor area or story count states
+    nothing and gets no value, so the apportionment leaves it alone.
+
+    A reference in *lot_area_refs* that states no floor area in any of
+    the columns gets its own area instead: its improvement value is
+    read as spread over the lot, so outlines covering a small part of
+    the lot keep only that part (see the *lot_area_when_unstated*
+    option of :func:`apportion_curated_values`). A record that states
+    floor area but no story count still states nothing.
+    """
+    from openplaces.core.provenance import is_imputed
+    from openplaces.io.curator.provenance import source_column
+
+    r = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+
+    def _original(col):
+        if col not in r.columns:
+            return pd.Series(float('nan'), index=r.index)
+        values = pd.to_numeric(r[col], errors='coerce').astype(float)
+        side = source_column(col)
+        if side in r.columns:
+            values = values.mask(is_imputed(r[side]).to_numpy())
+        return values.where(values > 0)
+
+    floor = pd.Series(float('nan'), index=r.index)
+    for col in floor_area_columns:
+        floor = floor.fillna(_original(col))
+    stories = _original(stories_column).where(lambda s: s >= 1)
+    area = floor / M2_TO_SQFT / stories
+    if 'area_ha' in r.columns:
+        lot = pd.to_numeric(r['area_ha'], errors='coerce') * 1e4
+        area = area.clip(upper=lot)
+        if lot_area_refs is not None:
+            use_lot = floor.isna() & r.index.isin(list(lot_area_refs))
+            area = area.where(~use_lot, lot)
+    return area.dropna()
+
+
+def _measured_floors(frame, stories_column, height_column, story_height_m):
+    """Floors from a stated count or a height over *story_height_m*.
+
+    The larger of the two where both are known: a measured height is
+    the firmer of the two, and a stated count can be a tag left at its
+    default (an outline of 103.8 m by Lidar stated at 1 floor, US-MA-BOS
+    `3|470`, 2026-10-16). Rounded up, at least one; missing where
+    neither is known.
+    """
+    stated = pd.Series(np.nan, index=frame.index, dtype=float)
+    if stories_column and stories_column in frame.columns:
+        stated = pd.to_numeric(frame[stories_column], errors='coerce').astype(float)
+    from_height = pd.Series(np.nan, index=frame.index, dtype=float)
+    if height_column and height_column in frame.columns:
+        height = pd.to_numeric(frame[height_column], errors='coerce').astype(float)
+        from_height = height / float(story_height_m)
+    floors = pd.concat([stated, from_height], axis=1).max(axis=1)
+    return np.ceil(floors.where(floors > 0)).clip(lower=1)
+
+
+@_register('flag_unconfirmed_height', phase='infer')
+def flag_unconfirmed_height(
+    state: CurateState,
+    output_column: str = 'height_unconfirmed',
+    value_column: str = 'structure_value',
+    area_column: str = 'area_m2',
+    min_value_per_sqft: float = 3_500.0,
+    max_value_per_floor_sqft: float = 3_000.0,
+    stories_column: str | None = None,
+    height_column: str | None = None,
+    story_height_m: float = 3.5,
+) -> CurateState:
+    """Flag outlines whose value per area no measured height explains.
+
+    A value page draws a building's height from its value per square
+    foot of outline, so a tall building is drawn tall because it is
+    tall. Divided by its measured floors the same value comes to a
+    value per square foot of floor, which has a plausible range; an
+    outline drawn above *min_value_per_sqft* that still comes to more
+    than *max_value_per_floor_sqft* per square foot of floor is drawn
+    as a needle no building there explains: the value of a building the
+    outline does not hold (a lot's other buildings, a structure the
+    footprint layer lacks), or a box no other layer maps. Floors are
+    the measured story count, else the measured height over
+    *story_height_m*; an outline with neither counts as one floor, so
+    an unconfirmed box is flagged. The value itself is unchanged; the
+    flag only says the drawn height is not confirmed.
+
+    Measured 2026-10-16 on boston-inner-core (BOS, CAM, SOM, EVE,
+    floors from Overture): value per sq ft of floor had median $210 and
+    p99.9 $2,067 over all outlines; the 62-story `4|1149|10` comes to
+    $2,110, below the threshold.
+
+    Parameters
+    ----------
+    output_column : str
+        Boolean column written (default ``height_unconfirmed``); missing
+        where the outline has no value or no area.
+    value_column, area_column : str
+        Value and outline area (m2) columns.
+    min_value_per_sqft : float
+        Value per sq ft of outline above which an outline counts as
+        drawn tall (default 3,500, about the 99th percentile).
+    max_value_per_floor_sqft : float
+        Value per sq ft of floor above which the height is unexplained
+        (default 3,000).
+    stories_column, height_column : str, optional
+        Measured story count and height (m) columns on the curated
+        table.
+    story_height_m : float
+        Meters per story when only a height is known (default 3.5).
+    """
+    curated = state.curated
+    value = pd.to_numeric(curated.get(value_column), errors='coerce')
+    area = pd.to_numeric(curated.get(area_column), errors='coerce')
+    if value is None or area is None:
+        return state
+    per_sqft = value / (area * M2_TO_SQFT)
+    floors = _measured_floors(curated, stories_column, height_column, story_height_m)
+    per_floor = per_sqft / floors.fillna(1.0)
+    flag = (per_sqft > min_value_per_sqft) & (per_floor > max_value_per_floor_sqft)
+    known = (value > 0) & (area > 0)
+    curated[output_column] = flag.where(known).astype('boolean')
+    if state.verbose:
+        print(
+            f'  flag_unconfirmed_height: {int(flag[known].sum()):,} of '
+            f'{int(known.sum()):,} outlines with a value'
+        )
+    return state
+
+
+def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
+    """Floors per entity from an enrichment's measured heights.
+
+    Read from the enrich recipe's own evidence file rather than from
+    ``state.curated``: the apportionment runs before merge_enrichments
+    gathers evidence into the curated table. Floors are the stated
+    count, else the height over *story_height_m*; rounded up, at least
+    one. None when the unit has no such evidence.
+    """
+    unknown = set(floor_weight) - {
+        'recipe_id',
+        'stories_column',
+        'height_column',
+        'story_height_m',
+        'unmeasured_max_m2',
+    }
+    if unknown or 'recipe_id' not in floor_weight:
+        raise ValueError(
+            'apportion_curated_values: floor_weight takes recipe_id, '
+            'stories_column, height_column, story_height_m and '
+            f'unmeasured_max_m2; got {sorted(floor_weight)}.'
+        )
+    recipe = get_recipe_by_id(floor_weight['recipe_id'])
+    path = get_output_path(recipe, state.admin_id, entity_recipe_id=state.entity_recipe)
+    if not path.exists():
+        if state.verbose:
+            print(
+                f'  floor_weight: no {floor_weight["recipe_id"]} evidence; area split.'
+            )
+        return None
+    evidence = read_parquet(path)
+    if index.name in evidence.columns:
+        evidence = evidence.set_index(index.name)
+    floors = _measured_floors(
+        evidence,
+        floor_weight.get('stories_column'),
+        floor_weight.get('height_column'),
+        floor_weight.get('story_height_m', 3.5),
+    )
+    floors = floors[~floors.index.duplicated()].reindex(index)
+    # An unmeasured outline too small to hold a tower's floor area counts
+    # as one floor instead of returning its whole lot to the area split:
+    # a lot with a measured tower and a few unmeasured kiosks or roof
+    # pieces then still splits by floor area (US-MA-BOS `3|470`: 15
+    # outlines, 8 of them under 50 m2 and unmeasured, 2026-10-16).
+    # Larger unmeasured outlines still return the lot to the area split.
+    small_m2 = float(floor_weight.get('unmeasured_max_m2', 100.0))
+    curated = state.curated
+    # area_m2 is written later in the pipeline; the geospine's area_ha
+    # is already there when the apportionment runs.
+    if 'area_m2' in curated.columns:
+        area = pd.to_numeric(curated['area_m2'], errors='coerce')
+    elif 'area_ha' in curated.columns:
+        area = pd.to_numeric(curated['area_ha'], errors='coerce') * 1e4
+    else:
+        return floors
+    small = area.reindex(index) < small_m2
+    return floors.where(floors.notna() | ~small, 1.0)
+
+
+def _linked_pairs(
+    state,
+    *,
+    entity_type,
+    link_recipe_id,
+    ref_key,
+    readmit_trimmed_links,
+    min_trimmed_area_m2,
+    step,
+):
+    """Footprint-reference pairs from the harmonize link sidecar.
+
+    Only link-labeled pairs (kept by the harmonize crosswalk's sliver
+    thresholds) take part, matching what the harmonize attribution saw,
+    plus, with *readmit_trimmed_links*, the trimmed pairs
+    :func:`_readmittable_trimmed_links` selects. Pairs whose entity is
+    not in ``state.curated`` are dropped. Shared by every step that
+    needs a parcel's mapped area, so they all count the same overlaps.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, str, str)
+        The pairs (entity id column, ``parcel_id``,
+        ``area_intersection_m2``), the entity id column's name, and the
+        resolved reference recipe id.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the sidecar is missing: curation cannot recompute the
+        overlay, so re-run harmonize with ``save_link: true`` first.
+    """
+    from openplaces.io.harmonizer.links import _resolve_reference_recipe
+
+    resolved_id, _ = _resolve_reference_recipe(
+        link_recipe_id, entity_type, state.admin_id
+    )
+    if resolved_id is None:
+        raise ValueError(
+            f'{step}: no reference recipe found for '
+            f'entity_type={entity_type!r} and {state.admin_id}.'
+        )
+    # The sidecar is keyed by the recipe that ran the link steps -- the
+    # geospine when the spine is split into geometry and attribute
+    # recipes.
+    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
+    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
+    if not sidecar_path.exists():
+        raise FileNotFoundError(
+            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
+            f'{entity_recipe_id} with save_link enabled on the overlay step '
+            'so curation can apportion the curated values.'
+        )
+
+    links = pd.read_parquet(sidecar_path)
+    curated = state.curated
+    id_col = curated.index.name
+    if id_col not in links.columns:
+        # The sidecar records the harmonizer's working spine id column;
+        # fall back to the first (index) column
+        id_col = links.columns[0]
+
+    present = links[id_col].isin(curated.index)
+    all_links = links[present]
+    if 'link' in links.columns:
+        # Parcels that lost a linked outline between the overlay and
+        # the spine (see _readmittable_trimmed_links).
+        orphaned = links.loc[~present & links['link'].notna(), ref_key].unique()
+        links = all_links[all_links['link'].notna()]
+        if readmit_trimmed_links:
+            links = pd.concat(
+                [
+                    links,
+                    _readmittable_trimmed_links(
+                        all_links,
+                        id_col,
+                        ref_key,
+                        min_trimmed_area_m2,
+                        orphaned_refs=orphaned,
+                    ),
+                ]
+            )
+    else:
+        links = all_links
+    pairs = links[[id_col, ref_key, 'area_intersection_m2']].rename(
+        columns={ref_key: 'parcel_id'}
+    )
+    return pairs, id_col, resolved_id
+
+
 @_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
@@ -197,6 +536,12 @@ def apportion_curated_values(
     dwelling_column: str = 'n_dwellings_overture',
     land_use_column: str | None = None,
     non_residential_classes: list[str] | None = None,
+    readmit_trimmed_links: bool = False,
+    min_trimmed_area_m2: float = 10.0,
+    floor_area_columns: list[str] | None = None,
+    stories_column: str | None = None,
+    lot_area_when_unstated: dict | None = None,
+    floor_weight: dict | None = None,
 ) -> CurateState:
     """Apportion a curated reference entity's values over the n:m link sidecar.
 
@@ -266,6 +611,53 @@ def apportion_curated_values(
         loading dock, or a retail strip's several units, are all real
         value-bearing structures with no single dwelling to anchor a
         residential-style split to.
+    readmit_trimmed_links : bool, optional
+        Let a trimmed overlap (a footprint's link to a parcel that the
+        harmonize crosswalk dropped as below 1/6 of the footprint's
+        largest overlap) take part in that parcel's split when it is
+        larger than the overlap of all the parcel's linked footprints
+        together. Default False. See :func:`_readmittable_trimmed_links`.
+    min_trimmed_area_m2 : float, optional
+        Smallest trimmed overlap that can be readmitted (default 10, the
+        crosswalk's own minimum).
+    floor_area_columns : list of str, optional
+        Floor-area columns (square feet) on the curated reference, in
+        order of preference, from which the reference's stated building
+        ground area is derived together with *stories_column*. Passed to
+        :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`
+        as *ref_built_area*. Values marked imputed are not used.
+    stories_column : str, optional
+        Story-count column on the curated reference. Both this and
+        *floor_area_columns* are needed to derive the stated area.
+    lot_area_when_unstated : dict, optional
+        Read a reference that states no floor area at all as stating
+        its own area, so its improvement value is shared over the lot
+        and its outlines keep only the part they cover (the rest stays
+        unallocated, through *ref_built_area*). Keys: ``column`` and
+        ``pattern`` (a regular expression its values must match in
+        full) select the references, and ``max_mapped_m2`` limits it to
+        references whose linked outlines total less than that area.
+        Default None (off). Set only in a county patch recipe, for a
+        roll that states the floor area of every building it records,
+        so that a record without one is an account the roll records no
+        building on: an exempt hospital account with $33.5M of
+        improvements whose only mapped outline is 12 m2. The size cap
+        is what keeps campuses out: there the outlines, thousands of
+        m2, are the buildings the value belongs to even though the
+        roll states no floor area for them, and the lot share would
+        strip it from them.
+    floor_weight : dict, optional
+        Split a reference's value among its entities by floor area
+        (footprint area times floors) instead of footprint area, so a
+        tower takes the tower's value and its one-story podium a
+        podium's. Keys: ``recipe_id``, an enrich recipe whose evidence
+        carries per-building heights; ``stories_column`` and
+        ``height_column`` on that evidence (floors are the story count,
+        else the height over ``story_height_m``, default 3.5). A
+        reference with any entity of unknown height keeps the area
+        split (see ``volume_weight`` in
+        :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`).
+        Default None (off).
 
     Raises
     ------
@@ -273,8 +665,6 @@ def apportion_curated_values(
         When the sidecar is missing: curation cannot recompute the overlay,
         so re-run harmonize with ``save_link: true`` first.
     """
-    from openplaces.io.harmonizer.links import _resolve_reference_recipe
-
     unknown = [c for c in columns if c not in APPORTIONED_VALUE_COLUMNS]
     if unknown:
         raise ValueError(
@@ -327,41 +717,57 @@ def apportion_curated_values(
                 f"curated reference '{recipe_id}'; skipping equal-area rule."
             )
 
-    resolved_id, _ = _resolve_reference_recipe(
-        link_recipe_id, entity_type, state.admin_id
-    )
-    if resolved_id is None:
-        raise ValueError(
-            f'apportion_curated_values: no reference recipe found for '
-            f'entity_type={entity_type!r} and {state.admin_id}.'
-        )
-    # The sidecar is keyed by the recipe that ran the link steps -- the
-    # geospine when the spine is split into geometry and attribute recipes.
-    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
-    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
-    if not sidecar_path.exists():
-        raise FileNotFoundError(
-            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
-            f'{entity_recipe_id} with save_link enabled on the overlay step '
-            'so curation can apportion the curated values.'
-        )
-
-    links = pd.read_parquet(sidecar_path)
     curated = state.curated
-    id_col = curated.index.name
-    if id_col not in links.columns:
-        # The sidecar records the harmonizer's working spine id column;
-        # fall back to the first (index) column
-        id_col = links.columns[0]
-
-    # Only link-labeled pairs (kept by the harmonize crosswalk's sliver
-    # thresholds) participate, matching what the harmonize attribution saw.
-    if 'link' in links.columns:
-        links = links[links['link'].notna()]
-    pairs = links[[id_col, ref_key, 'area_intersection_m2']].rename(
-        columns={ref_key: 'parcel_id'}
+    pairs, id_col, _ = _linked_pairs(
+        state,
+        entity_type=entity_type,
+        link_recipe_id=link_recipe_id,
+        ref_key=ref_key,
+        readmit_trimmed_links=readmit_trimmed_links,
+        min_trimmed_area_m2=min_trimmed_area_m2,
+        step='apportion_curated_values',
     )
-    pairs = pairs[pairs[id_col].isin(curated.index)]
+
+    lot_area_refs = None
+    if lot_area_when_unstated:
+        rule = lot_area_when_unstated
+        unknown_keys = set(rule) - {'column', 'pattern', 'max_mapped_m2'}
+        if unknown_keys or 'column' not in rule or 'pattern' not in rule:
+            raise ValueError(
+                'apportion_curated_values: lot_area_when_unstated takes '
+                "'column', 'pattern' and optionally 'max_mapped_m2'; got "
+                f'{sorted(rule)}.'
+            )
+        if rule['column'] not in ref.columns:
+            raise ValueError(
+                f'apportion_curated_values: lot_area_when_unstated column '
+                f'{rule["column"]!r} is not on the curated reference.'
+            )
+        selector = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key)
+        matches = (
+            selector[rule['column']]
+            .astype('string')
+            .str.fullmatch(rule['pattern'])
+            .fillna(False)
+            .to_numpy()
+        )
+        lot_area_refs = set(selector.loc[matches, ref_key])
+        if rule.get('max_mapped_m2') is not None:
+            mapped = pairs.groupby('parcel_id')['area_intersection_m2'].sum()
+            large = set(mapped.index[mapped >= float(rule['max_mapped_m2'])])
+            lot_area_refs -= large
+
+    stated_area = (
+        _stated_built_area(
+            ref,
+            ref_key,
+            floor_area_columns,
+            stories_column,
+            lot_area_refs=lot_area_refs,
+        )
+        if floor_area_columns and stories_column
+        else None
+    )
 
     # Synthetic fallback rows postdate the sidecar; add them as their
     # reference's sole full-weight link.
@@ -403,6 +809,12 @@ def apportion_curated_values(
             else None
         ),
         equal_area_ref_ids=equal_area_ref_ids,
+        ref_built_area=stated_area,
+        volume_weight=(
+            _floors_per_entity(state, curated.index, floor_weight)
+            if floor_weight
+            else None
+        ),
     )
 
     from openplaces.io.curator.provenance import record_sources

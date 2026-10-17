@@ -436,8 +436,13 @@ def _derive_bands(
                     return pd.Series(np.nan, index=values.index)
                 return pd.qcut(values, size_bands, labels=False, duplicates='drop')
 
+            # Rows without a city form one group of their own. Keyed
+            # on an empty string, not left NA: grouping by a string
+            # column with dropna=False names that group pd.NA, and
+            # transform's result-name check then raises "boolean value
+            # of NA is ambiguous" (US-MA-SAL, 2026-10-16).
             size_band = ranked.groupby(
-                curated[city_column].astype('string'), dropna=False
+                curated[city_column].astype('string').fillna('')
             ).transform(_bands)
         elif ranked.notna().sum() >= size_bands * 2:
             size_band = pd.qcut(ranked, size_bands, labels=False, duplicates='drop')

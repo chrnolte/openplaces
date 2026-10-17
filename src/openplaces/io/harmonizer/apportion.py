@@ -84,6 +84,8 @@ def apportion_reference_values(
     dwelling_linked_ids: set | None = None,
     volume_weight: pd.Series | None = None,
     equal_area_ref_ids: set | None = None,
+    ref_built_area: pd.Series | None = None,
+    built_area_min_coverage: float = 0.2,
 ) -> pd.DataFrame:
     """Apportion reference values to spine entities over an n:m link.
 
@@ -138,10 +140,18 @@ def apportion_reference_values(
         least one linked entity has such evidence, entities without it get a
         zero share (fractions renormalize over the rest) and their
         ``land_value`` is suppressed (Lochhead et al. 2026, Table 4,
-        Cases 1–2 vs. Case 3).
+        Cases 1–2 vs. Case 3). An entity whose *priority* is
+        ``'primary'`` is never suppressed: the priority step keeps a
+        large building primary beside a dwelling-point footprint on
+        purpose, so that the value splits between them by area.
     volume_weight : pandas.Series, optional
         Story count per spine id; when given, fractions weight by
-        ``area × max(n_stories, 1)`` instead of area alone.
+        ``area × max(n_stories, 1)`` instead of area alone, on each
+        reference whose linked entities all have a story count. A
+        reference with any entity of unknown height keeps the area
+        split: weighting the known ones while the unknown count as one
+        floor would hand a tower's value to its podium whenever the
+        tower's height is the one missing.
     equal_area_ref_ids : set, optional
         Reference ids (e.g. non-residential parcels, which have no single
         dwelling to anchor a residential-style split to) whose
@@ -151,6 +161,22 @@ def apportion_reference_values(
         dock, a retail strip's several units) gets its area-proportional
         piece. Has no effect on ``n_dwellings``, ``year_built``, or
         :data:`WHOLE_VALUE_COLUMNS`.
+    ref_built_area : pandas.Series, optional
+        Building ground area in m2 that the reference's own record
+        states (e.g. a roll's floor area over its story count), indexed
+        by reference id. Where the overlap area of the reference's linked
+        entities covers less than *built_area_min_coverage* of it, the
+        :data:`PROPORTIONAL_SPLIT_COLUMNS` shares are scaled down by
+        that coverage: the entities receive the share of the value their
+        area holds, and the rest, which belongs to building area the
+        spine does not map, is left unallocated. Missing values leave
+        the shares unchanged.
+    built_area_min_coverage : float, optional
+        Coverage below which *ref_built_area* scales the shares (default
+        0.2). Floor area over story count is a rough ground area
+        (basements, half stories and attics enter the floor area), so a
+        moderate gap is noise; only a mapped area far below the stated
+        one shows a building the spine lacks.
 
     Returns
     -------
@@ -176,8 +202,13 @@ def apportion_reference_values(
 
     weight = pd.to_numeric(pairs[area_col], errors='coerce').astype(float)
     if volume_weight is not None:
-        n_eff = volume_weight.reindex(spine_ids).fillna(1.0).clip(lower=1.0).to_numpy()
-        weight = weight * n_eff
+        stories = pd.Series(
+            pd.to_numeric(volume_weight.reindex(spine_ids), errors='coerce').to_numpy(),
+            index=pairs.index,
+        )
+        all_known = stories.notna().groupby(ref_ids.to_numpy()).transform('all')
+        n_eff = stories.where(all_known, 1.0).fillna(1.0).clip(lower=1.0)
+        weight = weight * n_eff.to_numpy()
     fraction = weight / weight.groupby(ref_ids).transform('sum')
 
     def _zero_and_renormalize(base: pd.Series, mask: pd.Series) -> pd.Series:
@@ -193,6 +224,17 @@ def apportion_reference_values(
         has_dwelling = spine_ids.isin(dwelling_linked_ids)
         ref_has_dwelling = has_dwelling.groupby(ref_ids).transform('any')
         suppress = ref_has_dwelling & ~has_dwelling
+        if priority is not None:
+            # classify_footprint_priority keeps a parcel's largest
+            # building primary beside a smaller dwelling-point footprint
+            # (dwelling_override_ratio), so that the value splits by
+            # area. Suppressing it here undid that choice and handed
+            # the whole value to the dwelling-point footprint, which can
+            # be a shed or a stair tower.
+            suppress = (
+                suppress
+                & ~priority.reindex(spine_ids).eq('primary').fillna(False).to_numpy()
+            )
         if suppress.any():
             suppressed_ids = set(spine_ids[suppress])
 
@@ -209,6 +251,32 @@ def apportion_reference_values(
         else pd.Series(False, index=pairs.index)
     )
     fraction_proportional = _zero_and_renormalize(fraction, suppress & ~equal_area_pair)
+    if ref_built_area is not None:
+        # The split above divides a reference's value among the entities
+        # the spine maps on it, so a building the footprint layer lacks
+        # (newer than the layer, or dropped from it) passes its value to
+        # whatever small structure is mapped beside it: a kiosk, a stair
+        # tower. The reference's own record states how much building
+        # ground area it holds; where the mapped overlap covers only a
+        # small part of it, each entity keeps the share its area holds
+        # of the stated area, and the unmapped rest stays unallocated
+        # (the conservation check accepts under-allocation by design).
+        #
+        # Measured 2026-10-15 on US-MA-BOS: of 82,469 parcels with an
+        # original floor area, story count and a mapped footprint,
+        # 59,696 have a coverage of 0.75-1.5 and 85 below 0.2; scaling
+        # at any shortfall (no threshold) changed 30,581 footprints and
+        # cut the total by 11%, which is roll noise, not missing
+        # buildings.
+        area = pd.to_numeric(pairs[area_col], errors='coerce').astype(float)
+        mapped = area.where(fraction_proportional > 0, 0.0)
+        mapped_per_ref = mapped.groupby(ref_ids).transform('sum')
+        stated = pd.to_numeric(
+            ref_built_area.reindex(ref_ids), errors='coerce'
+        ).to_numpy()
+        coverage = mapped_per_ref / stated
+        scale = coverage.where(coverage < built_area_min_coverage, 1.0)
+        fraction_proportional = fraction_proportional * scale.fillna(1.0)
     equal_area_spine_ids = (
         set(spine_ids[equal_area_pair]) if equal_area_ref_ids else set()
     )
