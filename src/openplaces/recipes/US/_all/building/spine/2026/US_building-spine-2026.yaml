@@ -85,6 +85,12 @@ pipeline:
       # 2026-09-17: the large footprint is the dwelling on 68% (NC) and
       # 89% (TX) of such parcels; see classify_footprint_priority.
       dwelling_override_ratio: 3.0
+      # Keep an apartment complex's other buildings primary when its
+      # address points all land on one: an NSI point of 2 or more
+      # dwellings, 355 m2 or more, and at least half the size of the
+      # address-point building (20 Chapel St, Brookline; see
+      # classify_footprint_priority).
+      building_point_sibling_ratio: 0.5
 
   # Attribution only: aggregate source columns into suffixed evidence columns.
   # checkpoint: the spine after this step is persisted; a rerun whose

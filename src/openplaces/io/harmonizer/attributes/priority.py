@@ -71,6 +71,17 @@ def classify_footprint_priority(
         True): apply that rule only when the largest footprint also
         holds building-point evidence, i.e. only where the two point
         sources disagree about which structure is the building.
+
+        ``building_point_sibling_ratio`` (float or None, default None):
+        on a parcel with dwelling-point evidence, also keep primary a
+        footprint whose building points state at least
+        ``building_point_sibling_min_dwellings`` dwellings (default 2)
+        and whose area is at least ``building_point_sibling_min_m2``
+        (default 355) and at least this multiple of the largest
+        dwelling-evidence footprint's. An apartment complex's address
+        points often all carry the complex's one street address and
+        land on one building, which otherwise left its equal
+        neighbours secondary and without value. None disables the rule.
     """
     from openplaces.core.schema import SourceGeometryType as _SGT
 
@@ -131,6 +142,7 @@ def classify_footprint_priority(
     # Collect point-evidence sets.
     address_evidence: set = set()
     building_point_evidence: set = set()
+    building_point_dwellings: list[pd.Series] = []
     for rid, sgt in state.source_geometry_types.items():
         if sgt not in {_SGT.single_dwelling_point, _SGT.single_building_point}:
             continue
@@ -146,6 +158,17 @@ def classify_footprint_priority(
             address_evidence.update(linked_ids)
         elif sgt == _SGT.single_building_point:
             building_point_evidence.update(linked_ids)
+            if spine_id_col in cw.columns and 'n_dwellings' in cw.columns:
+                building_point_dwellings.append(
+                    pd.to_numeric(cw['n_dwellings'], errors='coerce')
+                    .groupby(cw[spine_id_col])
+                    .sum()
+                )
+    bp_dwellings = (
+        pd.concat(building_point_dwellings).groupby(level=0).sum()
+        if building_point_dwellings
+        else pd.Series(dtype=float)
+    )
 
     # Geometry fallback for parcels with no point evidence at all. All-
     # secondary was the old behavior, and it starves such parcels in value
@@ -181,6 +204,18 @@ def classify_footprint_priority(
     override_needs_building_point = thresholds.get(
         'dwelling_override_requires_building_point', True
     )
+    # 20 Chapel St, Brookline: three 8-story buildings of 1,086 m2 on
+    # one lot, all 607 address points on one of them, so the other two
+    # (NSI: 84 and 74 dwellings) were secondary and received none of
+    # the lot's $244M. Requiring a multi-dwelling building point and
+    # 355 m2 keeps sheds and garages out: without both, the rule
+    # promoted 11,735 outlines on seven units, most of them small
+    # accessory structures. Measured 2026-10-17 on BOS, BRE, CAM, SOM,
+    # NEW, TX-GAL, NC-NHA: 1,013 outlines on 239 lots, 89% already
+    # classed multi-family.
+    sibling_ratio = thresholds.get('building_point_sibling_ratio')
+    sibling_min_m2 = thresholds.get('building_point_sibling_min_m2', 355.0)
+    sibling_min_dwellings = thresholds.get('building_point_sibling_min_dwellings', 2)
     areas_m2 = (
         state.spine['area_ha'] * 10_000
         if 'area_ha' in state.spine.columns
@@ -211,6 +246,17 @@ def classify_footprint_priority(
                     )
                 ):
                     keep.add(largest)
+            if sibling_ratio is not None and not bp_dwellings.empty:
+                fp_areas = areas_m2.reindex(list(fp_ids)).fillna(0.0)
+                dwelling_max = fp_areas.reindex(list(has_addr)).max()
+                for fp_id in has_bldg - has_addr:
+                    area = fp_areas[fp_id]
+                    if (
+                        bp_dwellings.get(fp_id, 0) >= sibling_min_dwellings
+                        and area >= sibling_min_m2
+                        and area >= sibling_ratio * dwelling_max
+                    ):
+                        keep.add(fp_id)
             for fp_id in fp_ids - keep:
                 role[fp_id] = 'secondary'
         elif has_bldg:
