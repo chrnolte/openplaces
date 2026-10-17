@@ -1661,6 +1661,7 @@ pipeline:
   - step: flag_unconfirmed_height
     stories_column: n_stories_footprint_overture
     height_column: height_footprint_overture
+    reconciled_stories_column: n_stories
     min_value_per_sqft: 3500
     max_value_per_floor_sqft: 3000
 

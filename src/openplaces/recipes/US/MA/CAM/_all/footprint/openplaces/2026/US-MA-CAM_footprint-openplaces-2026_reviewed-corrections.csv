@@ -1,0 +1,3 @@
+footprint_id,column,value,reason
+87JC9VGV+45F,occupancy_type,Commercial-Residential,"Long-term acute care hospital (1575 Cambridge St, 180 staffed beds per CMS) on a lot whose roll also lists 95 assisted-living units; no count of rooms or units is published for the building."
+87JC9VGV+45F,n_dwellings,,"The 2 came from two address points (1571, 1575); no count of rooms or units is published for the building."

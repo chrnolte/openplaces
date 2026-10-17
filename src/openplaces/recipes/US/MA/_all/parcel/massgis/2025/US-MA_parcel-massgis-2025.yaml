@@ -193,23 +193,31 @@ additional_layers:
       # the cadastre draws no polygon for it, so its values reach no
       # parcel instead of piling onto a small neighbor (the garage under
       # the Common put $44.7M on a 75 m2 entrance kiosk). Only listed
-      # accounts change; the rest keep LOC_ID.
+      # accounts change; the rest keep LOC_ID. Each town keeps its own
+      # sidecar, because account numbers repeat across towns.
       - type: remap_file
         input: property_id_assessor
         crosswalk_id: US-MA-BOS_parcel-massgis-2025_lot-corrections
         output: parcel_id_admin2_corrected
         admin_ids: [US-MA-BOS]
+      # Cambridge: a garage with no land area on a 17.6 m2 scrap
+      # (44-95, $11.0M land) moves onto the lot that holds it.
+      - type: remap_file
+        input: property_id_assessor
+        crosswalk_id: US-MA-CAM_parcel-massgis-2025_lot-corrections
+        output: parcel_id_admin2_corrected
+        admin_ids: [US-MA-CAM]
       - type: aggregate
         operation: coalesce
         inputs: [parcel_id_admin2_corrected, parcel_id_admin2]
         output: parcel_id_admin2
-        admin_ids: [US-MA-BOS]
+        admin_ids: [US-MA-BOS, US-MA-CAM]
       - type: unary
         operation: null_if_equal
         input: parcel_id_admin2
         args: {value: none}
         output: parcel_id_admin2
-        admin_ids: [US-MA-BOS]
+        admin_ids: [US-MA-BOS, US-MA-CAM]
     drop_columns:
       - land_area_sqft_factor
       - land_area_units

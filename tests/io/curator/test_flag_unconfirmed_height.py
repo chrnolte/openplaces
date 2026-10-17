@@ -49,6 +49,27 @@ def test_a_tall_building_is_confirmed_and_a_low_one_is_not():
     assert pd.isna(out['NO_VALUE'])
 
 
+def test_a_reconciled_story_count_confirms_an_unmeasured_building():
+    sqft = 10.7639
+    frame = pd.DataFrame(
+        {
+            # $5,000 per sq ft of outline each, no measured height
+            'structure_value': [5e3 * 1000 * sqft, 5e3 * 1000 * sqft],
+            'area_m2': [1000.0, 1000.0],
+            'n_stories_overture': [None, None],
+            'n_stories': [8.0, None],
+        },
+        index=['CONDO', 'BOX'],
+    )
+    out = flag_unconfirmed_height(
+        _state(frame),
+        stories_column='n_stories_overture',
+        reconciled_stories_column='n_stories',
+    ).curated['height_unconfirmed']
+    assert not out['CONDO']  # $625 per sq ft of floor
+    assert out['BOX']
+
+
 def test_a_height_alone_gives_the_floors():
     sqft = 10.7639
     frame = pd.DataFrame(
