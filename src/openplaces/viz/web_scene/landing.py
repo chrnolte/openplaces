@@ -17,7 +17,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from openplaces.viz.web_scene import DEFAULT_SUBTITLE, DEFAULT_TITLE
+from openplaces.viz.web_scene import DEFAULT_TITLE
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ def build_landing(
     places,
     output_dir,
     title=DEFAULT_TITLE,
-    subtitle=DEFAULT_SUBTITLE,
+    subtitle=None,
     thumbnails=True,
 ) -> Path:
     """Write the landing page and its card images.
@@ -112,8 +112,9 @@ def build_landing(
         under its slug.
     title : str
         Page heading.
-    subtitle : str
-        Smaller line under the heading.
+    subtitle : str, optional
+        Smaller line under the heading; None (default) shows none
+        (maintainer, 2026-10-16).
     thumbnails : bool
         Photograph each scene (`capture_thumbnail`); False keeps the
         images already in `output_dir/thumbs`.
@@ -141,7 +142,10 @@ def build_landing(
     )
     page = (
         page.replace('{{TITLE}}', html.escape(title))
-        .replace('{{SUBTITLE}}', html.escape(subtitle))
+        .replace(
+            '{{SUBTITLE}}',
+            f'  <p class="subtitle">{html.escape(subtitle)}</p>' if subtitle else '',
+        )
         .replace('{{CARDS}}', '\n'.join(cards))
     )
     (output_dir / 'index.html').write_text(page, encoding='utf-8')

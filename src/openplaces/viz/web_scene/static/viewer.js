@@ -95,6 +95,30 @@ function featureHeight(arrays, feature, assessed = false) {
   return assessed && arrays.estimated && arrays.estimated[feature] ? 0 : arrays.height[feature];
 }
 
+// Each ring's top edge as a closed path, for drawing lot lines: the
+// ring's vertices lifted by their extrusion, and a little more so the
+// line is not lost in its own face. Cached per geometry build.
+function topOutlines(entry) {
+  if (entry.topOutlines && entry.topOutlines.source === entry.data) {
+    return entry.topOutlines.data;
+  }
+  const {getPolygon, getElevation} = entry.data.attributes;
+  const base = getPolygon.value;
+  const top = new Float32Array(base.length);
+  for (let v = 0; v < base.length / 3; v++) {
+    top[3 * v] = base[3 * v];
+    top[3 * v + 1] = base[3 * v + 1];
+    top[3 * v + 2] = base[3 * v + 2] + getElevation.value[v] + 0.3;
+  }
+  const data = {
+    length: entry.data.length,
+    startIndices: entry.data.startIndices,
+    attributes: {getPath: {value: top, size: 3}},
+  };
+  entry.topOutlines = {source: entry.data, data};
+  return data;
+}
+
 function buildBinary({arrays}, dropStack = false, flat = false, assessed = false) {
   const {xy, ring_offsets: rings, part_ring_offsets: partRings} = arrays;
   // A draped layer carries each vertex's own ground height in `z`;
@@ -185,7 +209,7 @@ function featureColors(values, spec, noValue) {
   return out;
 }
 
-function choosePalette(palettes) {
+function choosePalette(palettes, fallback) {
   const wanted = new URLSearchParams(location.search).get('palette');
   let stored = null;
   try {
@@ -196,6 +220,7 @@ function choosePalette(palettes) {
   return (
     palettes.find((p) => p.id === wanted) ||
     palettes.find((p) => p.id === stored) ||
+    palettes.find((p) => p.id === fallback) ||
     palettes[0]
   );
 }
@@ -609,9 +634,14 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
         query.set('bearing', viewport.bearing.toFixed(1));
       }
     }
-    const hidden = Object.keys(shown).filter((name) => !shown[name]);
+    // Ghosts are off by default, so they travel as `show`, the rest
+    // (on by default) as `hide`.
+    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
     if (hidden.length) {
       query.set('hide', hidden.join(','));
+    }
+    if (shown.ghosts) {
+      query.set('show', 'ghosts');
     }
     const text = query.toString();
     return `../${slug}/${text ? `?${text}` : ''}`;
@@ -623,9 +653,11 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
   };
   menu.addEventListener('toggle', refresh);
   list.addEventListener('pointerdown', refresh);
-  // At the very top, in the title box, apart from the display controls
-  // (and still there when they are folded away).
-  document.getElementById('title-panel').appendChild(menu);
+  // Top right, on its own, apart from the display controls (and still
+  // there when they are folded away).
+  const panel = document.getElementById('place-panel');
+  panel.appendChild(menu);
+  panel.hidden = false;
 }
 
 async function main() {
@@ -633,9 +665,8 @@ async function main() {
   const scene = await (await fetch('scene.json', {cache: 'no-cache'})).json();
   document.title = scene.title;
   document.getElementById('title').textContent = scene.title;
-  if (scene.subtitle) {
-    document.getElementById('subtitle').textContent = scene.subtitle;
-  }
+  // No subtitle on the scene: what the values are follows from the
+  // controls (with estimates, or the assessment alone).
   // The other places of the site (`places.json`, written with the
   // landing page beside the scenes); absent for a lone scene.
   const places = await fetch('../places.json', {cache: 'no-cache'})
@@ -648,7 +679,7 @@ async function main() {
     notices.appendChild(pre);
   }
   const palettes = scene.palettes.map(preparePalette);
-  let palette = choosePalette(palettes);
+  let palette = choosePalette(palettes, scene.default_palette);
   const legendPanel = document.getElementById('legend-panel');
   // One button per layer, switching the whole layer on or off (display
   // only: it never selects features by their attributes).
@@ -656,11 +687,19 @@ async function main() {
   layerSwitch.id = 'layer-switch';
   const switcher = document.createElement('div');
   switcher.id = 'palette-switch';
-  const legends = document.createElement('div');
-  legendPanel.append(layerSwitch, switcher, legends);
-  // The controls and legend fold away (a third of a phone's screen);
-  // folded, a "Controls" chip waits beside "Sources". Remembered per
-  // browser, like the palette.
+  // The legend has a box of its own in the bottom bar, always shown;
+  // the controls fold away.
+  const legends = document.getElementById('legends');
+  // Folding the legend changes the bar's height.
+  document.getElementById('legend-box').addEventListener('toggle', () => placeControls());
+  // The palette chips choose the legend's colors, so they sit with the
+  // legend, above its bars (maintainer, 2026-10-16).
+  legendPanel.append(layerSwitch);
+  // In the legend's title line, beside "Legend" and its arrow.
+  document.querySelector('#legend-box > summary').appendChild(switcher);
+  // The controls fold away (a third of a phone's screen); the
+  // "Controls" chip in the bottom bar opens and closes them.
+  // Remembered per browser, like the palette.
   const minimize = document.createElement('button');
   minimize.type = 'button';
   minimize.id = 'legend-minimize';
@@ -676,10 +715,26 @@ async function main() {
   restore.dataset.fold = 'restore';
   restore.textContent = 'Controls';
   restore.setAttribute('aria-label', 'Show controls');
-  document.getElementById('corner').appendChild(restore);
+  const bar = document.getElementById('bottom-bar');
+  bar.insertBefore(restore, document.getElementById('about-panel'));
+  // The controls open just above their chip. Where the legend shares
+  // the chip's row (a wide screen) that is the chip's own top; where it
+  // has a row of its own above (a phone), the top of the whole bar, so
+  // the controls never cover the legend.
+  const placeControls = () => {
+    const chip = restore.getBoundingClientRect();
+    const legend = document.getElementById('legend-box').getBoundingClientRect();
+    // The legend is in the chip's row when it ends beside the chip.
+    const sameRow = legend.bottom > chip.top;
+    const top = sameRow ? chip.top : bar.getBoundingClientRect().top;
+    legendPanel.style.bottom = `${Math.round(window.innerHeight - top + 8)}px`;
+  };
+  window.addEventListener('resize', placeControls);
   const setFolded = (folded) => {
     document.body.classList.toggle('controls-min', folded);
-    restore.hidden = !folded;
+    restore.setAttribute('aria-expanded', String(!folded));
+    restore.setAttribute('aria-label', folded ? 'Show controls' : 'Hide controls');
+    placeControls();
     try {
       localStorage.setItem('openplaces-controls-min', folded ? '1' : '0');
     } catch (error) {
@@ -687,7 +742,9 @@ async function main() {
     }
   };
   minimize.addEventListener('click', () => setFolded(true));
-  restore.addEventListener('click', () => setFolded(false));
+  restore.addEventListener('click', () => {
+    setFolded(!document.body.classList.contains('controls-min'));
+  });
   // Folded unless this browser unfolded them before (maintainer,
   // 2026-10-16: minimized by default).
   let startFolded = true;
@@ -714,10 +771,13 @@ async function main() {
     switches.push(['terrain', 'Terrain']);
   }
   // Outlines curate flags as drawn too tall for what is mapped there
-  // (`ghost`): see-through at full height, with a switch of their own.
-  if (scene.layers.some((l) => l.n_ghosts > 0)) {
-    shown.ghosts = !hiddenAtStart.includes('ghosts');
-    switches.push(['ghosts', 'Unconfirmed tall outlines']);
+  // (`ghost`): see-through at full height, behind a switch of their
+  // own, "Ghosts*", off unless the address asks (`?show=ghosts`), with
+  // a footnote under the switches (maintainer, 2026-10-16).
+  const hasGhosts = scene.layers.some((l) => l.n_ghosts > 0);
+  if (hasGhosts) {
+    shown.ghosts = (params.get('show') || '').split(',').includes('ghosts');
+    switches.push(['ghosts', 'Ghosts*']);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
   const landmarks = scene.landmarks || [];
@@ -735,6 +795,13 @@ async function main() {
     button.textContent = label;
     button.addEventListener('click', () => toggleLayer(name));
     layerSwitch.appendChild(button);
+  }
+  if (hasGhosts) {
+    const note = document.createElement('p');
+    note.className = 'footnote';
+    note.textContent = '* Unexplained high building value per area';
+    // With the legend, under its bars.
+    legends.after(note);
   }
   const markLayerSwitch = () => {
     for (const button of layerSwitch.children) {
@@ -762,7 +829,15 @@ async function main() {
   valuesSwitch.id = 'values-switch';
   const choices = [];
   if (hasDwellingView) {
-    choices.push(['view', 'area', 'Per area'], ['view', 'dwelling', 'Per dwelling']);
+    // "Value:" per dwelling first, then per footprint area.
+    const label = document.createElement('span');
+    label.className = 'switch-label';
+    label.textContent = 'Value:';
+    viewSwitch.appendChild(label);
+    choices.push(
+      ['view', 'dwelling', 'Per dwelling'],
+      ['view', 'area', 'Per footprint area'],
+    );
   }
   if (scene.layers.some((l) => l.n_estimated > 0)) {
     choices.push(['values', 'estimates', 'With estimates'], ['values', 'assessed', 'Assessment']);
@@ -782,7 +857,8 @@ async function main() {
   }
   layerSwitch.after(viewSwitch, valuesSwitch);
   const markViewSwitch = () => {
-    for (const button of [...viewSwitch.children, ...valuesSwitch.children]) {
+    const buttons = [...viewSwitch.children, ...valuesSwitch.children];
+    for (const button of buttons.filter((b) => b.dataset.group)) {
       const on = button.dataset.group === 'view'
         ? button.dataset.choice === valueView
         : (button.dataset.choice === 'estimates') === withEstimates;
@@ -812,6 +888,14 @@ async function main() {
       : entry.featureValue;
     if (!withEstimates && arrays.estimated) {
       values = values.map((v, i) => (arrays.estimated[i] ? 0 : v));
+    }
+    // Per area, the assessment view shows the value as recorded where
+    // the shown one carries openplaces' land split (`value_assessed`).
+    if (!withEstimates && arrays.value_assessed && (perArea || !view)) {
+      values = values.map((v, i) => {
+        const a = arrays.value_assessed[i];
+        return Number.isFinite(a) && a > 0 ? a : v;
+      });
     }
     return values;
   };
@@ -846,6 +930,17 @@ async function main() {
         });
       }
     }
+    // The color of features without a value, named (on Pastel it is
+    // a near-white that read as a value; maintainer, 2026-10-16).
+    const none = document.createElement('div');
+    none.className = 'legend-none';
+    const swatch = document.createElement('span');
+    const [r, g, b] = palette.no_value;
+    swatch.style.background = `rgb(${r}, ${g}, ${b})`;
+    none.append(swatch, document.createTextNode('No value recorded'));
+    legends.appendChild(none);
+    // A third bar changes the legend's height.
+    placeControls();
   };
   document.body.style.background = palette.background;
   document.body.classList.toggle('light-page', palette.theme === 'light');
@@ -1126,7 +1221,29 @@ async function main() {
     // showed broken, dotted outlines where the faces won the depth test
     // (maintainer, 2026-10-16). WebGL's polygon offset moves filled
     // triangles only, never lines, so it is the faces that move.
-    const outline = spec.line || lineColors
+    // A single line color (Pastel's lot lines): one 1-pixel line along
+    // each top edge, the same width everywhere. The wireframe also
+    // draws bottom outlines and a strut at every corner, which ran
+    // together into thick, dotted lines where lots stand tall
+    // (maintainer, 2026-10-16). Value-colored edges (Neon) keep the
+    // wireframe: there the struts are the look.
+    const topEdges = spec.line && !lineColors
+      ? new PathLayer({
+        id: `${entry.id}-edges`,
+        data: topOutlines(entry),
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
+        coordinateOrigin: entry.origin,
+        positionFormat: 'XYZ',
+        _pathType: 'loop',
+        getColor: spec.line,
+        getWidth: 1,
+        widthUnits: 'pixels',
+        visible: shown[entry.spec.name],
+        pickable: false,
+        updateTriggers: {getColor: palette.id},
+      })
+      : null;
+    const outline = topEdges || (lineColors
       ? new SolidPolygonLayer({
         ...shared,
         id: `${entry.id}-edges`,
@@ -1141,7 +1258,7 @@ async function main() {
           : spec.line,
         updateTriggers: {getLineColor: [palette.id, valueView, withEstimates]},
       })
-      : null;
+      : null);
     const faces = new SolidPolygonLayer({
       ...(palette.material ? {material: palette.material} : {}),
       ...(outline
@@ -1350,7 +1467,12 @@ async function main() {
     button.textContent = option.label;
     button.dataset.palette = option.id;
     button.classList.toggle('active', option.id === palette.id);
-    button.addEventListener('click', () => setPalette(option));
+    button.addEventListener('click', (event) => {
+      // The chips sit in the legend's summary line: a click picks a
+      // palette and must not also fold the legend.
+      event.preventDefault();
+      setPalette(option);
+    });
     switcher.appendChild(button);
   }
 

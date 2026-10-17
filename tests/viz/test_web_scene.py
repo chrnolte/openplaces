@@ -152,6 +152,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
             'admin3_id': ['US-XX-AAA', 'US-XX-BBB'],
             'address': ['1 Example St', '2 Sample Ave'],
             'use_group': ['residential', 'commercial'],
+            'land_use_class': ['Single-Family', 'Recreation'],
             'land_value_imputed': [50_000.0, 80_000.0],
             'land_value_imputed_source': ['assessor', 'imputed'],
             'owner_name': ['fabricated', 'fabricated'],
@@ -246,7 +247,21 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     parcel_path = out / manifest['layers'][0]['files']['US-XX-BBB']['geometry']
     _, parcel_arrays = decode_scene_file(gzip.decompress(parcel_path.read_bytes()))
     assert list(parcel_arrays['estimated']) == [1]
+    # A lot counts the dwellings of the home on it: 3, so $50,000 of
+    # land is $16,667 per dwelling; the lot without homes has none.
+    aaa_path = out / manifest['layers'][0]['files']['US-XX-AAA']['geometry']
+    _, aaa = decode_scene_file(gzip.decompress(aaa_path.read_bytes()))
+    assert aaa['value_dwelling'][0] == pytest.approx(50_000.0 / 3)
+    assert np.isnan(parcel_arrays['value_dwelling'][0])
     assert manifest['layers'][0]['n_estimated'] == 1
+
+
+def test_public_land_with_a_stray_home_is_not_residential():
+    # A home standing on a park lot: one source (the outline) says
+    # dwelling, the roll's land use does not; the lot stays
+    # non-residential (two sources must agree).
+    assert 'Recreation' not in web_scene.RESIDENTIAL_LAND_USE
+    assert 'Single-Family' in web_scene.RESIDENTIAL_LAND_USE
 
 
 def test_tour_starts_at_the_densest_center_and_skips_lone_parcels():
@@ -300,7 +315,8 @@ def test_deploy_settings_come_from_the_env_file(tmp_path, monkeypatch):
 
 def test_palettes_take_scene_bounds_and_color_stops():
     palettes = web_scene.default_palettes()
-    # Landscape first: the page's default is the first palette.
+    # The chips' order; the first visit shows DEFAULT_PALETTE (Pastel).
+    assert web_scene.DEFAULT_PALETTE == 'pastel'
     assert [p.id for p in palettes] == ['landscape', 'sunset', 'neon', 'pastel']
     manifest = web_scene.palette_manifest(
         palettes[1],
