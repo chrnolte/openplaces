@@ -402,6 +402,30 @@ def test_crop_keeps_whole_features_by_their_center():
     assert kept.geometry.iloc[0].equals(lots.geometry.iloc[0])
 
 
+def test_data_files_are_named_by_content_and_pruned(tmp_path):
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    first = web_scene._write_content_file(data_dir, 'parcels_US-XX-AAA', b'same bytes')
+    again = web_scene._write_content_file(data_dir, 'parcels_US-XX-AAA', b'same bytes')
+    other = web_scene._write_content_file(data_dir, 'parcels_US-XX-AAA', b'new bytes')
+    # Same data, same name and the same file bytes (no gzip timestamp).
+    assert first == again != other
+    assert first.startswith('data/parcels_US-XX-AAA.') and first.endswith('.bin')
+    assert gzip.decompress((tmp_path / first).read_bytes()) == b'same bytes'
+    # An old build folder and an unused file go; kept files stay.
+    old = data_dir / '20260101T000000Z'
+    old.mkdir()
+    (old / 'parcels_US-XX-AAA.bin').write_bytes(b'x')
+    web_scene._prune_local_data(tmp_path, {other})
+    assert (tmp_path / other).exists()
+    assert not (tmp_path / first).exists()
+    assert not old.exists()
+    manifest = {
+        'layers': [{'files': {'US-XX-AAA': {'geometry': other, 'tooltip': first}}}]
+    }
+    assert web_scene.manifest_files(manifest) == {other, first}
+
+
 def test_local_only_scene_is_never_deployed(tmp_path):
     (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
     (tmp_path / 'scene.json').write_text(

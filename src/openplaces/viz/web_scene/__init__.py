@@ -54,6 +54,7 @@ import json
 import shutil
 import struct
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -627,6 +628,71 @@ def _tooltip_values(gdf, layer: SceneLayer) -> dict:
 
 
 RECORDS_COLUMN = 'n_records_on_outline'
+
+
+def _write_content_file(data_dir: Path, stem: str, data: bytes) -> str:
+    """Write *data* gzipped as `<stem>.<hash>.bin`; return its page path.
+
+    The name carries a hash of the uncompressed bytes, so a rebuild with
+    unchanged data reuses the file: it is neither rewritten here nor
+    uploaded again (`deploy_web_scene` copies data with
+    `--ignore-existing`). gzip's header timestamp is fixed at 0, so the
+    same data also gives the same file. Measured 2026-10-16 on
+    boston-inner-core: palette, lighting and control changes left every
+    one of 1,589 data files unchanged, yet each publish re-sent them
+    all (about 220 MB for the four scenes) under a new build folder.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    name = f'{stem}.{digest}.bin'
+    path = data_dir / name
+    if not path.exists():
+        path.write_bytes(gzip.compress(data, 9, mtime=0))
+    return f'data/{name}'
+
+
+def _read_manifest(output_dir: Path) -> dict | None:
+    """The scene manifest in *output_dir*, or None."""
+    path = Path(output_dir) / 'scene.json'
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+
+
+def manifest_files(manifest: dict | None) -> set[str]:
+    """Data paths (`data/...`) a scene manifest loads."""
+    if not manifest:
+        return set()
+    return {
+        path
+        for layer in manifest.get('layers', [])
+        for paths in layer.get('files', {}).values()
+        for path in paths.values()
+    }
+
+
+def _prune_local_data(output_dir: Path, keep: set[str]) -> None:
+    """Delete data files under `output_dir/data` that *keep* omits,
+    including folders of builds from before content-named files."""
+    data_dir = Path(output_dir) / 'data'
+    # A file another program holds (a sync client indexing it) is left
+    # for the next build rather than failing this one.
+    for path in list(data_dir.rglob('*')):
+        if path.is_file() and path.relative_to(output_dir).as_posix() not in keep:
+            try:
+                path.unlink()
+            except OSError:
+                continue
+    for folder in sorted(
+        (p for p in data_dir.rglob('*') if p.is_dir()), key=lambda p: -len(p.parts)
+    ):
+        try:
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        except OSError:
+            continue
 
 
 LANDMARK_REACH_M = 40.0
@@ -1552,8 +1618,12 @@ def build_web_scene(
     admin_ids = list(admin_ids)
     output_dir = Path(output_dir)
     build_id = build_id or datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
-    data_dir = output_dir / 'data' / build_id
+    # One flat data folder, files named by their content
+    # (`_write_content_file`): a rebuild that changes no data writes and
+    # uploads no data.
+    data_dir = output_dir / 'data'
     data_dir.mkdir(parents=True, exist_ok=True)
+    previous_manifest = _read_manifest(output_dir)
 
     admin = _admin_names(admin_ids)
     names = dict(zip(admin['admin3_id'], admin['name'], strict=True))
@@ -1740,17 +1810,17 @@ def build_web_scene(
                 extra={name: array[rows] for name, array in extra.items()},
             )
             stem = f'{layer.name}_{admin_id}'
-            (data_dir / f'{stem}.bin').write_bytes(gzip.compress(data, 9))
             unit_values = {
                 key: [v for v, keep in zip(column, rows, strict=True) if keep]
                 for key, column in values.items()
             }
-            (data_dir / f'{stem}_tooltip.bin').write_bytes(
-                gzip.compress(json.dumps(unit_values).encode('utf-8'), 9)
-            )
             files_by_unit[admin_id] = {
-                'geometry': f'data/{build_id}/{stem}.bin',
-                'tooltip': f'data/{build_id}/{stem}_tooltip.bin',
+                'geometry': _write_content_file(data_dir, stem, data),
+                'tooltip': _write_content_file(
+                    data_dir,
+                    f'{stem}_tooltip',
+                    json.dumps(unit_values).encode('utf-8'),
+                ),
             }
             if verbose:
                 print(f'{stem}: {int(rows.sum()):,} features')
@@ -1830,6 +1900,11 @@ def build_web_scene(
         },
     }
     (output_dir / 'scene.json').write_text(json.dumps(manifest), encoding='utf-8')
+    # Keep this build's data and the previous build's (a page opened
+    # before a deploy still loads it); delete the rest.
+    _prune_local_data(
+        output_dir, manifest_files(manifest) | manifest_files(previous_manifest)
+    )
     for item in STATIC_DIR.iterdir():
         if item.name == 'landing.html':
             # The landing page's template, written by `landing.py`.
@@ -1837,7 +1912,8 @@ def build_web_scene(
         target = '.htaccess' if item.name == 'htaccess' else item.name
         (output_dir / target).write_bytes(item.read_bytes())
     if verbose:
-        size = sum(f.stat().st_size for f in data_dir.iterdir()) / 2**20
+        size = sum((output_dir / p).stat().st_size for p in manifest_files(manifest))
+        size /= 2**20
         print(f'Wrote {output_dir} (build {build_id}, {size:.1f} MB of data)')
     return output_dir
 
@@ -2011,13 +2087,16 @@ def deploy_web_scene(
 
     Three phases, so a visitor never sees a half-updated site:
 
-    1. the build's data go into their own folder, `data/<build_id>/`;
-       nothing a page already loads changes;
+    1. data: files the host lacks are added to `data/`. Data files are
+       named by their content (`_write_content_file`), so one already
+       online is never sent again, and nothing a page already loads
+       changes;
     2. switch: the page, its script, the manifest and `.htaccess`,
-       which point at the new folder;
-    3. clean up: data folders of builds other than the last
-       `keep_builds` are deleted, so a page opened just before the
-       switch still finds its files.
+       which point at the new files;
+    3. clean up: data files that neither this build nor the build it
+       replaced loads are deleted (with `keep_builds` of 1, only this
+       build's are kept), so a page opened just before the switch still
+       finds its files.
 
     Parameters
     ----------
@@ -2074,19 +2153,31 @@ def deploy_web_scene(
     # The build currently online, read before the switch, stays.
     previous = _rclone_output(env, 'cat', f'{target}/scene.json')
     try:
-        previous_id = json.loads(previous)['build_id'] if previous else None
-    except (ValueError, KeyError):
-        previous_id = None
+        previous_manifest = json.loads(previous) if previous else None
+    except ValueError:
+        previous_manifest = None
+    wanted = manifest_files(manifest)
 
-    print(f'\nPhase 1: data of build {build_id}')
-    _rclone(
-        env,
-        'copy',
-        str(output_dir / 'data' / build_id),
-        f'{target}/data/{build_id}',
-        *RCLONE_SFTP_FLAGS,
-        *dry,
-    )
+    print(f'\nPhase 1: data of build {build_id} ({len(wanted)} files)')
+    with tempfile.TemporaryDirectory() as tmp:
+        # Only this build's files, each sent once ever: a name already
+        # on the host holds the same bytes.
+        listing = Path(tmp) / 'files.txt'
+        listing.write_text(
+            '\n'.join(sorted(p.removeprefix('data/') for p in wanted)) + '\n',
+            encoding='utf-8',
+        )
+        _rclone(
+            env,
+            'copy',
+            str(output_dir / 'data'),
+            f'{target}/data',
+            '--files-from',
+            str(listing),
+            '--ignore-existing',
+            *RCLONE_SFTP_FLAGS,
+            *dry,
+        )
     print('\nPhase 2: switch (index.html, viewer.js, scene.json, .htaccess)')
     _rclone(
         env,
@@ -2103,27 +2194,46 @@ def deploy_web_scene(
         *dry,
     )
 
+    keep = set(wanted)
+    if keep_builds > 1:
+        keep |= manifest_files(previous_manifest)
     online = _rclone_output(
         env,
         'lsf',
-        '--dirs-only',
+        '--files-only',
+        '--recursive',
         f'{target}/data',
         '--checkers',
         '2',
         '--tpslimit',
         '4',
     )
-    builds = sorted(n.rstrip('/') for n in (online or '').split() if n)
-    keep = {build_id}
-    if previous_id and keep_builds > 1:
-        keep.add(previous_id)
-    stale = [n for n in builds if n not in keep]
-    print(f'\nPhase 3: clean up ({len(stale)} older build(s))')
-    for name in stale:
+    stale = sorted(
+        name for name in (online or '').split() if name and f'data/{name}' not in keep
+    )
+    print(f'\nPhase 3: clean up ({len(stale)} file(s) no page loads)')
+    if stale:
+        with tempfile.TemporaryDirectory() as tmp:
+            listing = Path(tmp) / 'stale.txt'
+            listing.write_text('\n'.join(stale) + '\n', encoding='utf-8')
+            _rclone(
+                env,
+                'delete',
+                f'{target}/data',
+                '--files-from',
+                str(listing),
+                '--checkers',
+                '2',
+                '--tpslimit',
+                '4',
+                *dry,
+            )
+        # Folders of builds from before content-named files, now empty.
         _rclone(
             env,
-            'purge',
-            f'{target}/data/{name}',
+            'rmdirs',
+            f'{target}/data',
+            '--leave-root',
             '--checkers',
             '2',
             '--tpslimit',
