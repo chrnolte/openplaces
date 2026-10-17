@@ -217,6 +217,7 @@ class _Inputs:
     rate_donor: pd.Series
     share_donor: pd.Series
     recorded_total: pd.Series
+    recorded_land: pd.Series
     has_recorded_land: pd.Series
     exponent: pd.Series
     per_area: pd.Series
@@ -231,6 +232,7 @@ def _read_inputs(
     footprint_area_column: str,
     parcel_area_column: str,
     total_value_column: str,
+    other_value_column: str,
     land_use_column: str,
     peer_group_column: str,
     residential_classes: list[str],
@@ -346,12 +348,28 @@ def _read_inputs(
         lot_total_repeated = on_lot & pd.DataFrame(
             {'key': key.where(on_lot), 'total': total_value.where(on_lot)}
         ).duplicated(keep=False)
+    # **What a total holds beyond land and building is not land.**
+    # MassGIS rolls state total = land + building + other, where other
+    # is yard items (sheds, pools, paving). On a condo unit whose land is
+    # 0, total - improvement is therefore the other value, read as land.
+    # Measured 2026-10-16 on US-MA-SOM: on all 2,143 properties with land
+    # 0 and a total above improvement, the residual equals OTHER_VAL
+    # exactly. Subtracting it leaves no residual there, so those rows
+    # fall to the rate. A source without the column subtracts nothing.
+    other_value = (
+        pd.to_numeric(curated[other_value_column], errors='coerce')
+        .clip(lower=0)
+        .fillna(0)
+        if other_value_column in curated.columns
+        else pd.Series(0.0, index=curated.index)
+    )
+    recorded_land = total_value - improvement_value - other_value
     has_recorded_land = (
         candidate
         & recorded_total
         & ~lot_total_repeated
         & improvement_value.notna()
-        & (total_value > improvement_value)
+        & (recorded_land > 0)
     )
     return _Inputs(
         land_value=land_value,
@@ -365,6 +383,7 @@ def _read_inputs(
         rate_donor=rate_donor,
         share_donor=share_donor,
         recorded_total=recorded_total,
+        recorded_land=recorded_land,
         has_recorded_land=has_recorded_land,
         exponent=exponent,
         per_area=per_area,
@@ -735,10 +754,9 @@ def _write_outputs(
     has_real_land = land_value.notna() & (land_value > 0)
     land_value_imputed.loc[has_real_land] = land_value.loc[has_real_land]
     land_value_imputed.loc[has_estimate] = shared.loc[has_estimate]
-    land_value_imputed.loc[has_recorded_land] = (
-        inputs.total_value.loc[has_recorded_land]
-        - improvement_value.loc[has_recorded_land]
-    )
+    land_value_imputed.loc[has_recorded_land] = inputs.recorded_land.loc[
+        has_recorded_land
+    ]
 
     improvement_value_imputed = pd.Series(np.nan, index=curated.index)
     has_real_improvement = improvement_value.notna() & (improvement_value > 0)
@@ -815,6 +833,7 @@ def impute_land_value(
     land_value_column: str = 'land_value',
     improvement_value_column: str = 'improvement_value',
     total_value_column: str = 'total_value',
+    other_value_column: str = 'other_value',
     footprint_area_column: str = 'footprint_area_m2_in_parcel',
     parcel_area_column: str = 'area_ha',
     land_use_column: str = 'land_use_class',
@@ -998,6 +1017,11 @@ def impute_land_value(
         ``total_value``). Drives both the direct land recovery and the
         conservation cap described above; absent or non-positive, neither
         applies and the step behaves as it did before.
+    other_value_column : str, optional
+        Column holding the part of the total that is neither land nor
+        building (default other_value, MassGIS's OTHER_VAL). Subtracted
+        from the total before the rest is read as land; absent, nothing
+        is subtracted.
     min_donor_area_ha : float, optional
         Smallest lot area, in hectares, that may teach a per-area rate
         (default 0.004 ha, about 40 m2 -- smaller than a parking space,
@@ -1201,6 +1225,7 @@ def impute_land_value(
         footprint_area_column=footprint_area_column,
         parcel_area_column=parcel_area_column,
         total_value_column=total_value_column,
+        other_value_column=other_value_column,
         land_use_column=land_use_column,
         peer_group_column=peer_group_column,
         residential_classes=residential_classes,
