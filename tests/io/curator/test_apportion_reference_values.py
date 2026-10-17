@@ -152,10 +152,70 @@ def test_secondary_entity_gets_missing_improvement_and_zero_dwellings():
     out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
     assert pd.isna(out.loc['F2', 'improvement_value'])
     assert out.loc['F2', 'n_dwellings'] == 0.0
-    # The primary still gets only its own share: fractions are overlap-based,
-    # not renormalized by the secondary's exclusion from n_dwellings.
-    assert out.loc['F1', 'improvement_value'] == 100000.0
-    assert out.loc['F1', 'n_dwellings'] == 1.0
+    # The secondary's share passes to the primary, so the reference's
+    # value and dwellings are conserved (maintainer, 2026-10-17).
+    assert out.loc['F1', 'improvement_value'] == 200000.0
+    assert out.loc['F1', 'n_dwellings'] == 2.0
+
+
+def test_secondary_share_goes_to_primaries_by_their_weight():
+    pairs = _pairs([('F1', 'P1', 150.0), ('F2', 'P1', 50.0), ('F3', 'P1', 100.0)])
+    ref = pd.DataFrame({'improvement_value': [3000.0]}, index=pd.Index(['P1']))
+    priority = pd.Series(['primary', 'primary', 'secondary'], index=['F1', 'F2', 'F3'])
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
+    assert out.loc['F1', 'improvement_value'] == 2250.0
+    assert out.loc['F2', 'improvement_value'] == 750.0
+    assert pd.isna(out.loc['F3', 'improvement_value'])
+
+
+def test_reference_with_only_secondary_entities_stays_unallocated():
+    pairs = _pairs([('F1', 'P1', 40.0), ('F2', 'P1', 60.0)])
+    ref = pd.DataFrame(
+        {'improvement_value': [5000.0], 'n_dwellings': [1.0]},
+        index=pd.Index(['P1']),
+    )
+    priority = pd.Series(['secondary', 'secondary'], index=['F1', 'F2'])
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
+    assert out['improvement_value'].isna().all()
+    assert (out['n_dwellings'] == 0.0).all()
+
+
+def test_secondary_on_one_parcel_passes_share_on_that_parcel_only():
+    # F2 is a secondary garage straddling P1 and P2; each parcel's share
+    # of it goes to that parcel's own primary.
+    pairs = _pairs(
+        [
+            ('F1', 'P1', 100.0),
+            ('F2', 'P1', 50.0),
+            ('F2', 'P2', 50.0),
+            ('F3', 'P2', 150.0),
+        ]
+    )
+    ref = pd.DataFrame(
+        {'improvement_value': [1000.0, 2000.0]}, index=pd.Index(['P1', 'P2'])
+    )
+    priority = pd.Series(['primary', 'secondary', 'primary'], index=['F1', 'F2', 'F3'])
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
+    assert out.loc['F1', 'improvement_value'] == 1000.0
+    assert out.loc['F3', 'improvement_value'] == 2000.0
+    assert pd.isna(out.loc['F2', 'improvement_value'])
+
+
+def test_built_area_coverage_still_counts_the_secondary_as_mapped():
+    # Stated ground area 1,000 m2; mapped 100 (primary) + 50 (garage) =
+    # 150, coverage 0.15 < 0.2, so the shares are scaled by 0.15 after
+    # the garage's share has passed to the primary.
+    pairs = _pairs([('F1', 'P1', 100.0), ('F2', 'P1', 50.0)])
+    ref = pd.DataFrame({'improvement_value': [1000.0]}, index=pd.Index(['P1']))
+    priority = pd.Series(['primary', 'secondary'], index=['F1', 'F2'])
+    out = apportion_reference_values(
+        pairs,
+        ref,
+        spine_id_col='fid',
+        priority=priority,
+        ref_built_area=pd.Series([1000.0], index=['P1']),
+    )
+    assert out.loc['F1', 'improvement_value'] == 150.0
 
 
 def test_land_value_whole_on_principal_only():

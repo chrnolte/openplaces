@@ -94,13 +94,17 @@ def apportion_reference_values(
     - ``improvement_value``, ``improvement_value_imputed``
       (:data:`PROPORTIONAL_SPLIT_COLUMNS`): each multiplied by every pair's
       within-reference overlap fraction and summed per spine entity; missing
-      (not 0) on entities whose *priority* is ``'secondary'``. A reference id
-      in *equal_area_ref_ids* is exempt from both the dwelling-linked
-      suppression below and this secondary masking, so every one of its
-      linked entities keeps its computed area share — see *equal_area_ref_ids*.
-    - ``n_dwellings``: zeroed on ``'secondary'`` entities (an accessory
-      structure contains no dwellings), then fraction-split and summed.
-      Unaffected by *equal_area_ref_ids*.
+      (not 0) on entities whose *priority* is ``'secondary'``, whose share
+      the reference's other entities receive in proportion to theirs (a
+      reference whose entities are all secondary stays unallocated). A
+      reference id in *equal_area_ref_ids* is exempt from both the
+      dwelling-linked suppression below and this secondary rule, so
+      every one of its linked entities keeps its computed area share;
+      see *equal_area_ref_ids*.
+    - ``n_dwellings``: 0 on ``'secondary'`` entities (an accessory
+      structure contains no dwellings), whose share the reference's other
+      entities receive; fraction-split and summed. Unaffected by
+      *equal_area_ref_ids*.
     - ``year_built``: 0 treated as missing, mean over the entity's linked
       references (unweighted).
     - ``land_value``, ``land_value_imputed``, ``total_value``
@@ -251,6 +255,22 @@ def apportion_reference_values(
         else pd.Series(False, index=pairs.index)
     )
     fraction_proportional = _zero_and_renormalize(fraction, suppress & ~equal_area_pair)
+    equal_area_spine_ids = (
+        set(spine_ids[equal_area_pair]) if equal_area_ref_ids else set()
+    )
+    if priority is not None:
+        is_secondary_pair = (
+            priority.reindex(spine_ids).eq('secondary').fillna(False).to_numpy()
+        )
+    else:
+        is_secondary_pair = np.zeros(len(pairs), dtype=bool)
+    # An entity exempt by equal_area_ref_ids keeps its share on every
+    # reference it touches, as the per-entity mask below always did.
+    secondary_pair = pd.Series(
+        is_secondary_pair & ~spine_ids.isin(equal_area_spine_ids).to_numpy(),
+        index=pairs.index,
+    )
+    scale = None
     if ref_built_area is not None:
         # The split above divides a reference's value among the entities
         # the spine maps on it, so a building the footprint layer lacks
@@ -276,19 +296,20 @@ def apportion_reference_values(
         ).to_numpy()
         coverage = mapped_per_ref / stated
         scale = coverage.where(coverage < built_area_min_coverage, 1.0)
+    # A secondary structure (a garage, a shed) holds none of the
+    # reference's improvement value, so its share passes to the other
+    # entities on the reference. Masking the secondary's sum alone, as
+    # until 2026-10-17, left that share unallocated: a $1,000 lot with a
+    # 150 m2 house and a 50 m2 garage gave the house $750. The built-area
+    # coverage above is measured before this step, so a garage still
+    # counts as mapped building area against the stated figure. A
+    # reference whose entities are all secondary keeps its value
+    # unallocated, since no entity on it can hold it.
+    fraction_proportional = _zero_and_renormalize(fraction_proportional, secondary_pair)
+    if scale is not None:
         fraction_proportional = fraction_proportional * scale.fillna(1.0)
-    equal_area_spine_ids = (
-        set(spine_ids[equal_area_pair]) if equal_area_ref_ids else set()
-    )
 
     attrs = pairs.join(ref_values[value_cols], on=ref_id_col)
-
-    if priority is not None:
-        is_secondary_pair = (
-            priority.reindex(spine_ids).eq('secondary').fillna(False).to_numpy()
-        )
-    else:
-        is_secondary_pair = np.zeros(len(pairs), dtype=bool)
 
     out: dict[str, pd.Series] = {}
 
@@ -305,9 +326,19 @@ def apportion_reference_values(
         out[col] = summed
 
     if 'n_dwellings' in value_cols:
-        dwellings = attrs['n_dwellings'].mask(is_secondary_pair, 0.0)
+        # Same rule as the improvement value: an accessory structure
+        # holds no dwelling, and its share goes to the reference's other
+        # entities rather than nowhere. Unlike the value, no entity is
+        # exempt by equal_area_ref_ids.
+        fraction_dwellings = _zero_and_renormalize(
+            fraction_suppressed,
+            pd.Series(is_secondary_pair, index=pairs.index),
+        )
         out['n_dwellings'] = (
-            (dwellings * fraction_suppressed).round(2).groupby(spine_ids).sum()
+            (attrs['n_dwellings'] * fraction_dwellings)
+            .round(2)
+            .groupby(spine_ids)
+            .sum()
         )
 
     if 'year_built' in value_cols:
@@ -424,8 +455,9 @@ def _assert_not_over_allocated(
     The invariant every apportioned money column must satisfy: what the
     entities receive from a reference never exceeds what that reference
     holds. Under-allocation is legitimate and unchecked -- a parcel with no
-    buildings, a suppressed accessory structure, or a secondary-masked
-    column all leave value unassigned on purpose.
+    buildings, or one whose only buildings are secondary, and mapped
+    outlines far short of the stated building area all leave value
+    unassigned on purpose.
 
     Checked here, in the one function both the harmonize and the curate
     stage apportion through, so the guarantee covers every recipe and every

@@ -341,9 +341,12 @@ pipeline:
       living_area_sqft: living_area_sqft_parcel
 
   # Apportion curated parcel values to footprints:
-  # - improvement_value is split by footprint overlap-area share (residential splitting
-  #   excludes secondary structures; non-residential splits share among all structures).
-  # - land_value goes entirely to the principal footprint.
+  # - improvement_value is split by overlap-area share, or by floor area
+  #   where floor_weight below applies. On a residential lot a secondary
+  #   structure gets none, and its share passes to the lot's other
+  #   footprints; on a non-residential lot every structure keeps its own.
+  # - land_value and total_value go to the principal footprints, divided
+  #   among them by overlap area where a lot has several.
   # - imputed land and improvement values are directly mapped to canonical land_value and
   #   structure_value columns without extra reconciliation.
   - step: apportion_curated_values
