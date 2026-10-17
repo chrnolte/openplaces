@@ -207,17 +207,23 @@ additional_layers:
         crosswalk_id: US-MA-CAM_parcel-massgis-2025_lot-corrections
         output: parcel_id_admin2_corrected
         admin_ids: [US-MA-CAM]
+      # Chelsea: a highway viaduct account ($470M) on a 66 m2 scrap.
+      - type: remap_file
+        input: property_id_assessor
+        crosswalk_id: US-MA-CHE_parcel-massgis-2025_lot-corrections
+        output: parcel_id_admin2_corrected
+        admin_ids: [US-MA-CHE]
       - type: aggregate
         operation: coalesce
         inputs: [parcel_id_admin2_corrected, parcel_id_admin2]
         output: parcel_id_admin2
-        admin_ids: [US-MA-BOS, US-MA-CAM]
+        admin_ids: [US-MA-BOS, US-MA-CAM, US-MA-CHE]
       - type: unary
         operation: null_if_equal
         input: parcel_id_admin2
         args: {value: none}
         output: parcel_id_admin2
-        admin_ids: [US-MA-BOS, US-MA-CAM]
+        admin_ids: [US-MA-BOS, US-MA-CAM, US-MA-CHE]
     drop_columns:
       - land_area_sqft_factor
       - land_area_units

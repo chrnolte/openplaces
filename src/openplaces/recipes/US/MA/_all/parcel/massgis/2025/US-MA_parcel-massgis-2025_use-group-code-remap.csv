@@ -75,12 +75,24 @@ use_group_code,use_group,use_subgroup,admin_id
 937,exempt,exempt,
 938,exempt,exempt,
 939,exempt,exempt,
-940,exempt,exempt,
-941,exempt,exempt,
-942,exempt,exempt,
+940,exempt,elementary school,
+941,exempt,secondary school,
+942,exempt,college or university,
+943,exempt,other school,
+944,exempt,school athletic facility,
+947,exempt,other school property,
 950,exempt,exempt,
-960,exempt,exempt,
+952,exempt,auxiliary use,
+954,exempt,function hall or community center,
+955,exempt,hospital,
+956,exempt,library or museum,
+957,exempt,charitable services,
+960,exempt,religious,
+961,exempt,rectory or parsonage,
+962,exempt,exempt,
 970,residential,public housing,
+971,exempt,government utility authority,
+972,exempt,government transportation authority,
 980,exempt,exempt,
 990,exempt,exempt,
 995,exempt,exempt,
@@ -90,3 +102,6 @@ use_group_code,use_group,use_subgroup,admin_id
 339,commercial,commercial,
 970,exempt,religious,US-MA-BOS
 908,residential,public housing,US-MA-BOS
+960,exempt,office condominium,US-MA-BOS
+971,exempt,rectory or convent,US-MA-BOS
+972,exempt,correctional building,US-MA-BOS
