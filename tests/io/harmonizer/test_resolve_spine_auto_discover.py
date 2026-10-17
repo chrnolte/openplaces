@@ -71,6 +71,44 @@ def test_expand_auto_discover_skips_excluded_recipe(monkeypatch):
     assert recipe_ids == {'US-MA_parcel-massgis-2025'}
 
 
+def test_expand_auto_discover_skips_an_excluded_source(monkeypatch):
+    # A source the sentinel excludes supplies no spine rows, while its
+    # recipe stays discoverable by every other step.
+    rows = _rows(
+        [
+            {
+                'admin_id': 'US-MA',
+                'source_id': source_id,
+                'version': '2026',
+                'entity_type': 'footprint',
+                'exclude_from_auto_discover': False,
+            }
+            for source_id in ('massgis', 'fema')
+        ]
+    )
+    monkeypatch.setattr(spine_module, 'find_recipes', lambda *a, **k: rows)
+    monkeypatch.setattr(recipe_module, 'find_additional_layer_recipes', lambda *a: [])
+    state = HarmonizeState(
+        recipe={'admin_id': AdminId('US')},
+        admin_id=AdminId('US-MA-BOS'),
+        verbose=False,
+        timer=None,
+        spine=None,
+    )
+    discovered = spine_module._expand_auto_discover(
+        [
+            {
+                'auto_discover': True,
+                'entity_type': 'footprint',
+                'exclude_sources': ['fema'],
+            }
+        ],
+        state,
+    )
+
+    assert {s['recipe_id'] for s in discovered} == {'US-MA_footprint-massgis-2026'}
+
+
 def test_expand_auto_discover_orders_most_specific_admin_id_first(monkeypatch):
     # A more-specific (county) recipe must sort before a less-specific
     # (state) one even when it has an OLDER version -- resolve_spine treats

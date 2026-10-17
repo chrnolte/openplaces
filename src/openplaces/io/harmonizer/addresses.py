@@ -55,6 +55,55 @@ def _record_source(curated: pd.DataFrame, column: str, mask, token: str) -> None
     curated.loc[mask, side] = token
 
 
+def _parse_address_list(value: str, admin1_id) -> dict[str, str]:
+    """Normalized components of a one-line address or a joined list of them.
+
+    A joined list ('62 Boylston St + 60 Boylston St') is parsed part by
+    part. The first part's street is kept, with every number listed on
+    that street compressed into one range; parts on other streets are
+    left out, since one address field can name one street. A source's
+    list order is its own (roll order, or largest overlap first), so the
+    first street is the source's first, not a choice among sources.
+    """
+    from openplaces.geo.address import (
+        compress_number_list,
+        normalize_address_components,
+        parse_address,
+        split_address_list,
+    )
+
+    def _one(text):
+        parsed = parse_address(text, admin1_id=admin1_id).components
+        return normalize_address_components(
+            address_street=parsed['address_street'] or '',
+            address_number=parsed['address_number'],
+            unit_number=parsed['unit_number'],
+            postal_code=parsed['postal_code'],
+            city=parsed['city'],
+            state=parsed['state'],
+            admin1_id=admin1_id,
+        )
+
+    parts = split_address_list(value)
+    if len(parts) < 2:
+        return _one(value)
+    normalized = [_one(p) for p in parts]
+    first = next((n for n in normalized if n['address_street']), normalized[0])
+    street = first['address_street']
+    numbers = [
+        n['address_number']
+        for n in normalized
+        if n['address_street'] == street and n['address_number']
+    ]
+    # A part may itself be a range ('704-706'); its ends join the list.
+    tokens = [t for number in numbers for t in number.split('-') if t]
+    combined = compress_number_list(' '.join(tokens)) if len(tokens) > 1 else None
+    result = dict(first)
+    if combined is not None:
+        result['address_number'] = combined
+    return result
+
+
 def reconcile_addresses_df(
     curated: pd.DataFrame,
     admin_id,
@@ -179,7 +228,6 @@ def reconcile_addresses_df(
         lookup_postal_city,
         match_streets,
         normalize_address_components,
-        parse_address,
     )
 
     components = list(ADDRESS_COMPONENTS)
@@ -233,16 +281,7 @@ def reconcile_addresses_df(
             for value in keys.unique():
                 if not value:
                     continue
-                parsed = parse_address(value, admin1_id=admin1_id).components
-                lookup[value] = normalize_address_components(
-                    address_street=parsed['address_street'] or '',
-                    address_number=parsed['address_number'],
-                    unit_number=parsed['unit_number'],
-                    postal_code=parsed['postal_code'],
-                    city=parsed['city'],
-                    state=parsed['state'],
-                    admin1_id=admin1_id,
-                )
+                lookup[value] = _parse_address_list(value, admin1_id)
             for comp in components:
                 frame[comp] = keys.map(lambda k: lookup[k][comp])
         for role, col in present.items():

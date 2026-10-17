@@ -297,6 +297,17 @@ class RecipeDAG:
                 # _node_admins re-expands it to its save level here
                 _add(node_id, node_recipe, target_admin)
 
+        # A state fork of a national ingest recipe writes to the same
+        # entity-keyed path, so that consumers naming the national id
+        # find its files (US-MA_footprint-fema-2023 beside
+        # US_footprint-fema-2023). The walk reaches both, and two rules
+        # producing one file is an AmbiguousRuleException before any job
+        # runs. Keep the most admin-specific recipe per output file.
+        # Massachusetts could not be planned at all until 2026-10-16, so
+        # its towns were built by hand-run stages, which never ran the
+        # OBM ingest Snakemake would have required.
+        self._drop_shadowed_producers(seen)
+
         # Close the graph over its own declared inputs.
         #
         # `input_paths` expands an upstream to every admin unit the
@@ -643,6 +654,37 @@ class RecipeDAG:
                 'its jobs are omitted from the DAG.'
             )
             return []
+
+    def _drop_shadowed_producers(self, seen: set[tuple]) -> None:
+        """Keep one job per output file: the most admin-specific recipe.
+
+        Removes the other jobs from the graph and from *seen*, so no
+        edge points at them. A consumer still names the shared file as
+        input, and Snakemake resolves it to the kept job by its output.
+        """
+        by_path: dict[str, list[StageNode]] = {}
+        for node in self._nodes:
+            try:
+                path = str(self.output_path(node.stage, node.recipe_id, node.admin_id))
+            except Exception:  # noqa: BLE001 - unresolvable, cannot collide
+                continue
+            by_path.setdefault(path, []).append(node)
+        dropped: set[tuple] = set()
+        for nodes in by_path.values():
+            if len({n.recipe_id for n in nodes}) < 2:
+                continue
+
+            def specificity(node):
+                scope = self._recipe(node.recipe_id).get('admin_id')
+                return len(str(scope).split('-')) if scope else 0
+
+            keep = max(nodes, key=specificity)
+            for node in nodes:
+                if node.recipe_id != keep.recipe_id:
+                    dropped.add(node_key(node))
+        if dropped:
+            self._nodes = [n for n in self._nodes if node_key(n) not in dropped]
+            seen.difference_update(dropped)
 
     def _upstream_keys(self, node: StageNode, node_keys: set[tuple]):
         """Yield the node keys of one job's in-DAG upstreams."""

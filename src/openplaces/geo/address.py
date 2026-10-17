@@ -64,12 +64,73 @@ def _clean_number(text: str) -> str:
     groups (e.g. '704-706', '36-36A' -- standard multi-unit range notation,
     each side optionally carrying a single trailing letter) that
     `clean_text`'s generic punctuation stripping would otherwise squash into
-    an unmatchable concatenated number.
+    an unmatchable concatenated number, and compresses a list of numbers
+    into one range (see `compress_number_list`).
     """
     match = _NUMBER_RANGE.fullmatch(text.strip()) if text else None
     if match:
         return f'{match.group(1).upper()}-{match.group(2).upper()}'
+    compressed = compress_number_list(text)
+    if compressed is not None:
+        return compressed
     return clean_text(text)
+
+
+_NUMBER_TOKEN = re.compile(r'^(\d+)[A-Z]?$', re.IGNORECASE)
+# No '/': '12 1/2' is one half-numbered address, not a list.
+_LIST_SEPARATORS = re.compile(r'[\s;,&+]+')
+
+
+def compress_number_list(text: str | None) -> str | None:
+    """Compress several house numbers into one range, lowest to highest.
+
+    Address points falling on one building, or the accounts on one lot,
+    each carry their own number, and joining them gave a single number
+    field such as '241; 217; 215', which the cleaning then flattened to
+    '241 217 215': read as one number, it matched nothing and looked like
+    a typo (Quincy, MA: '1245 1253 1229 1227 1247 1259 1233 1237 1241 1255
+    Hancock St', measured 2026-10-16 on US-MA-QUI). The range keeps every
+    number's extent in the notation the rest of the pipeline already
+    understands ('704-706'; `split_number_range` tries each end against a
+    reference).
+
+    Returns None unless *text* holds at least two number tokens and
+    nothing else, so a single number, a unit or a street passes through.
+    Letter suffixes are dropped from the range ends ('716A 706 716B' ->
+    '706-716'); a list of one repeated number collapses to that number.
+    """
+    if not isinstance(text, str):
+        return None
+    tokens = [t for t in _LIST_SEPARATORS.split(text.strip().upper()) if t]
+    if len(tokens) < 2:
+        return None
+    bases = []
+    for token in tokens:
+        match = _NUMBER_TOKEN.fullmatch(token)
+        if not match:
+            return None
+        bases.append(int(match.group(1)))
+    low, high = min(bases), max(bases)
+    return str(low) if low == high else f'{low}-{high}'
+
+
+_ADDRESS_LIST_SEPARATOR = re.compile(r'\s*(?:\s\+\s|;)\s*')
+
+
+def split_address_list(addr_str: str | None) -> list[str]:
+    """Split a joined list of one-line addresses into its parts.
+
+    Rolls and point layers join several addresses of one lot or building
+    with ' + ' (`table.join_nonnull_addresses`) or '; '. A parser handed
+    the joined string tags every house number and every street word and
+    concatenates them ('53 55 102 31 33 Vale Street Mill Rd', Everett, MA,
+    measured 2026-10-16 on US-MA-EVE). Returns [addr_str] when there is
+    nothing to split.
+    """
+    if not isinstance(addr_str, str):
+        return []
+    parts = [p.strip() for p in _ADDRESS_LIST_SEPARATOR.split(addr_str) if p.strip()]
+    return parts or [addr_str]
 
 
 _LEADING_NUMBER_RANGE = re.compile(

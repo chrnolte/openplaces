@@ -30,6 +30,14 @@ entity:
     redistribution_restricted: false
   version: 2025
 
+# OBM tiles cover every land area, so a unit without an OBM ingest is
+# an ingest that never ran, not a gap: the footprint geospine raises
+# instead of building without it. Measured 2026-10-16 on
+# boston-inner-core: all 68 Boston-region towns and 55 of 56
+# western-nc counties had been built without OBM, the Boston tile
+# downloaded but never ingested, with only a warning in the log.
+coverage: complete
+
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "building.{tile_id}.gpkg.bz2"
 

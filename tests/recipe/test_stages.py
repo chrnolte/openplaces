@@ -53,6 +53,9 @@ def test_curation_recipe_declares_predecessors():
         # Also NC-only, and skipped the same way: the NCDPS per-building
         # construction years the year_built reconcile ranks above NSI.
         'US-NC_footprint_footprint-ncdps-2023',
+        # National: Overture heights, which the floor-weighted value
+        # split and the unconfirmed-height flag read.
+        'US_footprint_footprint-overture-2026',
     }
 
 

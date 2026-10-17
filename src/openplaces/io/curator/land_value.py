@@ -59,6 +59,20 @@ def _incoming_source(curated, column: str) -> pd.Series:
     return pd.Series(column, index=curated.index, dtype=object)
 
 
+def _lot_key(curated) -> pd.Series | None:
+    """Identical-geometry key per record, or None where none can be formed.
+
+    The key `_share_of_lot` divides a lot by, and the one that tells a
+    lot's repeated figure from a record's own (see `_read_inputs`).
+    """
+    if 'geometry' not in curated.columns:
+        return None
+    try:
+        return gpd.GeoSeries(curated['geometry'], index=curated.index).to_wkb()
+    except Exception:
+        return None
+
+
 def _share_of_lot(curated, lot_value, improvement_value) -> pd.Series:
     """Split each lot's estimated land value among the records on that lot.
 
@@ -93,11 +107,8 @@ def _share_of_lot(curated, lot_value, improvement_value) -> pd.Series:
         *lot_value* for any record that does not share its geometry, so a
         pipeline whose parcels are all distinct is unaffected.
     """
-    if 'geometry' not in curated.columns:
-        return lot_value
-    try:
-        key = gpd.GeoSeries(curated['geometry'], index=curated.index).to_wkb()
-    except Exception:
+    key = _lot_key(curated)
+    if key is None:
         return lot_value
 
     shared = key.notna() & key.duplicated(keep=False)
@@ -206,6 +217,7 @@ class _Inputs:
     rate_donor: pd.Series
     share_donor: pd.Series
     recorded_total: pd.Series
+    recorded_land: pd.Series
     has_recorded_land: pd.Series
     exponent: pd.Series
     per_area: pd.Series
@@ -220,6 +232,7 @@ def _read_inputs(
     footprint_area_column: str,
     parcel_area_column: str,
     total_value_column: str,
+    other_value_column: str,
     land_use_column: str,
     peer_group_column: str,
     residential_classes: list[str],
@@ -316,11 +329,47 @@ def _read_inputs(
         else pd.Series(np.nan, index=curated.index)
     )
     recorded_total = total_value.notna() & (total_value > 0)
+    # **A total repeated on every record of a lot is the lot's, not the
+    # record's.** Some rolls write the building's whole total on each
+    # condo unit while the improvement value is the unit's own, so
+    # total - improvement charges every unit for the whole building.
+    # Measured 2026-10-16 on US-NC-BUN: all 4,494 rows this subtraction
+    # filled shared a lot geometry with a record carrying the identical
+    # total, and they added $59.5B of land against about $12.8B
+    # recorded in the county (one unit: $74,122,400 total, $512,000
+    # improvement). Such rows are left to the rate, which
+    # `_share_of_lot` divides among the lot's records. Dividing the
+    # repeated total instead would fill a value from what co-occurs
+    # under a shared key, which is not done here.
+    lot_total_repeated = pd.Series(False, index=curated.index)
+    key = _lot_key(curated)
+    if key is not None:
+        on_lot = key.notna() & recorded_total
+        lot_total_repeated = on_lot & pd.DataFrame(
+            {'key': key.where(on_lot), 'total': total_value.where(on_lot)}
+        ).duplicated(keep=False)
+    # **What a total holds beyond land and building is not land.**
+    # MassGIS rolls state total = land + building + other, where other
+    # is yard items (sheds, pools, paving). On a condo unit whose land is
+    # 0, total - improvement is therefore the other value, read as land.
+    # Measured 2026-10-16 on US-MA-SOM: on all 2,143 properties with land
+    # 0 and a total above improvement, the residual equals OTHER_VAL
+    # exactly. Subtracting it leaves no residual there, so those rows
+    # fall to the rate. A source without the column subtracts nothing.
+    other_value = (
+        pd.to_numeric(curated[other_value_column], errors='coerce')
+        .clip(lower=0)
+        .fillna(0)
+        if other_value_column in curated.columns
+        else pd.Series(0.0, index=curated.index)
+    )
+    recorded_land = total_value - improvement_value - other_value
     has_recorded_land = (
         candidate
         & recorded_total
+        & ~lot_total_repeated
         & improvement_value.notna()
-        & (total_value > improvement_value)
+        & (recorded_land > 0)
     )
     return _Inputs(
         land_value=land_value,
@@ -334,6 +383,7 @@ def _read_inputs(
         rate_donor=rate_donor,
         share_donor=share_donor,
         recorded_total=recorded_total,
+        recorded_land=recorded_land,
         has_recorded_land=has_recorded_land,
         exponent=exponent,
         per_area=per_area,
@@ -405,8 +455,13 @@ def _derive_bands(
                     return pd.Series(np.nan, index=values.index)
                 return pd.qcut(values, size_bands, labels=False, duplicates='drop')
 
+            # Rows without a city form one group of their own. Keyed
+            # on an empty string, not left NA: grouping by a string
+            # column with dropna=False names that group pd.NA, and
+            # transform's result-name check then raises "boolean value
+            # of NA is ambiguous" (US-MA-SAL, 2026-10-16).
             size_band = ranked.groupby(
-                curated[city_column].astype('string'), dropna=False
+                curated[city_column].astype('string').fillna('')
             ).transform(_bands)
         elif ranked.notna().sum() >= size_bands * 2:
             size_band = pd.qcut(ranked, size_bands, labels=False, duplicates='drop')
@@ -704,10 +759,9 @@ def _write_outputs(
     has_real_land = land_value.notna() & (land_value > 0)
     land_value_imputed.loc[has_real_land] = land_value.loc[has_real_land]
     land_value_imputed.loc[has_estimate] = shared.loc[has_estimate]
-    land_value_imputed.loc[has_recorded_land] = (
-        inputs.total_value.loc[has_recorded_land]
-        - improvement_value.loc[has_recorded_land]
-    )
+    land_value_imputed.loc[has_recorded_land] = inputs.recorded_land.loc[
+        has_recorded_land
+    ]
 
     improvement_value_imputed = pd.Series(np.nan, index=curated.index)
     has_real_improvement = improvement_value.notna() & (improvement_value > 0)
@@ -784,6 +838,7 @@ def impute_land_value(
     land_value_column: str = 'land_value',
     improvement_value_column: str = 'improvement_value',
     total_value_column: str = 'total_value',
+    other_value_column: str = 'other_value',
     footprint_area_column: str = 'footprint_area_m2_in_parcel',
     parcel_area_column: str = 'area_ha',
     land_use_column: str = 'land_use_class',
@@ -967,6 +1022,11 @@ def impute_land_value(
         ``total_value``). Drives both the direct land recovery and the
         conservation cap described above; absent or non-positive, neither
         applies and the step behaves as it did before.
+    other_value_column : str, optional
+        Column holding the part of the total that is neither land nor
+        building (default other_value, MassGIS's OTHER_VAL). Subtracted
+        from the total before the rest is read as land; absent, nothing
+        is subtracted.
     min_donor_area_ha : float, optional
         Smallest lot area, in hectares, that may teach a per-area rate
         (default 0.004 ha, about 40 m2 -- smaller than a parking space,
@@ -1170,6 +1230,7 @@ def impute_land_value(
         footprint_area_column=footprint_area_column,
         parcel_area_column=parcel_area_column,
         total_value_column=total_value_column,
+        other_value_column=other_value_column,
         land_use_column=land_use_column,
         peer_group_column=peer_group_column,
         residential_classes=residential_classes,

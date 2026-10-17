@@ -684,6 +684,61 @@ def test_a_lot_is_split_by_improvement_value_not_evenly():
     assert out['land_value_imputed'].iloc[-1] == pytest.approx(lot * 0.25)
 
 
+def test_a_total_repeated_on_every_unit_of_a_lot_is_not_the_units_own():
+    # Buncombe NC writes the building's total on each condo unit while
+    # the improvement value is the unit's. total - improvement would
+    # give each unit 9,900,000 of land; the rate gives the lot 200,
+    # divided among its records.
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    units = [
+        _row(
+            land_use_class='Condominium',
+            land_value=0,
+            improvement_value=100_000,
+            total_value=10_000_000,
+            area_ha=1,
+        )
+        for _ in range(4)
+    ]
+    geoms = [_box(0), _box(2), _box(4)] + [_box(10)] * 4
+    out = impute_land_value(
+        _state(_geo_frame([*donors, *units], geoms)), min_group_size=3
+    ).curated
+
+    shares = out['land_value_imputed'].iloc[-4:]
+    assert shares.sum() == pytest.approx(200)
+    assert (
+        out['land_value_imputed_source'].iloc[-4:] != 'total_minus_improvement+imputed'
+    ).all()
+
+
+def test_a_units_own_total_on_a_shared_lot_still_gives_its_land():
+    # Distinct totals on one lot are each unit's own figure, so the
+    # subtraction stands.
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    units = [
+        _row(
+            land_use_class='Condominium',
+            land_value=0,
+            improvement_value=100_000,
+            total_value=total,
+            area_ha=1,
+        )
+        for total in (130_000, 150_000)
+    ]
+    geoms = [_box(0), _box(2), _box(4), _box(10), _box(10)]
+    out = impute_land_value(
+        _state(_geo_frame([*donors, *units], geoms)), min_group_size=3
+    ).curated
+    assert out['land_value_imputed'].iloc[-2:].tolist() == [30_000, 50_000]
+
+
 def test_identical_area_with_different_geometry_is_never_split():
     # The trap this keys on geometry to avoid: a platted subdivision sells
     # many lots cut to the same size. Splitting their land value between
@@ -773,6 +828,48 @@ def test_a_recorded_total_recovers_land_directly_without_a_rate():
         out['land_value_imputed_source'].iloc[-1] == 'total_minus_improvement+imputed'
     )
     assert is_imputed(out['land_value_imputed_source']).iloc[-1]
+
+
+def test_a_totals_other_value_is_not_read_as_land():
+    # MassGIS: total = land + building + other. With land 0 the
+    # residual is the other value (yard items), which is not land, so
+    # the rate decides: 200/ha on this 1 ha lot.
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    condo = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=2_000_000,
+        total_value=2_006_000,
+        other_value=6_000,
+        area_ha=1,
+    )
+    out = impute_land_value(_state(_frame([*donors, condo])), min_group_size=3).curated
+    assert out['land_value_imputed'].iloc[-1] == 200
+    assert (
+        out['land_value_imputed_source'].iloc[-1] != 'total_minus_improvement+imputed'
+    )
+
+
+def test_land_beyond_the_other_value_is_still_recovered():
+    donors = [
+        _row(land_use_class='Single-Family', land_value=20_000, area_ha=100)
+        for _ in range(3)
+    ]
+    recorded = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=180_000,
+        total_value=250_000,
+        other_value=10_000,
+        area_ha=1,
+    )
+    out = impute_land_value(
+        _state(_frame([*donors, recorded])), min_group_size=3
+    ).curated
+    assert out['land_value_imputed'].iloc[-1] == 60_000
 
 
 def test_a_recorded_total_does_not_also_reduce_the_improvement_value():

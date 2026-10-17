@@ -170,9 +170,13 @@ def test_secondary_footprint_gets_missing_improvement_value(monkeypatch, tmp_pat
 def test_dwelling_linked_footprint_takes_whole_parcel_value(monkeypatch, tmp_path):
     df = _curated_footprints()
     df.loc['F2', 'n_dwellings_overture'] = 1.0
+    # The priority step makes a footprint without the dwelling point
+    # secondary (a primary one keeps its share, see
+    # test_primary_entity_beside_a_dwelling_point_keeps_its_area_share).
+    df.loc['F3', 'priority_on_parcel'] = 'secondary'
     out = _apportion(df, monkeypatch, tmp_path)
     assert out.loc['F2', 'improvement_value_parcel'] == 400000.0
-    assert out.loc['F3', 'improvement_value_parcel'] == 0.0
+    assert pd.isna(out.loc['F3', 'improvement_value_parcel'])
     assert pd.isna(out.loc['F3', 'land_value_parcel'])
 
 

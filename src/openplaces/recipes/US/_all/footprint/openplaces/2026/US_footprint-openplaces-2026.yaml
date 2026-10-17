@@ -149,6 +149,10 @@ share:
     # points below; without it that ratio cannot be reproduced or rescaled.
     - area_m2
     - occupancy_type
+    # The roll's class for the parcel the footprint stands on, kept
+    # beside occupancy_type because that one folds condominiums and
+    # townhomes into the multi-family classes.
+    - land_use_class_parcel
     - year_built
     - n_stories
     # Dwelling count on the verified footprint: overture markers linked
@@ -161,9 +165,12 @@ share:
     # resolved", never "one section".
     - n_sections
     - structure_value
-    # True where curate flags an outline drawn too tall for what is
-    # mapped there (flag_unconfirmed_height, Massachusetts for now); the
-    # 3D value page draws such outlines see-through.
+    # The recorded improvement value this footprint's share comes
+    # from, before the land split.
+    - improvement_value_parcel
+    # Value per area that no measured height explains
+    # (flag_unconfirmed_height, Massachusetts patch); empty elsewhere.
+    # The 3D value page draws such outlines see-through.
     - height_unconfirmed
     - construction_type
     - foundation_type
@@ -359,6 +366,31 @@ pipeline:
     non_residential_classes:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
        Agricultural, RV Park]
+    # A large building standing on several lots keeps its share of each
+    # lot's value even where the crosswalk trimmed the link (see
+    # _readmittable_trimmed_links); otherwise a lot's whole value went
+    # to a kiosk or stair tower beside it.
+    readmit_trimmed_links: true
+    # Where the mapped footprints cover under a fifth of the ground area
+    # the roll states (floor area over stories), they keep only their
+    # share and the unmapped building's value stays unallocated: it
+    # remains on the parcel, where a map can show it as the parcel's
+    # value less its footprints' (no polygon is added here).
+    floor_area_columns: [gross_floor_area_sqft, living_area_sqft]
+    stories_column: n_stories
+    # A lot's value is split among its outlines by floor area (footprint
+    # times floors), floors from Overture's measured heights (OSM, USGS
+    # Lidar). Split by footprint alone, a one-story annex beside a tower
+    # took the tower's value per sq ft and stood as a needle (US-MA-BOS
+    # `4|1134`: 387 m2 annex at $15,687 per sq ft, $568 after). A lot
+    # with an unmeasured outline of 100 m2 or more keeps the area split.
+    # Measured 2026-10-16 on US-NC-NHA (simulated): of 42 outliers above
+    # $3,500 per sq ft, 7 fell below it and 7 were explained by floors.
+    floor_weight:
+      recipe_id: US_footprint_footprint-overture-2026
+      stories_column: n_stories_footprint_overture
+      height_column: height_footprint_overture
+      story_height_m: 3.5
 
   # The denominator of the manufactured-home value test: the parcel's own
   # value, undivided.
@@ -460,6 +492,13 @@ pipeline:
         columns:
           year_built_footprint_ncdps: year_built_footprint_ncdps
           year_built_source_footprint_ncdps: year_built_source_footprint_ncdps
+      # Overture's measured height and floor count per outline, the
+      # floors of the floor-area split above and of the height check
+      # (flag_unconfirmed_height) below.
+      - recipe_id: US_footprint_footprint-overture-2026
+        columns:
+          height_footprint_overture: height_footprint_overture
+          n_stories_footprint_overture: n_stories_footprint_overture
 
   # Carry the county's federal FIPS code alongside openplaces' own
   # admin3_id. Only one of the two is ours to change: an admin-id re-mint
@@ -755,6 +794,15 @@ pipeline:
       # foundation, but national.
       construction_type: [construction_type_building_cheer,
                           construction_type_building_nsi]
+    valid_range:
+      # The tallest US building has 108 floors; NSI's modeled count
+      # goes far past that.
+      # Measured 2026-10-16 on cheer-coastal-tx: NSI reaches 1,681 stories.
+      # In Boston, 790 Boylston St carries 219 where its roll says 26.
+      # An out-of-range value falls through to the next lane, and a
+      # footprint left empty can still take the roll's count in
+      # adopt_stories_by_floor_area_fit below.
+      n_stories: [1, 110]
 
   # Fill a missing story count from the roll, per county or town, and
   # only where the roll's counts fit the roll's own floor area better
@@ -1600,6 +1648,18 @@ pipeline:
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
     min_homes: 3
+
+  # Outlines drawn tall (value per sq ft of outline) that their measured
+  # floors do not explain: a building the outline does not hold, or a
+  # box no other layer maps. A value page draws them as unconfirmed.
+  # Measured 2026-10-16 on US-NC-NHA (simulated): about 28 of 42 outliers
+  # above $3,500 per sq ft flagged, 23 of them buildings no footprint
+  # layer maps.
+  - step: flag_unconfirmed_height
+    stories_column: n_stories_footprint_overture
+    height_column: height_footprint_overture
+    min_value_per_sqft: 3500
+    max_value_per_floor_sqft: 3000
 
   # Format: dtypes, then deterministic column order.
   - step: cast_categoricals

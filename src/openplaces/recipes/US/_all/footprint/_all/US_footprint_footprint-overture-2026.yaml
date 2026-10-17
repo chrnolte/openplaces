@@ -1,0 +1,44 @@
+# Enrichment recipe: attach each footprint's measured height and floor
+# count from Overture buildings, by polygon overlap.
+#
+# Exists so that a lot's building value can be split among its outlines
+# by floor area rather than footprint area. Split by footprint, a
+# one-story podium beside a tower took the tower's value per square
+# foot: measured 2026-10-16 on boston-inner-core, 41 outlines drawn above
+# $3,500 per sq ft of outline came to more than $3,000 per sq ft of
+# floor, most of them low annexes of towers (`4|1134`, a 1-floor 387 m2
+# annex beside a 62-story tower, $15,687 per sq ft). Overture carries
+# per-building heights from OpenStreetMap and USGS Lidar on 98.1% of the
+# outlines there; NSI stories are not per building (790 Boylston St at
+# 219) and OBM heights fall back to a 100 m built-height raster, which
+# gives an annex its tower's height.
+
+description: >-
+  Overture per-building height and floor count attached to footprints by
+  polygon overlap.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: footprint
+
+dataset: footprint-overture-2026
+
+# Matching is geometric, so the spine must be loaded with its geometry.
+spine_geom: true
+
+reference_building_recipe_id: footprint-overture-2026
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_footprints_from_reference_buildings
+    # Attached as `{column}_footprint_overture`. Stricter than the
+    # default 0.1: a height belongs to one building, and a podium
+    # clipped by its tower's outline must not take the tower's height.
+    min_iou: 0.3
+    columns:
+      - height
+      - n_stories

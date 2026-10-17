@@ -1,0 +1,6 @@
+property_id_assessor,parcel_id_admin2,reason
+0500812001,F_773557_2954758,"Parking garage of 350,000 sq ft gross area under the Common (PID sub-account 001 of the Common's 0500812000); its own polygon is one of four 148 m2 surface entrances."
+0303956100,none,"Public land of 317,584 sq ft with no polygon of its own; the city roll's GIS_ID points at another account's 599 m2 polygon (6,500 sq ft)."
+1602554000,none,"Exempt land of 54,197 sq ft with no polygon of its own; the city roll's GIS_ID points at another account's 23 m2 polygon."
+1602556000,none,"Exempt land of 35,896 sq ft with no polygon of its own; the city roll's GIS_ID points at another account's 23 m2 polygon."
+1602557000,none,"Exempt land of 1,934 sq ft with no polygon of its own; the city roll's GIS_ID points at another account's 23 m2 polygon."

@@ -153,14 +153,16 @@ def enrich_footprints_from_reference_buildings(
     # Carrying them through the overlay would collide wherever the spine
     # already has a column of the same name (n_stories, year_built and
     # area_m2 all recur).
+    # Keyed by row position, not by the reference's own ids: those are
+    # only used to pull attributes back out below, and they need not be
+    # unique. Overture's ids are Open Location Codes of each outline's
+    # center and repeat for buildings close together, so a lookup by id
+    # returned several rows for one match (US-MA-BOS, 2026-10-16: 104,214
+    # rows for 104,197 matches). A positional name also avoids the
+    # overlay's refusal of an index name the spine shares (NCDPS
+    # footprints enriching the footprint spine).
+    reference = reference.reset_index(drop=True).rename_axis('_reference_row')
     ref_geo = reference[['geometry']]
-    if ref_geo.index.name == state.spine.index.name:
-        # A reference of the spine's own entity type (NCDPS footprints
-        # enriching the footprint spine) shares the index name, which
-        # the overlay refuses as ambiguous. The reference's ids are only
-        # used to pull attributes back out below, so a disambiguated
-        # name is free.
-        ref_geo = ref_geo.rename_axis(f'{ref_geo.index.name}_reference')
     pairs = overlay_polygons(state.spine[['geometry']], ref_geo, iou=True)
     if state.timer:
         state.timer.mark('overlay footprints against reference buildings')

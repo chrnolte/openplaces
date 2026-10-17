@@ -1079,7 +1079,8 @@ def resolve_overlapping_polygons(
 
     For each overlapping pair, non-ID and non-geometry columns are compared:
 
-    - If identical: the second polygon is dropped (likely a data duplicate).
+    - If identical: the smaller polygon is dropped (a duplicate, or a
+      structure nested in a larger one).
     - If different: behaviour is controlled by `keep`:
 
       - None (default): warn and keep both polygons.
@@ -1192,7 +1193,18 @@ def resolve_overlapping_polygons(
         if compare_cols and df.loc[left_idx, compare_cols].equals(
             df.loc[right_idx, compare_cols]
         ):
-            dupes_to_drop.add(right_idx)
+            # Identical attributes say nothing about which polygon is
+            # the real one, and the pair test (overlap of at least half
+            # the smaller polygon) also catches a small polygon nested
+            # in a large one. Dropping the right-hand side regardless
+            # of size deleted the large one about half the time.
+            # Measured 2026-10-15 on US-MA-BOS: 789 parcel-linked
+            # footprints (285 over 500 m2) were missing from the
+            # footprint geospine, among them a 3,395 m2 building whose
+            # nested 14 m2 roof structure was kept.
+            area_left = overlaps.at[(left_idx, right_idx), 'area_left_m2']
+            area_right = overlaps.at[(left_idx, right_idx), 'area_right_m2']
+            dupes_to_drop.add(right_idx if area_left >= area_right else left_idx)
         else:
             ambiguous.append((left_idx, right_idx))
 
