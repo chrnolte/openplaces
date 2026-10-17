@@ -630,6 +630,19 @@ def _tooltip_values(gdf, layer: SceneLayer) -> dict:
 RECORDS_COLUMN = 'n_records_on_outline'
 
 
+def _without_filters(flags) -> list[str]:
+    """rclone flags with every `--filter <rule>` pair removed."""
+    out, skip = [], False
+    for flag in flags:
+        if skip:
+            skip = False
+        elif flag == '--filter':
+            skip = True
+        else:
+            out.append(flag)
+    return out
+
+
 def _write_content_file(data_dir: Path, stem: str, data: bytes) -> str:
     """Write *data* gzipped as `<stem>.<hash>.bin`; return its page path.
 
@@ -2175,7 +2188,10 @@ def deploy_web_scene(
             '--files-from',
             str(listing),
             '--ignore-existing',
-            *RCLONE_SFTP_FLAGS,
+            # rclone refuses `--files-from` beside other filters; the
+            # list names only data files, so the `/.well-known/` guard
+            # of the shared flags has nothing to protect here.
+            *_without_filters(RCLONE_SFTP_FLAGS),
             *dry,
         )
     print('\nPhase 2: switch (index.html, viewer.js, scene.json, .htaccess)')

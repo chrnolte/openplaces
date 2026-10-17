@@ -426,6 +426,13 @@ def test_data_files_are_named_by_content_and_pruned(tmp_path):
     assert web_scene.manifest_files(manifest) == {other, first}
 
 
+def test_file_list_uploads_drop_filters():
+    # rclone refuses --files-from beside --filter rules.
+    flags = web_scene._without_filters(web_scene.RCLONE_SFTP_FLAGS)
+    assert '--filter' not in flags
+    assert '--transfers' in flags
+
+
 def test_local_only_scene_is_never_deployed(tmp_path):
     (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
     (tmp_path / 'scene.json').write_text(
