@@ -51,6 +51,7 @@ versions (parquet-wasm, Apache Arrow, the GeoArrow layers, deck.gl).
 
 import gzip
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -229,6 +230,26 @@ RESIDENTIAL_LAND_USE = frozenset(
         'Manufactured Home',
     }
 )
+# The page's own class of a building (maintainer, 2026-10-16/17, handoff
+# item 1f): the roll's land use class of its lot (`land_use_class_parcel`:
+# Condominium, Townhome, Multiple Single-Family, Office, ...), which
+# keeps what the CHEER `occupancy_type` folds into "Low-Rise
+# Multi-Family"; `occupancy_type` where the lot has no class, and always
+# for outbuildings ("Secondary"), since the lot's class describes its
+# main building, not a shed.
+BUILDING_CLASS = 'building_class'
+
+
+def building_class(gdf) -> pd.Series:
+    """The page's class per building (`BUILDING_CLASS`)."""
+    occupancy = gdf['occupancy_type'].astype('string')
+    if 'land_use_class_parcel' not in gdf.columns:
+        return occupancy
+    lot = gdf['land_use_class_parcel'].astype('string')
+    use_lot = lot.notna() & ~occupancy.isin(['Secondary']).fillna(False)
+    return lot.where(use_lot, occupancy)
+
+
 # Lots' dwelling count as the roll states it, beside the count taken
 # from the homes standing on the lot (`_count_dwellings_from_above`).
 ROLL_DWELLINGS = 'n_dwellings_roll'
@@ -301,7 +322,7 @@ VALUE_SCENE_LAYERS = (
         stack_on='parcels',
         tooltip=(
             TooltipField('address', 'Address'),
-            TooltipField('occupancy_type', 'Occupancy'),
+            TooltipField(BUILDING_CLASS, 'Building'),
             TooltipField('year_built', 'Year built', 'year'),
             TooltipField(
                 'structure_value',
@@ -380,6 +401,163 @@ def refuse_personal_fields(layers) -> None:
                         f'Scene layer {layer.name!r} would show the personal '
                         f'column {column!r}. A web scene never carries one.'
                     )
+
+
+# Names and credit lines the Sources document shows for source ids the
+# notices name. The credits are the sources' own requests (MassGIS) or
+# what their licence asks (OBM: OpenStreetMap contributors and the OBM
+# authors, recorded in footprint-obm-2025.yaml). Other ids show as named.
+SOURCE_DISPLAY = {
+    'massgis': {
+        'name': 'MassGIS',
+        'credit': 'MassGIS (Bureau of Geographic Information), Commonwealth of '
+        'Massachusetts EOTSS',
+    },
+    'obm': {
+        'name': 'OpenBuildingMap',
+        'credit': '© OpenStreetMap contributors; Oostwegel, Schorlemmer, Lingner & '
+        'Evaz Zadeh (2025), OpenBuildingMap, doi:10.5880/GFZ.LKUT.2025.002',
+    },
+    'microsoft': {
+        'name': 'Microsoft Building Footprints',
+        'credit': 'Microsoft Building Footprints (ODbL 1.0)',
+    },
+    'fema': {'name': 'FEMA USA Structures'},
+    'nconemap': {'name': 'NC OneMap', 'credit': 'NC OneMap (nconemap.gov)'},
+}
+
+_SOURCE_LINE = re.compile(r'^\s*(?P<share>\d+(?:\.\d+)?)%\s+(?P<rest>\S.*)$')
+_URL_LINE = re.compile(r'^\s+(?P<url>https?://\S+)\s*$')
+
+
+def notice_sources(text: str) -> dict:
+    """The page's Sources document from a bundle's licence notice
+    (`io.delivery.terms.format_notice`).
+
+    Reads only the parts a visitor needs: each source with its share,
+    licence or credit text and link, and the share-alike obligation.
+    The notice's "Recipes" section is never carried over: it names the
+    folders the build read recipes from, which are paths on the
+    builder's machine (seen 2026-10-17: a user name on the public page).
+
+    Parameters
+    ----------
+    text : str
+        One notice, or several joined (one per delivery region).
+
+    Returns
+    -------
+    dict
+        `sources`: list of {`name`, `share`, `terms`, `url`}, one per
+        source and terms, the largest share kept; `share_alike`: list
+        of sentences.
+    """
+    sources: dict[tuple, dict] = {}
+    section = None
+    last = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if set(stripped) <= {'-', '='} and stripped:
+            continue
+        if stripped in {
+            'Sources',
+            'Recipes',
+            'Share-alike',
+            'Attribution required',
+            'Withheld',
+            'Redistribution restricted',
+            'Resale restricted',
+        }:
+            section = stripped
+            last = None
+            continue
+        if stripped.startswith('Data licence and attribution for'):
+            section = None
+            continue
+        if section == 'Sources':
+            url = _URL_LINE.match(line)
+            if url and last is not None:
+                last['url'] = url['url']
+                continue
+            match = _SOURCE_LINE.match(line)
+            if not match:
+                continue
+            rest = match['rest']
+            # "<id> (<recipe>) <terms>" or "<id>   <terms>".
+            name, _, terms = rest.partition(' ')
+            terms = terms.strip()
+            if terms.startswith('('):
+                recipe_id, _, terms = terms[1:].partition(')')
+                terms = terms.strip()
+            key = (name, terms)
+            entry = sources.setdefault(
+                key, {'name': name, 'share': 0.0, 'terms': terms, 'url': None}
+            )
+            entry['share'] = max(entry['share'], float(match['share']) / 100)
+            last = entry
+    return _sources_document(list(sources.values()))
+
+
+def scene_sources(recipe, geometry_source) -> dict:
+    """The Sources document for the features a scene actually draws:
+    `io.delivery.terms.bundle_terms` over the scene's own
+    `geometry_source`, so each share is that of the scene's outlines
+    (the region bundles' notices each state their own region's)."""
+    from openplaces.io.delivery.terms import bundle_terms
+
+    terms = bundle_terms(recipe, geometry_source=geometry_source)
+    entries = [
+        {
+            'name': entry['source_id'],
+            'share': entry['share'] or 0.0,
+            'terms': entry['license'] or 'Terms not recorded',
+            'url': entry['terms_url'] or entry['portal_url'],
+        }
+        for entry in terms['sources']
+        if entry['share']
+    ]
+    return _sources_document(entries)
+
+
+def _sources_document(entries: list[dict]) -> dict:
+    """Name, merge (one entry per source shown) and order the sources;
+    state share-alike once."""
+    merged: dict[str, dict] = {}
+    for entry in entries:
+        shown = SOURCE_DISPLAY.get(entry['name'], {})
+        name = shown.get('name', entry['name'])
+        terms = entry['terms']
+        # The notice's "Credit requested: ..." is shown as the credit.
+        if 'Credit requested:' in terms:
+            terms = terms.split('Credit requested:')[0].strip()
+        if name in merged:
+            # One source behind several recipes (MassGIS outlines and
+            # MassGIS lots): one entry, the larger share, the shorter
+            # terms text.
+            kept = merged[name]
+            kept['share'] = max(kept['share'], entry['share'])
+            if len(terms) < len(kept['terms']):
+                kept['terms'], kept['url'] = terms, entry['url'] or kept['url']
+            continue
+        merged[name] = {
+            'name': name,
+            'share': entry['share'],
+            'terms': terms,
+            'url': entry['url'],
+            'credit': shown.get('credit'),
+        }
+    ordered = sorted(merged.values(), key=lambda e: -e['share'])
+    share_alike: list[str] = []
+    # Share-alike, stated once from the sources themselves (the notice
+    # wraps its sentence over several lines).
+    odbl = sum(e['share'] for e in ordered if 'ODbL' in e['terms'])
+    if odbl:
+        share_alike.append(
+            f'{odbl:.0%} of these outlines come from sources under the Open '
+            'Database License (ODbL 1.0), a share-alike licence: the data '
+            'files of this page are offered under ODbL 1.0 as well.'
+        )
+    return {'sources': ordered, 'share_alike': share_alike}
 
 
 def read_evidence_columns(recipe, region, columns) -> pd.DataFrame:
@@ -704,10 +882,14 @@ def _count_dwellings_from_above(gdfs: dict, layers) -> None:
         below, homes = gdfs[layer.name], gdfs[above.name]
         if 'n_dwellings' not in homes.columns or 'occupancy_type' not in homes.columns:
             continue
+        kind = (
+            homes[BUILDING_CLASS]
+            if BUILDING_CLASS in homes.columns
+            else building_class(homes)
+        )
         homes = homes[
-            homes['occupancy_type']
-            .astype('string')
-            .isin(RESIDENTIAL_OCCUPANCY)
+            kind.astype('string')
+            .isin(RESIDENTIAL_OCCUPANCY | RESIDENTIAL_LAND_USE)
             .fillna(False)
             & (homes['n_dwellings'].fillna(0) > 0)
         ]
@@ -1795,6 +1977,7 @@ def build_web_scene(
 
     rendered = {}
     estimated_by_layer = {}
+    source_docs = {}
     bounds = {}
     manifest_layers = []
     notices = {}
@@ -1833,6 +2016,8 @@ def build_web_scene(
             gdf = crop_to_area(gdf, crop)
             if verbose:
                 print(f'{layer.name}: {len(gdf):,} features inside the crop')
+        if 'occupancy_type' in gdf.columns:
+            gdf = gdf.assign(**{BUILDING_CLASS: building_class(gdf)})
         gdfs[layer.name] = merge_identical_outlines(gdf, layer)
     _count_dwellings_from_above(gdfs, layers)
 
@@ -1855,6 +2040,13 @@ def build_web_scene(
             **layer.render,
         )
         rendered[layer.name] = terrain
+        # The Sources document: from the drawn outlines' own sources
+        # where the layer records them, else from the bundle notices.
+        source_docs[layer.name] = (
+            scene_sources(layer.recipe, gdf['geometry_source'])
+            if 'geometry_source' in gdf.columns and region is not None
+            else notice_sources(notices.get(layer.recipe, ''))
+        )
         out = terrain.gdf
         base = terrain.total_elevation - terrain.rendered_elevation
         geometry = out.geometry
@@ -1880,9 +2072,11 @@ def build_web_scene(
             has = (dwellings > 0) & (raw_value > 0)
             per_dwelling = np.full(len(raw_value), np.nan)
             per_dwelling[has] = raw_value[has] / dwellings[has]
-            if 'occupancy_type' in out.columns:
-                occupancy = out['occupancy_type'].astype('string')
-                residential = occupancy.isin(RESIDENTIAL_OCCUPANCY).to_numpy()
+            if BUILDING_CLASS in out.columns:
+                occupancy = out[BUILDING_CLASS].astype('string')
+                residential = occupancy.isin(
+                    RESIDENTIAL_OCCUPANCY | RESIDENTIAL_LAND_USE
+                ).to_numpy()
                 known = occupancy.notna().to_numpy()
             else:
                 # Lots: residential only where two sources agree, the
@@ -2111,7 +2305,11 @@ def build_web_scene(
             row.admin3_id: [round(v, 5) for v in row.geometry.bounds]
             for row in admin.itertuples()
         },
-        'notices': notices,
+        # A document, not the raw notices: those carry the builder's
+        # recipe folders (`notice_sources`).
+        'sources': [
+            {'layer': layer.label, **source_docs[layer.name]} for layer in layers
+        ],
         'preview': region is None,
         'local_only': bool(local_only),
         'landmarks': marks,

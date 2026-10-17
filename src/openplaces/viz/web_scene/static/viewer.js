@@ -209,6 +209,68 @@ function featureColors(values, spec, noValue) {
   return out;
 }
 
+// The Sources document (scene.json `sources`): per layer, each source
+// with its share of the outlines, its terms, its credit and a link.
+function renderSources(container, scene) {
+  const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) {
+      node.className = className;
+    }
+    if (text) {
+      node.textContent = text;
+    }
+    return node;
+  };
+  container.replaceChildren();
+  container.appendChild(el('p', 'src-intro',
+    'Values are as recorded by the assessors named below, with gaps filled by openplaces ' +
+    '(openplaces.io), which harmonized and curated them. The terms are the sources\' own.'));
+  const sections = scene.sources || [];
+  for (const section of sections) {
+    container.appendChild(el('h3', 'src-layer', section.layer));
+    const list = el('ul', 'src-list');
+    for (const source of section.sources) {
+      const item = el('li', 'src-item');
+      const head = el('div', 'src-head');
+      head.appendChild(el('span', 'src-name', source.name));
+      if (source.share) {
+        const percent = source.share * 100;
+        const share = el('span', 'src-share', percent < 0.5 ? '<1%' : `${Math.round(percent)}%`);
+        const bar = el('span', 'src-bar');
+        bar.style.setProperty('--w', `${Math.max(2, source.share * 100)}%`);
+        head.append(bar, share);
+      }
+      item.appendChild(head);
+      if (source.credit) {
+        item.appendChild(el('div', 'src-credit', source.credit));
+      }
+      if (source.terms) {
+        const terms = el('div', 'src-terms', source.terms);
+        if (source.url) {
+          const link = el('a', null, 'terms');
+          link.href = source.url;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          terms.append(' · ', link);
+        }
+        item.appendChild(terms);
+      }
+      list.appendChild(item);
+    }
+    container.appendChild(list);
+    for (const note of section.share_alike || []) {
+      container.appendChild(el('p', 'src-note', note));
+    }
+  }
+  if (!sections.length && scene.notices) {
+    // Scenes built before the Sources document: the raw notices.
+    for (const [recipe, text] of Object.entries(scene.notices)) {
+      container.appendChild(el('pre', null, `${recipe}\n\n${text}`));
+    }
+  }
+}
+
 function choosePalette(palettes, fallback) {
   const wanted = new URLSearchParams(location.search).get('palette');
   let stored = null;
@@ -668,12 +730,7 @@ async function main() {
   const places = await fetch('../places.json', {cache: 'no-cache'})
     .then((r) => (r.ok ? r.json() : []))
     .catch(() => []);
-  const notices = document.getElementById('notices');
-  for (const [recipe, text] of Object.entries(scene.notices)) {
-    const pre = document.createElement('pre');
-    pre.textContent = `${recipe}\n\n${text}`;
-    notices.appendChild(pre);
-  }
+  renderSources(document.getElementById('notices'), scene);
   const palettes = scene.palettes.map(preparePalette);
   let palette = choosePalette(palettes, scene.default_palette);
   const legendPanel = document.getElementById('legend-panel');

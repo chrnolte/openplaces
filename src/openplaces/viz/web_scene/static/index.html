@@ -172,6 +172,30 @@
   #legend-panel { padding-top: 14px; }
   #about-panel summary { cursor: pointer; font-weight: 600; }
   #about-panel pre { white-space: pre-wrap; font-size: 11px; color: var(--muted); }
+  #about-panel[open] { width: min(420px, calc(100vw - 32px)); }
+  #notices { font-size: 12.5px; line-height: 1.45; }
+  .src-intro { color: var(--muted); margin: 10px 0 4px; }
+  .src-layer {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 14px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  }
+  .src-list { list-style: none; margin: 0; padding: 0; }
+  .src-item { margin: 0 0 10px; }
+  .src-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+  .src-name { font-weight: 600; }
+  .src-bar { height: 4px; border-radius: 2px; background: rgba(128, 128, 128, 0.2); position: relative; overflow: hidden; }
+  .src-bar::after { content: ""; position: absolute; inset: 0; width: var(--w); background: currentColor; opacity: 0.55; border-radius: 2px; }
+  .src-share { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .src-credit { margin-top: 2px; }
+  .src-terms { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .src-terms a { color: inherit; }
+  .src-note { color: var(--muted); font-size: 11.5px; margin: 4px 0 0; padding: 6px 8px; border-left: 2px solid rgba(128, 128, 128, 0.4); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
   .deck-tooltip { font-size: 13px !important; max-width: 320px; }
   /* A clicked feature's tooltip, placed above its anchor by viewer.js. */
@@ -241,6 +265,8 @@
     #legend-box .legend { margin-bottom: 4px; }
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
     #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
+    /* Opened, the Sources document takes a row of its own. */
+    #about-panel[open] { flex: 1 1 100%; width: auto; max-height: 55vh; }
     #controls-chip, #share-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #title-panel h1 { font-size: 14px; }

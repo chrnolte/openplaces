@@ -283,6 +283,37 @@ def test_large_unclassed_lot_with_one_counted_home_is_not_residential(tmp_path):
     assert frames['parcels'][web_scene.ROLL_DWELLINGS].isna().all()
 
 
+def test_sources_document_drops_the_recipe_folders():
+    notice = '\n'.join(
+        [
+            'Data licence and attribution for US_footprint-openplaces-2026 (US-XX)',
+            '=' * 70,
+            '',
+            'Sources',
+            '-' * 70,
+            ' 97.0%  obm                  ODbL-1.0',
+            '                             https://opendatacommons.org/licenses/odbl/1-0/',
+            '  3.0%  examplegis (US-XX_footprint-examplegis-2026) Public domain. '
+            'Credit requested: "Example GIS".',
+            '',
+            'Recipes',
+            '-' * 70,
+            'openplaces 0.1.0',
+            '        C:\\Users\\someone\\Code\\openplaces\\src\\openplaces\\recipes',
+        ]
+    )
+    doc = web_scene.notice_sources(notice + '\n\n' + notice)
+    # Folders on the builder's machine never reach the page.
+    assert 'Users' not in json.dumps(doc)
+    names = [s['name'] for s in doc['sources']]
+    assert names == ['OpenBuildingMap', 'examplegis']
+    assert doc['sources'][0]['share'] == pytest.approx(0.97)
+    assert doc['sources'][0]['url'].startswith('https://opendatacommons.org')
+    assert 'OpenStreetMap contributors' in doc['sources'][0]['credit']
+    assert doc['sources'][1]['terms'] == 'Public domain.'
+    assert 'ODbL' in doc['share_alike'][0]
+
+
 def test_public_land_with_a_stray_home_is_not_residential():
     # A home standing on a park lot: one source (the outline) says
     # dwelling, the roll's land use does not; the lot stays
