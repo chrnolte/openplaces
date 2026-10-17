@@ -162,9 +162,9 @@ def test_secondary_footprint_gets_missing_improvement_value(monkeypatch, tmp_pat
     out = _apportion(df, monkeypatch, tmp_path)
     assert pd.isna(out.loc['F3', 'improvement_value_parcel'])
     assert pd.isna(out.loc['F3', 'land_value_parcel'])
-    # F2 keeps only its own overlap share; exclusion of the secondary from
-    # receiving does not re-inflate the primary's share.
-    assert out.loc['F2', 'improvement_value_parcel'] == 100000.0
+    # The secondary's share passes to the primary rather than going
+    # unallocated (maintainer, 2026-10-17): F2 holds the whole $400k.
+    assert out.loc['F2', 'improvement_value_parcel'] == 400000.0
 
 
 def test_dwelling_linked_footprint_takes_whole_parcel_value(monkeypatch, tmp_path):
