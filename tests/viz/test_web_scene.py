@@ -374,7 +374,10 @@ def test_palettes_take_scene_bounds_and_color_stops():
     # The light page carries its own no-value and border colors.
     pastel = web_scene.palette_manifest(palettes[3], web_scene.VALUE_SCENE_LAYERS)
     assert '#ffffff' in pastel['background']
-    assert pastel['no_value'][:3] == [236, 234, 229]
+    assert pastel['no_value'][:3] == [212, 208, 201]
+    # The land ramp starts at a faint tint, not white (no value is a
+    # separate, darker gray).
+    assert pastel['layers']['parcels']['lut'][0] == '#eef1f7'
     assert pastel['theme'] == 'light'
 
 

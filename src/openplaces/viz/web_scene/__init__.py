@@ -1291,8 +1291,11 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             label='Pastel',
             layers={
                 'parcels': PaletteLayer(
+                    # Starts at a faint blue-gray, not white, so the
+                    # cheapest land stays visibly a value beside "No
+                    # value recorded" (maintainer, 2026-10-17).
                     (
-                        '#ffffff',
+                        '#eef1f7',
                         '#e6f4ff',
                         '#cfeee8',
                         '#e9f5c4',
@@ -1315,7 +1318,9 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                     other_cmap=('#dedbd6', '#b9b5ae', '#928d85', '#6b665f'),
                 ),
             },
-            no_value_rgba=(236, 234, 229, 255),
+            # A warm gray clearly darker than the faint low end of the
+            # land ramp, so "no value" and "little value" differ.
+            no_value_rgba=(212, 208, 201, 255),
             background=(
                 'radial-gradient(ellipse 80% 70% at 50% 45%, #ffffff 0%, '
                 '#fbfaf7 60%, #f3f1ec 100%)'
