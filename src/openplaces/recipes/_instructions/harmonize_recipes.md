@@ -145,6 +145,14 @@ Anything with a threshold, a priority order or a vote belongs in curate.
 supplied each cell in a `{column}_source` sidecar. Set it on both when the same
 column can arrive from either, or the sidecar starts from a blank baseline.
 
+`roll_values:` on an aggregate `link_by_id` keeps a roll's value columns,
+their tax year and their label together: the year is written only where the
+roll wrote a value, a record with no current value takes its own
+`*_prior_year` figures where the roll maps them, and `not_on_roll: true`
+empties a coarser source's values on parcels a covering roll does not carry
+(`io/harmonizer/links/roll_values.py`). A county roll takes part by mapping
+its prior-year columns in its ingest recipe, not by a rule of its own.
+
 ## After changing one
 
 A new or changed source invalidates the spines that auto-discover it, then

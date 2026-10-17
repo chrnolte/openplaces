@@ -39,6 +39,11 @@ from openplaces.io.harmonizer.links.discovery import (
     _discover_link_sources,
     _select_supplements,
 )
+from openplaces.io.harmonizer.links.roll_values import (
+    apply_roll_values,
+    blank_values_not_on_roll,
+    parse_roll_values,
+)
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
     resolve_attribute_name,
@@ -458,6 +463,7 @@ def _link_auto_discovered(
     ref_sort_ascending: bool,
     track_provenance: list[str] | None,
     fill_only: bool,
+    roll_values: dict | None = None,
 ) -> HarmonizeState:
     """The `auto_discover` branch of `link_by_id`: one aggregate join per
     discovered source of *entity_type*, each through `link_by_id` itself.
@@ -578,6 +584,9 @@ def _link_auto_discovered(
             ref_sort_ascending=ref_sort_ascending,
             track_provenance=track_provenance,
             fill_only=fill_only,
+            # Supplements are detail tables, not rolls: they carry no
+            # value columns, so the rules find nothing to apply to.
+            roll_values=roll_values,
             _protect_own_columns=protect_columns,
             _supplement_of=match['supplements'] if keyed else None,
             _unit_lot_pairs=unit_lot_pairs,
@@ -698,6 +707,7 @@ def _link_aggregate(
     track_provenance: list[str] | None,
     fill_only: bool,
     protect_own_columns: set[str] | None,
+    roll_values: dict | None = None,
 ) -> None:
     """`link_by_id` mode 'aggregate': a 1:many reference reduced per key
     by each column's registry rule, plus a per-key record count.
@@ -721,6 +731,13 @@ def _link_aggregate(
     into one street/number). 'use_group' and other join_nonnull
     columns keep the plain joiner -- their concatenated values are
     consumed directly, never re-parsed.
+
+    *roll_values* (a block from
+    :func:`~openplaces.io.harmonizer.links.roll_values.parse_roll_values`)
+    applies the roll rules of that module to this reference: the year
+    column only where the roll wrote a value, the roll's prior-year
+    columns where it states no current value, and, when asked, a
+    coarser source's values emptied on rows the roll does not carry.
     """
     pairs = [
         (c, o)
@@ -737,81 +754,42 @@ def _link_aggregate(
         own_geometry_mask = spine['geometry_source'].astype('string') == own_label
     provenance_cols = set(track_provenance or [])
     token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
-    for col, out_name in pairs:
-        canonical_name = resolve_attribute_name(out_name)
-        fname = (aggregation_function or {}).get(out_name) or get_agg_func(
-            canonical_name
+
+    def aggregated(col: str, out_name: str, warn: bool = True) -> pd.Series:
+        """One reference column reduced per key and aligned to the spine."""
+        return _aggregate_reference_column(
+            ref_valid,
+            grouped,
+            skey,
+            col,
+            out_name,
+            ref_key=ref_key,
+            spine_key=spine_key,
+            name=f'{out_name}{suffix}' if suffix else out_name,
+            aggregation_function=aggregation_function,
+            protect=bool(protect_own_columns and out_name in protect_own_columns),
+            own_geometry_mask=own_geometry_mask,
+            warn=warn,
         )
-        func = _agg_func_for(canonical_name, fname) if fname in _REDUCIBLE else 'first'
+
+    current = {out_name: aggregated(col, out_name) for col, out_name in pairs}
+    written_by_roll = None
+    if roll_values:
+        # The prior-year columns are read for the fill only and never
+        # written to the spine: a parcel's value for the year before is
+        # the roll's record, not a parcel attribute.
+        prior = {
+            out_name: aggregated(prior_col, out_name, warn=False)
+            for out_name, prior_col in roll_values['prior_year'].items()
+            if prior_col in ref_valid.columns and out_name in current
+        }
+        written_by_roll = apply_roll_values(roll_values, current, prior)
+    for _col, out_name in pairs:
         name = f'{out_name}{suffix}' if suffix else out_name
-        col_series = ref_valid[col]
-        # A registry-numeric column can still arrive here as pandas
-        # 'string'/object dtype (e.g. a fixed-width ingest, which never
-        # casts a mapped column's dtype -- see the PACS improvement-
-        # detail recipe). 'sum'/'mean'/'median' on a string column
-        # crashes outright; 'min'/'max' does not, but silently compares
-        # lexicographically instead of numerically (e.g. '12' < '5'),
-        # which is worse -- no crash to notice it by. Coerce first for
-        # either failure mode.
-        if fname in (
-            'sum',
-            'mean',
-            'median',
-            'min',
-            'max',
-        ) and not pd.api.types.is_numeric_dtype(col_series):
-            grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
-                ref_valid[ref_key], sort=False
-            )
-        else:
-            grouped_col = grouped[col]
-        if fname == 'sum':
-            # A group whose values are all missing has an unknown
-            # total, not a total of zero: a property whose every bath
-            # row failed to parse must not read as zero baths.
-            # min_count=1 matches transform._aggregate_cols.
-            agg_series = grouped_col.sum(min_count=1)
-        else:
-            agg_series = grouped_col.agg(func)
-        mapper = agg_series.to_dict() if agg_series.empty else agg_series
-        new_vals = skey.map(mapper)
-        if fname == 'sum':
-            # A group total stamped onto every spine row sharing the
-            # key multiplies it by the number of rows: in Carteret
-            # County NC 97% of parcels share their punctuation-free
-            # key (groups of up to 335), and the county's improvement
-            # value came out 31 times its source. A sum belongs to one
-            # spine row; where the key cannot say which, assign none.
-            # Only where a sum happened, though: a reference key held
-            # by one row was not summed, and its value is that row's,
-            # so every spine row that names it may carry it. That is
-            # the transaction spine's case, several sales of one
-            # parcel each carrying the parcel's value (Lake County
-            # FL, 2026-09-12: 572,120 of 597,666 sales withheld
-            # before this distinction, every parcel value lost).
-            group_sizes = grouped.size()
-            summed = skey.map(group_sizes).fillna(0) > 1
-            shared = skey.duplicated(keep=False) & skey.notna() & summed
-            if shared.any():
-                warnings.warn(
-                    f'link_by_id (aggregate): {name!r} is a sum over '
-                    f'{ref_key!r}, and {int(shared.sum()):,} spine rows '
-                    f'share their {spine_key!r} with others; the sum is '
-                    'not assigned to them, since stamping it on each '
-                    'would count it once per row.',
-                    stacklevel=2,
-                )
-                new_vals = new_vals.mask(shared)
-        if (
-            protect_own_columns
-            and out_name in protect_own_columns
-            and own_geometry_mask is not None
-        ):
-            new_vals = new_vals.mask(own_geometry_mask)
         _write_prioritized(
             spine,
             name,
-            new_vals,
+            current[out_name],
             # A lossy key must only fill what a precise one left.
             majority_coverage=float('inf') if fill_only else 0.5,
             # The recipe's own name, not an upstream sidecar, unlike
@@ -823,6 +801,20 @@ def _link_aggregate(
             # which can disagree about their own provenance, so one
             # token per spine row would be a guess.
             provenance_token=token if out_name in provenance_cols else None,
+        )
+    if roll_values and roll_values['not_on_roll'] and written_by_roll is not None:
+        blank_values_not_on_roll(
+            state,
+            spine,
+            skey,
+            rkey,
+            recipe_id=recipe_id,
+            names=[
+                f'{v}{suffix}' if suffix else v
+                for v in roll_values['values']
+                if v in current
+            ],
+            min_coverage=roll_values['min_coverage'],
         )
     # count_as=False asks for the attributes alone: a spine receiving
     # a detail table's columns has no use for a count of its rows,
@@ -851,6 +843,95 @@ def _link_aggregate(
     )
 
 
+def _aggregate_reference_column(
+    ref_valid: pd.DataFrame,
+    grouped,
+    skey: pd.Series,
+    col: str,
+    out_name: str,
+    *,
+    ref_key: str,
+    spine_key: str,
+    name: str,
+    aggregation_function: dict | None,
+    protect: bool,
+    own_geometry_mask: pd.Series | None,
+    warn: bool = True,
+) -> pd.Series:
+    """Reduce one reference column per key and map it onto the spine.
+
+    The reduction rule is looked up by *out_name*, the canonical slot
+    being filled (see :func:`_link_aggregate`). A sum is withheld from
+    spine rows that share their key, and a protected column from the
+    rows whose geometry the reference itself supplied.
+    """
+    canonical_name = resolve_attribute_name(out_name)
+    fname = (aggregation_function or {}).get(out_name) or get_agg_func(canonical_name)
+    func = _agg_func_for(canonical_name, fname) if fname in _REDUCIBLE else 'first'
+    col_series = ref_valid[col]
+    # A registry-numeric column can still arrive here as pandas
+    # 'string'/object dtype (e.g. a fixed-width ingest, which never
+    # casts a mapped column's dtype -- see the PACS improvement-
+    # detail recipe). 'sum'/'mean'/'median' on a string column
+    # crashes outright; 'min'/'max' does not, but silently compares
+    # lexicographically instead of numerically (e.g. '12' < '5'),
+    # which is worse -- no crash to notice it by. Coerce first for
+    # either failure mode.
+    if fname in (
+        'sum',
+        'mean',
+        'median',
+        'min',
+        'max',
+    ) and not pd.api.types.is_numeric_dtype(col_series):
+        grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
+            ref_valid[ref_key], sort=False
+        )
+    else:
+        grouped_col = grouped[col]
+    if fname == 'sum':
+        # A group whose values are all missing has an unknown
+        # total, not a total of zero: a property whose every bath
+        # row failed to parse must not read as zero baths.
+        # min_count=1 matches transform._aggregate_cols.
+        agg_series = grouped_col.sum(min_count=1)
+    else:
+        agg_series = grouped_col.agg(func)
+    mapper = agg_series.to_dict() if agg_series.empty else agg_series
+    new_vals = skey.map(mapper)
+    if fname == 'sum':
+        # A group total stamped onto every spine row sharing the
+        # key multiplies it by the number of rows: in Carteret
+        # County NC 97% of parcels share their punctuation-free
+        # key (groups of up to 335), and the county's improvement
+        # value came out 31 times its source. A sum belongs to one
+        # spine row; where the key cannot say which, assign none.
+        # Only where a sum happened, though: a reference key held
+        # by one row was not summed, and its value is that row's,
+        # so every spine row that names it may carry it. That is
+        # the transaction spine's case, several sales of one
+        # parcel each carrying the parcel's value (Lake County
+        # FL, 2026-09-12: 572,120 of 597,666 sales withheld
+        # before this distinction, every parcel value lost).
+        group_sizes = grouped.size()
+        summed = skey.map(group_sizes).fillna(0) > 1
+        shared = skey.duplicated(keep=False) & skey.notna() & summed
+        if shared.any():
+            if warn:
+                warnings.warn(
+                    f'link_by_id (aggregate): {name!r} is a sum over '
+                    f'{ref_key!r}, and {int(shared.sum()):,} spine rows '
+                    f'share their {spine_key!r} with others; the sum is '
+                    'not assigned to them, since stamping it on each '
+                    'would count it once per row.',
+                    stacklevel=3,
+                )
+            new_vals = new_vals.mask(shared)
+    if protect and own_geometry_mask is not None:
+        new_vals = new_vals.mask(own_geometry_mask)
+    return new_vals
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -873,6 +954,7 @@ def link_by_id(
     supplements_only: bool = False,
     ref_address_key: dict | None = None,
     spine_address_key: dict | None = None,
+    roll_values: dict | None = None,
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
     _unit_lot_pairs: pd.DataFrame | None = None,
@@ -1073,7 +1155,32 @@ def link_by_id(
         key without the town scope a permit source cannot supply) does
         not become a persisted column. Ignored where the spine already
         carries *spine_key*.
+    roll_values : dict, optional
+        ``'aggregate'`` mode only (so also every ``auto_discover``
+        match). Rules for an assessment roll's value columns, applied
+        to each reference that joins at least one of them (see
+        :mod:`openplaces.io.harmonizer.links.roll_values`):
+
+        - ``values``: the value columns (output names), required;
+        - ``year``: the column holding their tax year, written only on
+          rows where the roll wrote a value;
+        - ``prior_year``: ``{value column: roll column}`` naming the
+          roll's own figures for the year before; a row where the roll
+          states none of ``values`` takes these, and the year column
+          takes the year before (a ``prior_year`` entry for the year
+          column names it explicitly);
+        - ``not_on_roll``: when true, and the roll keys at least
+          ``min_coverage`` of the spine (default
+          :data:`~openplaces.io.harmonizer.links.roll_values.NOT_ON_ROLL_MIN_COVERAGE`),
+          values that sources scoped coarser than the roll supplied
+          are emptied on keyed spine rows the roll does not carry, and
+          their ``_source`` reads ``not_on_roll``.
     """
+    roll_values = parse_roll_values(roll_values)
+    if roll_values and mode != 'aggregate' and not auto_discover:
+        raise ValueError(
+            f"link_by_id: roll_values applies to mode 'aggregate', not {mode!r}."
+        )
     if auto_discover:
         return _link_auto_discovered(
             state,
@@ -1089,6 +1196,7 @@ def link_by_id(
             ref_sort_ascending=ref_sort_ascending,
             track_provenance=track_provenance,
             fill_only=fill_only,
+            roll_values=roll_values,
         )
 
     if recipe_id is None:
@@ -1251,6 +1359,7 @@ def link_by_id(
             track_provenance=track_provenance,
             fill_only=fill_only,
             protect_own_columns=_protect_own_columns,
+            roll_values=roll_values,
         )
     else:
         raise ValueError(

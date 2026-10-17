@@ -17,6 +17,9 @@ land_value_taxable,Assessed land value actually subject to taxation,USD,float,su
 land_value_preferential,"Land value under a preferential-use assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"" agricultural/forest land)",USD,float,sum,20.3,parcel,ingest
 improvement_value_exempt,Assessed improvement value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,21.1,parcel,ingest
 improvement_value_taxable,Assessed improvement value actually subject to taxation,USD,float,sum,21.2,parcel,ingest
+land_value_prior_year,"The roll's own land value for the tax year before its tax_year (e.g. HCAD prior_land_val); read by link_by_id's roll_values rule to fill a parcel the current year has not yet valued; not copied onto parcels",USD,float,sum,,property,ingest
+improvement_value_prior_year,"The roll's own improvement value for the tax year before its tax_year (e.g. HCAD prior_bld_val); see land_value_prior_year",USD,float,sum,,property,ingest
+total_value_prior_year,"The roll's own total value for the tax year before its tax_year (e.g. HCAD prior_tot_mkt_val); see land_value_prior_year",USD,float,sum,,property,ingest
 structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,ingest
 year_built,Year building was built,,float,mean,30,,ingest,0
 address,Street address,,string,join_nonnull,40,,ingest

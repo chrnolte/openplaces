@@ -141,6 +141,12 @@ pipeline:
   # e.g. MassGIS's L3_ASSESS, joins here too -- join_nonnull columns like
   # address/use_group now properly concatenate every unit's value instead of
   # picking one arbitrarily; see link_by_id's aggregate-mode docs).
+  #
+  # total_value is tracked on these passes too (since 2026-10-17): the
+  # property pass below empties a coarser source's values only where
+  # their `_source` names that source, and an untracked total would
+  # have kept a statewide figure beside an emptied land and
+  # improvement value.
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
@@ -148,6 +154,7 @@ pipeline:
       - use_group
       - improvement_value
       - land_value
+      - total_value
       - year_built
 
   # Second pass over the same discovered assessor tables, on the
@@ -182,6 +189,7 @@ pipeline:
       - use_group
       - improvement_value
       - land_value
+      - total_value
       - year_built
 
   # Third and last pass, for the sources whose own `parcel_id_assessor` is
@@ -201,6 +209,7 @@ pipeline:
       - use_group
       - improvement_value
       - land_value
+      - total_value
       - year_built
 
   # Attach every auto-discovered standalone `property`-entity source (e.g. a
@@ -220,14 +229,52 @@ pipeline:
   # US_parcel-openplaces-2026). Copying them here made the parcel spine
   # a second, lossy home for property attributes and tied every fix to
   # a geometry rerun.
+  #
+  # Where a roll covers at least half the parcels, its sums overwrite
+  # the values the geometry source supplied (US-TX-HAR: the HCAD roll
+  # over TxGIO's statewide layer), so the value columns track
+  # provenance here as on the earlier passes; without it the
+  # `_source` sidecar kept naming the geometry source.
+  #
+  # roll_values keeps a roll's values, their year and their label
+  # together (io/harmonizer/links/roll_values.py), for every roll; a
+  # county roll takes part by mapping the columns, never by a rule of
+  # its own:
+  # - tax_year is written only on parcels where the roll wrote a
+  #   value, so a value the roll left to an earlier source keeps that
+  #   source's year;
+  # - a parcel whose roll record states no current value takes the
+  #   record's own prior-year figures, where the roll maps them
+  #   (`*_prior_year`), labeled with the roll and the year before.
+  #   HCAD's 12,377 "All Values Pending" accounts are the case: their
+  #   2025 figures, before any statewide layer's;
+  # - where the roll keys at least 99% of the parcels
+  #   (NOT_ON_ROLL_MIN_COVERAGE), a statewide layer's values are
+  #   emptied on parcels whose key the roll does not carry, and their
+  #   `_source` reads `not_on_roll`: the district no longer values
+  #   that account, so the figure belongs to a record that is gone.
+  #   A stacked lot whose units the roll carries counts as carried.
   - step: link_by_id
     auto_discover: true
     entity_type: property
     mode: aggregate
+    track_provenance:
+      - land_value
+      - improvement_value
+      - total_value
+    roll_values:
+      values: [land_value, improvement_value, total_value]
+      year: tax_year
+      prior_year:
+        land_value: land_value_prior_year
+        improvement_value: improvement_value_prior_year
+        total_value: total_value_prior_year
+      not_on_roll: true
     columns:
       - land_value
       - improvement_value
       - total_value
+      - tax_year
       - use_group
       - use_group_code
       - use_subgroup
