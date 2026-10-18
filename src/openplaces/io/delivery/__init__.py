@@ -31,6 +31,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from openplaces.core.constants import ENVELOPE_ID_COLUMN
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import (
@@ -921,6 +922,10 @@ def export_delivery(
         available = parquet_columns(path)
         wanted = [column for column in declared if column in available]
         wanted += _source_columns(canonical_columns, available)
+        # Pieces the footprint geospine already cut carry their
+        # envelope's id; the slicing below leaves them alone.
+        if ENVELOPE_ID_COLUMN in available and ENVELOPE_ID_COLUMN not in wanted:
+            wanted.append(ENVELOPE_ID_COLUMN)
         # A split (non-combined) curated output keeps its geometry in a
         # `_geo` sidecar joined on `_join_id`, or failing that `geo_id`.
         # Requesting only the declared columns dropped that key, and the
@@ -1073,7 +1078,10 @@ def export_delivery(
                 extra.index = pd.Index(
                     mine['piece_id'].to_numpy(), name=part.index.name
                 )
-                rows = pd.concat([rows, extra])
+                # A piece can get back the id its source row already
+                # had (its centroid fell in the same cell), and that id
+                # then also selected the source row above: keep it once.
+                rows = pd.concat([rows.drop(index=extra.index, errors='ignore'), extra])
         evidence_frames.append(rows)
 
     evidence = pd.concat(evidence_frames).sort_index()

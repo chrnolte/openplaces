@@ -9,6 +9,7 @@ import json
 
 import pandas as pd
 
+from openplaces.core.schema import AdminId
 from openplaces.io import to_parquet
 from openplaces.io.aggregate import read_file_metadata
 from openplaces.io.cleanup import read_receipt
@@ -94,20 +95,19 @@ def _link_fingerprint(
     except Exception:
         pass
 
-    sources = []
-    for upstream_id in sorted(upstream_ids):
+    def _entry(upstream_id, admin_id):
         try:
             upstream = get_recipe_by_id(upstream_id)
             if upstream.get('stage', 'ingest') != 'ingest':
-                continue
+                return None
             source_admin = (
-                state.admin_id.truncate_to_level(get_save_admin_level(upstream))
-                if state.admin_id
+                AdminId(str(admin_id)).truncate_to_level(get_save_admin_level(upstream))
+                if admin_id
                 else None
             )
             path = get_output_path(upstream, admin_id=source_admin)
         except Exception:
-            continue
+            return None
         entry = {'path': _relative_posix(path), 'size': None, 'mtime': None}
         if path.exists():
             stat = path.stat()
@@ -119,9 +119,14 @@ def _link_fingerprint(
                 entry['size'] = receipt.get('source_size_bytes')
                 mtime = receipt.get('source_mtime')
                 entry['mtime'] = round(mtime, 3) if mtime is not None else None
-        sources.append(entry)
+        return entry
 
-    return {
+    sources = [
+        entry
+        for upstream_id in sorted(upstream_ids)
+        if (entry := _entry(upstream_id, state.admin_id)) is not None
+    ]
+    fingerprint = {
         'format': 2,
         'spine_recipe_id': get_recipe_id(state.recipe),
         'ref_recipe_id': ref_recipe_id,
@@ -130,6 +135,25 @@ def _link_fingerprint(
         'prior_geometry_steps': prior_geometry_steps,
         'sources': sources,
     }
+    # A spine reconciling buildings across unit lines reads its touching
+    # units' inputs too: a neighbor's re-ingest must make these links
+    # stale, and so must a build made with the reads turned off. Only
+    # such a recipe gets the key, so no other sidecar changes.
+    from openplaces.io.harmonizer.neighbors import (
+        neighbor_inputs,
+        neighbor_reads_enabled,
+        recipe_reads_neighbors,
+    )
+
+    if recipe_reads_neighbors(state.recipe):
+        fingerprint['neighbor_reads'] = neighbor_reads_enabled()
+        seen = {entry['path'] for entry in sources}
+        for upstream_id, neighbor in neighbor_inputs(state.recipe, state.admin_id):
+            entry = _entry(upstream_id, neighbor)
+            if entry is not None and entry['path'] not in seen:
+                seen.add(entry['path'])
+                sources.append(entry)
+    return fingerprint
 
 
 def _hash_file(path) -> str:

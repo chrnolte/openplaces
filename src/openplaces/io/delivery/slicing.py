@@ -42,7 +42,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from openplaces.geo.ids import get_openlocationcodes
+from openplaces.core.constants import ENVELOPE_ID_COLUMN
+from openplaces.geo.ids import distinct_centroid_codes
 
 #: Outlines overlapping by at least this share of the smaller one are
 #: one building drawn twice (the pair test of resolve_spine and
@@ -56,21 +57,7 @@ SLICED_FROM = 'sliced_from'
 
 def _piece_ids(pieces: gpd.GeoSeries, taken: set) -> pd.Series:
     """Centroid Open Location Codes, lengthened where one is taken."""
-    ids = get_openlocationcodes(
-        gpd.GeoDataFrame(geometry=pieces), handle_duplicates=False
-    ).astype(object)
-    for length in (13, 15):
-        clash = ids.isin(taken) | ids.duplicated(keep=False)
-        if not clash.any():
-            break
-        ids[clash] = get_openlocationcodes(
-            gpd.GeoDataFrame(geometry=pieces[clash]),
-            codelength=length,
-            handle_duplicates=False,
-        ).astype(object)
-    if ids.isin(taken).any() or ids.duplicated().any():
-        raise ValueError('slice_at_unit_lines: a piece id stays ambiguous.')
-    return ids
+    return distinct_centroid_codes(gpd.GeoDataFrame(geometry=pieces), taken)
 
 
 def slice_at_unit_lines(
@@ -130,8 +117,15 @@ def slice_at_unit_lines(
     pieces: list[tuple[int, object]] = []  # (row position, piece geometry)
     sliced_from: dict[int, str] = {}
     used: set[int] = set()
+    # A piece the footprint geospine already cut at the line is never
+    # cut a second time here.
+    reconciled = (
+        frame[ENVELOPE_ID_COLUMN].notna().to_numpy()
+        if ENVELOPE_ID_COLUMN in frame.columns
+        else np.zeros(len(frame), dtype=bool)
+    )
     for a, b in zip(j.index, j['index_right'], strict=True):
-        if a in used or b in used:
+        if a in used or b in used or reconciled[a] or reconciled[b]:
             continue
         used.update((a, b))
         unit_a, unit_b = frame.at[a, unit_column], frame.at[b, unit_column]
@@ -180,7 +174,7 @@ def slice_at_unit_lines(
     if 'area_ha' in sliced.columns:
         sliced['area_ha'] = area / 1e4
     if {'long', 'lat'} <= set(sliced.columns):
-        cents = piece_geoms.to_crs('epsg:4326').centroid
+        cents = piece_geoms.to_crs(METRIC_CRS).centroid.to_crs('epsg:4326')
         sliced['long'] = cents.x.to_numpy()
         sliced['lat'] = cents.y.to_numpy()
 

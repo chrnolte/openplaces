@@ -63,6 +63,7 @@ land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Hom
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_buildings_per_parcel,Number of buildings on the building's parcel; the building spine's name for n_footprints_per_parcel,,float,first,,building,harmonize
 n_parcels_per_footprint,Number of parcels the footprint overlaps,,float,first,,footprint,harmonize
+envelope_id,"Open Location Code of the envelope a footprint piece was cut from, where a building crossing a unit line was reconciled to one envelope and cut at the line; the pieces of one building share it",,string,first,,footprint,harmonize
 n_parcels_per_building,Number of parcels the building overlaps; the building spine's name for n_parcels_per_footprint,,float,first,,building,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
