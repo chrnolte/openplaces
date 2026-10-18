@@ -1,0 +1,51 @@
+# Patch: Nantucket parcels carry the Fathom-free placeslab land values.
+#
+# Adds the seven Fathom-free model variants of the PLACES lab land value
+# predictions (US_parcel_parcel-placeslab-fmv2026open) to the national
+# parcel curate's evidence merge: per variant, the predicted land value
+# (ln real USD per hectare, 2010 market) and its area of applicability
+# from cross-validation folds blocked by census block group (at most 1
+# is inside). For the Nantucket team value page (2026-10-18).
+#
+# Why Nantucket's scope and not the state's: the source is published
+# for Nantucket only (its Drive folder holds this one unit). A patch
+# adds its inputs to the unit's job graph (recipe.dependencies applies
+# patches), so at US-MA every town's curate would wait on an enrichment,
+# and on a download, that has nothing to fetch. merge_enrichments would
+# skip the missing evidence, but the scheduled jobs would fail first.
+#
+# The source is restricted and cleared for team sharing only:
+# io.delivery withholds these columns from nantucket-ma and keeps them
+# in nantucket-ma.team. The columns are evidence: no vote, imputation
+# or value step reads them. merge_enrichments fills only empty cells.
+
+admin_id: US-MA-NTC
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - extend: merge_enrichments
+    key: recipes
+    values:
+      - recipe_id: US_parcel_parcel-placeslab-fmv2026open
+        columns:
+          land_value_per_ha_log_region_nb_bare_2010_fmv2026open: land_value_per_ha_log_region_nb_bare
+          land_value_per_ha_log_region_nb_people_2010_fmv2026open: land_value_per_ha_log_region_nb_people
+          land_value_per_ha_log_region_nb_buildings_2010_fmv2026open: land_value_per_ha_log_region_nb_buildings
+          land_value_per_ha_log_region_nb_wealth_2010_fmv2026open: land_value_per_ha_log_region_nb_wealth
+          land_value_per_ha_log_region_nb_peoplewealth_2010_fmv2026open: land_value_per_ha_log_region_nb_peoplewealth
+          land_value_per_ha_log_region_nb_peoplebuildings_2010_fmv2026open: land_value_per_ha_log_region_nb_peoplebuildings
+          land_value_per_ha_log_region_nb_popbldwealth_2010_fmv2026open: land_value_per_ha_log_region_nb_popbldwealth
+          aoa_region_nb_bare_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_bare
+          aoa_region_nb_people_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_people
+          aoa_region_nb_buildings_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_buildings
+          aoa_region_nb_wealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_wealth
+          aoa_region_nb_peoplewealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_peoplewealth
+          aoa_region_nb_peoplebuildings_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_peoplebuildings
+          aoa_region_nb_popbldwealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_popbldwealth

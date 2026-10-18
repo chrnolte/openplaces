@@ -13,7 +13,8 @@ import copy
 
 import pandas as pd
 
-from openplaces.io.delivery.redaction import find_restricted
+from openplaces.io.delivery import delivery_regions
+from openplaces.io.delivery.redaction import find_restricted, withhold
 from openplaces.io.delivery.terms import restricted_inputs
 from openplaces.recipe import get_recipe_by_id
 
@@ -75,3 +76,67 @@ def test_merged_open_columns_are_withheld_unless_the_bundle_is_a_team_bundle():
     )
     found = find_restricted(frame, [entry], 'admin3_id')
     assert found['cells'][COLUMN].tolist() == [True, True]
+
+
+# The Nantucket patch (US-MA-NTC_parcel-openplaces-2026) merges the
+# open evidence into the national parcel curate for that unit only.
+UNIT = 'US-MA-NTC'
+PARCEL = 'US_parcel-openplaces-2026'
+AOA = 'area_of_applicability_region_nb_bare'
+FAMILY = 'land_value_per_ha_log_region_nb'
+
+
+def _bundle(audience):
+    """Fabricated Nantucket rows as the parcel bundle redacts them."""
+    entries = restricted_inputs(get_recipe_by_id(PARCEL), [UNIT])
+    if audience == 'team':
+        entries = [e for e in entries if not e.get('team_sharing_permitted')]
+    frame = pd.DataFrame(
+        {
+            'admin3_id': [UNIT, UNIT],
+            COLUMN: [1.0, 2.0],
+            AOA: [0.5, 1.5],
+            FAMILY: [3.0, 4.0],
+            'land_use_class': ['Vacant', 'Vacant'],
+            'land_use_class_source': ['parcel', 'parcel'],
+        },
+        index=pd.Index(['a', 'b'], name='parcel_id'),
+    )
+    redacted, _ = withhold(frame, entries, 'admin3_id')
+    return redacted
+
+
+def test_a_patch_merging_open_evidence_is_read_by_its_columns():
+    entries = {
+        e['recipe_id']: e for e in restricted_inputs(get_recipe_by_id(PARCEL), [UNIT])
+    }
+    entry = entries[OPEN]
+    # Read from the patched pipeline: a layer entry mapping nothing let
+    # these columns through and emptied land_use_class instead.
+    assert entry['layer_source'] is False
+    assert COLUMN in entry['attributes']
+    assert AOA in entry['attributes']
+    assert len(entry['attributes']) == 14
+    assert not entries[RESTRICTED]['team_sharing_permitted']
+
+
+def test_the_public_bundle_withholds_both_placeslab_sources():
+    redacted = _bundle('public')
+    assert redacted[COLUMN].isna().all()
+    assert redacted[AOA].isna().all()
+    assert redacted[FAMILY].isna().all()
+    assert redacted['land_use_class'].notna().all()
+
+
+def test_the_team_bundle_keeps_only_the_open_source():
+    redacted = _bundle('team')
+    assert redacted[COLUMN].notna().all()
+    assert redacted[AOA].notna().all()
+    assert redacted[FAMILY].isna().all()
+    assert redacted['land_use_class'].notna().all()
+
+
+def test_nantucket_parcels_ship_a_team_bundle():
+    regions = {r['region_id']: r for r in delivery_regions(PARCEL)}
+    assert regions['nantucket-ma.team']['audience'] == 'team'
+    assert regions['nantucket-ma']['audience'] == 'public'

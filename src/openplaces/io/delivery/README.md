@@ -73,7 +73,9 @@ source recording `redistribution_restricted: true` or a `usage_requirement`
 may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
 walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
-walk never saw Edgecombe's parcels feeding the NC bundle).
+walk never saw Edgecombe's parcels feeding the NC bundle), and read with the
+unit's patch recipes applied, so a source a patch merges by named columns is
+withheld by those columns.
 `io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
