@@ -5,6 +5,8 @@ geometry-sidecar convention behind save_parquet and read_parquet.
 """
 
 import json
+import os
+import time
 import warnings
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -59,6 +61,48 @@ def parquet_columns(parquet_path: str | Path) -> list[str]:
     return list(pq.ParquetFile(parquet_path).schema_arrow.names)
 
 
+# Waits between attempts to move a written file into place (about 10 s
+# in all). Windows refuses to replace a file another process holds open,
+# and Dropbox holds files briefly while it syncs them.
+REPLACE_BACKOFF_S = (0.5, 1.0, 2.0, 3.0, 4.0)
+
+
+def _temp_path(filepath: Path) -> Path:
+    """Where a write lands before it replaces *filepath*.
+
+    Beside the target, so the rename stays on one volume, and with a name
+    no reader's `*.parquet` glob matches.
+    """
+    return filepath.with_name(f'{filepath.name}.tmp-{os.getpid()}')
+
+
+def _replace(temp: Path, target: Path) -> None:
+    """Move *temp* onto *target*, retrying while the target is held."""
+    for wait in (*REPLACE_BACKOFF_S, None):
+        try:
+            os.replace(temp, target)
+            return
+        except PermissionError:
+            if wait is None:
+                temp.unlink(missing_ok=True)
+                raise PermissionError(
+                    f'Could not replace {target}: another process holds it '
+                    f'(tried {len(REPLACE_BACKOFF_S) + 1} times).'
+                ) from None
+            time.sleep(wait)
+
+
+def _write_to_temp(df, filepath: Path, **kwargs) -> Path:
+    """Write *df* to *filepath*'s temp path and return it."""
+    temp = _temp_path(filepath)
+    try:
+        _write_parquet(df, temp, **kwargs)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    return temp
+
+
 def to_parquet(
     df: pd.DataFrame | gpd.GeoDataFrame,
     filepath: str | Path,
@@ -67,6 +111,14 @@ def to_parquet(
     **kwargs,
 ) -> None:
     """Save dataframe to Parquet format.
+
+    The file is written beside its target under a temporary name and
+    then moved into place, so a reader never sees a half-written file
+    and a failed or killed write leaves the previous file as it was.
+    This matters because the workflow keeps a failed batch job's other
+    outputs (`keep-incomplete`), and a downstream job reads them. The
+    move retries for about 10 s while another process holds the target
+    (Windows, Dropbox), then raises.
 
     Categorical columns are written as a string logical type (Parquet still
     dictionary-encodes them physically, so files stay compact) so GDAL/QGIS read
@@ -93,12 +145,18 @@ def to_parquet(
     ------
     TypeError
         If file_metadata is combined with a keyword other than index.
+    PermissionError
+        If the target stays held by another process.
     """
     if isinstance(filepath, str):
         filepath = Path(filepath)
-
     filepath.parent.mkdir(parents=True, exist_ok=True)
+    temp = _write_to_temp(df, filepath, file_metadata=file_metadata, **kwargs)
+    _replace(temp, filepath)
 
+
+def _write_parquet(df, filepath: Path, *, file_metadata=None, **kwargs) -> None:
+    """Write *df* to exactly *filepath* (see `to_parquet`)."""
     df = _categoricals_to_string(df)
 
     if not isinstance(df, gpd.GeoDataFrame) and set(kwargs) <= {'index'}:
@@ -362,38 +420,58 @@ def save_parquet(
             gdf[join_id_column] = range(1, len(gdf) + 1)
 
     if isinstance(gdf, gpd.GeoDataFrame):
-        # Save attribute table without geometry
-        to_parquet(
-            gdf[[v for v in gdf if v != 'geometry']],
-            parquet_path,
-            file_metadata=file_metadata,
-        )
-
-        # Save non-duplicate geometries separately
+        # Every file of the set is written under its temporary name
+        # first and only then moved into place, so the attribute file
+        # and its `_geo` sidecar change together as closely as the file
+        # system allows. It is not one atomic step: a crash between the
+        # moves leaves a new attribute file beside the old sidecar.
+        parquet_path.parent.mkdir(parents=True, exist_ok=True)
         if join_id_column == gdf.index.name:
             gdf_geo = gdf.reset_index()
         else:
             gdf_geo = gdf
         mask_unique_join_id = ~gdf_geo[join_id_column].duplicated()
-        to_parquet(
-            gdf_geo[mask_unique_join_id][[join_id_column, 'geometry']],
-            parquet_path.with_stem(parquet_path.stem + '_geo'),
-            index=False,
-            schema_version='1.1.0',
-            write_covering_bbox=True,
-        )
-
+        writes = [
+            (
+                gdf[[v for v in gdf if v != 'geometry']],
+                parquet_path,
+                {'file_metadata': file_metadata},
+            ),
+            (
+                gdf_geo[mask_unique_join_id][[join_id_column, 'geometry']],
+                parquet_path.with_stem(parquet_path.stem + '_geo'),
+                {
+                    'index': False,
+                    'schema_version': '1.1.0',
+                    'write_covering_bbox': True,
+                },
+            ),
+        ]
         if simplified_geometry is not None:
             gdf_geo_simp = gdf_geo[[join_id_column]].copy()
             gdf_geo_simp['geometry'] = simplified_geometry.values
             gdf_geo_simp = gpd.GeoDataFrame(gdf_geo_simp, crs=gdf.crs)
-            to_parquet(
-                gdf_geo_simp[mask_unique_join_id][[join_id_column, 'geometry']],
-                parquet_path.with_stem(parquet_path.stem + '_geo_simplified'),
-                index=False,
-                schema_version='1.1.0',
-                write_covering_bbox=True,
+            writes.append(
+                (
+                    gdf_geo_simp[mask_unique_join_id][[join_id_column, 'geometry']],
+                    parquet_path.with_stem(parquet_path.stem + '_geo_simplified'),
+                    {
+                        'index': False,
+                        'schema_version': '1.1.0',
+                        'write_covering_bbox': True,
+                    },
+                )
             )
+        temps = []
+        try:
+            for frame, target, kwargs in writes:
+                temps.append((_write_to_temp(frame, target, **kwargs), target))
+        except BaseException:
+            for temp, _ in temps:
+                temp.unlink(missing_ok=True)
+            raise
+        for temp, target in temps:
+            _replace(temp, target)
     else:
         to_parquet(gdf, parquet_path, file_metadata=file_metadata)
 
