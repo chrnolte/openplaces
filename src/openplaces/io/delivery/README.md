@@ -100,7 +100,19 @@ Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
 then evidence) so the wide evidence columns are never in memory alongside the
 polygons. It deduplicates the index: an entity on a county line is curated by
 both neighbors and the two copies share an Open Location Code, so the
-better-covered copy wins, ties broken on admin id. And it leaves its four
+better-covered copy wins, ties broken on admin id. **A recipe declaring
+`share: delivery: slice_at_unit_lines: true` cuts such outlines first**
+(`slicing.py`, the footprint recipe; maintainer's rule, 2026-10-17): where two
+units delivered one building, as the same outline or two outlines overlapping
+by half the smaller, one outline is kept (its representative point in its own
+unit, else the larger), cut along the unit line, and each piece takes its
+unit's copy's row and values under a new id (the piece centroid's Open
+Location Code, lengthened on a collision) with `sliced_from` naming the kept
+outline. A piece under 10 m2 or 5% of the outline is not cut: the majority
+copy stays and the other copy's value stays on its parcel. An outline only
+one unit delivered stays whole. Curated files are untouched. Measured
+2026-10-17 on boston-inner-core: 150 outline pairs drawn in two towns became 87
+cut outlines (174 pieces) and 63 kept whole, none lost. And it leaves its four
 outputs read-only, unlocking them itself on the next run -- deliberately not
 Snakemake's `protected()`, which additionally refuses to ever regenerate a file
 and would abort the workflow on every reship.

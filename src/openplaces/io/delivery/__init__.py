@@ -40,6 +40,7 @@ from openplaces.io import (
     to_parquet,
 )
 from openplaces.io.delivery.redaction import find_restricted, merge_counts, withhold
+from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
 from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
@@ -968,6 +969,27 @@ def export_delivery(
             '(io.harmonizer.entity_ids.mint_ids).'
         )
 
+    # An outline two units both delivered is cut at the line between
+    # them, each piece keeping its unit's values (io/delivery/slicing),
+    # before the copies sharing one id could be resolved to one below.
+    slice_provenance = None
+    delivery_block = (recipe.get('share') or {}).get('delivery') or {}
+    if spatial and delivery_block.get('slice_at_unit_lines'):
+        units = get_admin(
+            sorted(pooled[admin_id_column].dropna().unique()),
+            level=process_level,
+            geom=True,
+        )
+        pooled, slice_provenance = slice_at_unit_lines(pooled, admin_id_column, units)
+        if SLICED_FROM not in pooled.columns:
+            pooled[SLICED_FROM] = pd.NA
+        canonical_columns = [*canonical_columns, SLICED_FROM]
+        if verbose:
+            print(
+                f'Cut {len(slice_provenance):,} pieces from outlines two '
+                f'{admin_id_column} units delivered.'
+            )
+
     coverage_columns = [c for c in canonical_columns if c != admin_id_column]
     pooled, n_dropped = _deduplicate(pooled, coverage_columns, admin_id_column)
     # Sort by entity id so all four files share one row order, not
@@ -1041,7 +1063,18 @@ def export_delivery(
         # cost almost nothing, and either file reads on its own.
         wanted += _source_columns(canonical_columns, available)
         part = read_parquet(path, geom=False, columns=wanted)
-        evidence_frames.append(part[kept.reindex(part.index).eq(process_id)])
+        rows = part[kept.reindex(part.index).eq(process_id)]
+        if slice_provenance is not None and len(slice_provenance):
+            # A piece's evidence is its unit's copy's row, under the
+            # piece's id.
+            mine = slice_provenance[slice_provenance[admin_id_column] == process_id]
+            if len(mine):
+                extra = part.loc[mine['source_id'].to_numpy()].copy()
+                extra.index = pd.Index(
+                    mine['piece_id'].to_numpy(), name=part.index.name
+                )
+                rows = pd.concat([rows, extra])
+        evidence_frames.append(rows)
 
     evidence = pd.concat(evidence_frames).sort_index()
     evidence_frames.clear()
