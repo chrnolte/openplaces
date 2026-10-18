@@ -1,17 +1,26 @@
-# Patch: no land-use class on Massachusetts street, rail and water
-# polygons that have no roll record.
+# Patch: Massachusetts parcel curation.
 #
-# MassGIS's tax-parcel layer includes polygons that are not tax lots
-# (POLY_TYPE ROW, PRIV_ROW, RAIL_ROW, WATER). Without a roll record,
-# reconcile_land_use gave them the class of whatever FEMA or NSI
+# 1. The occupancy group of a parcel (group_parcel) comes from a fixed
+# table of the state's property type codes, written from the code
+# definitions (US_parcel-openplaces-2026_group-parcel-ma.csv), not from
+# the cohort fill the national recipe uses (the most common NSI group
+# among parcels sharing a use label). That fill classed public housing
+# as schools and city lots as Multi-Family (Malden's exempt cohort).
+# A code the table does not name leaves the group empty. Boston's own
+# code list has its own table (US-MA-BOS patch).
+#
+# 2. No land-use class on street, rail and water polygons that have no
+# roll record. MassGIS's tax-parcel layer includes polygons that are not
+# tax lots (POLY_TYPE ROW, PRIV_ROW, RAIL_ROW, WATER). Without a roll
+# record, reconcile_land_use gave them the class of whatever FEMA or NSI
 # footprint reached 10 m2 into them, so street networks and reservoirs
-# read Single-Family or Multi-Family. Measured 2026-10-17 on
-# boston-inner-core and boston-outer-rings: 304 such polygons carried a
-# residential class, among them 92 of the 94 lots over 20 ha with a
-# residential class and no value (Winchester's 210 ha ROW polygon read
-# Single-Family). The rows and their evidence columns are kept; only
-# the class goes. A polygon of these types that has a roll record keeps
-# its class. FEE lots without a roll record are not covered here.
+# read Single-Family or Multi-Family (Winchester's 210 ha ROW polygon).
+# Measured 2026-10-17 on boston-inner-core and boston-outer-rings: the
+# rule blanks 492 classes, 281 of them residential, among them 92 of the
+# 94 lots over 20 ha with a residential class and no value. The rows and
+# their evidence columns are kept. A polygon of these types that has a
+# roll record keeps its class. FEE lots without a roll record are not
+# covered here.
 
 admin_id: US-MA
 stage: curate
@@ -24,6 +33,13 @@ entity:
 
 patches: US_parcel-openplaces-2026
 pipeline_patch:
+  - replace: impute_from_group_statistic
+    step:
+      step: translate_descriptions
+      output: group_parcel
+      columns: [use_group_code]
+      keywords: group-parcel-ma
+      fill_only: false
   - insert_after: reconcile_land_use
     step:
       step: suppress_where
