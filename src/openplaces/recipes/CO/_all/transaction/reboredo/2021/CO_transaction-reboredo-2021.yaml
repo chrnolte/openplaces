@@ -1,0 +1,144 @@
+# Recipe: public land acquisitions for conservation in Colombia, compiled
+# by Reboredo Segovia (2021).
+#
+# One polygon per purchase (or per dissolved group of parcels bought
+# together), joined by the compiler from ~25 agency shapefiles and the
+# departmental cadastres to a table of prices and dates collected from
+# CORNARE, the Gobernación de Antioquia, municipalities and other
+# regional authorities (Reboredo Segovia et al. 2022, Conserv. Lett.;
+# Nolte et al. 2023, Front. Ecol. Environ.). The join itself is not
+# re-run here: the compiled layer is the source of record, and its
+# `Merge_ID` column is what remains of the dissolve of multi-parcel
+# purchases.
+#
+# Local file, no download: the layer is the project's own dataset and is
+# not distributed. Place the five `6.3.2021_cost.*` shapefile parts in
+# this recipe's external directory as received. National scope, one
+# file, split by municipality on the DANE code the record states
+# (`MUN_COD_SH`, written `XX05148`; the transaction spine links each
+# record to the parcels of its own municipality). Three records name two
+# municipalities (`a;b`) and are filed under the first; one carries a
+# stray byte-order mark and no readable code.
+#
+# Parcel number: `ced_cat`, the cédula catastral, is the cadastre's own
+# key (`PK_PREDIOS` in the Antioquia catastro: 102 of El Carmen de
+# Viboral's 105 records match it exactly, 2026-10-17), mapped as
+# `parcel_id_local` for `link_transactions`. `matricula` (the property
+# registry folio) is not mapped yet.
+#
+# Privacy: the layer carries owner names (`propietari`, `propieta_1`)
+# and a free-text `nombre` that may name a person. None is mapped,
+# `keep_unnamed_columns` is false, and `drop_columns` names them as
+# well, so they never reach an output.
+#
+# Columns mapped (schema, not records):
+#   ID              compiler's record id
+#   valor           nominal price, COP, as recorded
+#   valor_merg      price of the dissolved group where Merge_ID is set;
+#                   populated only on those rows, so coalesce(valor_merg,
+#                   valor) reproduces the compiler's rule
+#   año / año escri year of purchase / year the deed was registered;
+#                   the later of the two is the transaction year (the
+#                   compiler chose the earliest date when the sources
+#                   disagreed on a date within a year)
+#   ha / ha_merged  stated area in hectares, per record / per group
+#   et              semicolon-separated list of the agencies the record
+#                   was assembled from
+#   Exclude_co      analyst flag: leave out of the cost analysis
+#   NOM_DEP         department name, with the compiler's spelling fixes
+#   Merge_ID        group id of a multi-parcel purchase
+#
+# Terms: project dataset; the recipe (schema) is public, the data is not.
+
+description: >-
+  Public land acquisitions for conservation in Colombia with prices and
+  purchase years, compiled from agency records and cadastral polygons.
+
+admin_id: CO
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: reboredo
+    portal_url: null
+    download_url: null
+    # Compiled by the project from records shared by the acquiring
+    # agencies; not a published dataset and not redistributed. The
+    # schema is documented here; the file is placed by hand.
+    license: "project dataset; not distributed"
+    redistribution_restricted: true
+  version: "2021"
+
+uncompressed_file_name: "6.3.2021_cost.shp"
+
+process_by:
+  admin_level: 3
+  admin_id_column: MUN_COD_SH
+  admin_id_transformation:
+    - output: admin3_id_admin1
+      type: string
+      operation: substring
+      args:
+        start: 2
+        end: 7
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  transaction_id_source: ID
+  parcel_id_local: ced_cat
+  price_raw: valor
+  area_ha_nominal: ha
+  source_list: et
+  exclude: Exclude_co
+  admin2_name: NOM_DEP
+
+# `columns` renames first, so a mapped source column is named here by
+# its mapped name (price_raw, not valor; area_ha_nominal, not ha).
+#
+# A group's price and area count only where `Merge_ID` is set, as in the
+# compiler's own use (FEE notebook: np.where(Merge_ID.notnull(), ...)):
+# 5 rows carry `valor_merg` and 4 carry `ha_merged` without a group id.
+# `x + Merge_ID * 0` is x where Merge_ID is set and null elsewhere.
+transformations:
+  - output: price_group
+    type: expression
+    expression: "valor_merg + Merge_ID * 0"
+  - output: area_ha_group
+    type: expression
+    expression: "ha_merged + Merge_ID * 0"
+  - output: price
+    type: aggregate
+    operation: coalesce
+    inputs: [price_group, price_raw]
+  - output: price
+    input: price
+    type: unary
+    operation: to_numeric
+  - output: sale_year
+    type: aggregate
+    operation: max
+    inputs: ["año", "año escri"]
+  - output: area_ha_nominal
+    type: aggregate
+    operation: coalesce
+    inputs: [area_ha_group, area_ha_nominal]
+  - output: transaction_group_id
+    input: Merge_ID
+    type: unary
+    operation: to_numeric
+  - output: conveyance_type
+    type: expression
+    expression: "'acquisition'"
+  - output: price_period
+    type: expression
+    expression: "'total'"
+
+keep_unnamed_columns: false
+drop_columns: [propietari, propieta_1, nombre, price_group, area_ha_group]
+
+save_to:
+  data_dir: cache
+  admin_level: 3

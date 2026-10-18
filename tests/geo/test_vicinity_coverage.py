@@ -58,11 +58,25 @@ def test_nodata_is_excluded_from_the_neighborhood(tmp_path):
 
     # Nothing may exceed 100%: before the fix the 255 sentinel
     # counted as covered, and the uint8 cast wrapped modulo 256.
-    observed = array[array != 255]
+    observed = array[~np.isnan(array)]
     assert observed.max() <= 100
     assert array[10, 2] == 100  # deep in the covered half
     assert array[10, 12] == 0  # deep in the observed-but-uncovered band
-    assert array[10, 18] == 255  # nothing observed nearby at all
+    assert np.isnan(array[10, 18])  # nothing observed nearby at all
+
+
+def test_shares_below_one_percent_survive(tmp_path):
+    """One covered pixel in a 101 x 101 field is far below 1% of any
+    radius-20 neighborhood; whole-percent output read it as 0."""
+    data = np.zeros((101, 101), dtype='uint8')
+    data[50, 50] = 1
+    path = _write_raster(tmp_path / 'sparse.tif', data, 255, 'uint8')
+
+    array, _, _ = compute_vicinity_coverage(path, (0, 0, 101, 101), px_radius=20)
+
+    share = array[50, 50]
+    assert 0 < share < 1
+    assert array.dtype == np.float32
 
 
 def test_convolution_noise_cannot_wrap_the_percentage(tmp_path, monkeypatch):
@@ -91,7 +105,7 @@ def test_convolution_noise_cannot_wrap_the_percentage(tmp_path, monkeypatch):
     monkeypatch.setattr(raster_module, 'fftconvolve', noisy)
     array, _, _ = compute_vicinity_coverage(path, (0, 0, 20, 20), px_radius=2)
 
-    observed = array[array != 255]
+    observed = array[~np.isnan(array)]
     assert observed.max() <= 100
     assert array[10, 2] == 100
-    assert array[10, 18] == 255
+    assert np.isnan(array[10, 18])

@@ -61,9 +61,10 @@ def compute_vicinity_coverage(
     Returns
     -------
     array : numpy.ndarray
-        uint8 array (percent coverage, 0-100; 255 = nodata) for the part
-        of the *bounds* window that lies inside the raster (halo already
-        cropped off, and the window clipped to the raster's own extent).
+        float32 array (percent coverage, 0-100; NaN where nothing in the
+        neighborhood was observed) for the part of the *bounds* window
+        that lies inside the raster (halo already cropped off, and the
+        window clipped to the raster's own extent).
     transform : affine.Affine
         Transform for `array`.
     crs
@@ -136,11 +137,16 @@ def compute_vicinity_coverage(
     np.divide(num, den, out=coverage, where=den > 0)
     coverage = np.clip(coverage * 100, 0, 100)
 
+    # Kept as float32, not whole percents: a 60-pixel radius holds about
+    # 11,300 pixels, and the shares this measures (deforestation in the
+    # prior three years) are mostly below 1%, which a uint8 cast
+    # truncated to 0. Measured 2026-10-17 on CO-AN-CV: 88% of parcels
+    # read 0 and the raster mean was 0.08% against a 0.28% pixel share.
     core = coverage[
         row_offset : row_offset + round(core_window.height),
         col_offset : col_offset + round(core_window.width),
     ]
-    out = np.where(np.isnan(core), 255, core).astype('uint8')
+    out = core.astype('float32')
 
     return out, out_transform, crs
 

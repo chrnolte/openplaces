@@ -1,0 +1,93 @@
+# Recipe: annual land cover 1997-2024 for the Colombian Andes and the
+# Sierra Nevada de Santa Marta (Arévalo, Nolte & Reboredo Segovia,
+# "Two decades of land cover changes in the Colombian Andes", EarthArXiv
+# preprint, doi 10.31223/X55F26), and the forest layers the impact
+# evaluation derives from it.
+#
+# CCDC on Landsat Collection 2, random-forest classification, GLanCE
+# post-processing, patches of 1 ha or less removed, and pixels with fewer
+# than 29 clear observations removed (value 0 here). Release V20_L2C_V4:
+# nine GeoTIFF tiles exported from Earth Engine, EPSG:4326, about 30 m,
+# 28 uint8 bands named LC_1997-07-01 .. LC_2024-07-01 (band b = year
+# 1996 + b). Classes (preprint section 2.2 and Table 2):
+#   1 natural forest   2 planted forest   3 developed
+#   5 pasture / agriculture   6 water   7 barren   8 oil palm
+#
+# Accuracy (2012-2024 strata, n = 1,961, preprint Table 3), which decides
+# how each derived layer can be used:
+#   stable natural forest   user's 0.927, producer's 0.805
+#   stable planted forest   user's 0.700, producer's 0.078
+#   forest gain             user's 0.225, producer's 0.244
+#   forest loss to pasture  user's 0.600, producer's 0.770
+# Natural-forest loss is the robust outcome; planted forest is mapped on
+# about a ninth of its estimated area, and gain is weak in both
+# directions (plans/colombia-impact-analyses-remaining-from-the-nasa-
+# proposal.md, A1).
+#
+# Placement: the project's own product (Boston University), CC BY-NC
+# 4.0 as stated on the preprint, not yet published. Place the nine
+# `LCPOST_V20_L2C_1997-2024_V4-*.tif` tiles (from world/in
+# CO/_/landcover/arevalo/final) unchanged in this recipe's external
+# directory.
+#
+# Clipped per municipality, with a 2 km buffer so the 60-pixel (1.8 km)
+# deforestation vicinity of vicinity_coverage sees across the boundary.
+#
+# Derived layers, one uint8 COG per (layer, year), readable as
+# get_dataset(recipe, admin_id, partition_id='natural_forest_2005'):
+#   natural_forest             class 1 in year y
+#   planted_forest             class 2 in year y
+#   natural_forest_since_1997  class 1 in y and in every year since 1997
+#                              (the older-forest proxy; the proposal's
+#                              circa-1990 baseline was not built)
+#   natural_forest_regrowing   class 1 in y, but not continuously since
+#                              1997 (the proposal's regrowing forest)
+#   deforestation              natural forest in y-1, not in y
+#   gain                       not natural forest in y-1, natural in y
+#   deforestation_prior_3y     deforestation in any of y-3 .. y-1
+
+description: >-
+  Annual land cover 1997-2024 for the Colombian Andes (CCDC, Arévalo et
+  al. 2025 preprint) with derived natural-forest, regrowth and loss layers.
+
+admin_id: CO
+
+dataset:
+  theme: landcover
+  source:
+    source_id: arevalo
+    portal_url: https://eartharxiv.org/repository/view/10038/
+    doi: 10.31223/X55F26
+    download_url: null
+    license: "CC BY-NC 4.0 (stated on the preprint); not yet published"
+    redistribution_restricted: true
+  version: 2025
+  is_raster: True
+  nodata: 0
+
+tile_files: "LCPOST_V20_L2C_1997-2024_V4-*.tif"
+clip_buffer_m: 2000
+
+# Year of band 1.
+band_first_year: 1997
+
+derived_layers:
+  - {layer: natural_forest, op: band_equals, value: 1, years: [1997, 2024]}
+  - {layer: planted_forest, op: band_equals, value: 2, years: [1997, 2024]}
+  - {layer: natural_forest_since_1997, op: cumulative_no_gain,
+     from: natural_forest, years: [1997, 2024]}
+  - {layer: natural_forest_regrowing, op: and_not, from: natural_forest,
+     minus: natural_forest_since_1997, years: [1997, 2024]}
+  - {layer: deforestation, op: annual_transition, from: natural_forest,
+     before: 1, after: 0, years: [1998, 2024]}
+  - {layer: gain, op: annual_transition, from: natural_forest,
+     before: 0, after: 1, years: [1998, 2024]}
+  - {layer: deforestation_prior_3y, op: any_in_prior_years,
+     from: deforestation, n_years: 3, years: [2001, 2024]}
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: cache
+  admin_level: 3

@@ -1,0 +1,148 @@
+# Recipe: annual forest outcomes and eastern-Antioquia covariates per
+# parcel, the outcome table of the PES / land acquisition impact
+# evaluation (Reboredo Segovia et al. 2026).
+#
+# Every step samples a layer derived by CO_landcover-arevalo-2025 (or
+# the Hansen robustness product) over the parcel polygons, one column per
+# year. Natural forest is split into forest present continuously since
+# 1997 and regrowing forest, and planted forest is its own series, for
+# analysis A1 of plans/colombia-impact-analyses-remaining-from-the-nasa-
+# proposal.md. `years: [first, last]` on a step is unrolled by the Enricher
+# (`expand_year_steps`): `{year}` in any string value is substituted and
+# `year` is passed to the step, so 28 years of one layer are one entry
+# here rather than 28. `method: rasterized` burns parcel ids onto the
+# land-cover grid and aggregates with numpy, the same rasterize-and-
+# groupby the paper used for its >100,000 cadastral parcels.
+#
+# The 60-pixel deforestation vicinity (share of the surrounding radius
+# deforested in the three prior years, the paper's PX60 matching
+# variable) is computed on the fly per municipality by vicinity_coverage,
+# padded so neighbouring municipalities count at the boundary, and cached
+# beside the source layer.
+#
+# The same step list runs on the transaction spine
+# (CO_transaction_landcover-forest-annual-2026), so treated polygons
+# that are not cadastral parcels carry identical columns; a test asserts
+# the two lists match apart from `raster_admin_id`, which the national
+# transaction recipe needs to name the department the rasters cover.
+#
+# Two static Antioquia rasters (distance to streams, distance to roads)
+# ride along here because they exist for CORNARE only; the national
+# predictors live in CO_parcel_land-value-predictors-2026. Place
+# `access/CO-AN_stream_distance_3116.tif` and
+# `access/CO-AN_road_distance_3116.tif` under the raster root.
+#
+# Protected-area status per year (protected_{year}) is added by the
+# link_annual_status step once it lands (data plan 4.2).
+
+description: >-
+  Annual forest, no-gain forest, deforestation, gain and 60-pixel
+  deforestation vicinity per parcel, 1997-2024, for eastern Antioquia.
+
+stage: enrich
+admin_id: CO-AN
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: landcover-forest-annual
+  source:
+    source_id: openplaces
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest
+    years: [1997, 2024]
+    raster_key: natural_forest_share_arevalo_{year}
+    column: natural_forest_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest_since_1997
+    years: [1997, 2024]
+    raster_key: natural_forest_since_1997_share_arevalo_{year}
+    column: natural_forest_since_1997_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest_regrowing
+    years: [1997, 2024]
+    raster_key: natural_forest_regrowing_share_arevalo_{year}
+    column: natural_forest_regrowing_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: planted_forest
+    years: [1997, 2024]
+    raster_key: planted_forest_share_arevalo_{year}
+    column: planted_forest_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: deforestation
+    years: [1998, 2024]
+    raster_key: deforestation_share_arevalo_{year}
+    column: deforestation_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: gain
+    years: [1998, 2024]
+    raster_key: gain_share_arevalo_{year}
+    column: gain_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: vicinity_coverage
+    source_raster_recipe_id: CO_landcover-arevalo-2025
+    layer: deforestation_prior_3y
+    years: [2001, 2024]
+    raster_key: deforestation_vicinity_share_arevalo_{year}
+    column: deforestation_vicinity_share_arevalo_{year}
+    stat: mean
+    px_radius: 60
+    method: rasterized
+
+  # Disabled until their rasters are placed: the Hansen tile and the two
+  # Antioquia distance rasters are not on this machine yet.
+  - step: zonal_stats
+    enabled: false
+    raster_recipe_id: CO-AN_landcover-forest-hansen-gfc2022
+    layer: deforestation
+    years: [2001, 2022]
+    raster_key: deforestation_share_hansen_{year}
+    column: deforestation_share_hansen_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    enabled: false
+    raster_path: access/CO-AN_stream_distance_3116.tif
+    raster_key: stream_distance
+    column: stream_distance
+    stat: mean
+
+  - step: zonal_stats
+    enabled: false
+    raster_path: access/CO-AN_road_distance_3116.tif
+    raster_key: road_distance
+    column: road_distance
+    stat: mean

@@ -1,0 +1,53 @@
+# Rural parcels (R_TERRENO) of IGAC's public cadastre, April 2020
+# (`R_TERRENO_4_28_2020.zip`, rural layer only, shapefile, EPSG:4686);
+# see CO_parcel-igac-202202_rural for the vintages and how the parcel
+# spine uses them (222 municipalities here, 6 in no newer release,
+# 2026-10-17). The zip also carries macOS resource files (`__MACOSX/`,
+# among them `._R_TERRENO.shp`); `uncompressed_file_name` names the real
+# shapefile at the archive's root, so the reader opens that one.
+
+description: >-
+  Rural land parcels (R_TERRENO) from Colombia's IGAC public cadastre,
+  April 2020 release, per municipality.
+
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+    license: "CC BY-SA 4.0 for current IGAC releases; terms at this release's date not checked"
+    terms_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+  version: "202004"
+
+compressed_file_name: "R_TERRENO_4_28_2020.zip"
+uncompressed_file_name: "R_TERRENO.shp"
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_mun
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANT
+  admin3_id_admin1: codigo_mun
+  vereda_code: VEREDA_COD
+  m2: SHAPE_Area
+
+# Copied to `parcel_id_local`, as in CO_parcel-igac-202202_rural.
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3

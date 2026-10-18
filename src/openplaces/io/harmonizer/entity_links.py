@@ -517,6 +517,9 @@ def write_entity_link(
 #: this module. The parcel-number pass reuses 'parcel_id_local' and the
 #: stacked-units pass 'stacked_units'.
 ASSESSOR_LAST_SALE_METHOD = 'assessor_last_sale'
+#: `link_transactions_by_overlap`: a parcel lying mostly inside the
+#: transaction's own polygon (a land purchase drawn by the agency).
+POLYGON_OVERLAP_METHOD = 'polygon_overlap'
 ADDRESS_CITY_METHOD = 'address_id_local_city'
 ADDRESS_METHOD = 'address_id_local'
 ADDRESS_RANGE_METHOD = 'address_range'

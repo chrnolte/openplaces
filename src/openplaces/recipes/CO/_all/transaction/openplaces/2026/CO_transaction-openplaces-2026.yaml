@@ -1,0 +1,86 @@
+# Recipe: curated Colombia land-acquisition transactions, the training
+# table of the parcel-level land value model.
+#
+# Reproduces the sample filters of Nolte et al. 2023 (Front. Ecol.
+# Environ.) on the harmonized transaction spine: acquisitions only, the
+# analyst's exclusion flag honoured, a positive price, purchase years
+# 1993-2020, a stated-vs-measured area ratio within a factor of two, and
+# a strict-protected-area share below 0.1. The Andes study-region filter
+# is deliberately not applied here: the model step scopes training rows
+# by region (see plans/land-value-model-colombia-and-us-fmv-transfer.md),
+# so one training table serves any region.
+#
+# The target, price_real_per_ha_log, is ln(2020 COP per hectare of the
+# polygon), the paper's `rprc_per_ha_log`. A price of zero or a missing
+# area leaves it missing rather than -inf.
+#
+# `protected_strict_share` arrives through merge_enrichments from the
+# transaction-side predictor enrichment, which samples the same rasters
+# as the parcel-side one; until that recipe has run for a unit the step
+# skips the column and the filter on it warns and skips too, so a
+# partial pipeline still yields a (larger) table rather than an error.
+
+description: >-
+  Curated Colombia land acquisitions with prices in 2020 COP per hectare:
+  the training table of the parcel-level land value model.
+
+stage: curate
+admin_id: CO
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+entity_recipe: CO_transaction-spine-2026
+
+process_by:
+  admin_level: 1
+
+save_to:
+  data_dir: core
+
+pipeline:
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: CO_transaction_land-value-predictors-2026
+        columns:
+          protected_strict_share: protected_strict_share
+
+  - step: exclude_by_value
+    column: conveyance_type
+    values: [use_rights_lease]
+
+  - step: exclude_by_value
+    column: exclude
+    values: [1]
+
+  - step: derive_indicators
+    indicators:
+      - output: area_ratio
+        type: ratio
+        numerator: area_ha_nominal
+        denominator: area_ha
+      - output: price_real_per_ha_log
+        type: ratio
+        numerator: price_real
+        denominator: area_ha
+        transform: log
+
+  - step: filter_by_range
+    phase_override: filters on area_ratio, which derive_indicators computes
+    filters:
+      - {column: price, min: 0, inclusive: false}
+      - {column: sale_year, min: 1993, max: 2020}
+      # The paper's max(a/b, b/a) < 2, as a strict two-sided band on
+      # a/b (FEE notebook: ha_diff, flipped below 1, lt(2)).
+      - {column: area_ratio, min: 0.5, max: 2, inclusive: false}
+      - {column: protected_strict_share, max: 0.1, inclusive: false,
+         keep_null: true}
+
+  - step: cast_categoricals
+
+  - step: order_columns

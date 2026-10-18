@@ -3,10 +3,12 @@
 # Merges the parcel sources currently ingested for Colombia into one spine.
 #
 # Sources merged by resolve_spine:
-#   - CO_parcel-igac-2026_urban / CO_parcel-igac-2026_rural: IGAC's national
-#     public cadastre (Catastro Público). Listed explicitly (not auto-discovered),
-#     both recipes share the spine's own admin_id (CO), which
-#     resolve_spine's auto_discover only expands to child admin_ids.
+#   - CO_parcel-igac-202608_urban / _rural: IGAC's national public
+#     cadastre (Catastro Público), August 2026 release; older releases
+#     (March 2026, 2022-02, 2021-09, 2021-06, 2020-04) follow as fill
+#     groups. Listed explicitly (not auto-discovered): the recipes share
+#     the spine's own admin_id (CO), which resolve_spine's auto_discover
+#     only expands to child admin_ids.
 #   - CO-AN_parcel-catastro-2018:
 #     picked up automatically via auto_discover, since these are scoped to a
 #     child admin_id (e.g. CO-AN) of the spine's CO.
@@ -50,15 +52,50 @@ save_to:
 pipeline:
   - step: resolve_spine
     sources:
-      - recipe_id: CO_parcel-igac-2026_urban
-        label: igac_urban
-      - recipe_id: CO_parcel-igac-2026_rural
-        label: igac_rural
+      - recipe_id: CO_parcel-igac-202608_urban
+        label: igac_202608_urban
+      - recipe_id: CO_parcel-igac-202608_rural
+        label: igac_202608_rural
       - recipe_id: CO-AN_parcel-catastro-2018
         label: catastro
+      # The March 2026 recipes (a shapefile export not on this machine)
+      # and older IGAC releases, newest first, each used only for a
+      # municipality no source above (or newer release) covers: a
+      # release fills a municipality whole, its urban and rural layers
+      # together (`fill_group`), and is never merged parcel by parcel
+      # into a newer one, where parcels subdivided since would be added
+      # on top of their successors.
+      - recipe_id: CO_parcel-igac-2026_urban
+        label: igac_urban
+        fill_group: igac_202603
+      - recipe_id: CO_parcel-igac-2026_rural
+        label: igac_rural
+        fill_group: igac_202603
+      - recipe_id: CO_parcel-igac-202202_urban
+        label: igac_202202_urban
+        fill_group: igac_202202
+      - recipe_id: CO_parcel-igac-202202_rural
+        label: igac_202202_rural
+        fill_group: igac_202202
+      - recipe_id: CO_parcel-igac-202109_urban
+        label: igac_202109_urban
+        fill_group: igac_202109
+      - recipe_id: CO_parcel-igac-202109_rural
+        label: igac_202109_rural
+        fill_group: igac_202109
+      - recipe_id: CO_parcel-igac-202106_urban
+        label: igac_202106_urban
+        fill_group: igac_202106
+      - recipe_id: CO_parcel-igac-202106_rural
+        label: igac_202106_rural
+        fill_group: igac_202106
+      - recipe_id: CO_parcel-igac-202004_rural
+        label: igac_202004_rural
+        fill_group: igac_202004
       - auto_discover: true
         entity_type: parcel
     keep_columns:
+      - parcel_id_local
       - parcel_id_admin3
       - parcel_id_admin3_2
       - admin3_id_admin1
@@ -76,3 +113,18 @@ pipeline:
       - n_dwellings
       - street_number
       - n_buildings
+
+  # area_ha, lat, long from the parcel polygon, once, so every enrich
+  # recipe (and the transaction spine, which runs the same step) reads
+  # coordinates from one code path rather than re-deriving them in the
+  # spine CRS with derive_from_spine.
+  - step: derive_geometry_attributes
+
+  # Department and municipality of each parcel as columns, so the curate
+  # stage and region scoping can group without reading the filename.
+  - step: link_geographic_ids
+    links:
+      - output_column: admin2_id
+        admin_level: 2
+      - output_column: admin3_id
+        admin_level: 3

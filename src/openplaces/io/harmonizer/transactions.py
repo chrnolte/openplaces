@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
@@ -33,6 +34,7 @@ from openplaces.io.harmonizer.entity_links import (
     ADDRESS_RANGE_METHOD,
     ASSESSOR_LAST_SALE_METHOD,
     LINK_COLUMNS_TAIL,
+    POLYGON_OVERLAP_METHOD,
     STACKED_UNITS_METHOD,
     apportion_shares,
     build_id_links,
@@ -362,17 +364,24 @@ def link_transactions(
     own_id = get_recipe_id(state.recipe)
     owner_id = get_link_owner_recipe_id(state.recipe)
     admin_id = state.admin_id
-    columns = [
-        parcel_key,
-        lot_column,
-        property_key,
-        *address_keys,
-        'address_street',
-        'address_number',
-        'admin4_id',
-        kind_column,
-        'source',
-    ]
+    # De-duplicated: a source with no lot key links parcels on the
+    # number it states (`parcel_key: parcel_id_local`), the default
+    # property key too, and a column selected twice reads as a frame.
+    columns = list(
+        dict.fromkeys(
+            [
+                parcel_key,
+                lot_column,
+                property_key,
+                *address_keys,
+                'address_street',
+                'address_number',
+                'admin4_id',
+                kind_column,
+                'source',
+            ]
+        )
+    )
     rows = _rows_to_link(state, columns)
     source_column = 'source' if 'source' in rows.columns else None
 
@@ -568,5 +577,148 @@ def link_transactions(
             f'{int(n_linked):,d} of {len(spine):,d} sales '
             f'({spine[output_column].value_counts().to_dict()}); '
             f'{len(property_links):,d} property links'
+        )
+    return state
+
+
+@_register('link_transactions_by_overlap')
+def link_transactions_by_overlap(
+    state: HarmonizeState,
+    parcel_recipe_id: str = 'US_parcel-spine-2026',
+    min_parcel_share: float = 0.8,
+    output_column: str = 'parcel_link_method',
+) -> HarmonizeState:
+    """Add parcels lying mostly inside a transaction's own polygon.
+
+    For a source whose records are polygons (land purchases drawn by the
+    acquiring agency) the polygon states what was conveyed as directly as
+    a parcel number does. A parcel is linked when more than
+    *min_parcel_share* of its area lies inside the polygon; 0.8 is the
+    rule of French et al. (2026, preprint), who selected "cadaster
+    parcels that share more than 80% of their area with a PLA boundary".
+
+    The pass runs over every transaction, not only those the key passes
+    of `link_transactions` missed, and merges into the same table: a
+    pair both rules found keeps one row labeled
+    `parcel_id_local+polygon_overlap`. It is deliberately not a tier of
+    that cascade. Nothing falls through to it, no link carries a score
+    (`share` remains the area apportionment of `apportion_shares`), and
+    no link either rule wrote is removed (plans/design-limits, L17 and
+    L28).
+
+    Parameters
+    ----------
+    parcel_recipe_id : str
+        The parcel spine to overlay; its geometry is read, its `area_ha`
+        apportions shares.
+    min_parcel_share : float
+        Share of a parcel's area that must lie inside the transaction's
+        polygon; strictly greater than this links.
+    output_column : str
+        Spine column rewritten with the methods that linked each sale.
+    """
+    import geopandas as gpd
+    import shapely
+
+    spine = state.spine
+    if spine is None or spine.empty or not isinstance(spine, gpd.GeoDataFrame):
+        return state
+    own_id = get_recipe_id(state.recipe)
+    owner_id = get_link_owner_recipe_id(state.recipe)
+    admin_id = state.admin_id
+    path = get_entity_link_path(owner_id, parcel_recipe_id, admin_id)
+    columns = [TRANSACTION_ID, 'parcel_id', *LINK_COLUMNS_TAIL]
+    existing = (
+        pd.read_parquet(path)[columns]
+        if path.exists()
+        else pd.DataFrame(columns=columns)
+    )
+    try:
+        parcels = get_entities(parcel_recipe_id, admin_id, geom=True, missing='ignore')
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        parcels = None
+    if parcels is None or not len(parcels):
+        return state
+
+    crs = spine.estimate_utm_crs()
+    sales = spine[[spine.geometry.name]].to_crs(crs)
+    sales = sales[sales.geometry.notna() & ~sales.geometry.is_empty]
+    sales.index = pd.Index(sales.index.astype('string'), name=TRANSACTION_ID)
+    lots = gpd.GeoDataFrame(geometry=parcels.geometry, crs=parcels.crs).to_crs(crs)
+    lots.index = pd.Index(parcels.index, name='parcel_id')
+    pairs = gpd.sjoin(
+        lots.reset_index(), sales.reset_index(), predicate='intersects', how='inner'
+    )
+    found = pd.DataFrame(columns=columns)
+    if len(pairs):
+        lot_geoms = lots.geometry.loc[pairs['parcel_id']].to_numpy()
+        sale_geoms = sales.geometry.loc[pairs[TRANSACTION_ID]].to_numpy()
+        inside = shapely.area(shapely.intersection(lot_geoms, sale_geoms))
+        lot_area = shapely.area(lot_geoms)
+        ratio = np.divide(
+            inside, lot_area, out=np.zeros_like(inside), where=lot_area > 0
+        )
+        hits = pairs.iloc[np.flatnonzero(ratio > min_parcel_share)]
+        source = (
+            spine['source'].astype('string').reindex(spine.index)
+            if 'source' in spine.columns
+            else None
+        )
+        found = pd.DataFrame(
+            {
+                TRANSACTION_ID: hits[TRANSACTION_ID].astype('string').to_numpy(),
+                'parcel_id': hits['parcel_id'].to_numpy(),
+                'link_method': POLYGON_OVERLAP_METHOD,
+                'link_source': (
+                    source.set_axis(source.index.astype('string'))
+                    .reindex(hits[TRANSACTION_ID].astype('string'))
+                    .to_numpy()
+                    if source is not None
+                    else pd.NA
+                ),
+                'share': pd.Series(pd.NA, index=range(len(hits)), dtype='Float64'),
+            }
+        )
+    links = pd.concat([existing, found], ignore_index=True)
+    links[TRANSACTION_ID] = links[TRANSACTION_ID].astype('string')
+    links['link_method'] = links['link_method'].astype('string')
+    links['link_source'] = links['link_source'].astype('string')
+    links = (
+        links.groupby([TRANSACTION_ID, 'parcel_id'], sort=True, as_index=False)
+        .agg(
+            link_method=('link_method', lambda s: '+'.join(dict.fromkeys(s.dropna()))),
+            link_source=('link_source', 'first'),
+        )
+        .astype({'link_method': 'string', 'link_source': 'string'})
+    )
+    links['share'] = pd.Series(pd.NA, index=links.index, dtype='Float64')
+    links = apportion_shares(links, parcels)
+    write_entity_link(
+        path,
+        links,
+        writer_recipe_id=own_id,
+        finer_recipe_id=owner_id,
+        coarser_recipe_id=parcel_recipe_id,
+        admin_id=admin_id,
+        step_config={'min_parcel_share': min_parcel_share, 'overlap': True},
+        stamped_recipe_ids=(parcel_recipe_id,),
+    )
+
+    # Sorted, so one set of rules reads one way whichever pair came first.
+    methods = (
+        links.groupby(TRANSACTION_ID, sort=False)['link_method']
+        .agg(lambda s: '+'.join(sorted(set('+'.join(s).split('+')))))
+        .astype('string')
+    )
+    spine[output_column] = (
+        pd.Index(spine.index.astype('string')).map(methods).astype('string')
+    )
+    state.spine = spine
+    if state.verbose:
+        print(
+            f'  link_transactions_by_overlap: {len(found):,d} overlap links; '
+            f'{len(links):,d} parcel links for '
+            f'{int(spine[output_column].notna().sum()):,d} of {len(spine):,d} '
+            f'sales ({spine[output_column].value_counts().to_dict()})'
         )
     return state

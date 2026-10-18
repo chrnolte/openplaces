@@ -1,0 +1,131 @@
+# Recipe: the annual forest outcomes of
+# CO-AN_parcel_landcover-forest-annual-2026, sampled on the transaction
+# spine's polygons (land acquisitions and PES contracts) so that a
+# treated unit whose polygon is not a cadastral parcel carries the same
+# columns as every untreated parcel.
+#
+# The step list is the parcel recipe's, verbatim, plus `raster_admin_id:
+# CO-AN` on the Hansen step: the transaction spine is national
+# (processed at admin level 1) while that raster is ingested for the
+# department, and a level-1 unit cannot be truncated to a level-2 one.
+# A test keeps the two recipes' step lists identical apart from that key.
+#
+# D3 open: CO_landcover-arevalo-2025 is saved per municipality, which a
+# national transaction run cannot resolve. Whether treatment polygons are
+# enriched on their own geometry (and then per municipality) or reach the
+# outcomes through their parcels is decision D3 of
+# colombia-conservation-indicators-data-preparation.md; this recipe is
+# not run until it is settled.
+
+description: >-
+  Annual forest outcomes and vicinity deforestation on Colombia's land
+  acquisition and PES polygons, from the same layers as the parcels.
+
+stage: enrich
+admin_id: CO
+
+entity:
+  entity_type: transaction
+
+dataset:
+  theme: landcover-forest-annual
+  source:
+    source_id: openplaces
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 1
+
+pipeline:
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest
+    years: [1997, 2024]
+    raster_key: natural_forest_share_arevalo_{year}
+    column: natural_forest_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest_since_1997
+    years: [1997, 2024]
+    raster_key: natural_forest_since_1997_share_arevalo_{year}
+    column: natural_forest_since_1997_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: natural_forest_regrowing
+    years: [1997, 2024]
+    raster_key: natural_forest_regrowing_share_arevalo_{year}
+    column: natural_forest_regrowing_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: planted_forest
+    years: [1997, 2024]
+    raster_key: planted_forest_share_arevalo_{year}
+    column: planted_forest_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: deforestation
+    years: [1998, 2024]
+    raster_key: deforestation_share_arevalo_{year}
+    column: deforestation_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    raster_recipe_id: CO_landcover-arevalo-2025
+    layer: gain
+    years: [1998, 2024]
+    raster_key: gain_share_arevalo_{year}
+    column: gain_share_arevalo_{year}
+    stat: mean
+    method: rasterized
+
+  - step: vicinity_coverage
+    source_raster_recipe_id: CO_landcover-arevalo-2025
+    layer: deforestation_prior_3y
+    years: [2001, 2024]
+    raster_key: deforestation_vicinity_share_arevalo_{year}
+    column: deforestation_vicinity_share_arevalo_{year}
+    stat: mean
+    px_radius: 60
+    method: rasterized
+
+  # Disabled until their rasters are placed: the Hansen tile and the two
+  # Antioquia distance rasters are not on this machine yet.
+  - step: zonal_stats
+    enabled: false
+    raster_recipe_id: CO-AN_landcover-forest-hansen-gfc2022
+    raster_admin_id: CO-AN
+    layer: deforestation
+    years: [2001, 2022]
+    raster_key: deforestation_share_hansen_{year}
+    column: deforestation_share_hansen_{year}
+    stat: mean
+    method: rasterized
+
+  - step: zonal_stats
+    enabled: false
+    raster_path: access/CO-AN_stream_distance_3116.tif
+    raster_key: stream_distance
+    column: stream_distance
+    stat: mean
+
+  - step: zonal_stats
+    enabled: false
+    raster_path: access/CO-AN_road_distance_3116.tif
+    raster_key: road_distance
+    column: road_distance
+    stat: mean
