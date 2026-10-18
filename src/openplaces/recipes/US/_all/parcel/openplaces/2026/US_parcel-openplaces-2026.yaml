@@ -782,7 +782,11 @@ share:
       # reads its counties out of these, as the footprint recipe ships.
       - western-nc
       - cheer-eastern-nc
-      # Houston, the viewer's first Texas place (2026-10-17). Harris
-      # alone rather than cheer-coastal-tx, which the footprint recipe
-      # ships, so this recipe still reads each county from one region.
-      - harris-tx
+      # Houston and Beaumont, the viewer's Texas places (2026-10-17).
+      # One county each rather than cheer-coastal-tx, which the
+      # footprint recipe ships, so this recipe still reads each county
+      # from one region. Region ids name the place a user knows.
+      - houston-tx
+      - beaumont-tx
+      # Madison WI, Dane County (2026-10-17).
+      - madison-wi

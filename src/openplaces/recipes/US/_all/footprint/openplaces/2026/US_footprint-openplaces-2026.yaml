@@ -206,6 +206,8 @@ share:
       - boston-outer-rings
       - central-florida-lakes
       - northern-wisconsin
+      # Madison WI, Dane County, for the value pages (2026-10-17).
+      - madison-wi
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),
