@@ -10,6 +10,7 @@ YAML recipe specifications. It supports:
 - Conditional transformations
 - Date/time extractions
 - Complex expressions
+- Group operations over the rows that share a key (weighted mode)
 - Pattern-based transformations
 """
 
@@ -659,6 +660,9 @@ def apply_transformation(
                 df[config['input']], config['conditions'], config.get('default')
             )
 
+        elif transform_type == 'group':
+            df[output_col] = _apply_group(df, config)
+
         else:
             raise ValueError(f'Unknown transformation type: {transform_type}')
 
@@ -1108,6 +1112,63 @@ def _apply_remap_file(
         index=crosswalk.iloc[:, key_col],
     )
     return _map_through_crosswalk(series, mapping)
+
+
+def _weighted_mode(values: pd.Series, weights: pd.Series, by: pd.Series) -> pd.Series:
+    """Per group of *by*, the value carrying the largest summed weight.
+
+    A missing or non-numeric weight counts as 0. A group whose weights
+    sum to 0 counts each row once, so it gets its most frequent value.
+    Ties go to the value that appears first in the table. Every row of a
+    group gets the group's value, a row with no value of its own
+    included; a row with no key gets none.
+    """
+    w = pd.to_numeric(weights, errors='coerce').fillna(0).clip(lower=0)
+    frame = pd.DataFrame(
+        {'by': by.to_numpy(), 'value': values.to_numpy(), 'w': w.to_numpy()}
+    )
+    frame['order'] = np.arange(len(frame))
+    stated = frame.dropna(subset=['by', 'value'])
+    unweighted = stated.groupby('by')['w'].transform('sum').eq(0)
+    stated = stated.assign(w=stated['w'].mask(unweighted, 1.0))
+    totals = stated.groupby(['by', 'value'], sort=False).agg(
+        w=('w', 'sum'), order=('order', 'min')
+    )
+    totals = totals.reset_index().sort_values(
+        ['by', 'w', 'order'], ascending=[True, False, True]
+    )
+    winner = totals.drop_duplicates('by').set_index('by')['value']
+    result = frame['by'].map(winner)
+    result.index = values.index
+    return result
+
+
+def _apply_group(
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
+) -> pd.Series:
+    """Apply an operation across the rows that share a key.
+
+    The other transformation types work row by row. This one reads the
+    rows of a group together, for a detail table with several rows per
+    entity (one row per building of an account) where a single value
+    has to be chosen before the table is reduced to one row per key.
+    Groups are formed within the partition being transformed, so the
+    key's rows must not span partitions.
+
+    Operations
+    ----------
+    weighted_mode
+        ``inputs: [value, weight]`` and ``args: {by: <key column>}``:
+        every row of a group gets the value with the largest summed
+        weight (see `_weighted_mode`). An account's building type
+        weighted by building value is the case it was added for.
+    """
+    operation = config['operation']
+    if operation != 'weighted_mode':
+        raise ValueError(f'Unknown group operation: {operation}')
+    value_col, weight_col = config['inputs']
+    by = config['args']['by']
+    return _weighted_mode(df[value_col], df[weight_col], df[by])
 
 
 def _apply_remap_conditional(

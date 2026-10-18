@@ -1,0 +1,54 @@
+# Patch: Harris County, TX parcel curation.
+#
+# The occupancy group of a parcel (group_parcel) comes from HCAD's
+# building type where the appraisal district records one, not only from
+# the cohort fill the national recipe uses (the most common NSI group
+# among parcels sharing a use label). Harris's use label is the state
+# class, and state class F1 ("Real, Commercial") holds office towers,
+# hospitals, shops, hotels and warehouses alike: the cohort fill gave all
+# of them one group. HCAD's building_other table names each building's
+# type (US-TX-HAR_property-hcad-2026_building-other), and a fixed table
+# written from HCAD's code descriptions
+# (US_parcel-openplaces-2026_group-parcel-tx-har.csv) translates it.
+#
+# 1. The building type is reduced onto the parcel from the property
+#    spine, `agree`: a parcel whose properties state different types
+#    has none, and keeps the cohort fill.
+# 2. The table then overwrites the cohort fill's group wherever it names
+#    the parcel's type; a type it does not name (mixed use, utilities,
+#    storage tanks) leaves the cohort fill's group.
+#
+# The state class crosswalk beside the HCAD roll
+# (US-TX-HAR_property-hcad-2026_use-group-code-remap.csv) is the other
+# half of the fix: it stops F1 reading "commercial and industrial", the
+# label whose keyword INDUSTRIAL classed these parcels Industrial.
+# Findings and measurements: plans/houston-sliver-check.md. Design
+# limits checked: L25 (this narrows the cohort fill's reach, as the
+# Massachusetts table did).
+
+admin_id: US-TX-HAR
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - insert_after: aggregate_from_entities
+    occurrence: 1
+    step:
+      step: aggregate_from_entities
+      recipe_id: US_property-spine-2026
+      key: [parcel_id_local, parcel_id_admin2]
+      columns:
+        building_type_code: agree
+  - insert_after: impute_from_group_statistic
+    step:
+      step: translate_descriptions
+      output: group_parcel
+      columns: [building_type_code]
+      keywords: group-parcel-tx-har
+      fill_only: false

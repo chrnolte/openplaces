@@ -1,0 +1,86 @@
+# Harris County (HCAD) building type codes -> occupancy group
+# (group_parcel), written from HCAD's code descriptions
+# (desc_r_02_building_type_code.txt in Code_description_real.zip, 2026),
+# never from the groups that co-occur with a code in the data. Read by
+# translate_descriptions in the US-TX-HAR patch of
+# US_parcel-openplaces-2026 on building_type_code
+# (US-TX-HAR_property-hcad-2026_building-other); it overrides the
+# cohort fill where a building type is known. Groups follow the NSI
+# occupancy vocabulary the land-use class map reads: restaurants and
+# bars are Entertainment/Recreation and service stations Personal &
+# Repair Services, as in NSI. A code with no row leaves the cohort
+# fill's group: mixed residential/commercial (1005, 4319), converted
+# or unsound structures (4301, 4310), boarding houses (4318), RV parks
+# (4215), hangars, day care, greenhouses, salvage yards, maritime,
+# terminals, utilities (47xx), storage tanks (978x), improved land and
+# new construction say nothing a group can carry.
+pattern,match_type,group_parcel,reviewed,definition
+^1001$,regex,Single Family,true,Residential Single Family
+^100[234]$,regex,Multi Family,true,"Residential Duplex, Triplex, Fourplex"
+^1006$,regex,Multi Family,true,Residential Condo
+^1007$,regex,Single Family,true,Residential Townhome
+^1008$,regex,Manufactured Home,true,Residential Mobile Homes
+^1025$,regex,Single Family,true,Farm Single Family Dwelling
+^4108$,regex,Manufactured Home,true,Commercial Manufactured Housing
+^42(09|11|12|14|21|22|99)$,regex,Multi Family,true,"Apartment structures (4-20 units, garden, mid rise, high rise), subsidized housing, tax credit"
+^4213$,regex,Manufactured Home,true,Manufactured Housing Park
+^431[145]$,regex,Hotel,true,"Resort Hotel, Hotel/Motel Hi-Rise, Hotel/Motel Low-Rise"
+^4320$,regex,Hotel,true,Extended Stay Hotels/Motels
+^4312$,regex,Wholesale,true,Mini Warehouse High-Rise
+^4313$,regex,Institutional Dormitory,true,Dormitory
+^431[67]$,regex,Nursing Home,true,"Nursing Home, Retirement Home"
+^432[1357]$,regex,Entertainment/Recreation,true,"Restaurant, Food Stand, Fast Food, Bar/Lounge"
+^4326$,regex,Entertainment/Recreation,true,Ice House
+^4328$,regex,Entertainment/Recreation,true,Night Club/Dinner Theater
+^4324$,regex,Retail,true,Conv. Mart w/Gas Pump
+^43(29|31)$,regex,Retail,true,"Used Car Lot, Auto Dealer Full Service"
+^43(30|32|33|34|35|36|37)$,regex,Personal & Repair Services,true,"Specialized Auto Use, Auto Service Garage, Service Stations, Truck Stop, Car Washes"
+^433[89]$,regex,Garage,true,"Parking Garage, Parking Misc."
+^4372$,regex,Garage,true,Airport Parking
+^434[0-8]$,regex,Retail,true,"Retail Power Center, Shopping Malls and Centers, Department Stores, Supermarket, Convenience Food Market"
+^4349$,regex,Medical Office,true,Medical Office
+^435[01]$,regex,Bank,true,"Drive Through Bank, Bank"
+^4352$,regex,Medical Office,true,Surgery Center
+^435[3459]$,regex,Professional Technical Services,true,"Office Bldgs. Low-Rise and Hi-Rise, Office Condominiums, Office - Flex Building"
+^4356$,regex,Retail,true,Retail Condominium
+^4357$,regex,Medical Office,true,Medical Condominium
+^4358$,regex,Wholesale,true,Warehouse Condominium
+^4360$,regex,Medical Office,true,Medical-Urgent Care Center
+^436[12]$,regex,Personal & Repair Services,true,"Funeral Home, Veterinary Clinic"
+^436[345]$,regex,Theater,true,"Legitimate Theater, Motion Picture Theater, Cinema"
+^4367$,regex,Church,true,Social/Fraternal Hall
+^437[1-6]$,regex,Retail,true,"Downtown Row, Retail Single- and Multi-Occupancy, Retail Miscellaneous, Drugstore"
+^4378$,regex,Retail,true,Retail Multi-Occupancy Pad
+^4377$,regex,Wholesale,true,Boat & RV Storage
+^43(80|91|92|94|95|96|97|98|99)$,regex,Wholesale,true,"Distribution, Cold Storage, Lumber Storage, Service Center Warehouse, Truck Terminal, Mini-Warehouse, Office - Warehouse, Warehouse, Warehouse - Metallic"
+^438[1-9]$,regex,Entertainment/Recreation,true,"Bowling, Skating, Health Spa, Indoor Pool and Courts, Country Clubs, Club House"
+^4390$,regex,Entertainment/Recreation,true,Amusement Park
+^440[13]$,regex,Light Industrial,true,"Light Industrial - Metallic, Non Metallic"
+^4405$,regex,High Technology,true,Research and Development
+^441[016]$,regex,Food/Drug/Chemical,true,"Products Recovered from Natural Gas, Food & Kindred Products, Chemical and Allied Products"
+^441[2348]$,regex,Light Industrial,true,"Apparel & Finished Textiles, Lumber and Wood Products, Furniture and Fixtures, Rubber and Miscellaneous"
+^441[57]$,regex,Heavy Industrial,true,"Paper and Allied Products, Petroleum Refining / Industry"
+^4419$,regex,Metals/Minerals processing,true,Concrete Products
+^442[01]$,regex,Metals/Minerals processing,true,"Primary Metal Industry, Metal Fabricating"
+^4422$,regex,Heavy Industrial,true,Machinery & Transportation Equipment
+^442[45]$,regex,Light Industrial,true,"Miscellaneous Manufacturing, Industrial Manufacturing"
+^4426$,regex,Heavy Industrial,true,Industrial Manufacturing - Heavy
+^442[78]$,regex,Wholesale,true,Industrial Warehouses
+^4444$,regex,Single Family,true,Dwelling on Industrial Land
+^4469$,regex,Agricultural,true,Free Stall Barn
+^4491$,regex,Wholesale,true,Industrial Cold Storage
+^4497$,regex,High Technology,true,Computer Data Center
+^4610$,regex,Entertainment/Recreation,true,Recreational/Health
+^4611$,regex,Government Services,true,Library
+^4612$,regex,Average School,true,School
+^4613$,regex,College/University,true,Colleges & Universities
+^4614$,regex,Government Services,true,Post Office
+^4615$,regex,Entertainment/Recreation,true,Entertainment \ Sports \ Restaurants
+^4620$,regex,Church,true,Religious
+^4630$,regex,Entertainment/Recreation,true,Auditorium
+^4640$,regex,Hospital,true,Hospitals
+^4660$,regex,Emergency Response,true,Police or Fire Station
+^46(70|85)$,regex,Government Services,true,"Correctional, Miscellaneous Government Building"
+^4680$,regex,Entertainment/Recreation,true,Cultural Facility
+^4930$,regex,Entertainment/Recreation,true,County Parks and Golf Courses
+^4940$,regex,Hospital,true,Medical Center/Hospital

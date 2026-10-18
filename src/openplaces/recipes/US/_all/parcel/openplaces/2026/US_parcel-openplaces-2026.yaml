@@ -364,8 +364,19 @@ pipeline:
           # Dominant FEMA building group on the parcel.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
+      # RV evidence (the keyword or style) is required. The recreation
+      # group and a footprint count alone also describe clubhouses,
+      # golf courses, bowling alleys and stadiums, and scored 2 on
+      # their own. Measured 2026-10-18 on US: 910 of 943 curated RV
+      # Park parcels had no RV keyword or style, among them country
+      # club houses in Wake County, NC and Fenway Park in Boston.
       - class: RV Park
         min_score: 2
+        require:
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: RV Park}
+              - {type: equals, column: style_class, value: RV Park}
         indicators:
           - type: any_of
             indicators:
