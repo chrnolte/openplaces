@@ -522,7 +522,6 @@ ADDRESS_METHOD = 'address_id_local'
 ADDRESS_RANGE_METHOD = 'address_range'
 
 
-@_register('link_entities_by_id')
 def _first_shared_key(spine, ref, spine_key, ref_key) -> tuple[str, str]:
     """The first (spine, reference) key pair both tables state a value in.
 
@@ -558,6 +557,7 @@ def _first_shared_key(spine, ref, spine_key, ref_key) -> tuple[str, str]:
     return spine_keys[0], ref_keys[0]
 
 
+@_register('link_entities_by_id')
 def link_entities_by_id(
     state: HarmonizeState,
     recipe_id: str,
