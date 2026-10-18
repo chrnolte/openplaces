@@ -232,6 +232,13 @@ wetland_share,Share of area covered by wetland polygons,fraction (0-1),float,mea
 public_land_acquisition_share,Share of area overlapping a public land acquisition,fraction (0-1),float,mean,,,enrich
 conservation_easement_share,Share of area under a conservation easement,fraction (0-1),float,mean,,,enrich
 protected_land_share,"Share of area under fee/easement protection, given year and radius",fraction (0-1),float,mean,,,enrich
+protected_open_space_share,"Share of the parcel's area inside protected or recreational open space polygons (MassGIS OpenSpace in Massachusetts), whatever their level of protection",fraction (0-1),float,mean,,parcel,enrich
+protected_open_space_id,"Source id of a protected or recreational open space polygon (MassGIS OS_ID: town id and polygon id); on a parcel, the polygon covering most of it",,string,first,,,ingest
+protected_open_space_site,"Site name of a protected or recreational open space polygon (MassGIS SITE_NAME); a site a town line splits keeps one name in each town",,string,first,,,ingest
+protected_open_space_level,"Level of protection of an open space polygon, in the source's codes (MassGIS LEV_PROT: P in perpetuity, T term limited, L limited, N none, X unknown)",,categorical,first,,,ingest
+protected_open_space_owner_type,"Kind of owner of an open space polygon, in the source's codes (MassGIS OWNER_TYPE: F federal, S state, C county, M municipal, N private nonprofit, P private for profit, B public nonprofit, L land trust, G conservation organization, O other, X unknown, I inholding)",,categorical,first,,,ingest
+protected_open_space_purpose,"Primary purpose for which open space was protected, in the source's codes (MassGIS PRIM_PURP: R recreation, C conservation, B both, H historical or cultural, A agriculture, W water supply, S scenic, F flood control, U underwater, O other, X unknown)",,categorical,first,,,ingest
+protected_open_space_public_access,"Legal public access to an open space polygon, in the source's codes (MassGIS PUB_ACCESS: Y yes, N no, L limited to members, X unknown)",,categorical,first,,,ingest
 soil_farmland_local_share,Share classified as locally-important farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_prime_share,Share classified as prime farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_statewide_share,Share classified as statewide-important farmland soil,fraction (0-1),float,mean,,,enrich
