@@ -272,7 +272,12 @@ def score_decisions(
         source}``. ``min_score`` defaults to 1 and each indicator's
         ``weight`` to 1. ``require`` is a hard AND-gate applied on top of
         ``min_score``, for evidence that should veto a decision outright
-        however strongly its other indicators score.
+        however strongly its other indicators score. A decision may name
+        ``class_column`` instead of ``class``: it then proposes each
+        row's own value of that column, and is eligible only where that
+        value is present. For a correction that hands a row back the
+        class it held before an earlier vote (a snapshot taken with
+        ``base_output``), which no fixed class could express.
     score_classes : set of str, optional
         Classes whose raw weighted score should be returned in *scores*.
         Deliberately ungated by ``min_score`` and by whether the decision
@@ -335,13 +340,21 @@ def score_decisions(
                 usable = matched & carried.notna() & carried.str.len().gt(0)
                 usable = usable.fillna(False).astype(bool)
                 fired = fired.where(~usable, fired + carried.fillna('') + '+')
-        if score_classes and decision['class'] in score_classes:
+        class_column = decision.get('class_column')
+        if score_classes and decision.get('class') in score_classes:
             scores[decision['class']] = score
         fired = fired.str.rstrip('+')
 
         eligible = score >= float(decision.get('min_score', 1))
         for req in decision.get('require', []):
             eligible = eligible & evaluate_indicator(curated, req)
+        if class_column is not None:
+            proposed = (
+                curated[class_column].astype(object)
+                if class_column in curated.columns
+                else pd.Series(pd.NA, index=curated.index, dtype=object)
+            )
+            eligible = eligible & proposed.notna().to_numpy()
 
         # Strict > keeps the earlier decision on ties (recipe order).
         take = eligible & (score > best_score)
@@ -355,7 +368,10 @@ def score_decisions(
         second_score.loc[runner_up] = score.loc[runner_up]
         has_second.loc[runner_up] = True
 
-        winner.loc[take] = decision['class']
+        if class_column is not None:
+            winner.loc[take] = proposed.loc[take]
+        else:
+            winner.loc[take] = decision['class']
         source = decision.get('source')
         # Prefer the evidence that fired; fall back to the decision's own
         # name only where it labeled no indicators, so a recipe that has
