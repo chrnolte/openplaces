@@ -1,0 +1,112 @@
+# Recipe for the "placeslab-fmv2026open" parcel dataset: the PLACES
+# lab land value predictions from the Fathom-free model variants,
+# delivered for team-internal display. Used as area-weighted
+# enrichment evidence for current parcels (see
+# US_parcel_parcel-placeslab-fmv2026open.yaml).
+#
+# Why a separate source from US_parcel-placeslab-fmv2026: openplaces
+# records a restriction per source, not per column, and a delivery
+# withholds or keeps a source's values as a whole. The four main
+# model families (county, county-nb, region, region-nb) use Fathom
+# flood and TNC inputs, whose terms allow no sharing, so they stay in
+# the restricted recipe. The seven `region-nb_*` variants here were
+# fit without those inputs (places: fmv/release/
+# open_release_delivery.py, cleared for collaborator-only display
+# 2026-10-18), so this source can be cleared for team bundles on its
+# own.
+#
+# Same layout as the restricted recipe: three tables per admin unit
+# (boundaries, predictions, predictors), each indexed by
+# `geometry_sha3_224` and left-joined post-ingest. The predictors
+# table holds parcel area (`ha`) only. Boundaries are EPSG:5070.
+#
+# The Drive folder key is the openplaces unit key: the county FIPS,
+# except in New England, where admin level 3 is the town and the key
+# is the 10-digit county subdivision GEOID (Nantucket: 2501943790).
+#
+# Prediction columns, per model id <mid> (region-nb_bare, _people,
+# _buildings, _wealth, _peoplewealth, _peoplebuildings,
+# _popbldwealth):
+# - lnusd-ha_<mid>_2010: natural log of real USD per hectare
+#   (CPI-deflated to January 2022, places cfg real_price_ref_year)
+#   for the 2010 market (places lib.fmv REF_DATE 2010-10-31).
+# - DI_<mid>_2010: dissimilarity index to the training sales.
+# - AOA_<mid>_2010_{r,bg,tbg}: DI divided by the area-of-applicability
+#   threshold of one cross-validation type (r random folds, bg folds
+#   blocked by census block group, tbg the same with next-year
+#   forecasting); <= 1 is inside the area of applicability.
+# The column-notes sidecar maps them to registry names.
+
+description: >-
+  PLACES lab land value predictions from Fathom-free model variants for
+  historical parcels, joined from three per-unit files on Google Drive.
+
+# Nationally scoped; only some units are published (a Nantucket
+# pilot, 2026-10-18). Restrict with `admin_ids=[...]` in ingest().
+admin_id: US
+
+# Reference dataset for crosswalk enrichment only; must never roll
+# into the canonical parcel spine.
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: placeslab
+    # Drive folder share/2025/places_fmv_conus_open, which holds
+    # `parcels/`. Scraped via google_drive_scraper with
+    # scraper_options.file_path relative to it.
+    portal_url: "https://drive.google.com/drive/folders/1ChKH4T2JhFODx9qsuKkZrzz0anhPQxRG"
+    download_url_scraper: google_drive_scraper
+    # The models were trained on ZTRAX sales, so the predictions fall
+    # under the Zillow terms the lab works under. Decided by the
+    # maintainer 2026-10-18: team bundles only, until the advance
+    # notice to Zillow is sent. Shown only on a password-protected
+    # team value page; every other bundle withholds these values
+    # (io.delivery.redaction).
+    license: >-
+      Team-internal only, not for open publication. Attribution: parcel
+      boundaries from MassGIS (Bureau of Geographic Information),
+      Commonwealth of Massachusetts EOTSS; building footprints from
+      Microsoft Building Footprints (ODbL-1.0; these predictions are a
+      Produced Work); income and population from IPUMS NHGIS, University
+      of Minnesota (www.nhgis.org). Data provided by Zillow through the
+      Zillow Transaction and Assessment Dataset (ZTRAX). More information
+      on accessing the data can be found at http://www.zillow.com/ztrax.
+      The results and opinions are those of the author(s) and do not
+      reflect the position of Zillow Group.
+    redistribution_restricted: true
+    team_sharing_permitted: true
+  version: fmv2026open
+
+# admin_key_column names the admin column whose value keys the Drive
+# folder and files:
+# parcels/{state}/{key}/{key}_parcel_{kind}_parquet.zip.
+scraper_options:
+  admin_key_column: admin3_id_admin1
+  file_path: "parcels/{admin2}/{admin_key}/{admin_key}_parcel_{partition_id}_parquet.zip"
+
+download_by:
+  admin_level: 3
+  partition: table
+  table_names: [boundaries, predictions, predictors]
+
+# google_drive_scraper extracts the single-member zip itself.
+uncompressed_file_name: "{admin3_id_admin1}_parcel_{table}.parquet"
+
+# Keeps the raw index as the shared join key on all three tables
+# (see the restricted recipe for why boundaries needs a directive).
+create_index:
+  function: openplaces.io.transform.rename_index
+  args:
+    name: parcel_id_int
+
+join_partitions_by:
+  join_key_name: parcel_id_int
+
+# Raw columns are kept at ingest and mapped during enrichment through
+# US_parcel-placeslab-fmv2026open_column-notes.csv.
+keep_unnamed_columns: true
+
+save_to:
+  data_dir: cache

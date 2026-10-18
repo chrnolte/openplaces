@@ -31,8 +31,13 @@ admin_id: US
 exclude_from_auto_discover: true
 
 # The predictions table carries the previous model's outputs as well
-# as its inputs (`land_value_per_ha_log_region_nb_2010` and the
-# `aoa` area-of-applicability columns in the column-notes sidecar).
+# as its inputs (`land_value_per_ha_log_<family>_2010`, the
+# `dissimilarity_index` and `aoa` area-of-applicability columns in
+# the column-notes sidecar). Since the 2026-10-18 delivery it holds
+# four model families (county, county-nb, region, region-nb), each
+# with lnusd-ha, DI and AOA for three cross-validation types (r, bg,
+# tbg). They use Fathom and TNC inputs, which is why the Fathom-free
+# variants are a separate source (US_parcel-placeslab-fmv2026open).
 # They exist for parity checks against that model. A valuation
 # connector must never let one into a predictor set: a model fit on
 # its predecessor's prediction reproduces it rather than the market.
@@ -41,9 +46,19 @@ entity:
   entity_type: parcel
   source:
     source_id: placeslab
-    portal_url: "https://drive.google.com/drive/folders/1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ"
-    # Drive folder, scraped via google_drive_scraper using
-    # scraper_options.file_path. The predictions come from a model
+    # Drive folder share/2025/places_fmv_conus, which holds
+    # `parcels/`, scraped via google_drive_scraper using
+    # scraper_options.file_path relative to it. Until 2026-10-18 this
+    # named folder 1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ, an older share
+    # holding 19 counties keyed by county FIPS (MA among them, from
+    # before MA level 3 became the town); it has no town-keyed MA
+    # folder, so the Nantucket pilot (parcels/MA/2501943790) cannot
+    # resolve there. The scraper caches each unit's folder listing
+    # beside its files without the folder URL, so a unit listed under
+    # the old folder keeps that listing until ingested with
+    # redownload=True.
+    portal_url: "https://drive.google.com/drive/folders/1TbKGxtwoDKSmC1ocB2gRzMg272M6ShlF"
+    # The predictions come from a model
     # trained on licensed inputs (ZTRAX, CoreLogic, Regrid), so its
     # columns are withheld from deliveries until the maintainer and
     # Boston University decide whether they may be shown publicly.
