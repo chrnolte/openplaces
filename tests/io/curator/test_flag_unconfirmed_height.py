@@ -84,3 +84,29 @@ def test_a_height_alone_gives_the_floors():
         _state(frame), height_column='height_overture'
     ).curated['height_unconfirmed']
     assert not out['TOWER']
+
+
+def test_a_lot_whose_value_fits_its_floors_releases_its_storied_buildings():
+    sqft = 10.7639
+    # One lot, value split by area: $6,500 per sq ft of outline each.
+    # Over the lot's floor area (2 + 3 + 1 floors) it comes to $2,676.
+    v = 6_500 * sqft
+    frame = pd.DataFrame(
+        {
+            'structure_value': [v * 500, v * 500, v * 50],
+            'area_m2': [500.0, 500.0, 50.0],
+            'n_stories': [2.0, 3.0, 1.0],
+            'lot': ['L', 'L', 'L'],
+        },
+        index=['TWO', 'THREE', 'KIOSK'],
+    )
+    out = flag_unconfirmed_height(
+        _state(frame), reconciled_stories_column='n_stories', lot_column='lot'
+    ).curated['height_unconfirmed']
+    assert not out['TWO']  # $3,250 per floor alone, but the lot fits
+    assert not out['THREE']
+    assert out['KIOSK']  # under 100 m2: still judged alone
+    alone = flag_unconfirmed_height(
+        _state(frame.copy()), reconciled_stories_column='n_stories'
+    ).curated['height_unconfirmed']
+    assert alone['TWO']

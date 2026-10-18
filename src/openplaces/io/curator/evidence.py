@@ -323,6 +323,8 @@ def flag_unconfirmed_height(
     height_column: str | None = None,
     story_height_m: float = 3.5,
     reconciled_stories_column: str | None = None,
+    lot_column: str | None = None,
+    lot_release_min_m2: float = 100.0,
 ) -> CurateState:
     """Flag outlines whose value per area no measured height explains.
 
@@ -371,6 +373,24 @@ def flag_unconfirmed_height(
         box. Measured 2026-10-17 on boston-inner-core: flagged outlines
         fall from 39 to 28; the 11 released are buildings of 2 to 8
         stories, 6 of them over 400 m2 of outline.
+    lot_column : str, optional
+        The outline's lot id. Where given, an outline whose floor count
+        is known and whose area is at least *lot_release_min_m2* is not
+        flagged when its lot's value, over the floor area of all the
+        lot's outlines, stays within *max_value_per_floor_sqft*: its own
+        excess then comes from a value split by outline area among
+        buildings of different heights, not from a doubtful outline. An
+        outline with no floor count, or a small box drawn as a needle,
+        is still judged alone.
+        Measured 2026-10-17 on boston-inner-core: flagged outlines fall from 36 to 32.
+        The four released are three Old Colony public-housing buildings
+        of 2 stories (279 to 516 m2) on a lot that comes to $2,628 per
+        sq ft of floor, and a 211 m2 one-story building on a hospital
+        lot that comes to $196.
+    lot_release_min_m2 : float
+        Smallest outline (m2) the lot test can release (default 100,
+        the size below which the floor split treats an unmeasured
+        outline as one floor).
     """
     curated = state.curated
     value = pd.to_numeric(curated.get(value_column), errors='coerce')
@@ -387,6 +407,19 @@ def flag_unconfirmed_height(
     per_floor = per_sqft / floors.fillna(1.0)
     flag = (per_sqft > min_value_per_sqft) & (per_floor > max_value_per_floor_sqft)
     known = (value > 0) & (area > 0)
+    if lot_column and lot_column in curated.columns:
+        lot = curated[lot_column]
+        floor_sqft = (area * M2_TO_SQFT * floors.fillna(1.0)).where(known)
+        lot_value = value.where(known).groupby(lot).transform('sum')
+        lot_floor_sqft = floor_sqft.groupby(lot).transform('sum')
+        lot_fits = (lot_value / lot_floor_sqft) <= max_value_per_floor_sqft
+        released = (
+            lot_fits.fillna(False)
+            & floors.notna()
+            & lot.notna()
+            & (area >= lot_release_min_m2)
+        )
+        flag &= ~released
     curated[output_column] = flag.where(known).astype('boolean')
     if state.verbose:
         print(
