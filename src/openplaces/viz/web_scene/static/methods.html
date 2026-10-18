@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Methods</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --rule: rgba(255, 255, 255, 0.1);
+  }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(ellipse 80% 70% at 50% 30%, #13213d 0%, #0a1222 45%, var(--bg) 100%);
+    background-color: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 16px 72px; }
+  a { color: #9ecbff; }
+  .back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  .back:hover { color: var(--text); }
+  h1 { font-size: 26px; font-weight: 600; margin: 16px 0 8px; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  p, li { margin: 0 0 10px; }
+  ul { padding-left: 20px; }
+  .rule {
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
+    padding: 10px 14px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+  }
+  :target { scroll-margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">&larr; All places</a>
+  <h1>Methods</h1>
+  <p class="lead">How the land and structure value pages are made, and where they
+  can be wrong.</p>
+
+  <h2 id="heights">Heights and colors</h2>
+  <p>Every lot and every building stands as high as its value per unit of
+  ground: a lot by its land value per acre, a building by its value per square
+  foot of its outline. Tall shapes are where the most value sits on the least
+  ground. Colors follow the same values on a logarithmic scale, so that a
+  doubling of value looks alike at any price level.</p>
+  <p>"Value per home" recolors homes by their value divided by their number of
+  homes. A home is one house, apartment or condo, so an apartment building's
+  value is divided among its apartments. Lots and buildings that hold no homes
+  keep a color by value per ground area, on the second, thinner strip of the
+  legend.</p>
+
+  <h2 id="values">Values</h2>
+  <p>The values are those the local tax assessors recorded; each page's
+  Sources panel names them, with their terms. Where a roll leaves a value out,
+  openplaces fills it in. "Imputed" shows the recorded values with these fills,
+  and the tooltip marks a filled value as estimated. "Assessment" shows the
+  recorded values alone and draws filled ones as no value. A lot or building
+  the assessor values at $0, often public or exempt land, is drawn white; one
+  with no recorded value at all is drawn gray.</p>
+
+  <h2 id="unexplained">Unexplained buildings</h2>
+  <p>A building is drawn as high as its value per square foot of outline. A
+  tall building carries a high value per square foot of outline because it
+  has many floors. Some outlines carry a value per square foot that no
+  measured height explains. They would stand as needles that no building on
+  the ground matches. We mark them, and they are hidden unless you switch on
+  the button with the question mark, which draws them see-through.</p>
+  <div class="rule">An outline is marked unexplained when its value comes to
+  more than $3,500 per square foot of outline and, divided by its measured
+  floors, still to more than $3,000 per square foot of floor. Floors are the
+  story count that Overture Maps records for the outline, or its measured
+  height divided by 3.5 m. An outline with neither counts as one floor.</div>
+  <p>For comparison, across Boston, Cambridge, Somerville and Everett the median
+  outline comes to about $210 per square foot of floor. The usual causes of an
+  unexplained building are:</p>
+  <ul>
+    <li>the value belongs to more than the outline holds: a lot's other
+    buildings, or a structure that the outlines we draw do not include;</li>
+    <li>the outline has no measured height, so a genuinely tall building
+    counts as one floor.</li>
+  </ul>
+  <p>The value itself is not changed. The mark says only that we cannot
+  confirm the height we would draw.</p>
+
+  <h2 id="extent">Extent</h2>
+  <p>Each page shows everything whose center lies within 15 km of a fixed
+  point: Boston University's Marsh Plaza for Boston, the city hall elsewhere.
+  Lots and buildings are kept whole, never cut at the circle. Phones get a
+  lighter page with a 7 km circle around the same point.</p>
+
+  <h2 id="issues">Known issues</h2>
+  <p>We look for our own mistakes. Each page lists the problems we know of
+  at the top of its Sources panel, with the date we found each one, until the
+  fix is live.</p>
+</main>
+</body>
+</html>

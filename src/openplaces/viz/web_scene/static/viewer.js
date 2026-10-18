@@ -6,9 +6,25 @@
 
 'use strict';
 
-const AREA_UNIT_LABELS = {ac: 'acre', ha: 'ha', sqft: 'sq ft', m2: 'm²'};
-// Words on the layer buttons; a layer not listed shows its label.
+// Units as legends name them; a dwelling is a "home" to visitors.
+const AREA_UNIT_LABELS = {ac: 'acre', ha: 'ha', sqft: 'sq ft', m2: 'm²', dwelling: 'home'};
+// Names of the layer switches (their tooltips); a layer not listed
+// shows its label.
 const LAYER_SWITCH_LABELS = {parcels: 'Land', buildings: 'Buildings'};
+// Small symbols on the layer switches instead of words (maintainer,
+// 2026-10-17), drawn in the text color: a lot seen at an angle, two
+// blocks, the same blocks dashed and empty (ghosts), a pin.
+const LAYER_ICONS = {
+  parcels: '<path d="M1 10.5 7 6.5l10 2.5-6 5.5z" fill="currentColor" fill-opacity=".35"'
+    + ' stroke="currentColor" stroke-linejoin="round"/>',
+  buildings: '<path d="M3 15V7h5v8M8 15V2h7v13z" fill="currentColor" fill-opacity=".35"'
+    + ' stroke="currentColor" stroke-linejoin="round"/>',
+  ghosts: '<path d="M3 15V7h5v8M8 15V2h7v13z" fill="none" stroke="currentColor"'
+    + ' stroke-dasharray="2 1.6" stroke-linejoin="round"/>',
+  landmarks: '<path d="M9 15s-5-5-5-8.5a5 5 0 0 1 10 0C14 10 9 15 9 15z" fill="currentColor"'
+    + ' fill-opacity=".35" stroke="currentColor"/><circle cx="9" cy="6.5" r="1.6"'
+    + ' fill="currentColor"/>',
+};
 // Soft white: present, but never competing with the values' colors.
 const BOUNDARY_COLOR = [235, 240, 255, 90];
 
@@ -188,13 +204,19 @@ function preparePalette(palette) {
   return palette;
 }
 
-function featureColors(values, spec, noValue) {
+// A recorded zero (`zeroValue`) is drawn apart from a missing value
+// (NaN, `noValue`).
+function featureColors(values, spec, noValue, zeroValue = noValue) {
   const out = new Uint8Array(values.length * 4);
   const lo = Math.log1p(spec.vmin);
   const span = Math.log1p(spec.vmax) - lo;
   const last = spec.rgb.length - 1;
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
+    if (v === 0) {
+      out.set(zeroValue, 4 * i);
+      continue;
+    }
     if (!(v > 0)) {
       out.set(noValue, 4 * i);
       continue;
@@ -226,20 +248,57 @@ function renderSources(container, scene) {
   container.appendChild(el('p', 'src-intro',
     'Values are as recorded by the assessors named below, with gaps filled by openplaces ' +
     '(openplaces.io), which harmonized and curated them. The terms are the sources\' own.'));
+  // Known issues first: what we know is wrong in this page, and that
+  // we look for it (maintainer, 2026-10-17).
+  if (scene.known_issues) {
+    container.appendChild(el('h3', 'src-layer', 'Known issues'));
+    if (scene.known_issues.length) {
+      const list = el('ul', 'src-issues');
+      for (const issue of scene.known_issues) {
+        const item = el('li', null, issue.text);
+        item.appendChild(el('span', 'src-found', ` Found ${issue.found}.`));
+        list.appendChild(item);
+      }
+      container.appendChild(list);
+    } else {
+      container.appendChild(el('p', 'src-note', 'None known for this place at the moment.'));
+    }
+  }
   const sections = scene.sources || [];
+  const shareOf = (source) => {
+    const percent = source.share * 100;
+    const share = el('span', 'src-share', percent < 0.5 ? '<1%' : `${Math.round(percent)}%`);
+    const bar = el('span', 'src-bar');
+    bar.style.setProperty('--w', `${Math.max(2, source.share * 100)}%`);
+    return [bar, share];
+  };
   for (const section of sections) {
     container.appendChild(el('h3', 'src-layer', section.layer));
+    // Who recorded the values, apart from who drew the outlines: the
+    // outline shares read as the values' own (maintainer, 2026-10-17).
+    if (section.values && section.values.length) {
+      container.appendChild(el('h4', 'src-group', 'Values'));
+      const values = el('ul', 'src-list');
+      for (const source of section.values) {
+        const item = el('li', 'src-item');
+        const head = el('div', 'src-head');
+        head.append(el('span', 'src-name', source.name), ...shareOf(source));
+        item.appendChild(head);
+        if (source.credit) {
+          item.appendChild(el('div', 'src-credit', source.credit));
+        }
+        values.appendChild(item);
+      }
+      container.appendChild(values);
+      container.appendChild(el('h4', 'src-group', 'Outlines'));
+    }
     const list = el('ul', 'src-list');
     for (const source of section.sources) {
       const item = el('li', 'src-item');
       const head = el('div', 'src-head');
       head.appendChild(el('span', 'src-name', source.name));
       if (source.share) {
-        const percent = source.share * 100;
-        const share = el('span', 'src-share', percent < 0.5 ? '<1%' : `${Math.round(percent)}%`);
-        const bar = el('span', 'src-bar');
-        bar.style.setProperty('--w', `${Math.max(2, source.share * 100)}%`);
-        head.append(bar, share);
+        head.append(...shareOf(source));
       }
       item.appendChild(head);
       if (source.credit) {
@@ -415,6 +474,24 @@ function compactMoney(v) {
   return `$${+v.toPrecision(2)}`;
 }
 
+function rampCanvas(colors) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 1;
+  const context = canvas.getContext('2d');
+  const gradient = context.createLinearGradient(0, 0, 256, 0);
+  colors.forEach((color, i) => {
+    gradient.addColorStop(i / (colors.length - 1), color);
+  });
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 256, 1);
+  return canvas;
+}
+
+// One legend: its label, its color ramp and ticks. `legend.other` (per
+// dwelling) adds the non-residential ramp as a thin strip right under
+// the main one, with its range in one line, instead of a full legend of
+// its own (maintainer, 2026-10-17).
 function drawLegend(container, legend) {
   const block = document.createElement('div');
   block.className = legend.shown === false ? 'legend hidden' : 'legend';
@@ -422,16 +499,19 @@ function drawLegend(container, legend) {
   label.className = 'legend-label';
   label.textContent =
     `${legend.label} per ${AREA_UNIT_LABELS[legend.unit] || legend.unit}`;
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 1;
-  const context = canvas.getContext('2d');
-  const gradient = context.createLinearGradient(0, 0, 256, 0);
-  legend.colors.forEach((color, i) => {
-    gradient.addColorStop(i / (legend.colors.length - 1), color);
-  });
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, 256, 1);
+  // Which values the bar shows ("imputed", "assessed", later a model's
+  // name), behind the title (maintainer, 2026-10-17).
+  if (legend.source) {
+    const source = document.createElement('span');
+    source.className = 'legend-source';
+    source.textContent = legend.source;
+    label.appendChild(source);
+  }
+  const canvas = rampCanvas(legend.colors);
+  const strip = legend.other ? rampCanvas(legend.other.colors) : null;
+  if (strip) {
+    strip.className = 'legend-other';
+  }
   const ticks = document.createElement('div');
   ticks.className = 'legend-ticks';
   const lo = Math.log1p(legend.vmin);
@@ -449,7 +529,25 @@ function drawLegend(container, legend) {
     tick.textContent = compactMoney(value);
     ticks.appendChild(tick);
   }
-  block.append(label, canvas, ticks);
+  block.append(label, canvas);
+  if (strip) {
+    block.append(strip);
+  }
+  block.append(ticks);
+  if (legend.other) {
+    const {other} = legend;
+    const note = document.createElement('div');
+    note.className = 'legend-other-note';
+    const swatch = document.createElement('span');
+    swatch.style.background = `linear-gradient(to right, ${other.colors.join(', ')})`;
+    const unit = AREA_UNIT_LABELS[other.unit] || other.unit;
+    note.append(
+      swatch,
+      `Lower strip: non-residential, ${compactMoney(other.vmin)} to `
+        + `${compactMoney(other.vmax)} per ${unit}`,
+    );
+    block.append(note);
+  }
   container.appendChild(block);
 }
 
@@ -468,13 +566,22 @@ function drawLegend(container, legend) {
 // - every view value then passes through two smoothing stages, so no
 //   speed changes abruptly, even where one phase hands to the next.
 // Times in seconds, angles in degrees.
+// The tour stays high for longer and circles higher (maintainer,
+// 2026-10-17): at least `highHold` seconds at the overview, a slower
+// descent, stops seen from farther up. One stop (`tour_contrast`)
+// shows the per-dwelling view over the sharpest contrast between
+// costly and inexpensive homes, from higher still, for longer.
 const TOUR = {
   farZoomOffset: -1.5,
   farPitch: 0,
-  focusZoom: 14.8,
-  focusPitch: 58,
+  highHold: 14,
+  focusZoom: 14.3,
+  focusPitch: 55,
+  contrastZoom: 13.5,
+  contrastPitch: 48,
+  contrastOrbit: 40,
   degreesPerSecond: 2.5,
-  descent: 16,
+  descent: 22,
   orbit: 18,
   // A flight takes longer and rises a little higher the farther it
   // goes.
@@ -487,6 +594,47 @@ const TOUR = {
   // Time constant of each smoothing stage.
   smoothing: 1.2,
 };
+
+// What the tour does at the contrast stop, by seconds into the orbit:
+// a hint above the control first (`target`: the buildings switch, or a
+// value view's button), which blinks twice and then stays, and the
+// switch three seconds later (maintainer, 2026-10-17: a hint shown
+// only briefly was easy to miss).
+// The two switches a visitor might not expect (buildings gone, colors
+// changed) count down from three (`countdown`; maintainer, 2026-10-17).
+// Visitors read "home"; the data's term is "dwelling" (one house,
+// apartment or condo).
+// The explanation of a home appears seven seconds before its switch
+// and stays eight after it (maintainer, 2026-10-17: it needs time).
+const TOUR_CONTRAST_ACTIONS = [
+  {
+    at: 2,
+    hint: {
+      target: 'buildings',
+      text: 'Hiding the buildings to show land value alone',
+      countdown: 3,
+      linger: 6,
+    },
+  },
+  {at: 5, buildings: false},
+  {
+    at: 9,
+    hint: {
+      target: 'dwelling',
+      text: 'Next: value per home (one house, apartment, or condo)',
+      countdown: 3,
+      countdownAfter: 4,
+      linger: 15,
+    },
+  },
+  {at: 16, view: 'dwelling'},
+  {at: 27, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
+  {at: 29, buildings: true},
+];
+const TOUR_LEAVE_ACTIONS = [
+  {at: 0, hint: {target: 'area', text: 'Back to value per ground area', linger: 4}},
+  {at: 3, view: 'area'},
+];
 
 function ease(t) {
   return 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
@@ -503,13 +651,22 @@ function distanceKm(a, b) {
 
 // Each segment maps its own elapsed time to a position (center,
 // zoom, pitch); the bearing is the tour's own, shared by all.
-function buildTour(view, foci) {
+// A segment may carry `valueView` ('area' or 'dwelling'): the coloring
+// the tour switches to as the segment begins.
+function buildTour(view, foci, contrast) {
   const far = {
     longitude: view.longitude,
     latitude: view.latitude,
     zoom: view.zoom + TOUR.farZoomOffset,
     pitch: TOUR.farPitch,
   };
+  // A stop: where it is, and how high and steep it is seen from.
+  const stop = (at, zoom = TOUR.focusZoom, pitch = TOUR.focusPitch) => ({
+    longitude: at.longitude,
+    latitude: at.latitude,
+    zoom,
+    pitch,
+  });
   const descend = (to) => ({
     duration: TOUR.descent,
     view: (t) => {
@@ -517,20 +674,12 @@ function buildTour(view, foci) {
       return {
         longitude: lerp(far.longitude, to.longitude, s),
         latitude: lerp(far.latitude, to.latitude, s),
-        zoom: lerp(far.zoom, TOUR.focusZoom, s),
-        pitch: lerp(far.pitch, TOUR.focusPitch, s),
+        zoom: lerp(far.zoom, to.zoom, s),
+        pitch: lerp(far.pitch, to.pitch, s),
       };
     },
   });
-  const orbit = (at) => ({
-    duration: TOUR.orbit,
-    view: () => ({
-      longitude: at.longitude,
-      latitude: at.latitude,
-      zoom: TOUR.focusZoom,
-      pitch: TOUR.focusPitch,
-    }),
-  });
+  const orbit = (at, duration = TOUR.orbit) => ({duration, view: () => ({...at})});
   const fly = (from, to) => {
     const km = distanceKm(from, to);
     const duration = Math.min(TOUR.flightMax, TOUR.flightBase + TOUR.flightPerKm * km);
@@ -543,8 +692,8 @@ function buildTour(view, foci) {
         return {
           longitude: lerp(from.longitude, to.longitude, s),
           latitude: lerp(from.latitude, to.latitude, s),
-          zoom: TOUR.focusZoom - climb * arc,
-          pitch: TOUR.focusPitch - TOUR.pitchDip * arc,
+          zoom: lerp(from.zoom, to.zoom, s) - climb * arc,
+          pitch: lerp(from.pitch, to.pitch, s) - TOUR.pitchDip * arc,
         };
       },
     };
@@ -557,22 +706,53 @@ function buildTour(view, foci) {
 
   if (!foci || !foci.length) {
     // No foci: circle the center of the area.
-    const center = {longitude: view.longitude, latitude: view.latitude};
+    const center = stop({longitude: view.longitude, latitude: view.latitude});
     return {hold, intro: [hold, descend(center)], loop: [orbit(center)]};
   }
-  const intro = [hold, descend(foci[0])];
-  const loop = [];
-  for (let i = 0; i < foci.length; i++) {
-    loop.push(orbit(foci[i]));
-    if (foci.length > 1) {
-      loop.push(fly(foci[i], foci[(i + 1) % foci.length]));
+  const stops = foci.map((f) => stop(f));
+  if (!contrast) {
+    const loop = [];
+    for (let i = 0; i < stops.length; i++) {
+      loop.push(orbit(stops[i]));
+      if (stops.length > 1) {
+        loop.push(fly(stops[i], stops[(i + 1) % stops.length]));
+      }
     }
+    return {hold, intro: [hold, descend(stops[0])], loop};
   }
-  return {hold, intro, loop};
+  // With a contrast, the tour descends onto it first, so the switching
+  // happens early (maintainer, 2026-10-17): there it shows all four
+  // combinations of buildings on or off and value per area or per
+  // dwelling, each switch announced by a short hint above its control,
+  // then flies on to the stops with value per area and buildings on,
+  // and comes back to the contrast at the end of each round.
+  const high = stop(contrast, TOUR.contrastZoom, TOUR.contrastPitch);
+  const loop = [
+    {...orbit(high, TOUR.contrastOrbit), actions: TOUR_CONTRAST_ACTIONS},
+    {...fly(high, stops[0]), actions: TOUR_LEAVE_ACTIONS},
+  ];
+  for (let i = 0; i < stops.length; i++) {
+    loop.push(orbit(stops[i]));
+    loop.push(fly(stops[i], i + 1 < stops.length ? stops[i + 1] : high));
+  }
+  return {hold, intro: [hold, descend(high)], loop};
 }
 
-function startTour(deckgl, view, foci, element) {
-  const {hold, intro, loop} = buildTour(view, foci);
+// `onAction` carries out a segment's timed `actions` (hints and
+// switches); `onStop` runs once when the visitor takes control.
+function startTour(
+  deckgl,
+  view,
+  foci,
+  element,
+  contrast = null,
+  onAction = () => {},
+  onStop = () => {},
+) {
+  const {hold, intro, loop} = buildTour(view, foci, contrast);
+  // The segment entered last, and how many of its actions have run.
+  let entered = -1;
+  let fired = 0;
   const segments = [...intro, ...loop];
   const keys = ['longitude', 'latitude', 'zoom', 'pitch'];
   let running = true;
@@ -600,6 +780,15 @@ function startTour(deckgl, view, foci, element) {
         index = intro.length;
       }
     }
+    if (index !== entered) {
+      entered = index;
+      fired = 0;
+    }
+    const actions = segments[index].actions || [];
+    while (fired < actions.length && t >= actions[fired].at) {
+      onAction(actions[fired]);
+      fired += 1;
+    }
     const target = segments[index].view(t);
     // The turn is continuous for the whole tour, so it needs no
     // smoothing: it never changes speed.
@@ -620,7 +809,10 @@ function startTour(deckgl, view, foci, element) {
     requestAnimationFrame(frame);
   }
   const stop = () => {
-    running = false;
+    if (running) {
+      running = false;
+      onStop();
+    }
   };
   for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
     (type === 'keydown' ? window : element).addEventListener(type, stop, {
@@ -632,10 +824,13 @@ function startTour(deckgl, view, foci, element) {
   // Ends the hold where it stands, so the descent starts from there.
   const ready = () => {
     if (hold.duration === Infinity) {
-      hold.duration =
+      // At least `highHold` seconds at the overview.
+      hold.duration = Math.max(
+        TOUR.highHold,
         index === 0 && segmentStart !== null
           ? (performance.now() - segmentStart) / 1000
-          : 0;
+          : 0,
+      );
     }
   };
   return {stop, ready};
@@ -652,7 +847,8 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
   if (!places.length) {
     return;
   }
-  const here = location.pathname.split('/').filter(Boolean).pop();
+  // A phone page (`<slug>-phone`) is the same place.
+  const here = location.pathname.split('/').filter(Boolean).pop().replace(/-phone$/, '');
   const back = document.createElement('a');
   back.id = 'home-link';
   back.href = '../';
@@ -724,6 +920,12 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
 async function main() {
   const params = new URLSearchParams(location.search);
   const scene = await (await fetch('scene.json', {cache: 'no-cache'})).json();
+  // A phone gets the place's lighter page (`phone_scene`, a smaller
+  // circle) with the same address parameters; ?full=1 stays here.
+  if (scene.phone_scene && params.get('full') !== '1' && lowCapacity()) {
+    location.replace(`${scene.phone_scene}${location.search}${location.hash}`);
+    return;
+  }
   document.title = scene.title;
   document.getElementById('title').textContent = scene.title;
   // No subtitle on the scene: what the values are follows from the
@@ -786,6 +988,20 @@ async function main() {
     legendPanel.style.bottom = `${Math.round(window.innerHeight - top + 8)}px`;
   };
   window.addEventListener('resize', placeControls);
+  // On a desktop the controls stand in the bottom bar, right after the
+  // legend, always shown (index.html); on a phone they open above the
+  // bar from their chip.
+  const desktop = window.matchMedia('(min-width: 641px)');
+  const dockControls = () => {
+    if (desktop.matches) {
+      document.getElementById('legend-box').after(legendPanel);
+    } else {
+      bar.before(legendPanel);
+    }
+    placeControls();
+  };
+  desktop.addEventListener('change', dockControls);
+  dockControls();
   const setFolded = (folded) => {
     document.body.classList.toggle('controls-min', folded);
     restore.setAttribute('aria-expanded', String(!folded));
@@ -833,7 +1049,7 @@ async function main() {
   if (hasGhosts) {
     // Off by default (maintainer, 2026-10-17); `?show=ghosts` opens them.
     shown.ghosts = (params.get('show') || '').split(',').includes('ghosts');
-    switches.push(['ghosts', 'Ghosts*']);
+    switches.push(['ghosts', 'Unexplained buildings?']);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
   const landmarks = scene.landmarks || [];
@@ -848,19 +1064,41 @@ async function main() {
     button.type = 'button';
     button.className = 'chip';
     button.dataset.layer = name;
-    button.textContent = label;
+    const icon = LAYER_ICONS[name];
+    if (icon) {
+      // A checkbox and a symbol; the name is the tooltip. A name ending
+      // in "?" gets a question mark of its own after the button (the
+      // ghosts' link to the methods page, below).
+      const plain = label.replace(/\?$/, '');
+      button.title = plain;
+      button.setAttribute('aria-label', plain);
+      button.innerHTML = `<svg viewBox="0 0 18 16" aria-hidden="true">${icon}</svg>`;
+    } else {
+      button.textContent = label;
+    }
     button.addEventListener('click', () => toggleLayer(name));
     layerSwitch.appendChild(button);
   }
   if (hasGhosts) {
-    const note = document.createElement('p');
-    note.className = 'footnote';
-    note.textContent = '* Unexplained high building value per area';
-    // In the controls panel, right under the switch it explains.
-    layerSwitch.after(note);
+    // The question mark right after the switch is a link of its own to
+    // the methods page's section on these buildings, with a tooltip
+    // that says what they are (maintainer, 2026-10-17). A new tab, so
+    // the map stays where it is; outside the button, so a click on it
+    // never switches the layer.
+    const note = document.createElement('a');
+    note.className = 'ghost-note';
+    note.href = '../methods.html#unexplained';
+    note.target = '_blank';
+    note.rel = 'noopener';
+    note.textContent = '?';
+    note.title = 'Unexplained buildings: their value per square foot is higher than '
+      + 'their measured floors explain. Drawn see-through when switched on. '
+      + 'Click for how they are found.';
+    note.setAttribute('aria-label', 'What are unexplained buildings? (methods page)');
+    layerSwitch.querySelector('[data-layer="ghosts"]').after(note);
   }
   const markLayerSwitch = () => {
-    for (const button of layerSwitch.children) {
+    for (const button of layerSwitch.querySelectorAll('button')) {
       const on = shown[button.dataset.layer];
       button.classList.toggle('active', on);
       button.setAttribute('aria-pressed', String(on));
@@ -890,7 +1128,8 @@ async function main() {
     // areas the bars divide by.
     choices.push(
       ['view', 'area', 'Value per ground area'],
-      ['view', 'dwelling', 'Value per dwelling'],
+      // "Home", not "dwelling", for visitors (maintainer, 2026-10-17).
+      ['view', 'dwelling', 'Value per home'],
     );
   }
   if (scene.layers.some((l) => l.n_estimated > 0)) {
@@ -908,9 +1147,16 @@ async function main() {
     button.title = id === 'assessed'
       ? 'Values the assessor recorded; values openplaces filled in are drawn as no value'
       : '';
+    button.setAttribute('role', 'radio');
     button.addEventListener('click', () => setChoice(group, id));
     (group === 'view' ? viewSwitch : valuesSwitch).appendChild(button);
   }
+  // Each pair is one segmented toggle, one option always chosen
+  // (maintainer, 2026-10-17: clearly a toggle, not two buttons).
+  viewSwitch.setAttribute('role', 'radiogroup');
+  viewSwitch.setAttribute('aria-label', 'Value shown');
+  valuesSwitch.setAttribute('role', 'radiogroup');
+  valuesSwitch.setAttribute('aria-label', 'Values used');
   layerSwitch.after(viewSwitch, valuesSwitch);
   const markViewSwitch = () => {
     const buttons = [...viewSwitch.children, ...valuesSwitch.children];
@@ -919,7 +1165,7 @@ async function main() {
         ? button.dataset.choice === valueView
         : (button.dataset.choice === 'estimates') === withEstimates;
       button.classList.toggle('active', on);
-      button.setAttribute('aria-pressed', String(on));
+      button.setAttribute('aria-checked', String(on));
     }
   };
   markViewSwitch();
@@ -943,7 +1189,8 @@ async function main() {
       ? arrays.value_dwelling
       : entry.featureValue;
     if (!withEstimates && arrays.estimated) {
-      values = values.map((v, i) => (arrays.estimated[i] ? 0 : v));
+      // Not a recorded zero: drawn as no value.
+      values = values.map((v, i) => (arrays.estimated[i] ? NaN : v));
     }
     // Per area, the assessment view shows the value as recorded where
     // the shown one carries openplaces' land split (`value_assessed`).
@@ -958,16 +1205,22 @@ async function main() {
 
   const drawLegends = () => {
     legends.replaceChildren();
-    // Which values the bars show, once, instead of in every label
-    // ("(assessed)" pushed long labels onto two lines).
-    if (!withEstimates) {
-      const which = document.createElement('div');
-      which.className = 'legend-which';
-      which.textContent = 'Assessed values only';
-      legends.appendChild(which);
-    }
+    // Which values the bars show, named small behind each title.
+    const valuesShown = withEstimates ? 'imputed' : 'assessed';
     for (const layer of scene.layers) {
       const spec = layerScale(layer, palette.layers[layer.name]);
+      // Per dwelling: the non-residential ramp, drawn as a strip under
+      // the main one.
+      const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
+      const ramp = spec.other_line_lut || spec.other_lut;
+      const other = view && view.other && ramp
+        ? {
+          unit: view.other.unit,
+          vmin: view.other.vmin,
+          vmax: view.other.vmax,
+          colors: ramp.filter((_, i) => i % 8 === 0 || i === ramp.length - 1),
+        }
+        : null;
       drawLegend(legends, {
         shown: shown[layer.name],
         label: layer.label,
@@ -979,30 +1232,11 @@ async function main() {
         colors: (spec.line_lut || spec.lut).filter(
           (_, i) => i % 8 === 0 || i === spec.lut.length - 1,
         ),
+        other,
+        source: valuesShown,
       });
-      // Per dwelling: a second bar for non-residential buildings.
-      const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
-      const ramp = spec.other_line_lut || spec.other_lut;
-      if (view && view.other && ramp) {
-        drawLegend(legends, {
-          shown: shown[layer.name],
-          label: view.other.label,
-          unit: view.other.unit,
-          vmin: view.other.vmin,
-          vmax: view.other.vmax,
-          colors: ramp.filter((_, i) => i % 8 === 0 || i === ramp.length - 1),
-        });
-      }
     }
-    // The color of features without a value, named (on Pastel it is
-    // a near-white that read as a value; maintainer, 2026-10-16).
-    const none = document.createElement('div');
-    none.className = 'legend-none';
-    const swatch = document.createElement('span');
-    const [r, g, b] = palette.no_value;
-    swatch.style.background = `rgb(${r}, ${g}, ${b})`;
-    none.append(swatch, document.createTextNode('No value recorded'));
-    legends.appendChild(none);
+    // No row for features without a value (maintainer, 2026-10-17).
     // A third bar changes the legend's height.
     placeControls();
   };
@@ -1043,8 +1277,10 @@ async function main() {
   // The pinned tooltip's feature (see `togglePin` below).
   let pin = null;
   let togglePin = () => {};
+  let hoverAt = () => {};
   let placePin = () => {};
   let turnCompass = () => {};
+  let fadeEdges = () => {};
   // One sun fixed in the world, from the southwest, plus even ambient
   // light: every building has one bright side (facing the sun), the
   // opposite side darkest, and the two between at mid shade. Two lights
@@ -1073,30 +1309,114 @@ async function main() {
     // twist off by default.
     controller: {touchRotate: true, dragRotate: true},
     layers: [],
-    // Binary layers report the picked part's index, not an object.
-    getTooltip: ({index, layer, object}) => {
-      // A landmark's own name and kind, written into the page.
-      if (layer && layer.id.startsWith('landmark') && object) {
-        return {html: `<b>${escapeHtml(object.name)}</b><br>${escapeHtml(object.kind)}`};
-      }
-      if (index < 0 || !layer || !layerInfo.has(layer.id)) {
-        return null;
-      }
-      const info = layerInfo.get(layer.id);
-      const feature = info.objectFeature[index];
-      // The pinned feature already shows its values.
-      if (pin && pin.layerId === layer.id && pin.feature === feature) {
-        return null;
-      }
-      return {html: tooltipHtml(info, feature)};
-    },
+    // The hover tooltip is the page's own (`showHover`), not deck.gl's.
+    onHover: (picked) => hoverAt(picked),
     // Deferred: both are set once the layers they read exist.
     onClick: (picked) => togglePin(picked),
     onAfterRender: () => {
       placePin();
       turnCompass();
+      fadeEdges();
     },
   });
+
+  // The hover tooltip, steady while the camera moves (maintainer,
+  // 2026-10-17: deck.gl's own flickered as the view turned, because a
+  // pick between frames often found nothing). Three rules keep it
+  // still: its text changes only when the feature under the cursor
+  // changes; an empty pick hides it only after `HOVER_GRACE_MS`, so a
+  // miss between two hits never shows; and while the view moves under a
+  // resting cursor, the page picks again a few times a second, so the
+  // tooltip follows what is now under it.
+  const HOVER_GRACE_MS = 350;
+  const HOVER_REPICK_MS = 150;
+  const hoverBox = document.createElement('div');
+  hoverBox.className = 'hover-tip deck-tooltip';
+  hoverBox.hidden = true;
+  document.body.appendChild(hoverBox);
+  let hoverKey = null;
+  let hoverTimer = null;
+  let pointer = null;
+  // What a pick shows: a key naming the feature, and its tooltip.
+  const describe = ({index, layer, object}) => {
+    // A landmark's own name and kind, written into the page.
+    if (layer && layer.id.startsWith('landmark') && object) {
+      return {
+        key: `landmark:${object.name}`,
+        html: `<b>${escapeHtml(object.name)}</b><br>${escapeHtml(object.kind)}`,
+      };
+    }
+    // Binary layers report the picked part's index, not an object.
+    if (index === undefined || index < 0 || !layer || !layerInfo.has(layer.id)) {
+      return null;
+    }
+    const info = layerInfo.get(layer.id);
+    const feature = info.objectFeature[index];
+    // The pinned feature already shows its values.
+    if (pin && pin.layerId === layer.id && pin.feature === feature) {
+      return null;
+    }
+    return {key: `${layer.id}:${feature}`, html: () => tooltipHtml(info, feature)};
+  };
+  const hideHover = () => {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hoverKey = null;
+    hoverBox.hidden = true;
+  };
+  const showHover = (shown, x, y) => {
+    if (!shown) {
+      if (!hoverBox.hidden && hoverTimer === null) {
+        hoverTimer = setTimeout(hideHover, HOVER_GRACE_MS);
+      }
+      return;
+    }
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+    if (shown.key !== hoverKey) {
+      hoverKey = shown.key;
+      hoverBox.innerHTML = typeof shown.html === 'function' ? shown.html() : shown.html;
+    }
+    hoverBox.hidden = false;
+    // Beside the cursor, kept inside the window.
+    const width = hoverBox.offsetWidth;
+    const height = hoverBox.offsetHeight;
+    const left = x + 14 + width > window.innerWidth ? x - 14 - width : x + 14;
+    const top = y + 14 + height > window.innerHeight ? y - 14 - height : y + 14;
+    hoverBox.style.transform = `translate(${Math.max(0, left)}px, ${Math.max(0, top)}px)`;
+  };
+  hoverAt = (picked) => {
+    pointer = picked.x >= 0 && picked.y >= 0 ? {x: picked.x, y: picked.y} : null;
+    showHover(describe(picked), picked.x, picked.y);
+  };
+  document.getElementById('scene').addEventListener('pointerleave', () => {
+    pointer = null;
+    hideHover();
+  });
+  // The view moved under a resting cursor: pick again where it rests.
+  let pickedView = '';
+  setInterval(() => {
+    if (!pointer) {
+      return;
+    }
+    let viewport = null;
+    try {
+      viewport = deckgl.getViewports()[0];
+    } catch (error) {
+      return;
+    }
+    if (!viewport) {
+      return;
+    }
+    const view = [viewport.longitude, viewport.latitude, viewport.zoom,
+      viewport.pitch, viewport.bearing].map((v) => v.toFixed(6)).join();
+    if (view === pickedView) {
+      return;
+    }
+    pickedView = view;
+    const picked = deckgl.pickObject({x: pointer.x, y: pointer.y, radius: 2});
+    showHover(picked ? describe(picked) : null, pointer.x, pointer.y);
+  }, HOVER_REPICK_MS);
 
   // A clicked feature's tooltip stays, attached to the point clicked,
   // until the same feature is clicked again or the tooltip is closed.
@@ -1185,9 +1505,102 @@ async function main() {
     event.preventDefault();
   });
 
+  // The tour's own messages (maintainer, 2026-10-17), all in one place,
+  // top center: "Flying on autopilot" as it starts, then before each
+  // switch it makes a message that blinks twice as it appears, may
+  // count down 3, 2, 1, and stays a while after the switch, so a
+  // visitor learns what the controls do by watching. The control about
+  // to switch glows with the blinks.
+  const banner = document.createElement('div');
+  banner.id = 'autopilot';
+  banner.hidden = true;
+  document.body.appendChild(banner);
+  let bannerTimers = [];
+  const hideHint = () => {
+    bannerTimers.forEach(clearTimeout);
+    bannerTimers = [];
+    banner.hidden = true;
+  };
+  const later = (ms, fn) => bannerTimers.push(setTimeout(fn, ms));
+  // `countdown`: from that number, one a second, starting
+  // `countdownAfter` seconds after the message appears; `linger`: how
+  // long the message stays in all.
+  const showHint = ({target, text, countdown, countdownAfter = 0, linger = 5}) => {
+    hideHint();
+    banner.classList.remove('fading');
+    const line = document.createElement('div');
+    line.textContent = text;
+    banner.replaceChildren(line);
+    if (countdown) {
+      const count = document.createElement('div');
+      count.className = 'tour-count';
+      banner.appendChild(count);
+      for (let n = countdown; n >= 1; n--) {
+        later((countdownAfter + countdown - n) * 1000, () => {
+          count.textContent = String(n);
+        });
+      }
+      later((countdownAfter + countdown) * 1000, () => {
+        count.textContent = '';
+      });
+    }
+    banner.hidden = false;
+    banner.classList.remove('blink');
+    void banner.offsetWidth;
+    banner.classList.add('blink');
+    const control = !target
+      ? null
+      : target === 'buildings'
+        ? layerSwitch.querySelector('[data-layer="buildings"]')
+        : viewSwitch.querySelector(`[data-choice="${target}"]`);
+    // Folded controls (a phone): their chip glows instead.
+    const glowing = control && control.getClientRects().length > 0 ? control : restore;
+    glowing.classList.remove('tour-pulse');
+    void glowing.offsetWidth;
+    glowing.classList.add('tour-pulse');
+    later(linger * 1000 - 1200, () => banner.classList.add('fading'));
+    later(linger * 1000, hideHint);
+  };
+  // Buildings the tour switched off come back when the visitor takes
+  // over; the coloring the tour chose stays.
+  let tourHidBuildings = false;
+  const tourAction = (action) => {
+    if (action.hint) {
+      showHint(action.hint);
+    }
+    if (action.view && action.view !== valueView) {
+      setChoice('view', action.view);
+    }
+    if ('buildings' in action && 'buildings' in shown && shown.buildings !== action.buildings) {
+      toggleLayer('buildings');
+      tourHidBuildings = !action.buildings;
+    }
+  };
+  const tourStopped = () => {
+    banner.hidden = true;
+    hideHint();
+    if (tourHidBuildings && !shown.buildings) {
+      toggleLayer('buildings');
+    }
+    tourHidBuildings = false;
+  };
   const tourControl = tour
-    ? startTour(deckgl, scene.view, scene.tour, document.getElementById('scene'))
+    ? startTour(
+      deckgl,
+      scene.view,
+      scene.tour,
+      document.getElementById('scene'),
+      hasDwellingView ? scene.tour_contrast : null,
+      tourAction,
+      tourStopped,
+    )
     : {stop: () => {}, ready: () => {}};
+  if (tour) {
+    banner.textContent = 'Flying on autopilot. Take control anytime.';
+    banner.hidden = false;
+    later(6000, () => banner.classList.add('fading'));
+    later(7200, hideHint);
+  }
 
   // For measuring the page (frame rate, load time) from a test browser.
   window.openplacesScene = {deck: deckgl, loaded: false, stopTour: tourControl.stop};
@@ -1405,7 +1818,8 @@ async function main() {
   const makeLayer = (entry) => {
     const spec = layerScale(entry.spec, palette.layers[entry.spec.name]);
     const values = featureValues(entry);
-    const colors = featureColors(values, spec, palette.no_value);
+    const zeroValue = palette.zero_value || palette.no_value;
+    const colors = featureColors(values, spec, palette.no_value, zeroValue);
     let lineColors = spec.lineSpec
       ? featureColors(
         values,
@@ -1434,6 +1848,9 @@ async function main() {
           if (edge) {
             lineColors.set(edge.subarray(4 * i, 4 * i + 4), 4 * i);
           }
+        } else if (otherValues[i] === 0) {
+          // A recorded zero keeps its own color per dwelling too.
+          colors.set(zeroValue, 4 * i);
         }
       }
     }
@@ -1520,9 +1937,12 @@ async function main() {
       : null);
     const faces = new SolidPolygonLayer({
       ...(palette.material ? {material: palette.material} : {}),
-      ...(outline
-        ? {getPolygonOffset: ({layerIndex}) => [1, 4 - layerIndex * 100]}
-        : {}),
+      // Pushed back behind their own edges, by the same amount in every
+      // layer. deck.gl's default offset pulls each later layer forward
+      // (`-layerIndex * 100`); kept in here, it pulled the buildings'
+      // faces in front of their wireframe, so Neon's building edges
+      // came and went as the camera moved (maintainer, 2026-10-17).
+      ...(outline ? {getPolygonOffset: () => [1, 6]} : {}),
       wireframe: false,
       parameters: additive
         ? {
@@ -1639,11 +2059,45 @@ async function main() {
     ];
   };
   const layers = [];
+  // Edges thin out and fade as the camera pulls back, so that from
+  // afar the fill colors carry the map (maintainer, 2026-10-17): full
+  // strength from zoom 15 in, 40% of the width and a quarter of the
+  // opacity from zoom 12 out. The zoom is read in steps of a quarter,
+  // so a zoom gesture restyles the edges a few times, not every frame.
+  const EDGE_FULL_ZOOM = 15;
+  const EDGE_FAR_ZOOM = 12;
+  let edgeZoom = Math.round(scene.view.zoom * 4) / 4;
+  const styleEdges = (layer) => {
+    if (!layer.id.endsWith('-edges')) {
+      return layer;
+    }
+    const t = Math.max(0, Math.min(1,
+      (edgeZoom - EDGE_FAR_ZOOM) / (EDGE_FULL_ZOOM - EDGE_FAR_ZOOM)));
+    const style = {opacity: 0.25 + 0.75 * t};
+    if (layer instanceof PathLayer) {
+      style.widthScale = 0.4 + 0.6 * t;
+    }
+    return layer.clone(style);
+  };
+  fadeEdges = () => {
+    let viewport = null;
+    try {
+      viewport = deckgl.getViewports()[0];
+    } catch (error) {
+      return;
+    }
+    const zoom = viewport ? Math.round(viewport.zoom * 4) / 4 : edgeZoom;
+    if (zoom !== edgeZoom) {
+      edgeZoom = zoom;
+      redraw();
+    }
+  };
+
   const redraw = () => {
     deckgl.setProps({
       layers: [
         // Each entry is its faces and, under some palettes, its edges.
-        ...layers.flatMap((l) => l.layer),
+        ...layers.flatMap((l) => l.layer).map(styleEdges),
         boundaries,
         ...(shown.landmarks ? makeLandmarks() : []),
       ],
@@ -1924,6 +2378,11 @@ function constrained(scene) {
   if (flag === '0') {
     return true;
   }
+  return lowCapacity();
+}
+
+// Little memory reported, or a touch screen of phone size.
+function lowCapacity() {
   const memory = navigator.deviceMemory;
   const phone = window.matchMedia('(pointer: coarse)').matches && screen.width < 900;
   return (memory !== undefined && memory <= 4) || phone;

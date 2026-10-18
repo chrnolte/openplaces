@@ -34,7 +34,17 @@
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
   #title-panel { top: 16px; left: 16px; max-width: min(420px, calc(100vw - 32px)); padding: 8px 12px; }
-  #title-panel h1 { font-size: 17px; margin: 0; }
+  /* Only the back arrow shows (maintainer, 2026-10-17); the title
+     stays for screen readers and the browser tab. */
+  #title-panel h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    margin: 0;
+  }
   #status:empty { display: none; }
   #title-panel { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
   #title-panel > :not(#home-link) { grid-column: 2; }
@@ -89,8 +99,6 @@
   #legend-box summary #palette-switch { margin: 0; gap: 4px; }
   #legend-box summary #palette-switch button { padding: 1px 7px; font-weight: 400; }
   .footnote { color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
-  .legend-none { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
-  .legend-none span { width: 14px; height: 10px; border-radius: 2px; border: 1px solid rgba(128, 128, 128, 0.5); }
   #home-link {
     grid-row: 1 / span 3;
     align-self: start;
@@ -120,20 +128,68 @@
     padding: 3px 10px;
     cursor: pointer;
   }
-  #layer-switch button::before { content: "\2610  "; }
-  #layer-switch button.active::before { content: "\2611  "; }
-  #layer-switch button.active, #view-switch button.active, #values-switch button.active, #palette-switch button.active {
+  /* Layer switches: a checkbox and a small symbol; the name is the
+     tooltip. */
+  #layer-switch { align-items: center; }
+  #layer-switch button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; }
+  #layer-switch button::before { content: "\2610"; }
+  #layer-switch button.active::before { content: "\2611"; }
+  #layer-switch svg { width: 18px; height: 16px; display: block; }
+  /* The ghosts' note, right beside their switch. */
+  /* The ghosts' question mark: a small round link right after their
+     switch. */
+  #layer-switch .ghost-note {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-left: -3px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+  }
+  #layer-switch .ghost-note:hover { color: var(--text); }
+  #layer-switch button.active, #palette-switch button.active {
     color: var(--text);
     border-color: rgba(255, 255, 255, 0.6);
     background: rgba(255, 255, 255, 0.08);
   }
+  /* Two-way choices as one segmented toggle: a track holding both
+     options, the chosen one filled. */
+  #view-switch, #values-switch {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+  #view-switch button, #values-switch button { border: 0; padding: 3px 12px; }
+  #view-switch button.active, #values-switch button.active {
+    color: #10131c;
+    background: rgba(255, 255, 255, 0.88);
+    font-weight: 600;
+  }
   .legend { margin-bottom: 10px; }
   .legend:last-child { margin-bottom: 0; }
   .legend-label { font-weight: 600; margin-bottom: 4px; }
-  .legend-which { color: var(--muted); font-size: 11px; margin: -2px 0 6px; }
   .legend.hidden canvas, .legend.hidden .legend-ticks { opacity: 0.25; }
   .legend.hidden .legend-label { color: var(--muted); }
   .legend canvas { width: 100%; height: 12px; display: block; border-radius: 2px; }
+  /* Per dwelling: the non-residential ramp as a thin strip right
+     under the main one, named in one line under the ticks. */
+  .legend canvas.legend-other { height: 5px; margin-top: 2px; border-radius: 0 0 2px 2px; }
+  .legend-other-note { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+  /* Which values a bar shows, behind its title, in the note's type. */
+  .legend-source { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+  .legend-other-note span { width: 18px; height: 5px; border-radius: 1px; flex: none; }
+  .legend.hidden .legend-other-note { opacity: 0.4; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   #about-panel {
@@ -187,6 +243,10 @@
     border-bottom: 1px solid rgba(128, 128, 128, 0.25);
   }
   .src-list { list-style: none; margin: 0; padding: 0; }
+  .src-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 8px 0 4px; }
+  .src-issues { margin: 0 0 4px; padding-left: 18px; font-size: 12.5px; }
+  .src-issues li { margin-bottom: 6px; }
+  .src-found { color: var(--muted); font-size: 11.5px; }
   .src-item { margin: 0 0 10px; }
   .src-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
   .src-name { font-weight: 600; }
@@ -199,6 +259,59 @@
   .src-note { color: var(--muted); font-size: 11.5px; margin: 4px 0 0; padding: 6px 8px; border-left: 2px solid rgba(128, 128, 128, 0.4); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
   .deck-tooltip { font-size: 13px !important; max-width: 320px; }
+  /* The tour's messages, top center: the opening line, then what each
+     switch does, fading out. */
+  #autopilot {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    translate: -50% 0;
+    width: max-content;
+    max-width: min(460px, calc(100vw - 160px));
+    padding: 7px 14px;
+    border-radius: 16px;
+    line-height: 1.35;
+    background: rgba(8, 11, 20, 0.78);
+    color: var(--text);
+    font-size: 13px;
+    text-align: center;
+    pointer-events: none;
+    z-index: 3;
+    transition: opacity 1.2s ease;
+  }
+  #autopilot.fading { opacity: 0; }
+  #autopilot[hidden] { display: none; }
+  /* The countdown under a message: 3, 2, 1. */
+  .tour-count { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .tour-count:empty { display: none; }
+  /* Two blinks as a message appears, so it is not missed. */
+  @keyframes tour-blink {
+    0%, 30%, 60% { opacity: 1; }
+    15%, 45% { opacity: 0.1; }
+    100% { opacity: 1; }
+  }
+  #autopilot.blink { animation: tour-blink 1.2s ease-in-out; }
+  /* The control the hint is about glows twice with it. */
+  @keyframes tour-pulse {
+    0%, 30%, 60%, 100% { box-shadow: 0 0 0 0 rgba(255, 224, 102, 0); }
+    15%, 45% { box-shadow: 0 0 0 3px rgba(255, 224, 102, 0.9); }
+  }
+  .tour-pulse { animation: tour-pulse 1.2s ease-in-out; }
+  /* The hover tooltip, placed beside the cursor by viewer.js. */
+  .hover-tip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    background: rgba(8, 11, 20, 0.92);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .hover-tip[hidden] { display: none; }
   /* A clicked feature's tooltip, placed above its anchor by viewer.js. */
   .pinned-tip {
     position: absolute;
@@ -257,6 +370,55 @@
     cursor: pointer;
   }
   .deck-tooltip .estimated { color: #ffd166; }
+  @media (min-width: 641px) {
+    /* Desktop: the controls sit in the bottom bar, left-aligned right
+       after the legend, in one row, on no background (maintainer,
+       2026-10-17); viewer.js moves them there. Always shown, so the
+       "Controls" chip and the fold button are not needed. */
+    #bottom-bar #legend-box { margin-right: 0; }
+    #bottom-bar #legend-panel {
+      position: static;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 18px;
+      width: auto;
+      max-width: none;
+      max-height: none;
+      overflow: visible;
+      margin-right: auto;
+      padding: 0 0 6px;
+      background: none;
+      box-shadow: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    }
+    #bottom-bar #legend-panel > div { margin-bottom: 0; }
+    #bottom-bar #layer-switch { flex-wrap: nowrap; }
+    #bottom-bar #view-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
+    #controls-chip, #legend-minimize { display: none; }
+    /* On a light page the bare controls turn dark. */
+    .light-page #bottom-bar #legend-panel {
+      --text: #1b1f2a;
+      --muted: #4a505c;
+      color: var(--text);
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+    }
+    .light-page #bottom-bar #legend-panel button { border-color: rgba(20, 24, 36, 0.3); }
+    .light-page #bottom-bar #layer-switch button.active {
+      border-color: rgba(20, 24, 36, 0.7);
+      background: rgba(20, 24, 36, 0.06);
+    }
+    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #values-switch {
+      border-color: rgba(20, 24, 36, 0.3);
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .light-page #bottom-bar #view-switch button.active,
+    .light-page #bottom-bar #values-switch button.active {
+      color: #fff;
+      background: rgba(20, 24, 36, 0.85);
+      text-shadow: none;
+    }
+  }
   @media (max-width: 640px) {
     /* Phone: the legend takes the bar's first row, the chips the
        second; the controls open above the whole bar (its height is
@@ -270,7 +432,6 @@
     #about-panel[open] { flex: 1 1 100%; width: auto; max-height: 55vh; }
     #controls-chip, #share-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
-    #title-panel h1 { font-size: 14px; }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }
   }

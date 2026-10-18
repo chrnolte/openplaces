@@ -200,7 +200,8 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
         crs='EPSG:26986',
     ).to_crs(4326)
     monkeypatch.setattr(web_scene, '_admin_names', lambda admin_ids: towns)
-    monkeypatch.setattr(web_scene, 'land_borders', lambda admin_ids, land=None: [])
+    monkeypatch.setattr(web_scene, 'land_borders', lambda admin_ids, **kwargs: [])
+    monkeypatch.setattr(web_scene, 'lake_polygons', lambda admin_ids: None)
     # The default parcel layer drops corridors; these squares are none.
     layers = (
         SceneLayer(
@@ -435,6 +436,16 @@ def test_landing_page_is_links_only(tmp_path):
     assert re.findall(r'href="([^"]+)"', page) == ['aaa/', 'bbb/']
     places = json.loads((out / 'places.json').read_text(encoding='utf-8'))
     assert [p['slug'] for p in places] == ['aaa', 'bbb']
+    # The methods page beside it, plain text and links, with the
+    # section the unexplained buildings' switch links to.
+    methods = (out / 'methods.html').read_text(encoding='utf-8')
+    assert not re.search(
+        r'<(input|select|textarea|form|button|script)\b', methods, re.I
+    )
+    assert 'id="unexplained"' in methods
+    assert '../methods.html#unexplained' in (STATIC / 'viewer.js').read_text(
+        encoding='utf-8'
+    )
 
 
 def test_place_menu_is_links_only():
@@ -463,6 +474,155 @@ def test_border_paths_sit_on_the_nearest_parcel_ground():
     flat = draped.set_geometry(shapely.force_2d(draped.geometry))
     (path,) = web_scene.border_paths([line], flat)
     assert [z for _, _, z in path] == [0.0, 0.0]
+
+
+def test_contrast_focus_lies_between_the_dearest_and_cheapest_nearby_homes():
+    # Three blocks of fabricated homes, 1 km apart in a row: $200K,
+    # $250K and $2M per dwelling. The sharpest contrast within 1.2 km is
+    # between the second and third blocks.
+    lots, values = [], []
+    for k, value in enumerate([200_000, 250_000, 2_000_000]):
+        for n in range(50):
+            x = 230_000 + 1000 * k + (n % 10) * 20
+            y = 900_000 + (n // 10) * 20
+            lots.append(box(x, y, x + 10, y + 10))
+            values.append(value)
+    gdf = gpd.GeoDataFrame(
+        {'land_value_per_dwelling': values}, geometry=lots, crs='EPSG:26986'
+    )
+    focus = web_scene.contrast_focus(
+        gdf, 'land_value_per_dwelling', cell_m=500, radius_m=1200, min_homes=40
+    )
+    assert focus['ratio'] == pytest.approx(8.0)
+    x, y = (
+        gpd.GeoSeries(
+            gpd.points_from_xy([focus['longitude']], [focus['latitude']]), crs=4326
+        )
+        .to_crs(26986)
+        .iloc[0]
+        .coords[0]
+    )
+    assert 231_500 < x < 232_500
+    # Homes only: no per-dwelling values, no stop.
+    assert (
+        web_scene.contrast_focus(
+            gdf.assign(land_value_per_dwelling=np.nan), 'land_value_per_dwelling'
+        )
+        is None
+    )
+
+
+def test_buildings_on_exempt_lots_are_not_homes_unless_the_roll_counts_them():
+    # Fabricated: an exempt lot (an armory), an exempt lot whose roll
+    # counts 40 dwellings (public housing), and a residential lot, each
+    # with one building classed "Multi-Family".
+    lots = gpd.GeoDataFrame(
+        {
+            'use_group': ['exempt', 'exempt', 'residential'],
+            'n_dwellings': [np.nan, 40.0, np.nan],
+        },
+        geometry=[box(0, 0, 100, 100), box(200, 0, 300, 100), box(400, 0, 500, 100)],
+        crs='EPSG:26986',
+    )
+    buildings = gpd.GeoDataFrame(
+        {
+            web_scene.BUILDING_CLASS: ['Multi-Family'] * 3,
+            'n_dwellings': [12.0, 40.0, 3.0],
+        },
+        geometry=[box(40, 40, 60, 60), box(240, 40, 260, 60), box(440, 40, 460, 60)],
+        crs='EPSG:26986',
+    )
+    gdfs = {'parcels': lots, 'buildings': buildings}
+    scale = {
+        'recipe': 'r',
+        'value_column': 'v',
+        'area_unit': 'sqft',
+        'vmin': 1,
+        'vmax': 2,
+    }
+    layers = [
+        SceneLayer(name='parcels', label='Land', **scale),
+        SceneLayer(name='buildings', label='B', stack_on='parcels', **scale),
+    ]
+    web_scene._mark_exempt_ground(gdfs, layers)
+    assert list(gdfs['buildings'][web_scene.BUILDING_CLASS]) == [
+        web_scene.EXEMPT_CLASS,
+        'Multi-Family',
+        'Multi-Family',
+    ]
+
+
+def test_value_sources_are_counted_apart_from_outline_sources():
+    provenance = pd.Series(
+        ['parcel.massgis'] * 6
+        + ['parcel.share_class_city+imputed'] * 3
+        + ['parcel']
+        + [None] * 5
+    )
+    shares = {s['name']: s['share'] for s in web_scene.value_sources(provenance)}
+    assert shares == pytest.approx(
+        {
+            'MassGIS': 0.6,
+            web_scene.FILLED_BY_OPENPLACES: 0.3,
+            'Assessor roll, via the lot (source not recorded)': 0.1,
+        }
+    )
+    assert 'section.values' in (STATIC / 'viewer.js').read_text(encoding='utf-8')
+
+
+def test_known_issues_follow_the_scene_units(tmp_path):
+    issues = tmp_path / 'issues.yaml'
+    issues.write_text(
+        'issues:\n'
+        '  - admin_ids: [US-MA-AAA]\n'
+        '    found: 2026-01-02\n'
+        '    text: >-\n'
+        '      Town A: a fabricated\n'
+        '      problem.\n'
+        '  - admin_ids: all\n'
+        '    found: 2026-01-01\n'
+        '    text: Everywhere.\n'
+        '  - admin_ids: [US-NC-BBB]\n'
+        '    found: 2026-01-03\n'
+        '    text: Elsewhere.\n',
+        encoding='utf-8',
+    )
+    assert web_scene.known_issues(['US-MA-AAA', 'US-MA-CCC'], path=issues) == [
+        {'found': '2026-01-02', 'text': 'Town A: a fabricated problem.'},
+        {'found': '2026-01-01', 'text': 'Everywhere.'},
+    ]
+    # The bundled list parses, and the Sources panel renders it.
+    assert isinstance(web_scene.known_issues(['US-MA-SOM']), list)
+    assert 'scene.known_issues' in (STATIC / 'viewer.js').read_text(encoding='utf-8')
+
+
+def test_town_border_breaks_at_a_lake_and_not_at_a_road(monkeypatch):
+    # Two towns meeting along x = 1000 (meters from an origin in
+    # Massachusetts). Lots line the border except for a 60 m road
+    # crossing at y = 400-460; a pond covers y = 700-850.
+    x0, y0 = 230_000, 899_000
+
+    def shifted(xmin, ymin, xmax, ymax):
+        return box(x0 + xmin, y0 + ymin, x0 + xmax, y0 + ymax)
+
+    towns = gpd.GeoDataFrame(
+        {'admin3_id': ['US-MA-AAA', 'US-MA-BBB']},
+        geometry=[shifted(0, 0, 1000, 1000), shifted(1000, 0, 2000, 1000)],
+        crs='EPSG:26986',
+    )
+    monkeypatch.setattr(web_scene, 'get_admin', lambda *args, **kwargs: towns)
+    lots = gpd.GeoDataFrame(
+        geometry=[shifted(900, 0, 990, 400), shifted(900, 460, 990, 1000)],
+        crs='EPSG:26986',
+    )
+    pond = gpd.GeoSeries([shifted(950, 700, 1050, 850)], crs='EPSG:26986')
+    borders = web_scene.land_borders(
+        ['US-MA-AAA', 'US-MA-BBB'], land=lots, lakes=pond.to_crs(4326)
+    )
+    lengths = sorted(gpd.GeoSeries(borders, crs=4326).to_crs(26986).length)
+    # One stretch across the road up to the pond, one above it (the
+    # 5 m outline tolerance adds a little at the ends).
+    assert lengths == pytest.approx([150, 700], abs=15)
 
 
 def test_crop_keeps_whole_features_by_their_center():
@@ -547,6 +707,7 @@ def test_identical_outlines_merge_into_one_feature():
 def test_scenes_do_not_carry_the_landing_template(tmp_path, monkeypatch):
     names = [p.name for p in STATIC.iterdir()]
     assert 'landing.html' in names
+    assert 'methods.html' in names
 
 
 def test_tooltip_values_mark_only_imputed_cells():
