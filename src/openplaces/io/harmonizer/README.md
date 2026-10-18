@@ -504,6 +504,15 @@ The step sub-modules:
   (e.g. a parcel spine inheriting from its footprint spine, which runs
   first) wherever every row in the group agrees, so the direct spatial join
   only runs on the residual.
+  A lower-ranked outline enters only where it overlaps accepted outlines by
+  at most a tenth of its own area (`overlap_share_max`, which catches the
+  slivers IoU misses beside a large building, without a keep-out distance
+  that also removed separate buildings nearby), and a Microsoft outline
+  clear of every accepted one is left out where most of Microsoft's other
+  outlines within 50 m match none (`stale_check_labels`: its imagery
+  predates a rebuilt block). Measured 2026-10-18 on US-NC-NHA: 1,172 of
+  the 1,246 separate outlines the old keep-out distance removed came back;
+  plans/footprint-keep-out-zone.md.
   **A building crossing a unit line is reconciled across both units**
   (`resolve_spine(neighbor_reads: true)`, set by the footprint geospine;
   maintainer, 2026-10-18). The unit also reads the outlines its touching
