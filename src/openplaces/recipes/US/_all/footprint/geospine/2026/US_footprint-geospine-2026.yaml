@@ -57,6 +57,13 @@ pipeline:
         # under 450 sq ft; they never enter a footprint spine. Their
         # occupancy attributes still reach footprints as evidence.
         exclude_sources: [fema]
+    # A building crossing a unit line is one building: read the touching
+    # units' outlines that reach into this unit, choose one envelope with
+    # the rules below, and keep this unit's piece of it, so each unit's
+    # parcels value their own piece (maintainer, 2026-10-18;
+    # plans/cross-town-building-reconciliation.md). OPENPLACES_NEIGHBOR_
+    # READS=0 turns it off for a debug run.
+    neighbor_reads: true
     thresholds:
       min_area_m2: 10.0
       overlap_iou_max: 0.02

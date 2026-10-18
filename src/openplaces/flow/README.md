@@ -57,3 +57,14 @@ on a two-unit batch). An attribute file and its `_geo` sidecar are moved
 one after the other, so the pair is close to, not exactly, atomic. A
 script that calls `snakemake` directly, without a profile, should pass
 `--keep-incomplete --rerun-incomplete` too.
+
+**A footprint geospine depends on its neighbors' footprint ingests.** It
+reconciles buildings crossing the unit line (harmonizer README,
+`spine.py`), so the graph adds, for each touching unit, the ingest jobs
+`io.harmonizer.neighbors.neighbor_inputs` names: the sources the unit reads
+itself, less the step's `exclude_sources`, from recipes and admin polygons
+only. A one-unit run therefore plans more jobs; measured 2026-10-18 on
+US-MA-SOM: 15 more (OBM, Microsoft and MassGIS for 5 neighbors).
+`OPENPLACES_NEIGHBOR_READS=0` in the environment of the `snakemake` call
+drops the edges and the reads together for a debug run, and the geospine's
+sidecar fingerprints record it, so a later full run rebuilds it.

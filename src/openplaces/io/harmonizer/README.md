@@ -504,6 +504,22 @@ The step sub-modules:
   (e.g. a parcel spine inheriting from its footprint spine, which runs
   first) wherever every row in the group agrees, so the direct spatial join
   only runs on the residual.
+  **A building crossing a unit line is reconciled across both units**
+  (`resolve_spine(neighbor_reads: true)`, set by the footprint geospine;
+  maintainer, 2026-10-18). The unit also reads the outlines its touching
+  units' footprint ingests carry into it (`neighbors.py`: neighbors from
+  the admin polygons, inputs from the recipes, one answer for the run, the
+  link-sidecar fingerprint and the DAG), so the merge chooses one envelope
+  per building on both sides of the line, and the unit keeps its piece:
+  the envelope less the neighbors' polygons. Under 10 m2 or 5% nothing is
+  cut, the building staying whole on the side holding most of it. A piece
+  takes its centroid's code as its id (`geo.ids.distinct_centroid_codes`)
+  and `envelope_id` names the envelope, which both units compute alike.
+  Each unit's parcels then value their own piece in curate, as any
+  outline. Measured 2026-10-18 on boston-inner-core: outline pairs drawn
+  in two towns 48 to 0, outlines crossing into a neighbor 178 to 0, 232
+  pieces (CAM, SOM, BEL, ARL, in memory). `OPENPLACES_NEIGHBOR_READS=0`
+  turns the reads off for a debug run, in the DAG and the jobs alike.
 - `links/` — join to reference datasets, one module per concern since
   2026-09-29 (until then one 4,259-line `links.py`): `spatial.py`
   (`link_to_reference`, the overlay crosswalk), `points.py` (the point
