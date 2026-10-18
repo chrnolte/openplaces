@@ -277,6 +277,17 @@ zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical 
 postal_code_conflict,ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree,,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
 land_value_per_ha_log_region_nb2,Same; 'region-nb2' model (alternate neighborhood-region spec),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_county,Same; 'county' model (sales from the parcel's county),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_county_nb,Same; 'county-nb' model (sales from the county and counties within 10 km),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region,Same; 'region' model (sales from the parcel's core-based region),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_bare,"Same; 'region-nb' model on the Fathom-free 'bare' predictor set (location, date, size, building footprints)",ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_people,Same; 'region-nb_bare' predictors plus population gravity,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_buildings,Same; 'region-nb_bare' predictors plus building footprint shares (500 m and 5000 m),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_wealth,Same; 'region-nb_bare' predictors plus block-group median household income,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_peoplewealth,Same; 'region-nb_bare' predictors plus population gravity and median household income,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_peoplebuildings,Same; 'region-nb_bare' predictors plus population gravity and building footprint shares,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_popbldwealth,"Same; 'region-nb_bare' predictors plus population gravity, building footprint shares and median household income",ln(USD/ha),float,mean,,parcel,enrich
+dissimilarity_index,"Dissimilarity of an observation to a model's training sales in importance-weighted predictor space (Meyer & Pebesma 2021), before division by the area-of-applicability threshold",unitless,float,mean,,,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich
 effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,ingest,0
 renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,ingest,0
