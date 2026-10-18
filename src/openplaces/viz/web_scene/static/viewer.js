@@ -186,6 +186,58 @@ function hexToRgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+// Plain names for the colors the tour mentions ("pink", "sky blue"),
+// matched in OKLab, where distance follows what the eye sees.
+const COLOR_NAMES = {
+  white: '#ffffff', 'pale gray': '#d9dbe0', gray: '#8a8f98', black: '#000000',
+  'pale blue': '#dcebff', 'sky blue': '#8ec5ff', blue: '#3a6fd8', navy: '#1a2a6c',
+  teal: '#2a9d8f', mint: '#bfeee0', green: '#4caf50', 'dark green': '#1f5a2a',
+  lime: '#c6f03a', 'pale yellow': '#fff3b0', yellow: '#ffd23f', sand: '#e3d3a0',
+  peach: '#ffcfa8', orange: '#ff9a3c', terracotta: '#cf6a55', 'brick red': '#a8443f',
+  red: '#e53935', pink: '#ffb3c7', 'hot pink': '#ff2fb0', lilac: '#e3b3f0',
+  purple: '#8e44ad', violet: '#b54dff',
+};
+
+function oklab([r, g, b]) {
+  const lin = (c) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const [R, G, B] = [lin(r), lin(g), lin(b)];
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+function colorName(rgb) {
+  const [L, A, B] = oklab(rgb);
+  let best = null;
+  let bestDistance = Infinity;
+  for (const [name, hex] of Object.entries(COLOR_NAMES)) {
+    const [l, a, b] = oklab(hexToRgb(hex));
+    const distance = Math.hypot(L - l, A - a, B - b);
+    if (distance < bestDistance) {
+      [best, bestDistance] = [name, distance];
+    }
+  }
+  return best;
+}
+
+// The color a value takes on a layer's scale; where the faces are
+// near black and the edges carry the color (Neon), the edge color.
+function valueColor(value, spec) {
+  const lo = Math.log1p(spec.vmin);
+  const t = Math.min(1, Math.max(0, (Math.log1p(value) - lo) / (Math.log1p(spec.vmax) - lo)));
+  const pick = (rgb) => rgb[Math.round(t * (rgb.length - 1))];
+  const fill = pick(spec.rgb);
+  return spec.lineSpec && oklab(fill)[0] < 0.3 ? pick(spec.lineSpec.rgb) : fill;
+}
+
 function preparePalette(palette) {
   for (const spec of Object.values(palette.layers)) {
     spec.rgb = spec.lut.map(hexToRgb);
@@ -579,7 +631,7 @@ const TOUR = {
   focusPitch: 55,
   contrastZoom: 13.5,
   contrastPitch: 48,
-  contrastOrbit: 45,
+  contrastOrbit: 46,
   degreesPerSecond: 2.5,
   descent: 22,
   orbit: 18,
@@ -604,41 +656,46 @@ const TOUR = {
 // changed) count down from three (`countdown`; maintainer, 2026-10-17).
 // Visitors read "home"; the data's term is "dwelling" (one house,
 // apartment or condo).
-// The two switches explain themselves on two lines, what the visitor
-// will see and why, and stay five seconds longer than a plain hint
-// (maintainer, 2026-10-18). The explanation of a home appears seven
-// seconds before its switch and stays thirteen after it.
+// Each switch has two messages in the same bubble above its button
+// (maintainer, 2026-10-18): the action, what is about to change, with
+// its countdown and a few seconds after; then the insight, what the
+// visitor can now see. Insights name no figures from the map.
 const TOUR_CONTRAST_ACTIONS = [
   {
     at: 2,
     hint: {
       target: 'buildings',
-      text: [
-        'Hiding the buildings to show land value alone',
-        'A house can be built anywhere. Its spot on the map cannot, ' +
-          'and the land carries that price.',
-      ],
+      text: 'Hiding the buildings to show land value alone',
       countdown: 3,
-      linger: 11,
+      linger: 7,
     },
   },
   {at: 5, buildings: false},
   {
-    at: 14,
+    at: 9,
     hint: {
-      target: 'dwelling',
-      text: [
-        'Next: value per home, where wealthy and poorer neighborhoods stand apart',
-        'A home is one apartment, house, or condo.',
-      ],
-      countdown: 3,
-      countdownAfter: 4,
-      linger: 20,
+      target: 'buildings',
+      text: 'Land shows the value of location: how *much* people benefit from ' +
+        'living or doing business there.',
+      linger: 9,
     },
   },
-  {at: 21, view: 'dwelling'},
-  {at: 37, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
-  {at: 39, buildings: true},
+  {
+    at: 18,
+    hint: {
+      target: 'dwelling',
+      text: ['Next: value per home', 'A home is one apartment, house, or condo.'],
+      countdown: 3,
+      countdownAfter: 4,
+      linger: 10,
+    },
+  },
+  {at: 25, view: 'dwelling'},
+  // The insight: close-by contrast only where the build found it
+  // (`contrast_focus`'s `claim`), a general line elsewhere.
+  {at: 28, insight: 'dwelling'},
+  {at: 38, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
+  {at: 40, buildings: true},
 ];
 const TOUR_LEAVE_ACTIONS = [
   {at: 0, hint: {target: 'area', text: 'Back to value per ground area', linger: 4}},
@@ -1514,17 +1571,54 @@ async function main() {
     event.preventDefault();
   });
 
-  // The tour's own messages (maintainer, 2026-10-17), all in one place,
-  // top center: "Flying on autopilot" as it starts, then before each
-  // switch it makes a message that blinks twice as it appears, may
-  // count down 3, 2, 1, and stays a while after the switch, so a
-  // visitor learns what the controls do by watching. The control about
-  // to switch glows with the blinks.
+  // The tour's own messages (maintainer, 2026-10-17 and 2026-10-18):
+  // "Flying on autopilot" as it starts, centered above the bottom bar;
+  // then, in a bubble above the button about to switch and pointing at
+  // it, a message that blinks twice as it appears, may count down 3, 2,
+  // 1, and stays a while after the switch, so a visitor learns what the
+  // controls do by watching. The control glows with the blinks.
   const banner = document.createElement('div');
   banner.id = 'autopilot';
   banner.hidden = true;
   document.body.appendChild(banner);
   let bannerTimers = [];
+  // The element the bubble points at, or null: centered, no pointer.
+  let bannerAnchor = null;
+  const controlFor = (target) => {
+    if (!target) {
+      return null;
+    }
+    const control = target === 'buildings'
+      ? layerSwitch.querySelector('[data-layer="buildings"]')
+      : viewSwitch.querySelector(`[data-choice="${target}"]`);
+    // Folded controls (a phone): their chip stands in.
+    return control && control.getClientRects().length > 0 ? control : restore;
+  };
+  const placeBanner = () => {
+    const margin = 16;
+    const width = banner.offsetWidth;
+    if (bannerAnchor) {
+      const rect = bannerAnchor.getBoundingClientRect();
+      const center = rect.left + rect.width / 2;
+      const left = Math.min(
+        Math.max(margin, center - width / 2),
+        window.innerWidth - margin - width,
+      );
+      banner.style.left = `${left}px`;
+      banner.style.bottom = `${window.innerHeight - rect.top + 12}px`;
+      banner.style.setProperty('--arrow-x', `${center - left}px`);
+    } else {
+      const bar = document.getElementById('bottom-bar').getBoundingClientRect();
+      banner.style.left = `${Math.max(margin, (window.innerWidth - width) / 2)}px`;
+      banner.style.bottom = `${window.innerHeight - bar.top + 12}px`;
+    }
+    banner.classList.toggle('pointing', Boolean(bannerAnchor));
+  };
+  window.addEventListener('resize', () => {
+    if (!banner.hidden) {
+      placeBanner();
+    }
+  });
   const hideHint = () => {
     bannerTimers.forEach(clearTimeout);
     bannerTimers = [];
@@ -1534,12 +1628,21 @@ async function main() {
   // `countdown`: from that number, one a second, starting
   // `countdownAfter` seconds after the message appears; `linger`: how
   // long the message stays in all. `text` may be a list of lines, the
-  // first one the message, the others smaller.
+  // first one the message, the others smaller; a word in *asterisks*
+  // is stressed.
   const showLines = (text) => {
     banner.replaceChildren(
       ...[].concat(text).map((words, i) => {
         const line = document.createElement('div');
-        line.textContent = words;
+        words.split(/\*([^*]+)\*/).forEach((part, j) => {
+          if (j % 2) {
+            const stressed = document.createElement('em');
+            stressed.textContent = part;
+            line.appendChild(stressed);
+          } else if (part) {
+            line.appendChild(document.createTextNode(part));
+          }
+        });
         if (i > 0) {
           line.className = 'tour-sub';
         }
@@ -1568,25 +1671,50 @@ async function main() {
     banner.classList.remove('blink');
     void banner.offsetWidth;
     banner.classList.add('blink');
-    const control = !target
-      ? null
-      : target === 'buildings'
-        ? layerSwitch.querySelector('[data-layer="buildings"]')
-        : viewSwitch.querySelector(`[data-choice="${target}"]`);
-    // Folded controls (a phone): their chip glows instead.
-    const glowing = control && control.getClientRects().length > 0 ? control : restore;
-    glowing.classList.remove('tour-pulse');
-    void glowing.offsetWidth;
-    glowing.classList.add('tour-pulse');
+    bannerAnchor = controlFor(target);
+    placeBanner();
+    if (bannerAnchor) {
+      bannerAnchor.classList.remove('tour-pulse');
+      void bannerAnchor.offsetWidth;
+      bannerAnchor.classList.add('tour-pulse');
+    }
     later(linger * 1000 - 1200, () => banner.classList.add('fading'));
     later(linger * 1000, hideHint);
   };
   // Buildings the tour switched off come back when the visitor takes
   // over; the coloring the tour chose stays.
   let tourHidBuildings = false;
+  // What the per-home view shows, once it is on. Where the build found
+  // costly and modest homes close together in this view (`claim`), it
+  // says so, naming their colors in the palette on screen unless both
+  // get the same name; elsewhere a general line. No figures from the
+  // map (maintainer, 2026-10-18).
+  const dwellingInsight = () => {
+    const contrast = scene.tour_contrast;
+    const lots = scene.layers[0];
+    const view = lots.views && lots.views.dwelling;
+    if (!contrast || !contrast.claim || !view) {
+      return 'Colors now follow what one home is worth, so costly and modest ' +
+        'neighborhoods stand apart.';
+    }
+    const spec = {...palette.layers[lots.name], vmin: view.vmin, vmax: view.vmax};
+    let costly = 'costly homes';
+    let modest = 'modest ones';
+    if (contrast.high_shown > 0 && contrast.low_shown > 0) {
+      const high = colorName(valueColor(contrast.high_shown, spec));
+      const low = colorName(valueColor(contrast.low_shown, spec));
+      if (high !== low) {
+        [costly, modest] = [`costly homes (${high})`, `modest ones (${low})`];
+      }
+    }
+    return `Here, ${costly} stand only a short way from ${modest}.`;
+  };
   const tourAction = (action) => {
     if (action.hint) {
       showHint(action.hint);
+    }
+    if (action.insight === 'dwelling' && valueView === 'dwelling') {
+      showHint({target: 'dwelling', text: dwellingInsight(), linger: 10});
     }
     if (action.view && action.view !== valueView) {
       setChoice('view', action.view);
@@ -1626,6 +1754,8 @@ async function main() {
         : 'Drag the mouse to pan, scroll to zoom, right-drag to rotate.',
     ]);
     banner.hidden = false;
+    bannerAnchor = null;
+    placeBanner();
     later(9000, () => banner.classList.add('fading'));
     later(10200, hideHint);
   }

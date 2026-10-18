@@ -2081,8 +2081,16 @@ def tour_foci(
     ]
 
 
+# Least ratio of the two neighborhoods' typical value per home for the
+# tour to say aloud that costly and modest homes stand close together
+# (maintainer, 2026-10-18: "only where that claim is true"). Measured
+# 2026-10-18 on the published scenes: 2.9 (Asheville) to 12.6
+# (Greensboro); at 3, Asheville's stop stays silent.
+CONTRAST_CLAIM_RATIO = 3.0
+
+
 def contrast_focus(
-    gdf, column, cell_m=1000.0, radius_m=3000.0, min_homes=200
+    gdf, column, cell_m=1000.0, radius_m=3000.0, min_homes=200, shown=None
 ) -> dict | None:
     """The point where homes' value per dwelling differs most nearby.
 
@@ -2113,12 +2121,22 @@ def contrast_focus(
     min_homes : int
         Least homes in a cell, so that a cell is a neighborhood's homes
         and not one complex.
+    shown : str, optional
+        The per-dwelling column the page colors the homes by at that
+        stop (land value per home, while buildings are hidden). Its
+        median in each of the two cells is returned, so the page can
+        name the colors the visitor sees there.
 
     Returns
     -------
     dict or None
-        `longitude`, `latitude` and `ratio` (the higher median over the
-        lower), or None where no two cells qualify.
+        `longitude`, `latitude`, `ratio` (the higher median over the
+        lower) and `km` between the two cells; `high` and `low`, each
+        [longitude, latitude, median]; with `shown`, `high_shown` and
+        `low_shown`; and `claim`, whether the page may say that costly
+        and modest homes stand close (`ratio` at least
+        `CONTRAST_CLAIM_RATIO` and, with `shown`, the costly cell also
+        colored higher). None where no two cells qualify.
     """
     if gdf.empty or column not in gdf.columns:
         return None
@@ -2132,15 +2150,15 @@ def contrast_focus(
         else gdf[homes].to_crs(gdf[homes].estimate_utm_crs())
     )
     points = projected.geometry.centroid
+    home_cells = pd.DataFrame(
+        {
+            'i': np.floor(points.x / cell_m).astype(int),
+            'j': np.floor(points.y / cell_m).astype(int),
+            'log_value': np.log10(values[homes]),
+        }
+    )
     cells = (
-        pd.DataFrame(
-            {
-                'i': np.floor(points.x / cell_m).astype(int),
-                'j': np.floor(points.y / cell_m).astype(int),
-                'log_value': np.log10(values[homes]),
-            }
-        )
-        .groupby(['i', 'j'])['log_value']
+        home_cells.groupby(['i', 'j'])['log_value']
         .agg(['median', 'size'])
         .reset_index()
     )
@@ -2164,14 +2182,32 @@ def contrast_focus(
         crs=projected.crs,
     ).to_crs(4326)
     middle, high, low = points
-    return {
+    ratio = float(10 ** gap[a, b])
+    out = {
         'longitude': round(middle.x, 6),
         'latitude': round(middle.y, 6),
-        'ratio': round(float(10 ** gap[a, b]), 1),
-        # The two cells and their medians, for the build log.
+        'ratio': round(ratio, 1),
+        'km': round(float(np.hypot(x[a] - x[b], y[a] - y[b])) / 1000, 1),
+        # The two cells and their medians.
         'high': [round(high.x, 5), round(high.y, 5), round(float(10 ** median[a]))],
         'low': [round(low.x, 5), round(low.y, 5), round(float(10 ** median[b]))],
     }
+    claim = ratio >= CONTRAST_CLAIM_RATIO
+    if shown is not None and shown in gdf.columns:
+        colored = gdf[shown].to_numpy(dtype=float)[homes]
+
+        def cell_median(k):
+            inside = (home_cells['i'].to_numpy() == cells['i'].iloc[k]) & (
+                home_cells['j'].to_numpy() == cells['j'].iloc[k]
+            )
+            return float(np.nanmedian(colored[inside]))
+
+        out['high_shown'] = round(cell_median(a))
+        out['low_shown'] = round(cell_median(b))
+        # The colors must say what the words say.
+        claim = claim and out['high_shown'] > out['low_shown']
+    out['claim'] = bool(claim)
+    return out
 
 
 def scene_audience(region) -> str:
@@ -2636,6 +2672,8 @@ def build_web_scene(
     if any(layer.per_dwelling_label for layer in layers):
         lots = rendered[bottom.name].gdf
         per_dwelling = f'{bottom.value_column}_per_dwelling'
+        # What the page colors the lots by at the stop.
+        shown = lots[per_dwelling] if per_dwelling in lots.columns else None
         # A home's whole value (land and building) per dwelling where
         # the lot has both; land alone mostly measures density: on
         # 2026-10-17 it put Boston's stop at the Fenway, where a condo
@@ -2649,7 +2687,13 @@ def build_web_scene(
                 value_per_dwelling=np.where(homes, total, np.nan)
             )
             per_dwelling = 'value_per_dwelling'
-        contrast = contrast_focus(lots, per_dwelling)
+        if shown is not None:
+            lots = lots.assign(shown_per_dwelling=shown.to_numpy(dtype=float))
+        contrast = contrast_focus(
+            lots,
+            per_dwelling,
+            shown='shown_per_dwelling' if shown is not None else None,
+        )
         if verbose and contrast:
             print(f'per-dwelling tour stop: {contrast}')
     manifest = {

@@ -259,15 +259,16 @@
   .src-note { color: var(--muted); font-size: 11.5px; margin: 4px 0 0; padding: 6px 8px; border-left: 2px solid rgba(128, 128, 128, 0.4); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
   .deck-tooltip { font-size: 13px !important; max-width: 320px; }
-  /* The tour's messages, top center: the opening line, then what each
-     switch does, fading out. */
+  /* The tour's messages: a bubble above the button a message is about,
+     pointing at it (viewer.js `placeBanner`, which sets left, bottom
+     and --arrow-x); the opening line sits centered above the bottom
+     bar, pointing nowhere. */
   #autopilot {
     position: fixed;
-    top: 16px;
-    left: 50%;
-    translate: -50% 0;
+    left: 16px;
+    bottom: 96px;
     width: max-content;
-    max-width: min(460px, calc(100vw - 160px));
+    max-width: min(380px, calc(100vw - 32px));
     padding: 7px 14px;
     border-radius: 16px;
     line-height: 1.35;
@@ -276,8 +277,18 @@
     font-size: 13px;
     text-align: center;
     pointer-events: none;
-    z-index: 3;
+    /* Over the control panels it points into. */
+    z-index: 10;
     transition: opacity 1.2s ease;
+  }
+  #autopilot.pointing::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: var(--arrow-x, 50%);
+    translate: -50% 0;
+    border: 8px solid transparent;
+    border-top-color: rgba(8, 11, 20, 0.78);
   }
   #autopilot.fading { opacity: 0; }
   /* A message's second line: why, or how. */

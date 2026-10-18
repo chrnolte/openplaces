@@ -503,6 +503,41 @@ def test_contrast_focus_lies_between_the_dearest_and_cheapest_nearby_homes():
         .coords[0]
     )
     assert 231_500 < x < 232_500
+    assert focus['km'] == pytest.approx(1.0) and focus['claim']
+    # The claim holds only if the colors on screen agree: land per home
+    # higher on the costly side.
+    agree = gdf.assign(land=np.where(np.array(values) > 1e6, 90_000.0, 30_000.0))
+    focus = web_scene.contrast_focus(
+        agree,
+        'land_value_per_dwelling',
+        cell_m=500,
+        radius_m=1200,
+        min_homes=40,
+        shown='land',
+    )
+    assert (focus['high_shown'], focus['low_shown'], focus['claim']) == (
+        90_000,
+        30_000,
+        True,
+    )
+    reverse = agree.assign(land=120_000 - agree['land'])
+    focus = web_scene.contrast_focus(
+        reverse,
+        'land_value_per_dwelling',
+        cell_m=500,
+        radius_m=1200,
+        min_homes=40,
+        shown='land',
+    )
+    assert not focus['claim']
+    # Too small a gap to say aloud.
+    close = gdf.assign(
+        land_value_per_dwelling=np.where(np.array(values) > 1e6, 500_000, 200_000)
+    )
+    focus = web_scene.contrast_focus(
+        close, 'land_value_per_dwelling', cell_m=500, radius_m=1200, min_homes=40
+    )
+    assert focus['ratio'] < web_scene.CONTRAST_CLAIM_RATIO and not focus['claim']
     # Homes only: no per-dwelling values, no stop.
     assert (
         web_scene.contrast_focus(
