@@ -900,8 +900,9 @@ def join_partitions_by_index(
     admin_ids=None,
     join_key_name=None,
     keep_original=False,
+    sidecar_tables=None,
     verbose=False,
-) -> None:
+) -> list[str]:
     """Left-join per-table partition outputs into one entity file per admin unit.
 
     Column-wise counterpart to :func:`aggregate_partitions` (which only
@@ -912,17 +913,23 @@ def join_partitions_by_index(
     entity file (``get_output_path(recipe, admin_id)``) that the rest of the
     codebase expects to read.
 
-    The *first* entry in `table_names` is treated as the base table (read
-    with geometry); every later one is a plain attribute table (its own
-    `geometry` column, if any, is dropped) left-joined onto the base by
-    their shared index -- every table is expected to already carry the same
-    join key as its index (e.g. via a recipe's `create_index` opting out of
-    `TableIngester`'s automatic geometry-hash `geo_id` indexing; see
-    `US_parcel-placeslab-fmv2026.yaml` for the reference example). Since
-    that opt-out means none of the partitions carry openplaces's own
-    `geo_id`/`parcel_id`, this computes it fresh on the joined result,
-    replicating `TableIngester.process`'s own logic
-    (`io/ingester/table_ingester.py:642-643`).
+    The first entry in `table_names` that is not a sidecar table is the
+    base table (read with geometry); every later one is a plain attribute
+    table (its own `geometry` column, if any, is dropped) left-joined onto
+    the base by their shared index. Every table is expected to already
+    carry the same join key as its index (e.g. via a recipe's
+    `create_index` opting out of `TableIngester`'s automatic geometry-hash
+    `geo_id` indexing; see `US_parcel-placeslab-fmv2026.yaml` for the
+    reference example). Since that opt-out means none of the partitions
+    carry openplaces's own `geo_id`/`parcel_id`, this computes it fresh on
+    the joined result, replicating `TableIngester.process`'s own logic.
+
+    A unit without a base-table partition is skipped (not yet published),
+    unless one of its sidecar tables is on disk. That sidecar stands in
+    for geometry the source withholds (the placeslab fmv source delivers
+    a parcel crosswalk instead of its restricted boundaries), so the
+    attribute tables are joined without geometry and indexed by the join
+    key itself, as a string `parcel_id`; such a file has no `geo_id`.
 
     Parameters
     ----------
@@ -931,49 +938,92 @@ def join_partitions_by_index(
         parcel` (or another entity type `geo.ids.get_geo_ids` supports) with
         geometry on its base table.
     table_names : list of str
-        Partition ids to join, in join order; the first is the base table.
+        Partition ids to join, in join order; the first that is not a
+        sidecar table is the base table.
     admin_ids : str, AdminId, or list, optional
         Admin ID(s) to join. Defaults to every admin unit that has a saved
-        base-table (`table_names[0]`) partition file.
+        base-table or sidecar-table partition file.
     join_key_name : str, optional
         If given, the shared index the tables were joined on is kept as a
-        column under this name in the output (for provenance -- nothing
-        downstream requires it). If omitted, the original join index is
-        dropped once the real `geo_id`/`parcel_id` index is assigned.
+        column under this name in the output (for provenance, and as the
+        key a sidecar crosswalk names reference parcels by). If omitted,
+        the original join index is dropped once the real
+        `geo_id`/`parcel_id` index is assigned.
     keep_original : bool
-        If False (default), delete the per-table partition files after a
-        successful join.
+        If False (default), delete the joined per-table partition files
+        after a successful join. Sidecar partitions are never deleted.
+    sidecar_tables : list of str, optional
+        Entries of `table_names` that are ingested as partitions but never
+        joined: their rows do not describe one entity each (a crosswalk is
+        many-to-many), so they stay on disk as their own partition files
+        for a later stage to read.
     verbose : bool
         If True, print a summary line per joined admin unit, and a note for
         any admin unit skipped because its base-table partition is missing
         (treated as "not yet published", matching how the Ingester itself
         tolerates a missing partition).
+
+    Returns
+    -------
+    list of str
+        The admin units an entity file was written for.
     """
 
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
-    base_table, *attribute_tables = table_names
+    sidecar_tables = [str(t) for t in sidecar_tables or []]
+    unknown = sorted(set(sidecar_tables) - {str(t) for t in table_names})
+    if unknown:
+        raise ValueError(
+            f'sidecar_tables {unknown} are not among table_names {list(table_names)}.'
+        )
+    joinable = [t for t in table_names if str(t) not in sidecar_tables]
+    if not joinable:
+        raise ValueError('join_partitions_by_index needs one table to join.')
+    base_table, *attribute_tables = joinable
+
+    def _exists(admin_id, table_name):
+        return get_output_path(recipe, admin_id, partition_id=table_name).exists()
 
     if admin_ids is None:
         save_level = get_save_admin_level(recipe)
         admin_ids = [
             str(a)
             for a in get_admin(recipe['admin_id'], save_level).index
-            if get_output_path(recipe, a, partition_id=base_table).exists()
+            if any(_exists(a, t) for t in [base_table, *sidecar_tables])
         ]
     else:
         admin_ids = _to_id_list(admin_ids)
 
+    written = []
     for admin_id in admin_ids:
         base_path = get_output_path(recipe, admin_id, partition_id=base_table)
-        if not base_path.exists():
+        if base_path.exists():
+            joined = read_parquet(base_path, geom=True)
+            partition_paths = [base_path]
+            tables_to_join = attribute_tables
+        elif any(_exists(admin_id, t) for t in sidecar_tables):
+            present = [t for t in attribute_tables if _exists(admin_id, t)]
+            if not present:
+                if verbose:
+                    print(f'{admin_id}: no attribute partition beside its sidecar')
+                continue
+            if verbose:
+                print(
+                    f'{admin_id}: no {base_table!r} partition; joining '
+                    f'{present} without geometry beside its sidecar'
+                )
+            first_path = get_output_path(recipe, admin_id, partition_id=present[0])
+            joined = read_parquet(first_path, geom=False)
+            joined = joined.drop(columns='geometry', errors='ignore')
+            partition_paths = [first_path]
+            tables_to_join = present[1:]
+        else:
             if verbose:
                 print(f'{admin_id}: no {base_table!r} partition, skipping')
             continue
 
-        joined = read_parquet(base_path, geom=True)
-        partition_paths = [base_path]
-        for table_name in attribute_tables:
+        for table_name in tables_to_join:
             table_path = get_output_path(recipe, admin_id, partition_id=table_name)
             if not table_path.exists():
                 if verbose:
@@ -993,17 +1043,26 @@ def join_partitions_by_index(
 
         if join_key_name:
             joined = joined.rename_axis(join_key_name).reset_index()
-        joined['geo_id'] = get_geo_ids(joined, handle_duplicates=False)
-        joined.index = pd.Index(add_unique_suffix(joined['geo_id']), name='parcel_id')
+        if isinstance(joined, gpd.GeoDataFrame):
+            joined['geo_id'] = get_geo_ids(joined, handle_duplicates=False)
+            joined.index = pd.Index(
+                add_unique_suffix(joined['geo_id']), name='parcel_id'
+            )
+        else:
+            # No geometry to hash: the source's own key is the only id.
+            key = joined[join_key_name] if join_key_name else joined.index
+            joined.index = pd.Index(key.astype(str).to_numpy(), name='parcel_id')
 
         output_path = get_output_path(recipe, admin_id)
         save_parquet(joined, output_path)
+        written.append(str(admin_id))
         if verbose:
             print(f'{admin_id}: joined {len(joined):,} rows -> {output_path.name}')
 
         if not keep_original:
             for p in partition_paths:
                 _delete_parquet_pair(p)
+    return written
 
 
 def _legacy_upgrader(recipe):

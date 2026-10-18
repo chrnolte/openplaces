@@ -33,7 +33,11 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   evidence file missing a declared column as a recipe error.
 - `parcels.py` — attach a reference *parcel* dataset's attributes to current
   parcels through a fractional area-weighted crosswalk, driven by a sidecar
-  `{recipe_id}_column-notes.csv` beside the reference recipe
+  `{recipe_id}_column-notes.csv` beside the reference recipe. Where the
+  reference ships no geometry, a crosswalk its source delivered
+  (`delivered_crosswalk_table`) is read instead of built, and refused
+  unless 99 percent of the spine's parcel ids and 99 percent of its own
+  match: it names the parcels of the bundle it was built against.
 - `overlay.py` — `overlay_reference_polygons`: per entity, the share of
   its area inside a reference polygon dataset (a thematic layer whose
   polygons do not overlap, e.g. MassGIS protected open space) and the
