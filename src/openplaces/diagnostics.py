@@ -13,7 +13,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
-from openplaces.core.constants import ESCAPE_DIR, STRING_SEPARATOR_WITHIN_IDS
+from openplaces.core.constants import (
+    ACCESS_EXTENSIONS,
+    ESCAPE_DIR,
+    GEOPANDAS_EXTENSIONS,
+    PANDAS_EXTENSIONS,
+    STRING_SEPARATOR_WITHIN_IDS,
+)
 from openplaces.core.schema import AdminId, sanitize
 from openplaces.path import recipe_roots
 
@@ -65,7 +71,9 @@ def find_recipes(
         the column a supplement joins its roll on when that is not
         ``parcel_id_local`` (see
         :func:`~openplaces.recipe.get_supplements_key`), empty string
-        otherwise.
+        otherwise. ``writes_geometry`` is False for a recipe whose
+        declaration alone shows it writes no geometry (a flat source
+        file, or ``save_to: geometry: false``), True otherwise.
     """
     index = _recipe_index()
     if index.empty:
@@ -74,6 +82,40 @@ def find_recipes(
     if stage is not None:
         mask &= index['stage'] == stage
     return index[mask].reset_index(drop=True)
+
+
+def _writes_geometry(data: dict) -> bool:
+    """Whether a recipe's declaration allows it to write geometry.
+
+    Read from the recipe alone, never from its output on disk, so the
+    answer is the same before and after the recipe is ingested. False
+    for ``save_to: geometry: false`` and for a source file the ingester
+    reads as a flat table (`PANDAS_EXTENSIONS` or `ACCESS_EXTENSIONS`,
+    minus the extensions it reads with geopandas first, such as
+    ``.tab``): no ingest step builds geometry from a flat table. True
+    whenever the declaration does not settle it (a scraper, a zip, a
+    templated name with no extension), so a recipe is never dropped
+    on a guess.
+
+    Parameters
+    ----------
+    data : dict
+        The recipe as parsed from its YAML file.
+
+    Returns
+    -------
+    bool
+        False if the recipe certainly writes no geometry.
+    """
+    save_to = data.get('save_to')
+    if isinstance(save_to, dict) and save_to.get('geometry') is False:
+        return False
+    file_name = data.get('uncompressed_file_name') or data.get('compressed_file_name')
+    if not isinstance(file_name, str):
+        return True
+    suffix = Path(file_name).suffix.lower()
+    flat = (PANDAS_EXTENSIONS | ACCESS_EXTENSIONS) - GEOPANDAS_EXTENSIONS
+    return suffix not in flat
 
 
 @cache
@@ -165,6 +207,7 @@ def _recipe_index() -> pd.DataFrame:
                 'level': level,
                 'recipe_id': recipe_id,
                 'filename_suffix': filename_suffix,
+                'writes_geometry': _writes_geometry(data),
             }
         )
 
@@ -184,6 +227,7 @@ def _recipe_index() -> pd.DataFrame:
             'level',
             'recipe_id',
             'filename_suffix',
+            'writes_geometry',
         ],
     )
     if not df.empty:

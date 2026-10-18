@@ -124,6 +124,15 @@ Build the spine from prioritized sources via IoU deduplication.
 #### `link_to_reference` (links/spatial.py, points.py, sidecars.py)
 Load a reference dataset and build a spine ↔ reference crosswalk.
 
+A step naming an `entity_type` instead of a `recipe_id` resolves its
+reference with `recipe.find_reference_recipe_id`: the covering ingest
+recipe with the most specific admin scope, then the newest version, then
+the alphabetically first id, skipping supplements, patches, and recipes
+declared without geometry (a flat source file, `save_to: geometry:
+false`). The choice reads recipes only, never the outputs on disk: the
+DAG makes it while planning, before the run's ingests exist, to declare
+the sidecar the job will write.
+
 **join modes**:
 
 **`spatial_overlay`** (polygon-on-polygon):

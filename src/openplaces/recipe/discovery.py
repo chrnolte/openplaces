@@ -6,6 +6,7 @@ import glob
 from functools import cache
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 # Looked up through the package at call time, not bound here: the tests
@@ -158,6 +159,96 @@ def find_entity_recipe_id(
     if len(candidates) > 1 and not silent:
         print(f'Picked {recipe_id} for {admin_id} ({entity_type}).')
     return recipe_id
+
+
+def find_reference_recipe_id(
+    entity_type: str,
+    admin_id,
+    recipes: pd.DataFrame | None = None,
+) -> str | None:
+    """Choose the ingest recipe a ``link_to_reference`` step joins to.
+
+    The reference a spine links to when its step names an
+    ``entity_type`` rather than a ``recipe_id``. Candidates are the
+    ingest recipes of *entity_type* whose admin scope covers *admin_id*
+    (by level, never by string prefix), less those that cannot serve as
+    a spatial reference: a ``supplements`` table (it details another
+    recipe's rows), a ``patches`` recipe, and a recipe whose
+    declaration shows it writes no geometry (Dauphin County PA's parcel
+    characteristics CSV beside its parcel layer). Of those, the most
+    specific admin scope wins, then the newest version
+    (:func:`version_sort_key`), then the alphabetically first recipe
+    id. ``exclude_from_auto_discover`` is not consulted: it keeps a
+    recipe out of spines, and this resolver has always offered such a
+    recipe as a reference.
+
+    The choice reads recipes only, never which outputs exist on disk.
+    The workflow DAG calls this while planning, before any ingest of
+    the run has written its output, to declare the link sidecar the
+    harmonize job will write; the job calls it again at run time. A
+    choice that depended on the files present would differ between
+    the two calls whenever an ingest of the same run sits between
+    them: New Hanover NC's footprint geospine was declared against
+    the state parcel layer and wrote the county one, and Snakemake
+    failed with a MissingOutputException. A chosen recipe with no
+    output for the unit is the linking step's to handle, not a reason
+    to fall back to another recipe here.
+
+    Parameters
+    ----------
+    entity_type : str
+        Entity type of the reference (e.g. ``'parcel'``).
+    admin_id : str or AdminId
+        Admin unit the reference must cover.
+    recipes : pandas.DataFrame, optional
+        The ingest recipes of *entity_type*, in the shape
+        :func:`openplaces.diagnostics.find_recipes` returns. Read from
+        the recipe index when omitted. Columns other than
+        ``admin_id``, ``version`` and ``recipe_id`` default to a
+        recipe that qualifies.
+
+    Returns
+    -------
+    str or None
+        The chosen recipe id, or None when no recipe qualifies.
+    """
+    if recipes is None:
+        from openplaces.diagnostics import find_recipes
+
+        recipes = find_recipes(entity_type, stage='ingest')
+    if recipes.empty:
+        return None
+
+    def _flag(row, key, default):
+        # A frame assembled from rows of differing keys holds NaN for
+        # an absent one, and NaN is truthy.
+        value = row.get(key, default)
+        return default if pd.isna(value) else value
+
+    admin_str = str(admin_id)
+    candidates = []
+    for _, row in recipes.iterrows():
+        if _flag(row, 'supplements', '') or _flag(row, 'patches', ''):
+            continue
+        if not _flag(row, 'writes_geometry', True):
+            continue
+        scope = str(row['admin_id'] or '')
+        if not admin_scope_covers(scope, admin_str):
+            continue
+        level = scope.count('-') + 1 if scope else 0
+        candidates.append((level, version_sort_key(row['version']), row['recipe_id']))
+    if not candidates:
+        return None
+    # Most specific scope, then newest version; among equals the
+    # alphabetically first id, which keeps the base layer of a
+    # same-scope pair (DC's record lots over its tax lots, Utah's
+    # statewide layer over its per-county LIR rows).
+    best_level, best_version, _ = max(candidates, key=lambda c: (c[0], c[1]))
+    return min(
+        recipe_id
+        for level, version, recipe_id in candidates
+        if (level, version) == (best_level, best_version)
+    )
 
 
 #: Parquet footer key naming the patch recipes a table was built with.

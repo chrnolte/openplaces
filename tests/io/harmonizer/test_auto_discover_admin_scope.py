@@ -16,6 +16,7 @@ import openplaces.io.harmonizer.links as links
 import openplaces.io.harmonizer.spine as spine_module
 import openplaces.recipe as recipe_module
 from openplaces.core.schema import AdminId
+from openplaces.diagnostics import _writes_geometry
 from openplaces.io.harmonizer import HarmonizeState
 from tests.links_patching import patch_links
 
@@ -93,6 +94,102 @@ class TestFindReferenceRecipe:
 
         found = links._find_reference_recipe('parcel', AdminId('CO-AN'))
         assert found == 'CO_parcel-igac-2026_rural'
+
+
+class TestReferenceChoiceReadsRecipesOnly:
+    """The DAG resolves the reference before the run's ingests write it.
+
+    It declares the link sidecar from that answer, and the harmonize job
+    resolves again at run time. Both must agree whatever outputs exist:
+    New Hanover's footprint geospine was declared against the state
+    parcel layer, found the county's `_geo` written by the time it ran,
+    wrote the county sidecar and failed with a MissingOutputException.
+    """
+
+    def test_the_county_recipe_wins_before_and_after_its_ingest(
+        self, monkeypatch, tmp_path
+    ):
+        state_id = 'US-NC_parcel-nconemap-2025'
+        county_id = 'US-NC-NHA_parcel-nhcgov-2026'
+        rows = pd.DataFrame(
+            [
+                _row('US-NC', 'nconemap', '2025'),
+                _row('US-NC-NHA', 'nhcgov', '2026'),
+            ]
+        )
+        patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
+
+        # Outputs live under tmp_path, so a resolver probing the
+        # filesystem sees exactly the files this test writes. The
+        # links module bound get_output_path while it probed; the
+        # patch stays there (raising=False) so a returning probe
+        # fails this test.
+        def output_path(recipe_id, *a, **k):
+            return tmp_path / f'{recipe_id}.parquet'
+
+        monkeypatch.setattr(recipe_module, 'get_output_path', output_path)
+        monkeypatch.setattr(
+            links.spatial, 'get_output_path', output_path, raising=False
+        )
+        (tmp_path / f'{state_id}_geo.parquet').touch()
+
+        before = links._find_reference_recipe('parcel', AdminId('US-NC-NHA'))
+        (tmp_path / f'{county_id}_geo.parquet').touch()
+        after = links._find_reference_recipe('parcel', AdminId('US-NC-NHA'))
+
+        assert before == after == county_id
+
+    def test_newest_version_then_first_id_breaks_a_tie(self, monkeypatch):
+        rows = pd.DataFrame(
+            [
+                _row('US-FL', 'floridagio', '2025'),
+                _row('US-FL', 'floridagio', '2026'),
+                _row('US-DC', 'dcgovtaxlots', '2026'),
+                _row('US-DC', 'dcgovrecordlots', '2026'),
+            ]
+        )
+        patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
+
+        florida = links._find_reference_recipe('parcel', AdminId('US-FL-LAK'))
+        district = links._find_reference_recipe('parcel', AdminId('US-DC-WAS'))
+
+        assert florida == 'US-FL_parcel-floridagio-2026'
+        assert district == 'US-DC_parcel-dcgovrecordlots-2026'
+
+    def test_a_recipe_that_cannot_be_a_reference_is_skipped(self, monkeypatch):
+        flat = _row('US-PA-DA', 'dauphinco', '2026', suffix='characteristics')
+        flat['writes_geometry'] = False
+        patch = _row('US-PA-DA', 'aaa', '2027')
+        patch['patches'] = 'US_parcel-geospine-2026'
+        supplement = _row('US-PA-DA', 'aab', '2027')
+        supplement['supplements'] = 'US-PA-DA_parcel-dauphinco-2026'
+        rows = pd.DataFrame(
+            [flat, patch, supplement, _row('US-PA-DA', 'dauphinco', '2026')]
+        )
+        patch_links(monkeypatch, 'find_recipes', lambda *a, **k: rows)
+
+        found = links._find_reference_recipe('parcel', AdminId('US-PA-DA'))
+        assert found == 'US-PA-DA_parcel-dauphinco-2026'
+
+    def test_dauphin_resolves_to_its_parcel_layer_in_the_recipe_tree(self):
+        found = links._find_reference_recipe('parcel', AdminId('US-PA-DA'))
+        assert found == 'US-PA-DA_parcel-dauphinco-2026'
+
+
+class TestWritesGeometry:
+    def test_a_flat_source_file_writes_no_geometry(self):
+        assert not _writes_geometry({'uncompressed_file_name': 'roll.CSV'})
+        assert not _writes_geometry({'compressed_file_name': 'roll.accdb'})
+
+    def test_save_to_geometry_false_writes_no_geometry(self):
+        assert not _writes_geometry({'save_to': {'geometry': False}})
+
+    def test_an_undecided_declaration_keeps_the_recipe(self):
+        # .tab is read with geopandas before the flat-table branch.
+        assert _writes_geometry({'uncompressed_file_name': 'parcels.tab'})
+        assert _writes_geometry({'uncompressed_file_name': 'parcels.gdb'})
+        assert _writes_geometry({'compressed_file_name': 'parcels.zip'})
+        assert _writes_geometry({})
 
 
 class TestBestRecipeFor:
