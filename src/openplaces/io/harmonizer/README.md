@@ -699,7 +699,9 @@ a warning. A source holding several `tax_year` values keeps only its latest
 roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
 county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
 properties), the unit's latest year and not the latest row per account,
-which would revive every account retired since. Case is folded and runs of separators become one hyphen, but their
+which would revive every account retired since. An auto-discovered roll
+joined onto another spine by `link_by_id` keeps the same latest year, so
+the parcel geospine does not sum one account over its years. Case is folded and runs of separators become one hyphen, but their
 positions are kept, because in a map-block-lot number they carry meaning
 (dropping them made 426 Somerville MA accounts collide). Two sources
 publishing the same accounts therefore mint the same ids, and **rows sharing

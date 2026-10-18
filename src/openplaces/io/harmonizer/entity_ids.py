@@ -65,14 +65,29 @@ NO_ACCOUNT_NUMBER_SHARE = 0.5
 # would revive every account retired since 2002 with its last values.
 VINTAGE_COLUMN = 'tax_year'
 
+# Several tax years do not make a panel. Wisconsin's statewide layer
+# stamps each record with its own roll year, so the units split off
+# it mix 2024 and 2025 across different properties, and keeping the
+# latest year dropped 99% of a county's units. A panel repeats its
+# accounts: earlier-year rows whose key is also in the latest year.
+# Measured 2026-10-18 on US-FL-LA: 0.963 of earlier-year rows repeat.
+# Measured 2026-10-18 on US-WI-MI: 0.000 of earlier-year rows repeat.
+PANEL_MIN_REPEAT_SHARE = 0.5
+
 
 def select_latest_vintage(
-    rows: pd.DataFrame, column: str = VINTAGE_COLUMN
+    rows: pd.DataFrame,
+    column: str = VINTAGE_COLUMN,
+    key: str = 'parcel_id_local',
 ) -> tuple[pd.DataFrame, int]:
-    """Keep the rows of the latest roll year, where a source has several.
+    """Keep the rows of the latest roll year, where a source is a panel.
 
     Returns the rows kept and the number dropped. A source with one
-    year, or none, passes through untouched.
+    year, or none, passes through untouched, and so does one whose
+    earlier-year rows mostly name accounts the latest year lacks
+    (under PANEL_MIN_REPEAT_SHARE on *key*): those are different
+    properties stamped with different years, not one roll repeated.
+    Without a *key* column the source is taken for a panel.
     """
     if column not in rows.columns:
         return rows, 0
@@ -80,6 +95,13 @@ def select_latest_vintage(
     if year.nunique(dropna=True) <= 1:
         return rows, 0
     keep = year.eq(year.max())
+    if key in rows.columns:
+        earlier = rows.loc[~keep, key].dropna()
+        repeat_share = (
+            earlier.isin(rows.loc[keep, key].dropna()).mean() if len(earlier) else 0.0
+        )
+        if repeat_share < PANEL_MIN_REPEAT_SHARE:
+            return rows, 0
     return rows[keep], int((~keep).sum())
 
 
