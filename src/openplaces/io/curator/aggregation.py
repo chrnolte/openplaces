@@ -18,8 +18,41 @@ from openplaces.core.attribute_registry import get_agg_func
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import record_sources, source_column
 from openplaces.io.readers import describe_recipe, get_entities
-from openplaces.recipe import resolve_attribute_name
+from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
+from openplaces.recipe import resolve_attribute_name, source_id_from_recipe_id
 from openplaces.table import _agg_func_for, _has_agg_func
+
+#: Reference column naming the source each row came from whole, as
+#: `union_spine_sources` writes it on a property spine.
+ROW_SOURCE_COLUMN = 'source'
+
+
+def _row_source_tokens(labels: pd.Series) -> pd.Series:
+    """A spine's per-row `source` labels as provenance tokens.
+
+    A delivery withholds a restricted source's cell by finding its
+    source id among the sidecar's tokens, and reads any other token as
+    a different source that exonerates the cell. So each `+` part is
+    reduced to the source id: the stacked-units label
+    (`edgecombecounty:units`) loses its suffix, and an explicit source
+    labeled with its recipe id becomes that recipe's source id. Copied
+    verbatim, either would have cleared Edgecombe County's restricted
+    values for shipping.
+    """
+
+    def normalize(label):
+        parts = []
+        for part in str(label).split('+'):
+            part = part.removesuffix(STACKED_UNITS_LABEL_SUFFIX)
+            if '_' in part:
+                part = source_id_from_recipe_id(part)
+            if part and part not in parts:
+                parts.append(part)
+        return '+'.join(parts) or None
+
+    values = labels.astype('string')
+    lookup = {v: normalize(v) for v in values.dropna().unique()}
+    return values.map(lookup).astype(object)
 
 
 def _linked_recipe_id(recipe_id: str) -> str:
@@ -242,7 +275,9 @@ def aggregate_from_entities(
         where every reference row stating one states the same one, for
         a class such as `foundation_type`. Where the reference carries
         a `{column}_source` sidecar, the curated column gets one too,
-        naming the tokens of the rows its value came from.
+        naming the tokens of the rows its value came from. A column
+        with no sidecar takes its tokens from the reference's per-row
+        `source` (a property spine's), reduced to source ids.
     key : str or list of str or None, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both
@@ -301,6 +336,16 @@ def aggregate_from_entities(
     if not present:
         return state
     sidecars = {c: source_column(c) for c in present if source_column(c) in available}
+    # A property spine records which source each row came from, not a
+    # sidecar per value: there the row's source is every value's
+    # source, and without it a curated value would carry no token at
+    # all, so a delivery could withhold it only by the coarser scope
+    # rules (Lake County FL sales: land_value_source on 0.1% of rows).
+    row_source = (
+        ROW_SOURCE_COLUMN
+        if ROW_SOURCE_COLUMN in available and len(sidecars) < len(present)
+        else None
+    )
     reference = get_entities(
         recipe_id,
         state.admin_id,
@@ -308,10 +353,17 @@ def aggregate_from_entities(
             *([reference_key] if reference_key else []),
             *present,
             *sidecars.values(),
+            *([row_source] if row_source else []),
         ],
     )
     if reference is None or len(reference) == 0:
         return state
+    if row_source and row_source in reference.columns:
+        tokens = _row_source_tokens(reference[row_source])
+        for column in present:
+            if column not in sidecars:
+                sidecars[column] = source_column(column)
+                reference[sidecars[column]] = tokens
     # Rows without the key stay: the link table may still place them (a
     # unit that names its lot), and the key join's groupby drops them.
     functions = {}
