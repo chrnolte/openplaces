@@ -1,0 +1,108 @@
+# Recipe: MassGIS Protected and Recreational OpenSpace (OPENSPACE_POLY)
+#
+# Conservation and outdoor recreation land owned by federal, state,
+# county, municipal and nonprofit owners, and private land under a
+# conservation or agricultural restriction, maintained by EOEEA and
+# published by MassGIS. Read for the parcel enrichment
+# US-MA_parcel_rules-openspace-massgis-2026, so that the lots of one
+# protected area read alike on both sides of a town line (the
+# Middlesex Fells: plans/middlesex-fells-lot-values-findings.md).
+#
+# Source: the MassGIS bulk file geodatabase (S3, the link on the
+# layer's mass.gov page), not the ArcGIS feature service
+# (arcgisserver.digital.mass.gov .../AGOL/openspace/FeatureServer),
+# which would need paging. The shapefile zip of the same release
+# truncates field names to 10 characters. Release read 2026-10-17:
+# S3 Last-Modified 2026-07-28, newest ATT_DATE 2026-07-28, page
+# "Last updated: August 10, 2026".
+#
+# Measured 2026-10-17 on the 2026-07-28 release (61,486 polygons,
+# EPSG:26986, MultiPolygon):
+#   OS_ID (TOWN_ID-POLY_ID) is unique and never empty; it is the key.
+#   A site split by a town line is one polygon per town, each with
+#   its own OS_ID and the same SITE_NAME (Middlesex Fells
+#   Reservation: polygons in five towns).
+#   No two polygons overlap by more than 100 m2 (the layer is built
+#   under topology rules): summed overlap is the covered area.
+#   57 geometries are invalid; the enrich step repairs them.
+#   LEV_PROT: P 52,784, L 6,004, N 1,922, X 549, T 226, empty 1.
+#   OWNER_TYPE: M 25,878, S 11,872, P 10,952, L 8,142, F 1,913,
+#   N 1,451, B 849, G 190, O 138, X 51, C 50.
+#   PRIM_PURP: C 31,508, R 9,058, B 8,045, W 5,840, A 2,714, H 2,675,
+#   F 1,049, O 505, U 58, X 33, empty 1.
+#   PUB_ACCESS: Y 41,888, N 8,588, L 6,318, X 4,691, empty 1.
+#   SITE_NAME empty on 2,345; 20,781 distinct names.
+#
+# Codes are kept as MassGIS writes them (from the layer's page):
+#   LEV_PROT   P in perpetuity, T term limited, L limited, N none,
+#              X unknown
+#   OWNER_TYPE F federal, S state, C county, M municipal, N private
+#              nonprofit, P private for profit, B public nonprofit,
+#              L land trust, G conservation organization, O other,
+#              X unknown, I inholding
+#   PRIM_PURP  R recreation, C conservation, B both, H historical or
+#              cultural, A agriculture, W water supply, S scenic,
+#              F flood control, U underwater, O other, X unknown
+#   PUB_ACCESS Y yes, N no, L limited (membership), X unknown
+#
+# Unmapped on purpose: TOWN_ID (the first part of OS_ID). FEE_OWNER,
+# MANAGER and OLI_n_ORG name owners, managers and interest holders,
+# among them private persons on
+# restricted private land (10,952 polygons are privately owned for
+# profit); the deed book and page and the assessor map, block and lot
+# (ASSESS_*) identify those owners' lots. LOC_ID is filled on 23
+# polygons only. Grant, project and funding fields, ALT_SITE_NAME,
+# FORMAL_SITE_NAME (empty), OS_TYPE (filled on 12,937), the
+# legacy map fields and COMMENTS are left out.
+
+description: >-
+  MassGIS Protected and Recreational OpenSpace polygons for
+  Massachusetts: level of protection, owner type, primary purpose,
+  public access and site name.
+
+admin_id: US-MA
+
+dataset:
+  theme: rules-openspace
+  source:
+    source_id: massgis
+    portal_url: "https://www.mass.gov/info-details/massgis-data-protected-and-recreational-openspace"
+    download_url: "https://s3.us-east-1.amazonaws.com/download.massgis.digital.mass.gov/gdbs/openspace_gdb.zip"
+    # MassGIS FAQ (the terms_url, as for every MassGIS recipe): the
+    # data are in the public domain. The layer's ArcGIS items
+    # (b42d5d3edd974d69910387949afabcf3, 1d0b7b69d7e74eae8ee1de75af2d99af,
+    # read 2026-10-17) add a use note, not a restriction: "not a legal
+    # record of ownership ... parcel representations are generally not
+    # based on property surveys", and accuracy and completeness vary
+    # by town.
+    license: >-
+      Public domain (MassGIS FAQ). Credit requested: "MassGIS (Bureau
+      of Geographic Information), Commonwealth of Massachusetts EOTSS"
+      and EOEEA. Not a legal record of ownership; boundaries are
+      generally not survey-based.
+    terms_url: "https://www.mass.gov/info-details/massgis-frequently-asked-questions"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: 2026
+
+compressed_file_name: "openspace_gdb.zip"
+uncompressed_file_name: "OpenSpace.gdb"
+layer: OPENSPACE_POLY
+
+columns:
+  protected_open_space_id: OS_ID
+  protected_open_space_site: SITE_NAME
+  protected_open_space_level: LEV_PROT
+  protected_open_space_owner_type: OWNER_TYPE
+  protected_open_space_purpose: PRIM_PURP
+  protected_open_space_public_access: PUB_ACCESS
+  source_date: ATT_DATE
+
+force_2d: true
+
+set_index: protected_open_space_id
+
+# One state-wide file: the enrich step reads it for every town, and a
+# parcel near a town line can lie in the neighboring town's polygons.
+save_to:
+  data_dir: core

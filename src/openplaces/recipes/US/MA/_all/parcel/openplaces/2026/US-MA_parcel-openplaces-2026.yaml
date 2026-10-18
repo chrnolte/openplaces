@@ -1,0 +1,36 @@
+# Patch: Massachusetts parcels carry the protected open space class.
+#
+# Adds the MassGIS OpenSpace evidence
+# (US-MA_parcel_rules-openspace-massgis-2026) to the national parcel
+# curate's evidence merge. A state rule because the layer covers
+# Massachusetts only; the national recipe stays source-agnostic, and
+# its share list names the two canonical columns, which other states'
+# deliveries carry empty. Approved by the maintainer on 2026-10-17 for
+# the value viewer (plans/middlesex-fells-lot-values-findings.md).
+#
+# The columns are evidence: no vote, imputation or value step reads
+# them. merge_enrichments fills only empty cells.
+
+admin_id: US-MA
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - extend: merge_enrichments
+    key: recipes
+    values:
+      - recipe_id: US-MA_parcel_rules-openspace-massgis-2026
+        columns:
+          protected_open_space_share_massgis: protected_open_space_share
+          protected_open_space_id_massgis: protected_open_space_id
+          protected_open_space_site_massgis: protected_open_space_site
+          protected_open_space_level_massgis: protected_open_space_level
+          protected_open_space_owner_type_massgis: protected_open_space_owner_type
+          protected_open_space_purpose_massgis: protected_open_space_purpose
+          protected_open_space_public_access_massgis: protected_open_space_public_access

@@ -768,6 +768,12 @@ share:
     - improvement_value
     - total_value
     - n_dwellings
+    # Share of the lot inside protected open space and that space's
+    # level of protection, so the viewer can draw the lots of one
+    # protected area alike across a town line (2026-10-17). Filled in
+    # Massachusetts by the US-MA patch of this recipe; empty elsewhere.
+    - protected_open_space_share
+    - protected_open_space_level
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:
