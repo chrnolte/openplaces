@@ -62,3 +62,13 @@ places:
     state: US-NC
     center: [-77.9447, 34.2357]
     center_note: City hall
+  # The island, not a circle (maintainer, 2026-10-18): a place listing
+  # `admin_ids` shows those units whole, with no phone page, and
+  # `extent_note` is its landing card's line. The town of Nantucket
+  # also holds Tuckernuck and Muskeget. Placed last until its dwellings
+  # can be counted on a delivered bundle.
+  - slug: nantucket
+    title: Nantucket, Massachusetts
+    extent_note: The island of Nantucket
+    state: US-MA
+    admin_ids: [US-MA-NTC]

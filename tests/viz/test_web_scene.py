@@ -560,10 +560,16 @@ def test_local_command_never_uploads():
     assert not re.search(r'deploy_web_scene\(|deploy_landing|rclone|ssh', source, re.I)
     with pytest.raises(SystemExit, match='never uploads'):
         local.main(['boston', '--deploy'])
-    # Every place has a center and a state; the order is editorial.
+    # Every place has a state and a center, or whole units and the
+    # line its landing card shows; the order is editorial.
     places = local.load_places()
     assert places['radius_km'] > places['phone_radius_km'] > 0
-    assert all(len(p['center']) == 2 and p['state'] for p in places['places'])
+    for p in places['places']:
+        assert p['state']
+        if local.has_circle(p):
+            assert len(p['center']) == 2 and p['around']
+        else:
+            assert p['admin_ids'] and p['extent_note'] and 'center' not in p
 
 
 def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
@@ -579,12 +585,14 @@ def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
         site, 'deploy_landing', lambda root, go: calls.append(('/', go))
     )
     monkeypatch.setattr(site.time, 'sleep', lambda seconds: None)
-    site.main(['publish', 'durham', 'boston'])
+    site.main(['publish', 'durham', 'nantucket', 'boston'])
     # A dry run unless --go; the phone page before the page that sends
-    # phones to it; the landing page last.
+    # phones to it; a place of whole units has none; the landing page
+    # last.
     assert calls == [
         ('durham-phone', False),
         ('durham', False),
+        ('nantucket', False),
         ('boston-phone', False),
         ('boston', False),
         ('/', False),

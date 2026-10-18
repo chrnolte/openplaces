@@ -9,7 +9,8 @@ The published counterpart of `local` (maintainer, 2026-10-18)::
     python -m openplaces.viz.web_scene.site publish --all --go
 
 ``build`` writes each place's page (15 km) and phone page (7 km) from
-the delivered bundles into ``<share>/web/values``; ``landing`` writes
+the delivered bundles into ``<share>/web/values``, or a single page of
+whole units for a place listing `admin_ids` (an island); ``landing`` writes
 the landing page, its card photos, the list of places and the methods
 page; ``refresh`` copies the page files and the known issues into every
 built page without rebuilding data (for a change to the viewer alone).
@@ -19,7 +20,7 @@ one place every `--gap` seconds (Bluehost blocks bursts of SSH
 connections), then the landing page, so no card links to a page that
 is not up yet. Without ``--go`` it is a dry run.
 
-The places, their order and their centers are `places.yaml`.
+The places, their order and their centers (or units) are `places.yaml`.
 """
 
 import argparse
@@ -38,9 +39,10 @@ from openplaces.viz.web_scene import (
 )
 from openplaces.viz.web_scene.local import (
     ELEVATION_RECIPE,
-    circle_around,
+    extent_label,
+    has_circle,
     load_places,
-    units_and_regions,
+    place_extent,
 )
 
 TITLE = 'Land & structure value'
@@ -53,12 +55,7 @@ def site_root() -> Path:
 
 
 def _page(place, radius_km, slug, phone_scene=None) -> None:
-    circle, metric = circle_around(place['center'], radius_km)
-    built, regions, missing = units_and_regions(place['state'], metric)
-    if not built:
-        raise SystemExit(f'{slug}: no delivered bundles cover this circle.')
-    if missing:
-        print(f'{slug}: no bundles for {", ".join(missing)}; left out.')
+    circle, built, regions = place_extent(place, radius_km, slug)
     started = time.time()
     build_web_scene(
         regions,
@@ -71,16 +68,22 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
         verbose=False,
     )
     print(
-        f'built {slug} ({radius_km:g} km, {len(built)} units) '
+        f'built {slug} ({extent_label(place, radius_km)}, {len(built)} units) '
         f'in {time.time() - started:.0f}s',
         flush=True,
     )
 
 
 def build(places, config) -> None:
-    """Each place's phone page, then its page, which sends phones there."""
+    """Each place's phone page, then its page, which sends phones there.
+
+    A place shown as whole units has no phone page.
+    """
     for place in places:
         slug = place['slug']
+        if not has_circle(place):
+            _page(place, config['radius_km'], slug)
+            continue
         _page(place, config['phone_radius_km'], f'{slug}-phone')
         _page(place, config['radius_km'], slug, phone_scene=f'../{slug}-phone/')
 
@@ -94,7 +97,9 @@ def landing(config, thumbnails=True) -> None:
         Place(
             p['slug'],
             p['title'],
-            f'Within {config["radius_km"]:g} km of {p["around"]}',
+            f'Within {config["radius_km"]:g} km of {p["around"]}'
+            if has_circle(p)
+            else p['extent_note'],
             root / p['slug'],
         )
         for p in config['places']
@@ -125,7 +130,11 @@ def refresh() -> None:
 def publish(places, go=False, gap_s=180) -> None:
     """Upload the pages, phone page first, then the landing page."""
     root = site_root()
-    slugs = [s for p in places for s in (f'{p["slug"]}-phone', p['slug'])]
+    slugs = [
+        s
+        for p in places
+        for s in ((f'{p["slug"]}-phone',) if has_circle(p) else ()) + (p['slug'],)
+    ]
     for i, slug in enumerate(slugs):
         if i and go:
             time.sleep(gap_s)

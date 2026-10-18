@@ -208,6 +208,8 @@ share:
       - northern-wisconsin
       # Madison WI, Dane County, for the value pages (2026-10-17).
       - madison-wi
+      # Nantucket MA, the whole island, for the value pages (2026-10-18).
+      - nantucket-ma
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),

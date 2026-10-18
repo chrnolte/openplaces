@@ -12,8 +12,9 @@ folder on 127.0.0.1 and prints the address to open. Nothing here
 uploads: the module imports no deploy code, and asking it to deploy
 stops it.
 
-The places, their fixed centers and radii are the editorial list in
-`places.yaml` beside this module.
+The places, their fixed centers and radii (or the whole units a place
+shows instead) are the editorial list in `places.yaml` beside this
+module.
 """
 
 import argparse
@@ -62,14 +63,18 @@ def delivery_regions(recipe) -> list[str]:
     return list((share.get('delivery') or {}).get('regions') or [])
 
 
-def units_and_regions(state, circle_metric):
-    """Level-3 units the circle touches that both bundles deliver, and
-    the regions that pool them. Units without bundles are reported."""
-    units = get_admin([state], level=3, geom=True)
-    if 'admin3_id' not in units.columns:
-        units = units.reset_index()
-    units = units.to_crs(5070)
-    touched = units.loc[units.intersects(circle_metric), 'admin3_id'].tolist()
+def units_and_regions(state, circle_metric=None, admin_ids=None):
+    """Level-3 units the circle touches (or `admin_ids`) that both
+    bundles deliver, and the regions that pool them. Units without
+    bundles are reported."""
+    if admin_ids is not None:
+        touched = list(admin_ids)
+    else:
+        units = get_admin([state], level=3, geom=True)
+        if 'admin3_id' not in units.columns:
+            units = units.reset_index()
+        units = units.to_crs(5070)
+        touched = units.loc[units.intersects(circle_metric), 'admin3_id'].tolist()
     members = {}
     for recipe in (PARCEL_RECIPE, FOOTPRINT_RECIPE):
         for region in delivery_regions(recipe):
@@ -90,16 +95,49 @@ def units_and_regions(state, circle_metric):
     return built, regions, missing
 
 
-def build_place(place, radius_km, slug, phone_scene=None) -> Path:
-    """Build one local page of a place; returns its folder."""
-    circle, metric = circle_around(place['center'], radius_km)
-    built, regions, missing = units_and_regions(place['state'], metric)
+def has_circle(place) -> bool:
+    """Whether a place's page is a circle (and has a phone page).
+
+    A place listing `admin_ids` shows those units whole instead, such
+    as an island, and is small enough to need no phone page.
+    """
+    return 'admin_ids' not in place
+
+
+def place_extent(place, radius_km, slug):
+    """Crop, units and regions of one page of a place.
+
+    The crop is None for a place shown as whole units. Stops when no
+    bundle covers the place; reports units without bundles.
+    """
+    if has_circle(place):
+        circle, metric = circle_around(place['center'], radius_km)
+        built, regions, missing = units_and_regions(place['state'], metric)
+    else:
+        circle = None
+        built, regions, missing = units_and_regions(
+            place['state'], admin_ids=place['admin_ids']
+        )
     if not built:
-        raise SystemExit(f'{slug}: no delivered bundles cover this circle.')
+        raise SystemExit(f'{slug}: no delivered bundles cover this place.')
     if missing:
         print(f'{slug}: no bundles for {", ".join(missing)}; left out.')
+    return circle, built, regions
+
+
+def extent_label(place, radius_km) -> str:
+    """The extent in words, for build messages."""
+    return f'{radius_km:g} km' if has_circle(place) else ', '.join(place['admin_ids'])
+
+
+def build_place(place, radius_km, slug, phone_scene=None) -> Path:
+    """Build one local page of a place; returns its folder."""
+    circle, built, regions = place_extent(place, radius_km, slug)
     output = local_root() / slug
-    print(f'Building {slug} ({radius_km} km, {len(built)} units) into {output}')
+    print(
+        f'Building {slug} ({extent_label(place, radius_km)}, {len(built)} units) '
+        f'into {output}'
+    )
     build_web_scene(
         regions,
         built,
@@ -154,6 +192,9 @@ def main(argv=None) -> None:
         )
     place = places[args.place]
     slug = args.place
+    if args.phone and not has_circle(place):
+        print(f'{slug} is shown as whole units and has no phone page.')
+        args.phone = False
     if not args.no_build:
         phone_slug = f'{slug}-phone'
         if args.phone:
