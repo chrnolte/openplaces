@@ -566,6 +566,35 @@ def test_local_command_never_uploads():
     assert all(len(p['center']) == 2 and p['state'] for p in places['places'])
 
 
+def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
+    from openplaces.viz.web_scene import site
+
+    calls = []
+    monkeypatch.setattr(
+        site,
+        'deploy_web_scene',
+        lambda folder, go, subpath: calls.append((subpath, go)),
+    )
+    monkeypatch.setattr(
+        site, 'deploy_landing', lambda root, go: calls.append(('/', go))
+    )
+    monkeypatch.setattr(site.time, 'sleep', lambda seconds: None)
+    site.main(['publish', 'durham', 'boston'])
+    # A dry run unless --go; the phone page before the page that sends
+    # phones to it; the landing page last.
+    assert calls == [
+        ('durham-phone', False),
+        ('durham', False),
+        ('boston-phone', False),
+        ('boston', False),
+        ('/', False),
+    ]
+    with pytest.raises(SystemExit, match='Not in places.yaml'):
+        site.main(['publish', 'atlantis'])
+    with pytest.raises(SystemExit, match='--all'):
+        site.main(['build'])
+
+
 def test_value_sources_are_counted_apart_from_outline_sources():
     provenance = pd.Series(
         ['parcel.massgis'] * 6
