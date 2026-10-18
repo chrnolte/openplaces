@@ -26,6 +26,7 @@ from openplaces.io.harmonizer import (
     _register,
     restrict_to_admin_by_name,
 )
+from openplaces.io.harmonizer.entity_ids import select_latest_vintage
 from openplaces.io.harmonizer.links._shared import (
     _LINK_KEY_COLUMNS,
     DEFAULT_LINK_KEY,
@@ -590,6 +591,10 @@ def _link_auto_discovered(
             _protect_own_columns=protect_columns,
             _supplement_of=match['supplements'] if keyed else None,
             _unit_lot_pairs=unit_lot_pairs,
+            # Only rolls: a transaction table carries tax_year too (the
+            # SDF's assessment year), and every one of its years holds
+            # different sales.
+            _latest_vintage=entity_type == 'property',
         )
         state = _apply_remap_csvs(state, match['recipe_id'])
     return state
@@ -958,6 +963,7 @@ def link_by_id(
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
     _unit_lot_pairs: pd.DataFrame | None = None,
+    _latest_vintage: bool = False,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1252,6 +1258,19 @@ def link_by_id(
         # restrict it here so a per-county aggregate isn't silently pooled
         # across the whole state.
         ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
+    if ref is not None and _latest_vintage:
+        # A roll holding several tax years describes each property once
+        # per year, and aggregate mode would sum them: a Lake County FL
+        # parcel read 3,692,478 in land value, 23 years of one account
+        # against 393,250 on the 2025 roll. The unit's latest roll
+        # stands, the rule assign_entity_ids applies to the property
+        # spine, so both spines read the same year.
+        ref, n_dropped = select_latest_vintage(ref)
+        if n_dropped and state.verbose:
+            print(
+                f'  link_by_id: {recipe_id}: kept the latest roll year, '
+                f'dropped {n_dropped:,d} rows of earlier rolls'
+            )
     if ref is not None and ref_address_key:
         keyed = _derive_address_key(ref, state.admin_id, ref_address_key, ref_key)
         if keyed is not None:
