@@ -86,7 +86,11 @@ written, never because a source merely feeds the recipe, so one county's
 terms cannot hold the rest of a bundle hostage. The rules over-withhold where
 a layer's sidecar cannot say which source filled it; that costs values, not
 a leak. A no-resale clause withholds nothing; the notice reports it.
-**Team bundles are the one exception, and never published.** A region listed
+**Team bundles are the one exception, published only behind a password.** A
+team bundle is shared within the research team, and reaches a web page only
+as a team value page (`viz.web_scene`, `team: true` in its `places.yaml`),
+which `deploy_web_scene` uploads behind a password file on the host and
+refuses to upload without one (maintainer, 2026-10-18). A region listed
 under `share: delivery: team_regions:` also ships as `<region>.team`, in a
 `team/` subdirectory beside the region's own bundle (whose path does not
 move). A team bundle keeps the values of sources a person has cleared with
