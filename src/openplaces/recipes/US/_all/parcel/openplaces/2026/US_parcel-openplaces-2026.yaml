@@ -787,6 +787,26 @@ share:
     # Massachusetts by the US-MA patch of this recipe; empty elsewhere.
     - protected_open_space_share
     - protected_open_space_level
+    # The seven Fathom-free placeslab land value variants (ln real USD
+    # per hectare, 2010 market) and each one's area of applicability
+    # (at most 1 inside), for the Nantucket team value page
+    # (2026-10-18). Filled in Nantucket by the US-MA-NTC patch of this
+    # recipe; empty elsewhere. Their source is cleared for team bundles
+    # only, so every other bundle withholds them (io.delivery).
+    - land_value_per_ha_log_region_nb_bare
+    - land_value_per_ha_log_region_nb_people
+    - land_value_per_ha_log_region_nb_buildings
+    - land_value_per_ha_log_region_nb_wealth
+    - land_value_per_ha_log_region_nb_peoplewealth
+    - land_value_per_ha_log_region_nb_peoplebuildings
+    - land_value_per_ha_log_region_nb_popbldwealth
+    - area_of_applicability_region_nb_bare
+    - area_of_applicability_region_nb_people
+    - area_of_applicability_region_nb_buildings
+    - area_of_applicability_region_nb_wealth
+    - area_of_applicability_region_nb_peoplewealth
+    - area_of_applicability_region_nb_peoplebuildings
+    - area_of_applicability_region_nb_popbldwealth
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:
@@ -810,4 +830,11 @@ share:
       # Madison WI, Dane County (2026-10-17).
       - madison-wi
       # Nantucket MA, the whole island (2026-10-18).
+      - nantucket-ma
+    # Also shipped as a team-internal bundle (`<region>.team`, in a
+    # `team/` subdirectory beside the region's own): it keeps the
+    # placeslab land values cleared for team sharing only, which every
+    # other bundle withholds. Shown only on the password-protected team
+    # value page (maintainer, 2026-10-18).
+    team_regions:
       - nantucket-ma

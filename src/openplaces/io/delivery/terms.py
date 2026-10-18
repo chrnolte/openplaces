@@ -22,6 +22,7 @@ from __future__ import annotations
 from functools import cache
 
 from openplaces.recipe import (
+    apply_recipe_patches,
     get_recipe_by_id,
     get_recipe_dependencies,
     get_recipe_id,
@@ -169,6 +170,26 @@ def _explicit_outputs(recipe: dict, upstream_id: str) -> set[str] | None:
     return outputs
 
 
+def _as_run(recipe: dict, admin_id) -> dict:
+    """*recipe* as *admin_id* runs it, its patch recipes applied.
+
+    `get_recipe_dependencies` reads the patched pipeline, so an input a
+    patch adds is reached. The columns it takes have to be read from the
+    same pipeline: read from the unpatched one, the input counted as a
+    layer mapping nothing, so the columns a patch merged from a
+    restricted source were not withheld by name (measured 2026-10-18 on
+    US-MA-NTC: the placeslab land values reached the public bundle, and
+    the layer rules emptied land_use_class instead).
+    """
+    if admin_id is None or not recipe.get('pipeline'):
+        return recipe
+    try:
+        patched, _ = apply_recipe_patches(recipe, admin_id)
+    except Exception:  # noqa: BLE001 - as in get_recipe_dependencies
+        return recipe
+    return patched
+
+
 def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
     """Add the terms of every recipe upstream of *recipe* for one unit.
 
@@ -192,12 +213,13 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
 
     while frontier:
         current, cap = frontier.pop()
+        as_run = _as_run(current, admin_id)
         for edge in get_recipe_dependencies(current, admin_id=admin_id):
             upstream_id = getattr(edge, 'upstream_recipe_id', None)
             if not upstream_id:
                 # Unresolved auto-discovery cannot be attributed.
                 continue
-            explicit = _explicit_outputs(current, upstream_id)
+            explicit = _explicit_outputs(as_run, upstream_id)
             if explicit is not None:
                 reach = explicit if cap is None else explicit & cap
             else:

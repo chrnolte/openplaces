@@ -290,6 +290,13 @@ land_value_per_ha_log_region_nb_peoplebuildings,Same; 'region-nb_bare' predictor
 land_value_per_ha_log_region_nb_popbldwealth,"Same; 'region-nb_bare' predictors plus population gravity, building footprint shares and median household income",ln(USD/ha),float,mean,,parcel,enrich
 dissimilarity_index,"Dissimilarity of an observation to a model's training sales in importance-weighted predictor space (Meyer & Pebesma 2021), before division by the area-of-applicability threshold",unitless,float,mean,,,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich
+area_of_applicability_region_nb_bare,"Area of applicability of land_value_per_ha_log_region_nb_bare: the parcel's dissimilarity index divided by the threshold from cross-validation folds blocked by census block group; at most 1 is inside the area of applicability, above 1 the prediction extrapolates",unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_people,Same; for land_value_per_ha_log_region_nb_people,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_buildings,Same; for land_value_per_ha_log_region_nb_buildings,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_wealth,Same; for land_value_per_ha_log_region_nb_wealth,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_peoplewealth,Same; for land_value_per_ha_log_region_nb_peoplewealth,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_peoplebuildings,Same; for land_value_per_ha_log_region_nb_peoplebuildings,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_popbldwealth,Same; for land_value_per_ha_log_region_nb_popbldwealth,unitless,float,mean,,parcel,enrich
 effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,ingest,0
 renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,ingest,0
 n_rooms,Number of rooms in the building,,float,mean,54,,ingest,
