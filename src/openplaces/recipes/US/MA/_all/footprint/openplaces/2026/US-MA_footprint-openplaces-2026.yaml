@@ -1,0 +1,67 @@
+# Patch: in Massachusetts, a footprint is a Manufactured Home only on a
+# lot whose occupancy group is residential.
+#
+# Massachusetts takes a parcel's occupancy group (group_parcel) from a
+# fixed table of the state's use codes (US-MA patch of
+# US_parcel-openplaces-2026); a code that names no building, such as
+# vacant, accessory or exempt land, leaves it empty. The national
+# occupancy vote then called small elongated sheds and kiosks on such
+# lots Manufactured Home on footprint shape and value share alone, where
+# the cohort fill's group used to block it.
+# Measured 2026-10-18 on boston-inner-core: 181 outlines turn Manufactured Home with the table alone (Malden, Melrose included; Boston 149), 2 with this guard, both on Multi Family lots; the 67 on code-103 lots keep it.
+# Manufactured homes in Massachusetts stand on lots the roll codes 103
+# (group Manufactured Home) or on residential lots, so the vote's
+# Manufactured Home stands where the lot's group is Manufactured Home,
+# Single Family or Multi Family. Elsewhere it is re-decided right after
+# the vote: a secondary footprint is Secondary, a primary one is
+# Single-Family under the same conditions as the vote's own residual.
+# North Carolina and Texas are untouched.
+
+admin_id: US-MA
+stage: curate
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_footprint-openplaces-2026
+pipeline_patch:
+  - insert_after: resolve_by_vote
+    occurrence: 3
+    step:
+      step: resolve_by_vote
+      target: occupancy_type
+      decisions:
+        - class: Secondary
+          source: manufactured_home_lot_guard
+          min_score: 1
+          require: &guarded
+            - {type: equals, column: occupancy_type, value: Manufactured Home}
+            - type: none_of
+              indicators:
+                - type: in_set
+                  column: group_parcel
+                  values: [Manufactured Home, Single Family, Multi Family]
+          indicators:
+            - {type: equals, column: priority_on_parcel, value: secondary,
+               label: priority}
+        - class: Single-Family
+          source: manufactured_home_lot_guard
+          min_score: 1
+          require: *guarded
+          indicators:
+            - type: all_of
+              label: dwellings
+              indicators:
+                - {type: in_set, column: priority_on_parcel,
+                   values: [primary, unknown]}
+                - {type: equals, column: dwelling_multiplicity, value: single}
+                - type: any_of
+                  indicators:
+                    - type: in_set
+                      column: occupancy_type_prevote
+                      values: [Single-Family, Multi-Family, Manufactured Home,
+                               Secondary]
+                    - {type: is_null, column: occupancy_type_prevote}
