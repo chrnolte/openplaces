@@ -14,6 +14,7 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from shapely.strtree import STRtree
 
 from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
@@ -406,6 +407,93 @@ def drop_elongated_duplicates(
     return to_add
 
 
+def _positional_pairs(left: gpd.GeoSeries, right: gpd.GeoSeries):
+    """Intersecting (left, right) positions and their intersection areas."""
+    a = gpd.GeoDataFrame(geometry=left.to_numpy(), crs=left.crs)
+    b = gpd.GeoDataFrame(geometry=right.to_numpy(), crs=right.crs)
+    j = gpd.sjoin(a, b, predicate='intersects')
+    if j.empty:
+        return np.array([], dtype=int), np.array([], dtype=int), np.array([])
+    ia = j.index.to_numpy()
+    ib = j['index_right'].to_numpy()
+    inter = shapely.area(
+        shapely.intersection(a.geometry.to_numpy()[ia], b.geometry.to_numpy()[ib])
+    )
+    return ia, ib, inter
+
+
+def _overlap_share_reject_ids(spine, candidate, share_max: float) -> pd.Index:
+    """Candidates overlapping accepted outlines by more than *share_max*.
+
+    The share is the candidate's area inside accepted outlines over its own
+    area. Unlike IoU it does not shrink when the accepted outline is large,
+    so a sliver along a big building is caught; unlike a keep-out distance
+    it leaves a separate building alone however close it stands. Measured
+    2026-10-18 on US-NC-NHA: lower-ranked outlines kept by the IoU test that
+    touch an OBM outline overlap it by under 0.05 of their area at the 90th
+    percentile, and 0.1 rejects 3 of 105 of them.
+    """
+    if spine.empty or candidate.empty:
+        return candidate.index[:0]
+    cand = candidate.geometry.to_crs('epsg:6933')
+    ia, _, inter = _positional_pairs(cand, spine.geometry.to_crs('epsg:6933'))
+    if not len(ia):
+        return candidate.index[:0]
+    covered = pd.Series(inter).groupby(ia).sum()
+    share = covered / cand.area.to_numpy()[covered.index.to_numpy()]
+    return candidate.index[covered.index.to_numpy()[(share > share_max).to_numpy()]]
+
+
+def _stale_neighborhood_reject_ids(
+    spine, candidate, radius_m: float, min_neighbors: int, agreement_min: float
+) -> pd.Index:
+    """Candidates clear of the spine where their source disagrees locally.
+
+    A candidate overlapping no accepted outline is either a building the
+    accepted sources missed or a building that is no longer there. The
+    source's own other outlines nearby tell the two apart: where most of
+    them match an accepted outline (overlap of half the smaller or more),
+    the source agrees with the accepted layers there and the candidate is
+    kept; where at least *min_neighbors* of them lie within *radius_m* and
+    fewer than *agreement_min* match, the source's picture of that block
+    predates the accepted layers' (demolition, rebuilding) and the
+    candidate is left out. The candidate itself is not counted. Measured
+    2026-10-18 on US-NC-NHA: of 158 Microsoft outlines the old keep-out
+    distance removed whose local agreement was under 0.5 (against OBM and
+    NC DPS, the outline itself counted), one was drawn by an independent
+    source.
+    """
+    if spine.empty or len(candidate) <= min_neighbors:
+        return candidate.index[:0]
+    cand = candidate.geometry.to_crs('epsg:6933')
+    accepted = spine.geometry.to_crs('epsg:6933')
+    ia, ib, inter = _positional_pairs(cand, accepted)
+    touches = np.zeros(len(cand), dtype=bool)
+    matched = np.zeros(len(cand), dtype=bool)
+    if len(ia):
+        touches[ia[inter > 1.0]] = True
+        small = np.minimum(cand.area.to_numpy()[ia], accepted.area.to_numpy()[ib])
+        matched[ia[inter >= 0.5 * small]] = True
+    clear = np.flatnonzero(~touches)
+    if not len(clear):
+        return candidate.index[:0]
+    zones = gpd.GeoSeries(cand.to_numpy()[clear], crs=cand.crs).centroid.buffer(
+        radius_m
+    )
+    za, zb, _ = _positional_pairs(zones, cand)
+    others = clear[za] != zb
+    za, zb = za[others], zb[others]
+    if not len(za):
+        return candidate.index[:0]
+    counts = (
+        pd.DataFrame({'zone': za, 'matched': matched[zb]})
+        .groupby('zone')['matched']
+        .agg(['size', 'mean'])
+    )
+    stale = counts[(counts['size'] >= min_neighbors) & (counts['mean'] < agreement_min)]
+    return candidate.index[clear[stale.index.to_numpy()]]
+
+
 def _buffer_reject_ids(
     spine: gpd.GeoDataFrame,
     candidate: gpd.GeoDataFrame,
@@ -678,6 +766,22 @@ def resolve_spine(
             )
         else:
             near_ids = candidate.index[:0]
+        if thresholds.get('overlap_share_max') is not None:
+            near_ids = near_ids.union(
+                _overlap_share_reject_ids(
+                    spine, candidate, float(thresholds['overlap_share_max'])
+                )
+            )
+        if label in (thresholds.get('stale_check_labels') or ()):
+            near_ids = near_ids.union(
+                _stale_neighborhood_reject_ids(
+                    spine,
+                    candidate,
+                    radius_m=float(thresholds.get('stale_radius_m', 50.0)),
+                    min_neighbors=int(thresholds.get('stale_min_neighbors', 4)),
+                    agreement_min=float(thresholds.get('stale_agreement_min', 0.5)),
+                )
+            )
 
         to_add = candidate[
             ~candidate.index.isin(overlap_ids) & ~candidate.index.isin(near_ids)
@@ -718,8 +822,8 @@ def resolve_spine(
             msg = (
                 f'  Merge {label}: +{len(to_add):,d} ({len(overlap_ids):,d} overlapping'
             )
-            if apply_buffer:
-                msg += f', {len(near_ids):,d} near-buffer'
+            if len(near_ids):
+                msg += f', {len(near_ids):,d} sliver or stale'
             if n_elong_dropped:
                 msg += f', {n_elong_dropped:,d} elongated duplicates'
             print(msg + ')')
