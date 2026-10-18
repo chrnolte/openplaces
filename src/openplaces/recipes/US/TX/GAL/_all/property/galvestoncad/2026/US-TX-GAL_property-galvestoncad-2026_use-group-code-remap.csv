@@ -2,15 +2,37 @@ use_group_code,use_group,use_subgroup
 A,residential,single family
 B,residential,multi-family
 C,open_space,vacant
+C1,open_space,vacant
+C2,open_space,vacant
 D,open_space,agricultural land
+D1,open_space,agricultural land
+D2,open_space,agricultural land
 E,residential,single family rural
 F,commercial,commercial and industrial
+F1,commercial,commercial
+F2,industrial,industrial and manufacturing
 G,industrial,oil gas and mineral reserves
+G1,industrial,oil and gas
+G2,industrial,minerals
+G3,industrial,other sub-surface interests
 H,commercial,tangible personal vehicles
 I,commercial,banks
 J,industrial,utilities
+J1,industrial,utilities water systems
+J2,industrial,utilities gas distribution systems
+J3,industrial,utilities electric companies
+J4,industrial,utilities telephone companies
+J5,industrial,utilities railroads
+J6,industrial,utilities pipelines
+J7,industrial,utilities cable companies
+J8,industrial,utilities other
+J9,industrial,utilities railroad rolling stock
 L,commercial,business personal property
+L1,commercial,business personal property
+L2,industrial,industrial and manufacturing personal property
 M,residential,mobile home
+M1,residential,mobile home
+M2,commercial,other tangible personal property
 N,exempt,intangible personal property
 O,residential,residential inventory
 S,commercial,special inventory
