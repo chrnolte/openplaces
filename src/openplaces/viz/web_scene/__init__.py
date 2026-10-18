@@ -51,6 +51,7 @@ versions (parquet-wasm, Apache Arrow, the GeoArrow layers, deck.gl).
 
 import gzip
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -77,12 +78,47 @@ MAGIC = b'OPVS'
 FORMAT_VERSION = 2
 SOURCE_SUFFIX = '_source'
 STATIC_DIR = files('openplaces.viz.web_scene') / 'static'
+KNOWN_ISSUES = files('openplaces.viz.web_scene') / 'known_issues.yaml'
+
+
+def known_issues(admin_ids, path=KNOWN_ISSUES) -> list[dict]:
+    """Known issues for a scene's units, for its Sources panel.
+
+    Every page lists the problems we know of in what it shows, so a
+    visitor sees that we look for our own mistakes (maintainer,
+    2026-10-17). The list is kept by hand in `known_issues.yaml`.
+
+    Parameters
+    ----------
+    admin_ids : sequence of str
+        The scene's level-3 units.
+    path : path-like
+        The issues file.
+
+    Returns
+    -------
+    list of dict
+        `found` (ISO date) and `text`, newest first; entries for `all`
+        units and those naming any of `admin_ids`.
+    """
+    import yaml
+
+    wanted = set(admin_ids)
+    entries = yaml.safe_load(Path(path).read_text(encoding='utf-8')).get('issues') or []
+    picked = [
+        {'found': str(entry['found']), 'text': ' '.join(str(entry['text']).split())}
+        for entry in entries
+        if entry['admin_ids'] == 'all' or wanted & set(entry['admin_ids'])
+    ]
+    return sorted(picked, key=lambda issue: issue['found'], reverse=True)
+
+
 # deck.gl's standalone bundle, pinned; the page loads nothing else.
 DECK_GL_URL = 'https://cdn.jsdelivr.net/npm/deck.gl@9.1.14/dist.min.js'
 TOOLTIP_KINDS = ('text', 'money', 'money_per_area', 'year', 'count')
 # The page's heading and the smaller line under it (maintainer,
 # 2026-10-16).
-DEFAULT_TITLE = 'Land and building values'
+DEFAULT_TITLE = 'Land & structure value'
 # The palette a first visit shows (maintainer, 2026-10-16: Pastel).
 DEFAULT_PALETTE = 'pastel'
 DEFAULT_SUBTITLE = 'as seen by the tax assessor'
@@ -229,6 +265,29 @@ RESIDENTIAL_LAND_USE = frozenset(
         'Manufactured Home',
     }
 )
+# The page's own class of a building (maintainer, 2026-10-16/17, handoff
+# item 1f): the roll's land use class of its lot (`land_use_class_parcel`:
+# Condominium, Townhome, Multiple Single-Family, Office, ...), which
+# keeps what the CHEER `occupancy_type` folds into "Low-Rise
+# Multi-Family"; `occupancy_type` where the lot has no class, and always
+# for outbuildings ("Secondary"), since the lot's class describes its
+# main building, not a shed.
+BUILDING_CLASS = 'building_class'
+
+
+def building_class(gdf) -> pd.Series:
+    """The page's class per building (`BUILDING_CLASS`)."""
+    occupancy = gdf['occupancy_type'].astype('string')
+    if 'land_use_class_parcel' not in gdf.columns:
+        return occupancy
+    lot = gdf['land_use_class_parcel'].astype('string')
+    use_lot = lot.notna() & ~occupancy.isin(['Secondary']).fillna(False)
+    return lot.where(use_lot, occupancy)
+
+
+# Lots' dwelling count as the roll states it, beside the count taken
+# from the homes standing on the lot (`_count_dwellings_from_above`).
+ROLL_DWELLINGS = 'n_dwellings_roll'
 # A curated column flagging outlines drawn abnormally tall for what is
 # mapped there (the sliver-value-allocation work decides which; the
 # maintainer's rule of 2026-10-16). The page keeps their height, so
@@ -260,10 +319,12 @@ VALUE_SCENE_LAYERS = (
                 'money_per_area',
                 imputed_from='land_value_imputed_source',
             ),
-            TooltipField('n_dwellings', 'Dwellings', 'count'),
+            # Visitors read "home" (one house, apartment or condo); the
+            # data's term stays "dwelling" (maintainer, 2026-10-17).
+            TooltipField('n_dwellings', 'Homes', 'count'),
             TooltipField(
                 'land_value_imputed_per_dwelling',
-                'Land value per dwelling',
+                'Land value per home',
                 'money',
                 imputed_from='land_value_imputed_source',
             ),
@@ -273,7 +334,7 @@ VALUE_SCENE_LAYERS = (
         ),
         # Lots count the dwellings of the homes on them where the roll
         # states none (`_count_dwellings_from_above`).
-        per_dwelling_label='Land value per dwelling',
+        per_dwelling_label='Land value per home',
         render={
             'drop_corridors': True,
             'height_clip_percentile': 99.9999,
@@ -298,7 +359,7 @@ VALUE_SCENE_LAYERS = (
         stack_on='parcels',
         tooltip=(
             TooltipField('address', 'Address'),
-            TooltipField('occupancy_type', 'Occupancy'),
+            TooltipField(BUILDING_CLASS, 'Building'),
             TooltipField('year_built', 'Year built', 'year'),
             TooltipField(
                 'structure_value',
@@ -312,16 +373,16 @@ VALUE_SCENE_LAYERS = (
                 'money_per_area',
                 imputed_from='structure_value_source',
             ),
-            TooltipField('n_dwellings', 'Dwellings', 'count'),
+            TooltipField('n_dwellings', 'Homes', 'count'),
             TooltipField(
                 'structure_value_per_dwelling',
-                'Building value per dwelling',
+                'Building value per home',
                 'money',
                 imputed_from='structure_value_source',
             ),
             TooltipField('n_records_on_outline', 'Records on this outline', 'count'),
         ),
-        per_dwelling_label='Building value per dwelling',
+        per_dwelling_label='Building value per home',
         # The roll's improvement value, apportioned to the outline but
         # without the land estimate subtracted: a condo's whole value
         # (maintainer, 2026-10-16: 131-135 Willow Ave vanished in the
@@ -377,6 +438,210 @@ def refuse_personal_fields(layers) -> None:
                         f'Scene layer {layer.name!r} would show the personal '
                         f'column {column!r}. A web scene never carries one.'
                     )
+
+
+# Names and credit lines the Sources document shows for source ids the
+# notices name. The credits are the sources' own requests (MassGIS) or
+# what their licence asks (OBM: OpenStreetMap contributors and the OBM
+# authors, recorded in footprint-obm-2025.yaml). Other ids show as named.
+SOURCE_DISPLAY = {
+    'massgis': {
+        'name': 'MassGIS',
+        'credit': 'MassGIS (Bureau of Geographic Information), Commonwealth of '
+        'Massachusetts EOTSS',
+    },
+    'obm': {
+        'name': 'OpenBuildingMap',
+        'credit': '© OpenStreetMap contributors; Oostwegel, Schorlemmer, Lingner & '
+        'Evaz Zadeh (2025), OpenBuildingMap, doi:10.5880/GFZ.LKUT.2025.002',
+    },
+    'microsoft': {
+        'name': 'Microsoft Building Footprints',
+        'credit': 'Microsoft Building Footprints (ODbL 1.0)',
+    },
+    'fema': {'name': 'FEMA USA Structures'},
+    'nconemap': {'name': 'NC OneMap', 'credit': 'NC OneMap (nconemap.gov)'},
+}
+
+_SOURCE_LINE = re.compile(r'^\s*(?P<share>\d+(?:\.\d+)?)%\s+(?P<rest>\S.*)$')
+_URL_LINE = re.compile(r'^\s+(?P<url>https?://\S+)\s*$')
+
+
+def notice_sources(text: str) -> dict:
+    """The page's Sources document from a bundle's licence notice
+    (`io.delivery.terms.format_notice`).
+
+    Reads only the parts a visitor needs: each source with its share,
+    licence or credit text and link, and the share-alike obligation.
+    The notice's "Recipes" section is never carried over: it names the
+    folders the build read recipes from, which are paths on the
+    builder's machine (seen 2026-10-17: a user name on the public page).
+
+    Parameters
+    ----------
+    text : str
+        One notice, or several joined (one per delivery region).
+
+    Returns
+    -------
+    dict
+        `sources`: list of {`name`, `share`, `terms`, `url`}, one per
+        source and terms, the largest share kept; `share_alike`: list
+        of sentences.
+    """
+    sources: dict[tuple, dict] = {}
+    section = None
+    last = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if set(stripped) <= {'-', '='} and stripped:
+            continue
+        if stripped in {
+            'Sources',
+            'Recipes',
+            'Share-alike',
+            'Attribution required',
+            'Withheld',
+            'Redistribution restricted',
+            'Resale restricted',
+        }:
+            section = stripped
+            last = None
+            continue
+        if stripped.startswith('Data licence and attribution for'):
+            section = None
+            continue
+        if section == 'Sources':
+            url = _URL_LINE.match(line)
+            if url and last is not None:
+                last['url'] = url['url']
+                continue
+            match = _SOURCE_LINE.match(line)
+            if not match:
+                continue
+            rest = match['rest']
+            # "<id> (<recipe>) <terms>" or "<id>   <terms>".
+            name, _, terms = rest.partition(' ')
+            terms = terms.strip()
+            if terms.startswith('('):
+                recipe_id, _, terms = terms[1:].partition(')')
+                terms = terms.strip()
+            key = (name, terms)
+            entry = sources.setdefault(
+                key, {'name': name, 'share': 0.0, 'terms': terms, 'url': None}
+            )
+            entry['share'] = max(entry['share'], float(match['share']) / 100)
+            last = entry
+    return _sources_document(list(sources.values()))
+
+
+def scene_sources(recipe, geometry_source) -> dict:
+    """The Sources document for the features a scene actually draws:
+    `io.delivery.terms.bundle_terms` over the scene's own
+    `geometry_source`, so each share is that of the scene's outlines
+    (the region bundles' notices each state their own region's)."""
+    from openplaces.io.delivery.terms import bundle_terms
+
+    terms = bundle_terms(recipe, geometry_source=geometry_source)
+    entries = [
+        {
+            'name': entry['source_id'],
+            'share': entry['share'] or 0.0,
+            'terms': entry['license'] or 'Terms not recorded',
+            'url': entry['terms_url'] or entry['portal_url'],
+        }
+        for entry in terms['sources']
+        if entry['share']
+    ]
+    return _sources_document(entries)
+
+
+FILLED_BY_OPENPLACES = 'Filled in by openplaces'
+
+
+def value_sources(provenance) -> list[dict]:
+    """Where a layer's shown values come from, by share of features.
+
+    The outline sources (`scene_sources`) say who drew the shapes; a
+    value has its own source, recorded in the value's `_source` column
+    (`parcel.massgis`, or `...+imputed` where openplaces filled it in).
+    Shown apart, because the outline shares read as the values' own:
+    97% of Boston's building outlines are OpenBuildingMap's, while 86%
+    of their values are the assessors' via MassGIS (maintainer,
+    2026-10-17: "that must be wrong").
+
+    Parameters
+    ----------
+    provenance : pandas.Series
+        The shown value's `_source` column, one entry per feature.
+
+    Returns
+    -------
+    list of dict
+        `name`, `share` and `credit`, largest share first; features
+        without a value are not counted.
+    """
+    tokens = provenance.dropna().astype(str)
+    if tokens.empty:
+        return []
+
+    def source(token):
+        # `parcel.massgis`: a lot's value, from that lot's source.
+        source_id = token.split('+')[0].split('.')[-1]
+        if source_id in ('', 'parcel'):
+            return 'Assessor roll, via the lot (source not recorded)'
+        return SOURCE_DISPLAY.get(source_id, {}).get('name', source_id)
+
+    names = tokens.map(source).where(
+        ~np.asarray(is_imputed(tokens), dtype=bool), FILLED_BY_OPENPLACES
+    )
+    shares = names.value_counts(normalize=True)
+    credits = {shown['name']: shown.get('credit') for shown in SOURCE_DISPLAY.values()}
+    return [
+        {'name': name, 'share': float(share), 'credit': credits.get(name)}
+        for name, share in shares.items()
+    ]
+
+
+def _sources_document(entries: list[dict]) -> dict:
+    """Name, merge (one entry per source shown) and order the sources;
+    state share-alike once."""
+    merged: dict[str, dict] = {}
+    for entry in entries:
+        shown = SOURCE_DISPLAY.get(entry['name'], {})
+        name = shown.get('name', entry['name'])
+        terms = entry['terms']
+        # The notice's "Credit requested: ..." is shown as the credit.
+        if 'Credit requested:' in terms:
+            terms = terms.split('Credit requested:')[0].strip()
+        if name in merged:
+            # One source behind several recipes (MassGIS outlines and
+            # MassGIS lots): one entry, the larger share, the shorter
+            # terms text.
+            kept = merged[name]
+            kept['share'] = max(kept['share'], entry['share'])
+            if len(terms) < len(kept['terms']):
+                kept['terms'], kept['url'] = terms, entry['url'] or kept['url']
+            continue
+        merged[name] = {
+            'name': name,
+            'share': entry['share'],
+            'terms': terms,
+            'url': entry['url'],
+            'credit': shown.get('credit'),
+        }
+    ordered = sorted(merged.values(), key=lambda e: -e['share'])
+    share_alike: list[str] = []
+    # Share-alike, stated once from the sources themselves (the notice
+    # wraps its sentence over several lines).
+    odbl = sum(e['share'] for e in ordered if 'ODbL' in e['terms'])
+    if odbl:
+        share_alike.append(
+            f'{odbl:.0%} of these outlines come from sources under the Open '
+            'Database License (ODbL 1.0), a share-alike licence: the data '
+            'files of this page are offered under ODbL 1.0 as well.'
+        )
+    return {'sources': ordered, 'share_alike': share_alike}
 
 
 def read_evidence_columns(recipe, region, columns) -> pd.DataFrame:
@@ -701,10 +966,14 @@ def _count_dwellings_from_above(gdfs: dict, layers) -> None:
         below, homes = gdfs[layer.name], gdfs[above.name]
         if 'n_dwellings' not in homes.columns or 'occupancy_type' not in homes.columns:
             continue
+        kind = (
+            homes[BUILDING_CLASS]
+            if BUILDING_CLASS in homes.columns
+            else building_class(homes)
+        )
         homes = homes[
-            homes['occupancy_type']
-            .astype('string')
-            .isin(RESIDENTIAL_OCCUPANCY)
+            kind.astype('string')
+            .isin(RESIDENTIAL_OCCUPANCY | RESIDENTIAL_LAND_USE)
             .fillna(False)
             & (homes['n_dwellings'].fillna(0) > 0)
         ]
@@ -726,7 +995,58 @@ def _count_dwellings_from_above(gdfs: dict, layers) -> None:
             if 'n_dwellings' in below.columns
             else pd.Series(np.nan, index=below.index)
         )
+        # The roll's own count, kept apart: it confirms a home where a
+        # count from outlines alone does not (`ROLL_DWELLINGS`).
+        below[ROLL_DWELLINGS] = own.where(own > 0)
         below['n_dwellings'] = own.where(own > 0, counted.where(counted > 0))
+
+
+EXEMPT_CLASS = 'Exempt'
+
+
+def _mark_exempt_ground(gdfs, layers) -> None:
+    """Buildings on exempt lots are not homes unless the roll says so.
+
+    A display step, run before `_count_dwellings_from_above`. A building
+    takes its class from its lot's land use (`building_class`), so the
+    building of an exempt lot whose code reads residential was drawn as
+    a home and counted as dwellings (120 Main St, Melrose: a National
+    Guard armory; maintainer, 2026-10-17). Each building whose centroid
+    lies on a lot with use group "exempt" and no dwellings of the roll's
+    own is shown with the class `EXEMPT_CLASS` instead. Public housing
+    keeps its homes where the roll counts them. Written to the stacked
+    layer's `BUILDING_CLASS`, in place.
+    """
+    for layer in layers:
+        above = next((u for u in layers if u.stack_on == layer.name), None)
+        if above is None:
+            continue
+        lots, buildings = gdfs[layer.name], gdfs[above.name]
+        if 'use_group' not in lots.columns or BUILDING_CLASS not in buildings.columns:
+            continue
+        use = lots['use_group'].astype('string').str.strip().str.lower()
+        own = (
+            lots['n_dwellings'].astype(float)
+            if 'n_dwellings' in lots.columns
+            else pd.Series(np.nan, index=lots.index)
+        )
+        exempt = ((use == 'exempt').fillna(False) & ~(own > 0)).to_numpy()
+        if not exempt.any() or buildings.empty:
+            continue
+        points = gpd.GeoDataFrame(
+            geometry=buildings.geometry.to_crs(5070).centroid.to_numpy(), crs=5070
+        )
+        ground = gpd.GeoDataFrame(
+            geometry=lots.geometry[exempt].to_crs(5070).to_numpy(), crs=5070
+        )
+        hit = gpd.sjoin(points, ground, predicate='within', how='inner')
+        on_exempt = np.zeros(len(buildings), dtype=bool)
+        on_exempt[hit.index.unique().to_numpy()] = True
+        kind = buildings[BUILDING_CLASS].astype('string')
+        homes = kind.isin(RESIDENTIAL_OCCUPANCY | RESIDENTIAL_LAND_USE).fillna(False)
+        buildings[BUILDING_CLASS] = kind.where(
+            ~(homes.to_numpy() & on_exempt), EXEMPT_CLASS
+        )
 
 
 def _without_filters(flags) -> list[str]:
@@ -1054,6 +1374,10 @@ class Palette:
         Coloring per scene layer name.
     no_value_rgba : tuple of int
         Color of a feature without a value.
+    zero_value_rgba : tuple of int
+        Color of a feature whose recorded value is zero (an exempt or
+        public lot the assessor values at $0), apart from one with no
+        value at all (maintainer, 2026-10-17: white).
     background : str
         CSS background of the page.
     boundary_rgba : tuple of int
@@ -1078,6 +1402,7 @@ class Palette:
     label: str
     layers: dict
     no_value_rgba: tuple[int, int, int, int] = ZERO_VALUE_RGBA
+    zero_value_rgba: tuple[int, int, int, int] = (255, 255, 255, 255)
     background: str = (
         'radial-gradient(ellipse 80% 70% at 50% 45%, #13213d 0%, #0a1222 45%, '
         '#05070d 100%)'
@@ -1138,6 +1463,19 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                     ),
                     # Lots without homes, per dwelling view: grays.
                     other_cmap=('#3d4148', '#6a6f78', '#9aa0a8', '#cdd1d6'),
+                    # Thin lot lines, each a little darker than its own
+                    # lot (maintainer, 2026-10-16): the ramp's stops at
+                    # 82% of their brightness.
+                    line_cmap=(
+                        '#345a73',
+                        '#4e7e75',
+                        '#749771',
+                        '#b2ad83',
+                        '#be8966',
+                        '#aa5746',
+                        '#8a3834',
+                    ),
+                    line_alpha=0.9,
                 ),
                 # Non-residential buildings in the per-dwelling view:
                 # slate blue to ice, a hue neither the amber buildings
@@ -1272,8 +1610,11 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             label='Pastel',
             layers={
                 'parcels': PaletteLayer(
+                    # Starts at a faint blue-gray, not white, so the
+                    # cheapest land stays visibly a value beside "No
+                    # value recorded" (maintainer, 2026-10-17).
                     (
-                        '#ffffff',
+                        '#eef1f7',
                         '#e6f4ff',
                         '#cfeee8',
                         '#e9f5c4',
@@ -1283,20 +1624,28 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                         '#e7b0ef',
                     ),
                     line_rgba=(150, 150, 165, 70),
-                    # Lots without homes, per dwelling view: pale grays.
-                    other_cmap=('#f4f4f2', '#e1e1de', '#cdcdc9', '#b8b8b3'),
+                    # Lots without homes, per dwelling view: grays, from
+                    # about the "no value" gray of the Fells' lakes
+                    # down; the earlier near-whites hid such land
+                    # (0 S Border Rd, Medford; maintainer, 2026-10-17).
+                    other_cmap=('#e2dfd9', '#ccc8c1', '#b4afa7', '#99948c'),
                 ),
                 # Non-residential: warm grays, quieter than the pastel
                 # homes. The top tier of the homes' ramp ends in
                 # a pastel yellow (maintainer, 2026-10-16).
                 'buildings': PaletteLayer(
                     ('#a99fdc', '#8eb0e6', '#7fc6bb', '#ea8fa8', '#ffb866', '#ffe066'),
-                    # Warm grays: sage read as the homes' sea green
+                    # Leaf greens, light to deep: the warm grays looked
+                    # drab beside the pastel homes (maintainer,
+                    # 2026-10-17). Darker and yellower than the homes'
+                    # sea green (#7fc6bb), which a pale sage matched
                     # (5 Maxwells Grn looked non-residential).
-                    other_cmap=('#dedbd6', '#b9b5ae', '#928d85', '#6b665f'),
+                    other_cmap=('#b5dd8f', '#74b94f', '#3f8a35', '#1d5a26'),
                 ),
             },
-            no_value_rgba=(236, 234, 229, 255),
+            # A warm gray clearly darker than the faint low end of the
+            # land ramp, so "no value" and "little value" differ.
+            no_value_rgba=(212, 208, 201, 255),
             background=(
                 'radial-gradient(ellipse 80% 70% at 50% 45%, #ffffff 0%, '
                 '#fbfaf7 60%, #f3f1ec 100%)'
@@ -1360,6 +1709,7 @@ def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) ->
         'label': palette.label,
         'layers': out,
         'no_value': list(palette.no_value_rgba),
+        'zero_value': list(palette.zero_value_rgba),
         'background': palette.background,
         'boundary': list(palette.boundary_rgba),
         'theme': palette.theme,
@@ -1376,32 +1726,92 @@ def _admin_names(admin_ids) -> pd.DataFrame:
     return admin[['admin3_id', 'name', 'geometry']].to_crs(4326)
 
 
-def land_borders(admin_ids, land=None, tolerance_m=5.0, land_buffer_m=25.0) -> list:
+def lake_polygons(admin_ids) -> gpd.GeoSeries:
+    """Lakes, ponds and reservoirs around the scene's units, from NHD.
+
+    NHD High Resolution waterbodies (`US_water-waterbody-usgs-nhdhr2023`)
+    of feature types Lake/Pond (390) and Reservoir (436), read within
+    the units' bounding box. Rivers are not among them: NHD draws wide
+    rivers as areas of their own (NHDArea), so a border along the
+    Charles or the Mystic stays drawn. A state whose file is missing
+    contributes nothing.
+
+    Parameters
+    ----------
+    admin_ids : sequence of str
+        The scene's level-3 units.
+
+    Returns
+    -------
+    geopandas.GeoSeries
+        Lake polygons in EPSG:4326.
+    """
+    from openplaces.core.schema import AdminId
+    from openplaces.recipe import get_output_path, get_recipe_by_id
+
+    admin_ids = list(admin_ids)
+    states = sorted({str(AdminId(a).truncate_to_level(2)) for a in admin_ids})
+    units = get_admin(states, level=3, geom=True)
+    if 'admin3_id' not in units.columns:
+        units = units.reset_index()
+    units = units[units['admin3_id'].isin(admin_ids)]
+    bounds = units.to_crs(4326).total_bounds
+    recipe = get_recipe_by_id('US_water-waterbody-usgs-nhdhr2023')
+    parts = []
+    for state in states:
+        attributes_path = get_output_path(recipe, state)
+        geo_path = get_output_path(recipe, state, geo=True)
+        if not (attributes_path.exists() and geo_path.exists()):
+            continue
+        types = pd.read_parquet(
+            attributes_path, columns=['feature_type_nhd', '_join_id']
+        )
+        keys = types.loc[types['feature_type_nhd'].isin(LAKE_TYPES), '_join_id']
+        geo = gpd.read_parquet(geo_path, bbox=tuple(bounds))
+        parts.append(geo.loc[geo['_join_id'].isin(keys), 'geometry'].to_crs(4326))
+    if not parts:
+        return gpd.GeoSeries([], crs=4326)
+    return gpd.GeoSeries(pd.concat(parts, ignore_index=True), crs=4326)
+
+
+# NHD feature types that cut a town border (`lake_polygons`).
+LAKE_TYPES = (390, 436)
+
+
+def land_borders(
+    admin_ids, land=None, lakes=None, tolerance_m=5.0, open_water_m=300.0
+) -> list:
     """Border lines the scene's units share with another unit, on land.
 
     A unit's whole outline also runs along the coast, which reads on
     the page as a line drawn in the sea. Only the stretches where a
     unit meets a neighbor (inside the scene or not) are kept, so the
-    coastline drops out. Census units also extend into open water and
-    meet there (Boston and its harbor neighbors), so a shared border is
-    further kept only within `land_buffer_m` of the scene's parcels:
-    a border on land has parcels beside it, one through the harbor
-    does not. Neighbors are all units at the same level under the same
-    parent (level 2); a border with a unit across a state line is
-    therefore not drawn.
+    coastline drops out. A stretch through a lake is left out too
+    (Spy Pond, the Mystic Lakes), while one along a road or a river is
+    drawn (maintainer, 2026-10-17): an earlier rule kept only stretches
+    within 25 m of a parcel and broke the Arlington and Belmont border
+    where it follows Route 2. Census units also extend into open water
+    and meet there (Boston and its harbor neighbors), so a stretch more
+    than `open_water_m` from any parcel is left out as well. Neighbors
+    are all units at the same level under the same parent (level 2); a
+    border with a unit across a state line is therefore not drawn.
 
     Parameters
     ----------
     admin_ids : sequence of str
         The scene's level-3 units.
     land : geopandas.GeoDataFrame, optional
-        Parcels marking land. Without it, every shared border is kept.
+        Parcels marking land. Without it, no stretch counts as open
+        water.
+    lakes : geopandas.GeoSeries, optional
+        Lake polygons (`lake_polygons`). Without them, no stretch is
+        cut as a lake.
     tolerance_m : float
         Two outlines closer than this count as one border (the
         sources' shared edges rarely coincide exactly).
-    land_buffer_m : float
-        How close to a parcel a border must run to count as on land;
-        about a street's width, so a border along a road is kept.
+    open_water_m : float
+        How far from every parcel a stretch must lie to count as open
+        water; well beyond a highway's or a river's width.
 
     Returns
     -------
@@ -1440,24 +1850,36 @@ def land_borders(admin_ids, land=None, tolerance_m=5.0, land_buffer_m=25.0) -> l
     if not lines:
         return []
     borders = gpd.GeoSeries(lines, crs=units.crs)
-    if land is not None and len(land):
-        # Each border is cut into short pieces and a piece is kept when
-        # a parcel lies within the buffer, by a nearest-neighbor query.
-        # Parcels are never merged into a land shape: that would treat
-        # them as one unit, which this display step has no need for.
-        parcels = gpd.GeoSeries(land.geometry.to_crs(units.crs).to_numpy())
+    has_land = land is not None and len(land)
+    has_lakes = lakes is not None and len(lakes)
+    if has_land or has_lakes:
+        # Each border is cut into short pieces, and a piece is kept
+        # unless its midpoint lies in a lake or no parcel lies within
+        # `open_water_m` of it (a nearest-neighbor query). Parcels are
+        # never merged into a land shape: that would treat them as one
+        # unit, which this display step has no need for.
+        parcels = water = None
+        if has_land:
+            parcels = gpd.GeoSeries(land.geometry.to_crs(units.crs).to_numpy())
+        if has_lakes:
+            water = gpd.GeoSeries(lakes.to_crs(units.crs).to_numpy())
+        step = 25.0
         kept = []
         for line in borders:
-            pieces = shapely.segmentize(line, land_buffer_m)
+            pieces = shapely.segmentize(line, step)
             coords = np.asarray(pieces.coords)
             segments = shapely.linestrings(np.stack([coords[:-1], coords[1:]], axis=1))
-            hit, _ = parcels.sindex.nearest(
-                shapely.line_interpolate_point(segments, 0.5, normalized=True),
-                max_distance=land_buffer_m,
-                return_all=False,
-            )
-            on_land = np.zeros(len(segments), dtype=bool)
-            on_land[hit] = True
+            middles = shapely.line_interpolate_point(segments, 0.5, normalized=True)
+            on_land = np.ones(len(segments), dtype=bool)
+            if parcels is not None:
+                hit, _ = parcels.sindex.nearest(
+                    middles, max_distance=open_water_m, return_all=False
+                )
+                on_land[:] = False
+                on_land[hit] = True
+            if water is not None:
+                wet, _ = water.sindex.query(middles, predicate='within')
+                on_land[wet] = False
             # Runs of consecutive pieces on land become one line.
             run = []
             for segment, keep in zip(segments, on_land, strict=True):
@@ -1473,7 +1895,7 @@ def land_borders(admin_ids, land=None, tolerance_m=5.0, land_buffer_m=25.0) -> l
                 part
                 for geom in kept
                 for part in shapely.get_parts(geom)
-                if part.geom_type == 'LineString' and part.length > land_buffer_m
+                if part.geom_type == 'LineString' and part.length > step
             ],
             crs=units.crs,
         )
@@ -1659,6 +2081,99 @@ def tour_foci(
     ]
 
 
+def contrast_focus(
+    gdf, column, cell_m=1000.0, radius_m=3000.0, min_homes=200
+) -> dict | None:
+    """The point where homes' value per dwelling differs most nearby.
+
+    The opening tour switches to the per-dwelling view once, over the
+    sharpest contrast between costly and inexpensive homes it can show
+    in one view (maintainer, 2026-10-17). The scene is cut into square
+    cells; each cell's homes give a median value per dwelling (on a log
+    scale, so a ratio counts the same at any price level); of all pairs
+    of cells within `radius_m` of each other, the pair whose medians
+    differ most wins, and the tour circles the point halfway between
+    them. Medians over at least `min_homes` homes keep one odd lot from
+    deciding it.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        A rendered layer with a per-dwelling value column, NaN where a
+        feature is not a home.
+    column : str
+        The per-dwelling value column.
+    cell_m : float
+        Cell size in meters; about a neighborhood. Measured 2026-10-17
+        on boston-inner-core: 500 m cells put the stop between Bay State
+        Road and the Fenway's edge, two blocks of institutional and
+        student housing, not two neighborhoods.
+    radius_m : float
+        Farthest apart two cells may be; about what one view shows.
+    min_homes : int
+        Least homes in a cell, so that a cell is a neighborhood's homes
+        and not one complex.
+
+    Returns
+    -------
+    dict or None
+        `longitude`, `latitude` and `ratio` (the higher median over the
+        lower), or None where no two cells qualify.
+    """
+    if gdf.empty or column not in gdf.columns:
+        return None
+    values = gdf[column].to_numpy(dtype=float)
+    homes = np.isfinite(values) & (values > 0)
+    if not homes.any():
+        return None
+    projected = (
+        gdf[homes]
+        if gdf.crs is not None and gdf.crs.is_projected
+        else gdf[homes].to_crs(gdf[homes].estimate_utm_crs())
+    )
+    points = projected.geometry.centroid
+    cells = (
+        pd.DataFrame(
+            {
+                'i': np.floor(points.x / cell_m).astype(int),
+                'j': np.floor(points.y / cell_m).astype(int),
+                'log_value': np.log10(values[homes]),
+            }
+        )
+        .groupby(['i', 'j'])['log_value']
+        .agg(['median', 'size'])
+        .reset_index()
+    )
+    cells = cells[cells['size'] >= min_homes]
+    if len(cells) < 2:
+        return None
+    x = ((cells['i'] + 0.5) * cell_m).to_numpy()
+    y = ((cells['j'] + 0.5) * cell_m).to_numpy()
+    median = cells['median'].to_numpy()
+    # All pairs at once: a few thousand cells make a matrix of a few
+    # million entries.
+    near = np.hypot(x[:, None] - x[None, :], y[:, None] - y[None, :]) <= radius_m
+    gap = np.where(near, np.abs(median[:, None] - median[None, :]), -1.0)
+    a, b = np.unravel_index(np.argmax(gap), gap.shape)
+    if median[a] < median[b]:
+        a, b = b, a
+    points = gpd.GeoSeries(
+        gpd.points_from_xy(
+            [(x[a] + x[b]) / 2, x[a], x[b]], [(y[a] + y[b]) / 2, y[a], y[b]]
+        ),
+        crs=projected.crs,
+    ).to_crs(4326)
+    middle, high, low = points
+    return {
+        'longitude': round(middle.x, 6),
+        'latitude': round(middle.y, 6),
+        'ratio': round(float(10 ** gap[a, b]), 1),
+        # The two cells and their medians, for the build log.
+        'high': [round(high.x, 5), round(high.y, 5), round(float(10 ** median[a]))],
+        'low': [round(low.x, 5), round(low.y, 5), round(float(10 ** median[b]))],
+    }
+
+
 def build_web_scene(
     region,
     admin_ids,
@@ -1673,6 +2188,7 @@ def build_web_scene(
     crop=None,
     local_only=False,
     landmarks=None,
+    phone_scene=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -1729,6 +2245,12 @@ def build_web_scene(
         label, not a search result: the page offers no way to look one
         up. Its marker stands on the top of the tallest feature drawn
         within 40 m (`landmark_positions`).
+    phone_scene : str, optional
+        Relative address of a lighter page of the same place (e.g.
+        `../boston-phone/`, a smaller circle). A phone-sized or
+        low-memory device opening this page goes there instead, unless
+        the address carries `full=1`. A phone held the full Boston scene
+        poorly or crashed (maintainer's Pixel 9, 2026-10-17).
     verbose : bool
 
     Returns
@@ -1771,6 +2293,7 @@ def build_web_scene(
 
     rendered = {}
     estimated_by_layer = {}
+    source_docs = {}
     bounds = {}
     manifest_layers = []
     notices = {}
@@ -1809,7 +2332,10 @@ def build_web_scene(
             gdf = crop_to_area(gdf, crop)
             if verbose:
                 print(f'{layer.name}: {len(gdf):,} features inside the crop')
+        if 'occupancy_type' in gdf.columns:
+            gdf = gdf.assign(**{BUILDING_CLASS: building_class(gdf)})
         gdfs[layer.name] = merge_identical_outlines(gdf, layer)
+    _mark_exempt_ground(gdfs, layers)
     _count_dwellings_from_above(gdfs, layers)
 
     for layer in layers:
@@ -1831,6 +2357,16 @@ def build_web_scene(
             **layer.render,
         )
         rendered[layer.name] = terrain
+        # The Sources document: from the drawn outlines' own sources
+        # where the layer records them, else from the bundle notices.
+        source_docs[layer.name] = (
+            scene_sources(layer.recipe, gdf['geometry_source'])
+            if 'geometry_source' in gdf.columns and region is not None
+            else notice_sources(notices.get(layer.recipe, ''))
+        )
+        provenance = f'{layer.value_column}{SOURCE_SUFFIX}'
+        if provenance in gdf.columns:
+            source_docs[layer.name]['values'] = value_sources(gdf[provenance])
         out = terrain.gdf
         base = terrain.total_elevation - terrain.rendered_elevation
         geometry = out.geometry
@@ -1856,9 +2392,11 @@ def build_web_scene(
             has = (dwellings > 0) & (raw_value > 0)
             per_dwelling = np.full(len(raw_value), np.nan)
             per_dwelling[has] = raw_value[has] / dwellings[has]
-            if 'occupancy_type' in out.columns:
-                occupancy = out['occupancy_type'].astype('string')
-                residential = occupancy.isin(RESIDENTIAL_OCCUPANCY).to_numpy()
+            if BUILDING_CLASS in out.columns:
+                occupancy = out[BUILDING_CLASS].astype('string')
+                residential = occupancy.isin(
+                    RESIDENTIAL_OCCUPANCY | RESIDENTIAL_LAND_USE
+                ).to_numpy()
                 known = occupancy.notna().to_numpy()
             else:
                 # Lots: residential only where two sources agree, the
@@ -1872,9 +2410,35 @@ def build_web_scene(
                     if 'land_use_class' in out.columns
                     else pd.Series(pd.NA, index=out.index, dtype='string')
                 )
-                residential = (dwellings > 0) & land_use.isin(
-                    RESIDENTIAL_LAND_USE
-                ).to_numpy()
+                # A third check: the roll states dwellings itself, or
+                # its use group is residential or mixed. A land use of
+                # "Multi-Family" on an exempt or unclassed lot with one
+                # outline counted as a home is not enough (125 Arborway,
+                # the Arnold Arboretum: 157 acres, one counted dwelling;
+                # maintainer, 2026-10-16). Public housing keeps its
+                # roll's own count; a homeowners' association's common
+                # land fails the use-group test.
+                roll_count = (
+                    out[ROLL_DWELLINGS].to_numpy(dtype=float)
+                    if ROLL_DWELLINGS in out.columns
+                    else np.full(len(out), np.nan)
+                )
+                use = (
+                    out['use_group'].astype('string').str.strip().str.lower()
+                    if 'use_group' in out.columns
+                    else pd.Series(pd.NA, index=out.index, dtype='string')
+                )
+                use_says_home = (
+                    (use.str.startswith('res') | use.str.contains('mixed'))
+                    .fillna(False)
+                    .to_numpy()
+                )
+                confirmed = (roll_count > 0) | use_says_home
+                residential = (
+                    (dwellings > 0)
+                    & land_use.isin(RESIDENTIAL_LAND_USE).to_numpy()
+                    & confirmed
+                )
                 known = np.ones(len(out), dtype=bool)
             # Everything that is not a home and carries a value, accessory
             # types included: campus buildings classed "Secondary" on a
@@ -1905,7 +2469,9 @@ def build_web_scene(
                 'vmax': high,
                 # Non-residential buildings, per area, own ramp.
                 'other': {
-                    'label': f'Non-residential {layer.label.lower()}',
+                    # Short enough for one legend line with its unit.
+                    'label': 'Non-residential '
+                    + ('buildings' if layer.name == 'buildings' else 'land'),
                     'unit': layer.area_unit,
                     'vmin': other_low,
                     'vmax': other_high,
@@ -1967,9 +2533,14 @@ def build_web_scene(
         per_area = out[f'{layer.value_column}_per_{layer.area_unit}'].to_numpy(
             dtype=float
         )
-        no_value = out[layer.value_column].fillna(0).to_numpy() == 0
-        per_area = np.where(no_value, np.nan, per_area)
-        bounds[layer.name] = scene_bounds(per_area)
+        # Missing stays NaN ("no value"); a recorded zero is shipped as
+        # 0, which the page draws in its own color (`zero_value_rgba`):
+        # a public lot the assessor values at $0 is a fact, not a gap.
+        recorded = out[layer.value_column].to_numpy(dtype=float)
+        per_area = np.where(
+            np.isnan(recorded), np.nan, np.where(recorded == 0, 0.0, per_area)
+        )
+        bounds[layer.name] = scene_bounds(np.where(per_area > 0, per_area, np.nan))
         files_by_unit = {}
         for admin_id in admin_ids:
             rows = (out['admin3_id'] == admin_id).to_numpy()
@@ -2021,10 +2592,17 @@ def build_web_scene(
         )
 
     land = rendered[layers[0].name].gdf
-    boundaries = [
-        {'path': path}
-        for path in border_paths(land_borders(admin_ids, land=land), land)
-    ]
+    borders = land_borders(admin_ids, land=land, lakes=lake_polygons(admin_ids))
+    if crop is not None:
+        # No border runs past the area's edge into ground the scene
+        # does not draw.
+        borders = [
+            part
+            for line in borders
+            for part in shapely.get_parts(line.intersection(crop))
+            if part.geom_type == 'LineString'
+        ]
+    boundaries = [{'path': path} for path in border_paths(borders, land)]
     marks = landmark_positions(
         landmarks or [], [rendered[layer.name] for layer in layers]
     )
@@ -2040,6 +2618,28 @@ def build_web_scene(
         names,
         n_foci=n_foci,
     )
+    # One stop of the tour shows the per-dwelling view, where homes'
+    # values differ most within one view (`contrast_focus`).
+    contrast = None
+    if any(layer.per_dwelling_label for layer in layers):
+        lots = rendered[bottom.name].gdf
+        per_dwelling = f'{bottom.value_column}_per_dwelling'
+        # A home's whole value (land and building) per dwelling where
+        # the lot has both; land alone mostly measures density: on
+        # 2026-10-17 it put Boston's stop at the Fenway, where a condo
+        # unit's share of land is small whatever the unit is worth.
+        if {'total_value', 'n_dwellings', per_dwelling} <= set(lots.columns):
+            homes = np.isfinite(lots[per_dwelling].to_numpy(dtype=float))
+            total = lots['total_value'].to_numpy(dtype=float) / lots[
+                'n_dwellings'
+            ].to_numpy(dtype=float)
+            lots = lots[['geometry']].assign(
+                value_per_dwelling=np.where(homes, total, np.nan)
+            )
+            per_dwelling = 'value_per_dwelling'
+        contrast = contrast_focus(lots, per_dwelling)
+        if verbose and contrast:
+            print(f'per-dwelling tour stop: {contrast}')
     manifest = {
         'title': title or DEFAULT_TITLE,
         'subtitle': DEFAULT_SUBTITLE,
@@ -2061,10 +2661,16 @@ def build_web_scene(
             row.admin3_id: [round(v, 5) for v in row.geometry.bounds]
             for row in admin.itertuples()
         },
-        'notices': notices,
+        # A document, not the raw notices: those carry the builder's
+        # recipe folders (`notice_sources`).
+        'sources': [
+            {'layer': layer.label, **source_docs[layer.name]} for layer in layers
+        ],
         'preview': region is None,
         'local_only': bool(local_only),
         'landmarks': marks,
+        'phone_scene': phone_scene,
+        'known_issues': known_issues(admin_ids),
         'deck_gl_url': DECK_GL_URL,
         'palettes': [palette_manifest(p, layers, bounds) for p in palettes],
         # Shown first unless the visitor chose another before.
@@ -2074,6 +2680,7 @@ def build_web_scene(
             else palettes[0].id
         ),
         'tour': foci,
+        'tour_contrast': contrast,
         'terrain': {
             'elevation_recipe': elevation_recipe,
             'terrain_exaggeration': terrain_exaggeration if ground else None,
@@ -2086,8 +2693,8 @@ def build_web_scene(
         output_dir, manifest_files(manifest) | manifest_files(previous_manifest)
     )
     for item in STATIC_DIR.iterdir():
-        if item.name == 'landing.html':
-            # The landing page's template, written by `landing.py`.
+        if item.name in ('landing.html', 'methods.html'):
+            # Site pages beside the scenes, written by `landing.py`.
             continue
         target = '.htaccess' if item.name == 'htaccess' else item.name
         (output_dir / target).write_bytes(item.read_bytes())
@@ -2449,6 +3056,8 @@ def deploy_landing(output_dir, env_file=None, go=False):
         '+ /thumbs/**',
         '--filter',
         '+ /places.json',
+        '--filter',
+        '+ /methods.html',
         '--filter',
         '- **',
         *dry,

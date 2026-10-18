@@ -149,6 +149,11 @@ def build_landing(
         .replace('{{CARDS}}', '\n'.join(cards))
     )
     (output_dir / 'index.html').write_text(page, encoding='utf-8')
+    # The methods page, linked from each scene (the unexplained
+    # buildings' switch) as `../methods.html`.
+    (output_dir / 'methods.html').write_bytes(
+        (Path(__file__).parent / 'static' / 'methods.html').read_bytes()
+    )
     # Read by each scene for its back link and its menu of the other
     # places (viewer.js `buildPlaceNav`).
     (output_dir / 'places.json').write_text(
