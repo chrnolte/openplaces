@@ -32,6 +32,20 @@
 # (plans/middlesex-fells-lot-values-findings.md). The columns are
 # evidence: no vote, imputation or value step reads them.
 # merge_enrichments fills only empty cells.
+#
+# 4. No land-use class on protected open space that has no roll record.
+# A FEE polygon with no roll record (state forest, conservation or
+# water-supply land) also took the class of whatever FEMA or NSI
+# building reached into it, so a 185 ha reservation read Multi-Family.
+# The class is blanked where the lot has no roll record and at least
+# half of it is protected open space (MassGIS OpenSpace, item 3, which
+# merge_enrichments brings in before the land-use vote; this step runs
+# after it). Measured 2026-10-18 on US-MA: 8 lots, 231 ha (6
+# Single-Family, 2 Multi-Family; all FEE, all protected in perpetuity).
+# The roll test is what keeps houses: 1,132 lots with a roll record and
+# a home class lie at least half on protected open space (houses under
+# conservation restrictions), and keep their class. The rows and their
+# evidence columns are kept.
 
 admin_id: US-MA
 stage: curate
@@ -62,6 +76,20 @@ pipeline_patch:
         - type: in_set
           column: polygon_type
           values: [ROW, WATER, RAIL_ROW, PRIV_ROW]
+        - type: in_set
+          column: property_source
+          values: [none, estimated]
+  - insert_after: reconcile_land_use
+    step:
+      step: suppress_where
+      phase_override: >-
+        the open space share and the roll's absence decide only after the
+        land-use vote has filled the class
+      column: [land_use_class]
+      indicators:
+        - type: numeric_at_least
+          column: protected_open_space_share
+          min: 0.5
         - type: in_set
           column: property_source
           values: [none, estimated]
