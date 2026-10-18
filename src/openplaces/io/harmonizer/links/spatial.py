@@ -15,7 +15,6 @@ from openplaces.core.attribute_registry import (
 from openplaces.core.schema import (
     AdminId,
     SourceGeometryType,
-    admin_scope_covers,
 )
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import (
@@ -44,7 +43,7 @@ from openplaces.io.harmonizer.links.sidecars import (
 )
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
-    get_output_path,
+    find_reference_recipe_id,
     get_recipe_id,
     raise_if_coverage_complete,
 )
@@ -212,52 +211,18 @@ def _resolve_reference_recipe(
 
 
 def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
-    """Auto-discover the best ingest recipe for *entity_type* and *admin_id*.
+    """Auto-discover the reference ingest recipe for *entity_type*.
 
-    Scans all stage=``'ingest'`` recipes of the given entity type and returns
-    the recipe_id of the one whose most specific ``admin_id`` is a parent
-    of (or equal to) *admin_id*.
+    See :func:`openplaces.recipe.find_reference_recipe_id` for the
+    rule. The choice reads recipes only: the DAG calls this before the
+    run's ingests have written anything, to declare the sidecar this
+    step will write, so it must not depend on which outputs exist yet.
+    The recipe index is read here, in this module's namespace, so a
+    test can substitute it.
     """
-    df = find_recipes(entity_type, stage='ingest')
-    if df.empty:
-        return None
-    admin_str = str(admin_id)
-    candidates = []
-    for _, row in df.iterrows():
-        rid_str = row['admin_id']
-        # Containment by level, not by string prefix: a recipe scoped to
-        # the pre-2026 'US-NC-WA' (Wake) is not a parent of 'US-NC-WAR'
-        # (Warren). The id is read, not rebuilt, so a recipe carrying a
-        # filename suffix keeps it (CO_parcel-igac-2026_rural).
-        if admin_scope_covers(rid_str, admin_str):
-            level = rid_str.count('-') + 1 if rid_str else 0
-            recipe_id = row['recipe_id']
-
-            # Since this reference recipe is auto-discovered for a spatial join,
-            # we check if it has geometry. If it was ingested, a companion
-            # `_geo.parquet` file will exist.
-            has_geo = False
-            try:
-                path = get_output_path(recipe_id, admin_id)
-                geo_path = path.with_stem(path.stem + '_geo')
-                if geo_path.exists():
-                    has_geo = True
-            except Exception:
-                pass
-            candidates.append((level, has_geo, recipe_id))
-
-    if not candidates:
-        return None
-
-    # Prefer candidates that have geometry. If none do (e.g. before ingestion),
-    # fall back to all candidates.
-    geo_candidates = [c for c in candidates if c[1]]
-    if geo_candidates:
-        best_candidate = max(geo_candidates, key=lambda x: x[0])
-    else:
-        best_candidate = max(candidates, key=lambda x: x[0])
-
-    return best_candidate[2]
+    return find_reference_recipe_id(
+        entity_type, admin_id, recipes=find_recipes(entity_type, stage='ingest')
+    )
 
 
 def _prepare_reference(

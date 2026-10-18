@@ -331,6 +331,14 @@ def get_recipe_dependencies(
                     _add(src['recipe_id'], 'auto_discover', step=step_name)
             for match in additional:
                 _add(match['recipe_id'], 'auto_discover', step=step_name)
+        elif step_name == 'link_to_reference':
+            # The rule the step resolves its reference by, so the
+            # job runs after, and declares, the ingest it reads.
+            # find_entity_recipe_id differs where a same-scope
+            # recipe writes no geometry (Dauphin County PA's
+            # parcel characteristics outranked its parcel layer).
+            found = _recipe.find_reference_recipe_id(entity_type, admin_id)
+            _add(found, 'auto_discover', step=step_name, resolved=found is not None)
         else:
             found = find_entity_recipe_id(
                 admin_id, entity_type, stage='ingest', silent=True
