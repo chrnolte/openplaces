@@ -18,7 +18,7 @@ RECIPE_IDS = [
     'CO_transaction-openplaces-2026',
     'CO_landcover-arevalo-2025',
     'CO-AN_landcover-forest-hansen-gfc2022',
-    'CO-AN_parcel_landcover-forest-annual-2026',
+    'CO_parcel_landcover-forest-annual-2026',
     'CO_transaction_landcover-forest-annual-2026',
     'CO_parcel_land-value-predictors-2026',
     'CO_transaction_land-value-predictors-2026',
@@ -26,7 +26,7 @@ RECIPE_IDS = [
 
 PAIRS = [
     (
-        'CO-AN_parcel_landcover-forest-annual-2026',
+        'CO_parcel_landcover-forest-annual-2026',
         'CO_transaction_landcover-forest-annual-2026',
         {'raster_admin_id'},
     ),

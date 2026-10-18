@@ -49,6 +49,15 @@
 #   Merge_ID        group id of a multi-parcel purchase
 #
 # Terms: project dataset; the recipe (schema) is public, the data is not.
+# The agencies shared their records answering a data request from the
+# Instituto Humboldt and Boston University ("Contribución de la compra
+# de predios por entidades públicas a la conservación de la
+# biodiversidad en Colombia"), which committed to three things: personal
+# data stay confidential, the contributing agencies are credited (the
+# `et` column, `source_list`, names them per record), and the results
+# are shared with them once the study is finished. The raw layer carries
+# owner names, so it is kept off shared compute storage; only this
+# ingest's output, which has no person column, may go there.
 
 description: >-
   Public land acquisitions for conservation in Colombia with prices and

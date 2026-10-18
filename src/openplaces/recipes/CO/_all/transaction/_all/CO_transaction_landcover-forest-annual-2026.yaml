@@ -1,5 +1,5 @@
 # Recipe: the annual forest outcomes of
-# CO-AN_parcel_landcover-forest-annual-2026, sampled on the transaction
+# CO_parcel_landcover-forest-annual-2026, sampled on the transaction
 # spine's polygons (land acquisitions and PES contracts) so that a
 # treated unit whose polygon is not a cadastral parcel carries the same
 # columns as every untreated parcel.

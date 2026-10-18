@@ -264,3 +264,18 @@ def test_top_level_edge_from_a_fabricated_recipe():
     recipe['reference_footprint_recipe_id'] = 'US-XX_footprint-fabricated-2026'
     upstream = _upstream_ids(get_recipe_dependencies(recipe))
     assert 'US-XX_footprint-fabricated-2026' in upstream
+
+
+def test_a_disabled_step_adds_no_edge():
+    # The enricher skips `enabled: false` steps, so they read nothing;
+    # an edge would schedule an ingest of an input that is not placed.
+    recipe = dict(get_recipe_by_id('CO_parcel_landcover-forest-annual-2026'))
+    upstream = _upstream_ids(get_recipe_dependencies(recipe))
+    assert 'CO_landcover-arevalo-2025' in upstream
+    assert 'CO-AN_landcover-forest-hansen-gfc2022' not in upstream
+    recipe['pipeline'] = [
+        {**step, 'enabled': True} if step.get('enabled') is False else step
+        for step in recipe['pipeline']
+    ]
+    upstream = _upstream_ids(get_recipe_dependencies(recipe))
+    assert 'CO-AN_landcover-forest-hansen-gfc2022' in upstream

@@ -1,6 +1,10 @@
-# Recipe: annual forest outcomes and eastern-Antioquia covariates per
-# parcel, the outcome table of the PES / land acquisition impact
-# evaluation (Reboredo Segovia et al. 2026).
+# Recipe: annual forest outcomes per parcel, the outcome table of the
+# land acquisition and PES impact evaluations (Reboredo Segovia et al.
+# 2026 for CORNARE; French et al. 2026 and the Andes analyses of
+# plans/colombia-impact-analyses-remaining-from-the-nasa-proposal.md).
+# National scope, run per municipality wherever the land-cover product
+# covers it (regions co-cornare, co-andes). The output sits beside the
+# parcel spine's (about 190 columns per parcel).
 #
 # Every step samples a layer derived by CO_landcover-arevalo-2025 (or
 # the Hansen robustness product) over the parcel polygons, one column per
@@ -27,20 +31,18 @@
 # transaction recipe needs to name the department the rasters cover.
 #
 # Two static Antioquia rasters (distance to streams, distance to roads)
-# ride along here because they exist for CORNARE only; the national
-# predictors live in CO_parcel_land-value-predictors-2026. Place
-# `access/CO-AN_stream_distance_3116.tif` and
-# `access/CO-AN_road_distance_3116.tif` under the raster root.
+# and the Hansen robustness series are listed but disabled: they cover
+# Antioquia only and are not placed yet.
 #
 # Protected-area status per year (protected_{year}) is added by the
 # link_annual_status step once it lands (data plan 4.2).
 
 description: >-
-  Annual forest, no-gain forest, deforestation, gain and 60-pixel
-  deforestation vicinity per parcel, 1997-2024, for eastern Antioquia.
+  Annual natural, regrowing and planted forest, deforestation, gain and
+  60-pixel deforestation vicinity per parcel, 1997-2024, Colombian Andes.
 
 stage: enrich
-admin_id: CO-AN
+admin_id: CO
 
 entity:
   entity_type: parcel

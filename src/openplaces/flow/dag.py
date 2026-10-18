@@ -272,7 +272,10 @@ class RecipeDAG:
         seen: set[tuple] = set()
 
         def _add(recipe_id, recipe, walk_admin):
-            if writes_nothing(recipe):
+            # A dependency that loads as a table rather than a recipe (the
+            # committed admin spine CSV an `admin_id_crosswalk` names) is
+            # read in place: there is no job to derive for it.
+            if not isinstance(recipe, dict) or writes_nothing(recipe):
                 return
             for node_admin in self._node_admins(recipe_id, walk_admin):
                 admin_str = str(node_admin) if node_admin is not None else None
