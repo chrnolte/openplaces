@@ -2,17 +2,61 @@ use_group_code,use_group,use_subgroup,admin_id
 A,residential,single family,
 B,residential,multi-family,
 C,open_space,vacant,
+C1,open_space,vacant,
+C2,open_space,vacant,
 D,open_space,agricultural land,
+D1,open_space,agricultural land,
+D2,open_space,agricultural land,
 E,residential,single family rural,
 F,commercial,commercial and industrial,
+F1,commercial,commercial,
+F2,industrial,industrial and manufacturing,
 G,industrial,oil gas and mineral reserves,
+G1,industrial,oil and gas,
+G2,industrial,minerals,
+G3,industrial,other sub-surface interests,
 H,commercial,tangible personal vehicles,
 I,commercial,banks,
 J,industrial,utilities,
+J1,industrial,utilities water systems,
+J2,industrial,utilities gas distribution systems,
+J3,industrial,utilities electric companies,
+J4,industrial,utilities telephone companies,
+J5,industrial,utilities railroads,
+J6,industrial,utilities pipelines,
+J7,industrial,utilities cable companies,
+J8,industrial,utilities other,
+J9,industrial,utilities railroad rolling stock,
 L,commercial,business personal property,
+L1,commercial,business personal property,
+L2,industrial,industrial and manufacturing personal property,
 M,residential,mobile home,
+M1,residential,mobile home,
+M2,commercial,other tangible personal property,
 N,exempt,intangible personal property,
 O,residential,residential inventory,
 S,commercial,special inventory,
 X,exempt,totally exempt,
 B,residential,,US-TX-KLE
+C1,open_space,vacant,US-TX-CAM
+C2,open_space,vacant,US-TX-CAM
+D1,open_space,agricultural land,US-TX-CAM
+D2,open_space,agricultural land,US-TX-CAM
+F1,commercial,commercial and industrial,US-TX-CAM
+F2,commercial,commercial and industrial,US-TX-CAM
+G1,industrial,oil gas and mineral reserves,US-TX-CAM
+G2,industrial,oil gas and mineral reserves,US-TX-CAM
+G3,industrial,oil gas and mineral reserves,US-TX-CAM
+J1,industrial,utilities,US-TX-CAM
+J2,industrial,utilities,US-TX-CAM
+J3,industrial,utilities,US-TX-CAM
+J4,industrial,utilities,US-TX-CAM
+J5,industrial,utilities,US-TX-CAM
+J6,industrial,utilities,US-TX-CAM
+J7,industrial,utilities,US-TX-CAM
+J8,industrial,utilities,US-TX-CAM
+J9,industrial,utilities,US-TX-CAM
+L1,commercial,business personal property,US-TX-CAM
+L2,commercial,business personal property,US-TX-CAM
+M1,residential,mobile home,US-TX-CAM
+M2,residential,mobile home,US-TX-CAM
