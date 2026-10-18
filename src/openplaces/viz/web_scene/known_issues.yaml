@@ -14,20 +14,13 @@ issues:
       than the land values the assessor recorded ($9.5 billion against
       $8.2 billion). We suspect how land is filled in for condominiums
       and are measuring it.
-  - admin_ids: [US-MA-CAM]
-    found: 2026-10-17
-    text: >-
-      Cambridge: a few very small lots (for example on Broadway and on
-      St Johns Road) stand far too tall, because a lot's value is spread
-      over a sliver of its area. A fix is in progress.
   - admin_ids: [US-MA-MED, US-MA-MEL, US-MA-STM, US-MA-WIN]
     found: 2026-10-17
     text: >-
-      Middlesex Fells and nearby: some large road and water polygons
-      that have no assessor record take the class of a house reaching
-      into them (for example "Single-Family" in Winchester and Melrose).
-      A fix is proposed. Parts of one reservation also look different on
-      either side of a town line.
+      Middlesex Fells and nearby: a few large polygons that have no
+      assessor record take the class of a house reaching into them (for
+      example "Multi-Family" and "Single-Family" in Stoneham). Parts of
+      one reservation also look different on either side of a town line.
   - admin_ids: all
     found: 2026-10-16
     text: >-
