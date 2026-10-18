@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from types import SimpleNamespace
 
 import geopandas as gpd
@@ -11,6 +12,7 @@ from shapely.geometry import box
 
 import openplaces.io.enricher.parcels as parcels_mod
 from openplaces.core.schema import AdminId
+from openplaces.io import save_parquet
 from openplaces.io.enricher import EnrichState
 from openplaces.io.enricher.parcels import (
     _source_suffix,
@@ -263,22 +265,28 @@ def test_reloads_existing_crosswalk_when_not_reprocessing(monkeypatch, tmp_path)
     out_path = tmp_path / 'evidence.parquet'
     monkeypatch.setattr(parcels_mod, 'get_output_path', lambda *a, **k: out_path)
     crosswalk_path = out_path.with_stem(out_path.stem + '_crosswalk')
-    pd.DataFrame(
-        {
-            'parcel_id': ['new_1'],
-            'parcel_id_int': [42],
-            'area_ha': [0.0001],
-            'fraction_of_old': [1.0],
-            'match_type': ['geo_id'],
-        }
-    ).to_parquet(crosswalk_path)
+    spine = _gdf({'new_1': box(0, 0, 0.001, 0.001)})
+    save_parquet(
+        pd.DataFrame(
+            {
+                'parcel_id': ['new_1'],
+                'parcel_id_int': [42],
+                'area_ha': [0.0001],
+                'fraction_of_old': [1.0],
+                'match_type': ['geo_id'],
+            }
+        ),
+        crosswalk_path,
+        file_metadata={
+            parcels_mod._CROSSWALK_INPUTS_KEY: parcels_mod._crosswalk_inputs(spine, old)
+        },
+    )
 
     def _raise(*a, **k):
         raise AssertionError('build_id_or_overlay_crosswalk should not run')
 
     monkeypatch.setattr(parcels_mod, 'build_id_or_overlay_crosswalk', _raise)
 
-    spine = _gdf({'new_1': box(0, 0, 0.001, 0.001)})
     state = _make_state(spine, reprocess=False)
 
     result = enrich_parcels_from_reference_crosswalk(
@@ -329,3 +337,76 @@ def test_reprocess_true_rebuilds_crosswalk_even_if_sidecar_exists(
     assert len(calls) == 1
     saved = pd.read_parquet(crosswalk_path)
     assert saved['area_ha'].iloc[0] != pytest.approx(999.0)
+
+
+def _stack_renamed_spines():
+    """Two spine vintages of one place, before and after a re-ingest.
+
+    Before, two rows stacked on one lot polygon carried the suffixed ids
+    `hash_a-1` and `hash_a-2`; after the stack collapsed, the lot is
+    indexed by its bare hash `hash_a`. Ids and geometry are fabricated.
+    """
+    lot = box(0, 0, 0.001, 0.001)
+    other = box(0.002, 0, 0.003, 0.001)
+    before = _gdf({'hash_a-1': lot, 'hash_a-2': lot, 'hash_b': other})
+    after = _gdf({'hash_a': lot, 'hash_b': other})
+    old = _gdf(
+        {'old_1': lot, 'old_2': other},
+        extra={'slope': [5.0, 9.0], 'parcel_id_int': [41, 42]},
+    )
+    return before, after, old
+
+
+@pytest.mark.parametrize('with_footer', [True, False])
+def test_sidecar_built_from_renamed_spine_is_rebuilt(
+    monkeypatch, tmp_path, with_footer
+):
+    """A sidecar naming `hash_a-1` is not reused once the spine says `hash_a`.
+
+    Reproduces US-NC-BRU on 2026-10-18: a 2026-09-09 sidecar reused after
+    the stacked-units fix renamed its parcels raised a KeyError in the
+    area QA check. A sidecar written before the footer existed is
+    treated the same way.
+    """
+    reference_recipe = {'join_partitions_by': {'join_key_name': 'parcel_id_int'}}
+    monkeypatch.setattr(parcels_mod, 'get_recipe_by_id', lambda rid: reference_recipe)
+    before, after, old = _stack_renamed_spines()
+    monkeypatch.setattr(parcels_mod, 'get_entities', lambda *a, **k: old)
+    out_path = tmp_path / 'evidence.parquet'
+    monkeypatch.setattr(parcels_mod, 'get_output_path', lambda *a, **k: out_path)
+    crosswalk_path = out_path.with_stem(out_path.stem + '_crosswalk')
+
+    stale = parcels_mod.build_id_or_overlay_crosswalk(
+        before, old, on_duplicate_geo_id='groupby', min_overlap_m2=0
+    )
+    assert stale['parcel_id_new'].str.endswith('-1').any()
+    if with_footer:
+        parcels_mod._save_published_crosswalk(
+            stale,
+            old,
+            'parcel_id_int',
+            crosswalk_path,
+            parcels_mod._crosswalk_inputs(before, old),
+        )
+    else:
+        published = stale.rename(columns={'parcel_id_new': 'parcel_id'})
+        published['parcel_id_int'] = published.pop('parcel_id_old').map(
+            old['parcel_id_int']
+        )
+        published.to_parquet(crosswalk_path)
+
+    state = _make_state(after, reprocess=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        result = enrich_parcels_from_reference_crosswalk(
+            state,
+            mean_columns=['slope'],
+            save_crosswalk=True,
+            silent_qa=True,
+            min_overlap_m2=0,
+        )
+
+    assert result.evidence.loc['hash_a', 'slope'] == pytest.approx(5.0)
+    assert result.evidence.loc['hash_b', 'slope'] == pytest.approx(9.0)
+    saved = pd.read_parquet(crosswalk_path)
+    assert set(saved['parcel_id']) == {'hash_a', 'hash_b'}

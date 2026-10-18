@@ -886,7 +886,9 @@ def warn_on_geo_id_area_mismatch(
         Number of example pairs to plot (most-similar and least-similar are
         always included first; the rest are random).
     silent : bool, default False
-        Suppress both the plot and the warning.
+        Suppress both the plot and the area warning. Pairs naming an id
+        absent from *new* or *old* are skipped with a warning naming
+        their count, whatever *silent* says.
 
     Returns
     -------
@@ -904,6 +906,28 @@ def warn_on_geo_id_area_mismatch(
     _require_unique_ids(old_ids, 'old')
     new_by_id = new.set_index(new_ids)[['geometry']]
     old_by_id = old.set_index(old_ids)[['geometry']]
+
+    # A pair naming a parcel neither frame has means the crosswalk was
+    # built from other frames (a reused sidecar from before a re-ingest
+    # renamed parcels). That is a finding for this QA check to report,
+    # not a reason to abort the run it guards.
+    known = matched['parcel_id_new'].isin(new_by_id.index) & matched[
+        'parcel_id_old'
+    ].isin(old_by_id.index)
+    if not known.all():
+        warnings.warn(
+            f'{int((~known).sum()):,d} of {len(matched):,d} geo_id-matched pairs '
+            'name a parcel absent from the frames passed in '
+            f'({matched.loc[~known, "parcel_id_new"].nunique():,d} new, '
+            f'{matched.loc[~known, "parcel_id_old"].nunique():,d} old ids); '
+            'the crosswalk was built from other frames. Their areas are not '
+            'checked.',
+            UserWarning,
+            stacklevel=2,
+        )
+        matched = matched[known]
+        if matched.empty:
+            return matched.assign(ratio=pd.Series(dtype=float))
 
     area_new = get_areas(new_by_id.loc[matched['parcel_id_new']], 'ha').to_numpy()
     area_old = get_areas(old_by_id.loc[matched['parcel_id_old']], 'ha').to_numpy()

@@ -242,6 +242,31 @@ def test_warn_on_geo_id_area_mismatch_silent_suppresses_warning():
     assert len(flagged) == 1
 
 
+def test_warn_on_geo_id_area_mismatch_skips_ids_absent_from_frames():
+    """A crosswalk naming `hash_a-1` where `new` holds `hash_a` warns, not raises.
+
+    The crosswalk came from a spine whose stacked rows were suffixed;
+    the frame passed in is a later spine indexed by the bare hash. Ids
+    and geometry are fabricated.
+    """
+    old = _gdf({'old_1': box(0, 0, 0.001, 0.001), 'old_2': box(1, 1, 1.001, 1.001)})
+    new = _gdf({'hash_a': box(0, 0, 0.001, 0.001), 'hash_b': box(1, 1, 1.001, 1.001)})
+    crosswalk = pd.DataFrame(
+        {
+            'parcel_id_old': ['old_1', 'old_2'],
+            'parcel_id_new': ['hash_a-1', 'hash_b'],
+            'area_ha': [0.0, 0.0],
+            'match_type': ['geo_id', 'geo_id'],
+            'fraction_of_old': [1.0, 1.0],
+        }
+    )
+
+    with pytest.warns(UserWarning, match='1 of 2 geo_id-matched pairs name a parcel'):
+        flagged = warn_on_geo_id_area_mismatch(crosswalk, new, old, silent=True)
+
+    assert flagged.empty
+
+
 def test_calibration_recovers_systematic_shift():
     # A 5x5 grid (25 parcels per side) where `old` is offset from `new` by a
     # small, constant shift -- large enough (several grid_degrees cells) to
