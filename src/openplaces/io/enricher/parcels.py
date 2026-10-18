@@ -10,6 +10,8 @@ attribute-registry name, aggregation kind, unit; see
 
 from __future__ import annotations
 
+import hashlib
+import json
 import warnings
 from functools import cache
 
@@ -21,7 +23,7 @@ from openplaces.geo.crosswalk import (
     warn_on_geo_id_area_mismatch,
 )
 from openplaces.io import save_parquet
-from openplaces.io.aggregate import aggregate_rows_weighted
+from openplaces.io.aggregate import aggregate_rows_weighted, read_file_metadata
 from openplaces.io.enricher import EnrichState, _register
 from openplaces.io.readers import get_admin, get_entities
 from openplaces.path import recipe_path
@@ -187,13 +189,38 @@ def _canonical_names(
     return result
 
 
-def _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path):
+_CROSSWALK_INPUTS_KEY = 'openplaces:crosswalk_inputs'
+
+
+def _frame_fingerprint(frame: gpd.GeoDataFrame) -> str:
+    """Hash a parcel frame's ids and geometry bounds, independent of row order.
+
+    A crosswalk sidecar is only valid for the exact parcels it was built
+    from. Hashing ids alone would miss a parcel whose polygon changed
+    under a kept account-number id; hashing full geometry would cost a
+    WKB dump of every polygon. Rounded bounds catch a moved or reshaped
+    parcel at a fraction of that cost.
+    """
+    bounds = frame.geometry.bounds.round(3)
+    keyed = bounds.assign(_id=frame.index.astype(str)).sort_values('_id')
+    hashed = pd.util.hash_pandas_object(keyed, index=False).to_numpy()
+    return hashlib.sha256(hashed.tobytes()).hexdigest()
+
+
+def _crosswalk_inputs(new: gpd.GeoDataFrame, old: gpd.GeoDataFrame) -> str:
+    """The footer value recording which parcel frames a crosswalk joins."""
+    return json.dumps({'new': _frame_fingerprint(new), 'old': _frame_fingerprint(old)})
+
+
+def _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path, inputs):
     """Persist *crosswalk* as a publishable sidecar (the inverse of
     `_load_published_crosswalk`). `parcel_id_old` (the reference entity's
     internal, ingest-time-regenerated index) is translated back to the
     reference source's own native id via *join_key_name* when available, so
     an external consumer holding only the raw reference data can join on it
     directly -- the internal id alone would be meaningless to them.
+    *inputs* (from `_crosswalk_inputs`) goes into the file footer so a
+    later run reuses the sidecar only for the same parcels.
     """
     published = crosswalk[
         ['parcel_id_new', 'parcel_id_old', 'area_ha', 'fraction_of_old', 'match_type']
@@ -203,7 +230,9 @@ def _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path):
         published = published.drop(columns='parcel_id_old')
     else:
         published = published.rename(columns={'parcel_id_old': 'reference_parcel_id'})
-    save_parquet(published, crosswalk_path)
+    save_parquet(
+        published, crosswalk_path, file_metadata={_CROSSWALK_INPUTS_KEY: inputs}
+    )
 
 
 def _load_published_crosswalk(crosswalk_path, old, join_key_name):
@@ -299,9 +328,12 @@ def enrich_parcels_from_reference_crosswalk(
         `reference_parcel_id`, `area_ha`, `fraction_of_old`, `match_type`) --
         a publishable artifact letting an external consumer holding only the
         raw reference data join it against current parcels without
-        re-running this pipeline. When the sidecar already exists and
-        `state.reprocess` is False, it is reloaded and reused instead of
-        recomputing the crosswalk (the expensive part of this step).
+        re-running this pipeline. When the sidecar already exists,
+        `state.reprocess` is False, and its footer records the same
+        current and reference parcels (ids and bounds) as this run's, it
+        is reloaded and reused instead of recomputing the crosswalk (the
+        expensive part of this step); otherwise it is rebuilt and
+        overwritten.
     on_duplicate_geo_id : str, default 'groupby'
         Passed to `build_id_or_overlay_crosswalk` (whose own default is the
         stricter `'raise'`). A handful of parcels sharing identical quantized
@@ -367,9 +399,30 @@ def enrich_parcels_from_reference_crosswalk(
         )
         crosswalk_path = out_path.with_stem(out_path.stem + '_crosswalk')
 
+    # A sidecar is reused only for the parcels it was built from. Its
+    # parcel_id column names the spine rows of the run that wrote it, and
+    # a later re-ingest can rename them: the 2026-10-17 stacked-units fix
+    # turned `X-1` into `X` wherever the hash became unique, and a reused
+    # 2026-09-09 sidecar then named 41 parcels US-NC-BRU no longer had.
+    # A sidecar without the footer (written before it existed) is rebuilt.
+    inputs = _crosswalk_inputs(state.spine, old) if crosswalk_path else None
     reloaded = (
-        crosswalk_path is not None and not state.reprocess and crosswalk_path.exists()
+        crosswalk_path is not None
+        and not state.reprocess
+        and crosswalk_path.exists()
+        and read_file_metadata(crosswalk_path).get(_CROSSWALK_INPUTS_KEY) == inputs
     )
+    stale = (
+        crosswalk_path is not None
+        and crosswalk_path.exists()
+        and not state.reprocess
+        and not reloaded
+    )
+    if stale and state.verbose:
+        print(
+            f'  crosswalk sidecar {crosswalk_path.name} was built from other '
+            'parcels; rebuilding'
+        )
     if reloaded:
         crosswalk = _load_published_crosswalk(crosswalk_path, old, join_key_name)
         if state.verbose:
@@ -412,7 +465,7 @@ def enrich_parcels_from_reference_crosswalk(
         state.timer.mark('QA area mismatch check')
 
     if crosswalk_path is not None and not reloaded:
-        _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path)
+        _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path, inputs)
         if state.verbose:
             print(f'  wrote crosswalk sidecar {crosswalk_path.name}')
 
