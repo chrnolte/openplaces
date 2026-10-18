@@ -39,3 +39,21 @@ cell), writes executed copies to the cache `_logs/validate/` tree, runs
 `docs/_ext/generate_validation_tables.py`, and records a
 `{recipe}_validation-run.json` manifest as its output. It follows `deliver`'s
 scope; `--config validate=false|true` overrides it.
+
+**A staging recipe's ingest is one job for all its units**
+(`ingest_<recipe>_batch` in the Snakefile, for recipes that stage a
+shared archive), and **the profiles keep a failed job's outputs**
+(`keep-incomplete`, `rerun-incomplete`; `flow/submit.py` passes both
+flags when it runs without a profile). Snakemake otherwise deletes every
+output of a failed job, so one failing unit removed the whole recipe's
+good files. What a failed batch leaves is whole, because
+`io.tables.to_parquet` writes under a temporary name
+(`<name>.parquet.tmp-<pid>`, which no `*.parquet` glob matches) and moves
+the file into place, retrying for about 10 s while Dropbox or a reader
+holds the target. Snakemake does not mark those kept files as
+incomplete: a downstream job that needs only a good unit runs on it, and
+the batch reruns when something needs a missing unit (tested 2026-10-17
+on a two-unit batch). An attribute file and its `_geo` sidecar are moved
+one after the other, so the pair is close to, not exactly, atomic. A
+script that calls `snakemake` directly, without a profile, should pass
+`--keep-incomplete --rerun-incomplete` too.

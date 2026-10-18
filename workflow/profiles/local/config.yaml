@@ -90,4 +90,13 @@ rerun-triggers: mtime
 persistence-backend: db
 printshellcmds: true
 keep-going: true
+# keep-incomplete is global because the setting is: Snakemake deletes
+# every output of a failed job, and a batched ingest job (one per
+# staging recipe, all units) owns every unit's file, so one failing
+# unit used to delete the whole recipe's good files and rerun every
+# geospine downstream. Each file is written under a temporary name and
+# moved into place (io/tables.to_parquet), so what a failed job leaves
+# is whole. rerun-incomplete reruns such a job when something needs it.
+keep-incomplete: true
+rerun-incomplete: true
 configfile: workflow/profiles/local/defaults.yaml

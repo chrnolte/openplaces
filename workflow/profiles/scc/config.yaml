@@ -30,3 +30,6 @@ retries: 1
 rerun-triggers: mtime
 software-deployment-method: conda
 printshellcmds: true
+# Kept outputs of a failed job; see the note in profiles/local.
+keep-incomplete: true
+rerun-incomplete: true

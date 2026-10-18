@@ -179,8 +179,8 @@ pipeline:
   # linking first (parcel_id_local, computed by both sides at ingest time),
   # then an address fallback for buildings the APN pass missed. Deliberately
   # not yet added to US_footprint-openplaces-2026's occupancy vote -- that vote/
-  # kernel mechanism is mid-overhaul on a separate branch; see this recipe's
-  # evidence-only mandate above.
+  # kernel mechanism is mid-overhaul on a separate branch. Harmonize
+  # writes evidence only; the vote is curate's.
   #
   # The address pass runs FIRST and the APN pass SECOND, not the other way
   # round: link_by_id's column-priority rule (_write_prioritized) lets

@@ -447,6 +447,14 @@ building spine, footprint spine, parcel geospine. Slice b3 (townhome splits,
 condo-tower merges, NSI points with no outline as rows) is where a building
 stops being one footprint; the re-keying and the projection both refuse rows
 that share a source id, so that slice has to decide the fan-out explicitly.
+A merge is not caught that way: a building made of several outlines names
+one `footprint_id`, so the others' links would stay unattributed, and b3
+needs the footprint-to-building link table as its key. Both steps also
+refuse a spine built from another version of its source (the building
+spine's `footprint_id`s must be the footprint geospine's ids, and the
+projection refuses building rows naming a footprint it lacks), and the
+building spine's checkpoint is stamped with the footprint geospine's
+output as well as its own geospine's.
 
 <!-- The next two paragraphs moved verbatim from AGENTS.md on
 2026-10-17; AGENTS.md keeps the build-order trap. -->
@@ -463,9 +471,15 @@ building spine onto the outlines (`adopt_entity_attributes`, so its
 consumers read unchanged values until they read the building spine); the
 parcel geospine, which reads the ingest-level property tables for
 parcel-level values and the property spine for a count; the parcel spine;
-enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
-from the recipes and a test pins it
-(`test_property_parcel_link_is_written_after_both_of_its_sides`); a script
+enrichment; parcel curation; footprint curation. That is one order the
+DAG allows: `RecipeDAG` derives the edges the recipes declare, so the
+property spine and the footprint chain are not ordered against each other,
+and footprint enrichments wait for the footprint spine only. Tests pin the
+property-to-parcel edge
+(`test_property_parcel_link_is_written_after_both_of_its_sides`) and the
+building chain
+(`test_the_building_spine_sits_between_the_footprint_geospine_and_spine`),
+on one North Carolina county, through the jobs' input paths; a script
 that calls stages by hand has to follow it, and **a parcel geospine built
 before one of its county's rolls was ingested silently lacks that roll's
 values until it is rerun**.
@@ -684,7 +698,10 @@ geometry; this is the equivalent for an entity that has none.
 `io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
 entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The
 spatial joins write theirs from an overlay; `link_entities_by_id` writes the
-property-to-parcel table from an exact match on `parcel_id_local`, with
+property-to-parcel table from an exact match on the first key of
+`[parcel_id_local, parcel_id_admin2]` both tables carry (the list the parcel
+curate's key join uses; a roll bundled with MassGIS's layer has only the
+state id), with
 columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
 (a test pins that a link table holds nothing else, so it can never carry a
 person). It runs in `US_parcel-spine-2026` because that is the first recipe

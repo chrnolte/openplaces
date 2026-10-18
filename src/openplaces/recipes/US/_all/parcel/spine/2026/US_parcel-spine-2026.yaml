@@ -185,14 +185,19 @@ pipeline:
   # rerun costs no geometry. One exact pass on the standardized key, the
   # same pass the geospine's own property join runs: the punctuation-free
   # fallback keys are shared by hundreds of parcels in some counties,
-  # which an n:m table would turn into hundreds of false links. Changes
-  # nothing on the spine, and nothing reads the table yet.
+  # which an n:m table would turn into hundreds of false links. The key
+  # is the first of the list both tables carry, the list the parcel
+  # curate's aggregate_from_entities joins on: a roll bundled with
+  # MassGIS's layer carries parcel_id_admin2 and no parcel_id_local, and
+  # its link was empty (US-MA-SOM, 2026-10-17). Changes nothing on the
+  # spine; the parcel curate reads the table.
   # After the checkpointed step on purpose: a restored checkpoint skips
   # every step before it, and the checkpoint's validity covers the
   # geospine only, so a link placed earlier would survive a rebuilt
   # property spine unrewritten (seen on Victoria County, 2026-09-20).
   - step: link_entities_by_id
     recipe_id: US_property-spine-2026
+    spine_key: [parcel_id_local, parcel_id_admin2]
 
   # Attach per-parcel transaction diagnostics from every auto-discovered
   # transaction source scoped to this admin unit: a count, and the most

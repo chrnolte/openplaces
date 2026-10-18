@@ -61,6 +61,9 @@ n_residential_buildings,"Number of residential buildings (main-area improvements
 has_homestead_exemption,Whether the property carries a residence homestead exemption as the appraisal roll records it (Texas: the owner's principal residence),,bool,max,52.6,,ingest
 land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
+n_buildings_per_parcel,Number of buildings on the building's parcel; the building spine's name for n_footprints_per_parcel,,float,first,,building,harmonize
+n_parcels_per_footprint,Number of parcels the footprint overlaps,,float,first,,footprint,harmonize
+n_parcels_per_building,Number of parcels the building overlaps; the building spine's name for n_parcels_per_footprint,,float,first,,building,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
