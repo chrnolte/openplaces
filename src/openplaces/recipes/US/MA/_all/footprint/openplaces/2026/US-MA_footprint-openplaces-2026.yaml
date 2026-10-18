@@ -1,21 +1,26 @@
-# Patch: in Massachusetts, a footprint is a Manufactured Home only on a
-# lot whose occupancy group is residential.
+# Patch: in Massachusetts, a footprint is a Manufactured Home only where
+# a source states it.
 #
-# Massachusetts takes a parcel's occupancy group (group_parcel) from a
-# fixed table of the state's use codes (US-MA patch of
-# US_parcel-openplaces-2026); a code that names no building, such as
-# vacant, accessory or exempt land, leaves it empty. The national
-# occupancy vote then called small elongated sheds and kiosks on such
-# lots Manufactured Home on footprint shape and value share alone, where
-# the cohort fill's group used to block it.
-# Measured 2026-10-18 on boston-inner-core: 181 outlines turn Manufactured Home with the table alone (Malden, Melrose included; Boston 149), 2 with this guard, both on Multi Family lots; the 67 on code-103 lots keep it.
-# Manufactured homes in Massachusetts stand on lots the roll codes 103
-# (group Manufactured Home) or on residential lots, so the vote's
-# Manufactured Home stands where the lot's group is Manufactured Home,
-# Single Family or Multi Family. Elsewhere it is re-decided right after
-# the vote: a secondary footprint is Secondary, a primary one is
-# Single-Family under the same conditions as the vote's own residual.
-# North Carolina and Texas are untouched.
+# The national occupancy vote can reach Manufactured Home on footprint
+# shape and value alone: an elongated outline under 185 m2
+# (morphology), the keyword-probability score, or a parcel with no
+# improvement value. Those signals were calibrated in North Carolina and
+# Texas. In Boston and its neighbours the footprint layer (OBM) draws
+# each unit of a row of attached houses as its own building, a narrow
+# deep box of the same shape as a single-wide, and narrow detached
+# houses look the same. Measured 2026-10-18 on boston-inner-core
+# (14 towns with Malden and Melrose): 2,021 outlines were Manufactured Home, 81 with a source stating it.
+# Of Boston's 1,125, 62% share a wall of 3 m or more with another
+# outline. With this guard 81 remain, the 67 on code-103 lots among them. Massachusetts records manufactured homes in its own use code
+# (103, group Manufactured Home), so here the vote's Manufactured Home
+# stands only where the lot carries that code or the vote's evidence
+# includes the assessor keyword, NSI, FEMA, or a manufactured-home park
+# or community. Elsewhere it is re-decided right after the vote: a
+# secondary footprint is Secondary; a primary one whose class before the
+# vote was non-residential (a college, office or church building) gets
+# that class back; any other primary one is Single-Family under the same
+# conditions as the vote's own residual. North Carolina and Texas are
+# untouched.
 
 admin_id: US-MA
 stage: curate
@@ -35,22 +40,39 @@ pipeline_patch:
       target: occupancy_type
       decisions:
         - class: Secondary
-          source: manufactured_home_lot_guard
+          source: manufactured_home_stated_guard
           min_score: 1
-          require: &guarded
+          require: &unstated
             - {type: equals, column: occupancy_type, value: Manufactured Home}
             - type: none_of
               indicators:
-                - type: in_set
-                  column: group_parcel
-                  values: [Manufactured Home, Single Family, Multi Family]
+                - {type: equals, column: group_parcel, value: Manufactured Home}
+                - type: has_token
+                  column: occupancy_type_source
+                  values: [keyword, nsi, fema, parcel_park, parcel_community]
           indicators:
             - {type: equals, column: priority_on_parcel, value: secondary,
                label: priority}
-        - class: Single-Family
-          source: manufactured_home_lot_guard
+        - class_column: occupancy_type_prevote
+          source: manufactured_home_stated_guard
           min_score: 1
-          require: *guarded
+          require: *unstated
+          indicators:
+            - type: all_of
+              label: prevote
+              indicators:
+                - {type: in_set, column: priority_on_parcel,
+                   values: [primary, unknown]}
+                - type: none_of
+                  indicators:
+                    - type: in_set
+                      column: occupancy_type_prevote
+                      values: [Single-Family, Multi-Family, Manufactured Home,
+                               Secondary]
+        - class: Single-Family
+          source: manufactured_home_stated_guard
+          min_score: 1
+          require: *unstated
           indicators:
             - type: all_of
               label: dwellings

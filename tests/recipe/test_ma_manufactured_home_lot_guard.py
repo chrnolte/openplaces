@@ -1,4 +1,4 @@
-"""The US-MA guard: Manufactured Home only on a lot with a residential group."""
+"""The US-MA guard: Manufactured Home only where a source states it."""
 
 import pandas as pd
 
@@ -8,6 +8,7 @@ from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
 
 RID = 'US_footprint-openplaces-2026'
+GUARD = 'manufactured_home_stated_guard'
 
 
 def _guard(admin):
@@ -15,12 +16,7 @@ def _guard(admin):
     steps = recipe['pipeline']
     votes = [i for i, s in enumerate(steps) if s['step'] == 'resolve_by_vote']
     guard = [
-        i
-        for i in votes
-        if any(
-            d.get('source') == 'manufactured_home_lot_guard'
-            for d in steps[i]['decisions']
-        )
+        i for i in votes if any(d.get('source') == GUARD for d in steps[i]['decisions'])
     ]
     return steps, votes, guard
 
@@ -39,19 +35,30 @@ def test_guard_on_fabricated_outlines():
     mh = 'Manufactured Home'
     frame = pd.DataFrame(
         {
-            'occupancy_type': [mh, mh, mh, mh, 'Single-Family'],
-            'group_parcel': [None, 'Government Services', mh, 'Single Family', None],
-            'priority_on_parcel': [
-                'secondary',
-                'primary',
-                'primary',
-                'primary',
-                'primary',
+            'occupancy_type': [mh, mh, mh, mh, mh, 'Single-Family', mh],
+            'occupancy_type_source': [
+                'morphology',
+                'morphology+keyword_probability',
+                'morphology',
+                'morphology+keyword_probability+keyword',
+                'nsi+no_improvement_value',
+                'dwellings',
+                'morphology',
             ],
-            'dwelling_multiplicity': ['single'] * 5,
-            'occupancy_type_prevote': [None] * 5,
+            'group_parcel': [
+                None,
+                'Single Family',
+                mh,
+                'Single Family',
+                None,
+                None,
+                'College/University',
+            ],
+            'priority_on_parcel': ['secondary'] + ['primary'] * 6,
+            'dwelling_multiplicity': ['single'] * 7,
+            'occupancy_type_prevote': [None] * 6 + ['College/University'],
         },
-        index=['SHED', 'KIOSK', 'MH_LOT', 'HOUSE_LOT', 'HOUSE'],
+        index=['SHED', 'ROW_UNIT', 'MH_LOT', 'KEYWORD', 'NSI', 'HOUSE', 'COLLEGE'],
     )
     state = CurateState(
         recipe={},
@@ -62,8 +69,10 @@ def test_guard_on_fabricated_outlines():
         curated=frame,
     )
     out = resolve_by_vote(state, **params).curated['occupancy_type'].astype(str)
-    assert out['SHED'] == 'Secondary'  # empty lot group
-    assert out['KIOSK'] == 'Single-Family'  # non-residential lot group
+    assert out['SHED'] == 'Secondary'  # shape alone, secondary
+    assert out['ROW_UNIT'] == 'Single-Family'  # shape and score alone
     assert out['MH_LOT'] == mh  # code 103 lot keeps the class
-    assert out['HOUSE_LOT'] == mh  # residential lot keeps the class
+    assert out['KEYWORD'] == mh  # the assessor's keyword states it
+    assert out['NSI'] == mh  # NSI states it
     assert out['HOUSE'] == 'Single-Family'
+    assert out['COLLEGE'] == 'College/University'  # class before the vote
