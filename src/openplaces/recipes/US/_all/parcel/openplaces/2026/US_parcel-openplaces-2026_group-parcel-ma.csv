@@ -1,0 +1,83 @@
+# Massachusetts property type classification codes -> occupancy group
+# (group_parcel), written from the code definitions, never from the
+# groups that co-occur with a code in the data. Read by
+# translate_descriptions in the US-MA patch of US_parcel-openplaces-2026,
+# which replaces the cohort fill (impute_from_group_statistic) there.
+# Patterns match the first three characters of the town's use code
+# (4-digit and lettered codes such as 1124 or 970C carry a local suffix).
+# A code with no row, or a row with an empty group, leaves group_parcel
+# empty: ownership-only codes (900-939) say nothing about the building.
+# Definitions: MA DOR, Property Type Classification Codes, Bureau of
+# Local Assessment, revised March 2014 (state archive copy), for 1xx and
+# 9xx; and the 2019 codes as transcribed in EPA CII General Permit
+# Appendix H for 3xx and 4xx.
+# Boston uses its own list: US_parcel-openplaces-2026_group-parcel-ma-bos.
+pattern,match_type,group_parcel,reviewed,definition
+^013,regex,Multi Family,true,"Multiple use, primarily residential"
+^031,regex,Retail,true,"Multiple use, primarily commercial"
+^037,regex,Retail,true,"Multiple use, primarily commercial, part Chapter 61A"
+^101,regex,Single Family,true,Single family
+^102,regex,Multi Family,true,Residential condominium
+^103,regex,Manufactured Home,true,Manufactured home
+^10[45],regex,Multi Family,true,Two- and three-family
+^109,regex,Single Family,true,Multiple houses on one parcel
+^11[1-4],regex,Multi Family,true,Apartments
+^121,regex,Multi Family,true,Rooming or boarding house
+^12[235],regex,Institutional Dormitory,true,"Fraternities, residence halls, other congregate housing"
+^199,regex,Multi Family,true,"Other residential; the condominium master record of a lot whose units carry 102 (Cambridge)"
+^30[0-2],regex,Hotel,true,"Hotels, motels, inns"
+^304,regex,Nursing Home,true,Nursing homes
+^305,regex,Hospital,true,Private hospitals
+^31[01],regex,Heavy Industrial,true,Fuel and gas tanks
+^31[346],regex,Wholesale,true,"Lumber yards, trucking terminals, warehouses"
+^318,regex,Agricultural,true,Commercial greenhouses
+^32[1-5],regex,Retail,true,Retail and shopping
+^326,regex,Entertainment/Recreation,true,Eating and drinking establishments
+^33[01],regex,Retail,true,Automotive sales and supplies
+^33[2-58],regex,Personal & Repair Services,true,"Auto repair, fuel and service stations, car washes"
+^33[67],regex,Garage,true,Parking garages and lots
+^340,regex,Professional Technical Services,true,General office buildings
+^341,regex,Bank,true,Bank buildings
+^342,regex,Medical Office,true,Medical office buildings
+^350,regex,Government Services,true,Postal services
+^351,regex,Average School,true,Educational properties
+^355,regex,Personal & Repair Services,true,Funeral homes
+^356,regex,Professional Technical Services,true,Miscellaneous public services
+^36[01],regex,Entertainment/Recreation,true,Museums and galleries
+^36[2-4],regex,Theater,true,Theaters
+^36[5-9],regex,Entertainment/Recreation,true,"Stadiums, arenas, fairgrounds, cultural"
+^37[0-7],regex,Entertainment/Recreation,true,Indoor recreation
+^38[0-9],regex,Entertainment/Recreation,true,Outdoor recreation
+^40[03],regex,Light Industrial,true,Manufacturing
+^401,regex,Wholesale,true,Warehouses for manufactured products
+^402,regex,Professional Technical Services,true,Office of a manufacturing operation
+^404,regex,High Technology,true,Research and development
+^41[0-3],regex,Metals/Minerals processing,true,"Sand, gravel, gypsum, rock"
+^42[014578],regex,Heavy Industrial,true,"Tanks, substations, gas production and storage"
+^434,regex,High Technology,true,Telecommunication data centers
+^45[0-2],regex,Heavy Industrial,true,Electric generation plants
+^900,regex,Government Services,true,United States Government
+^91[26],regex,Government Services,true,"State corrections, youth services, military campgrounds"
+^913,regex,Nursing Home,true,"State public health, soldiers' homes"
+^914,regex,Hospital,true,"State mental health, mental retardation"
+^9[12]7,regex,College/University,true,"State university, state colleges, community colleges"
+^92[268],regex,Government Services,true,"State corrections, military, police, sheriffs; judiciary; state office buildings"
+^923,regex,Hospital,true,"State public health, soldiers' homes, mental health"
+^931,regex,Government Services,true,"Municipal or county, improved, selectmen or city council"
+^934,regex,Average School,true,"Municipal or county, improved, education"
+^935,regex,Emergency Response,true,"Municipal or county, improved, public safety"
+^939,regex,Government Services,true,"Municipal or county, improved, district"
+^94[0-1347],regex,Average School,true,"Elementary, secondary and other educational"
+^942,regex,College/University,true,College or university
+^945,regex,Institutional Dormitory,true,"Private educational, affiliated housing"
+^958,regex,Entertainment/Recreation,true,"Charitable, recreation, active use"
+^959,regex,Multi Family,true,"Charitable, housing, other"
+^98[15],regex,Government Services,true,"Other city or town, improved, municipal or public safety"
+^989,regex,Government Services,true,"Other district, improved"
+^99[234],regex,Government Services,true,"County or regional, improved: deeds, correctional, association"
+^954,regex,Entertainment/Recreation,true,"Function halls, community centers"
+^955,regex,Hospital,true,Hospitals
+^956,regex,Government Services,true,"Libraries, museums"
+^960,regex,Church,true,"Church, mosque, synagogue, temple"
+^970,regex,Multi Family,true,Housing authority
+^97[12],regex,Government Services,true,Utility and transportation authorities

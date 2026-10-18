@@ -1,0 +1,22 @@
+# Patch: Boston's occupancy group table.
+#
+# Boston's roll uses the city's own occupancy code list, not the state's
+# (970 is a church in Boston and housing authority property elsewhere;
+# 908 is the Boston Housing Authority). The US-MA patch translates use
+# codes to an occupancy group from a fixed table; here it reads Boston's
+# table (US_parcel-openplaces-2026_group-parcel-ma-bos.csv) instead.
+
+admin_id: US-MA-BOS
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - set: translate_descriptions
+    params:
+      keywords: group-parcel-ma-bos

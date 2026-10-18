@@ -1,0 +1,81 @@
+# Boston Assessing occupancy codes -> occupancy group (group_parcel),
+# written from the code definitions of Boston's own list ("Massachusetts
+# Property Classification System Occupancy Codes", Boston Assessing
+# Department), never from the groups that co-occur with a code in the
+# data. Read by translate_descriptions in the US-MA-BOS patch of
+# US_parcel-openplaces-2026. Patterns match the first three characters
+# of the use code. A code with no row leaves group_parcel empty:
+# ownership-only codes (900-929), land codes and mixed-use codes say
+# nothing about the building.
+pattern,match_type,group_parcel,reviewed,definition
+^101,regex,Single Family,true,Single family dwelling
+^102,regex,Multi Family,true,Residential condo
+^103,regex,Manufactured Home,true,Mobile home
+^10[45],regex,Multi Family,true,Two- and three-family dwelling
+^108,regex,Garage,true,Condo parking (residential)
+^109,regex,Single Family,true,Multiple buildings on one lot
+^11[1-5],regex,Multi Family,true,Apartments and co-op apartments
+^116,regex,Garage,true,Residential parking garage
+^118,regex,Nursing Home,true,Elderly home
+^119,regex,Garage,true,Residential parking lot
+^121,regex,Multi Family,true,Rooming house
+^12[23],regex,Institutional Dormitory,true,Fraternity house and residence hall
+^12[5-7],regex,Multi Family,true,Subsidized housing
+^30[0-2],regex,Hotel,true,"Hotel, motel, inn"
+^303,regex,Entertainment/Recreation,true,Private city club
+^304,regex,Nursing Home,true,Nursing or convalescent home
+^305,regex,Hospital,true,Private or taxable hospital
+^306,regex,High Technology,true,Laboratory
+^307,regex,Personal & Repair Services,true,Veterinary hospital
+^309,regex,Medical Office,true,Outpatient medical clinic
+^31[01],regex,Personal & Repair Services,true,Laundry and laundromat
+^31[2-8],regex,Wholesale,true,"Storage, lumber yard, truck terminal, piers, warehouse"
+^319,regex,Retail,true,Strip center
+^32[0-5],regex,Retail,true,"Retail, discount and department stores, shopping center, supermarket"
+^32[6-9],regex,Entertainment/Recreation,true,"Restaurants, bars, fast food"
+^33[01],regex,Retail,true,Auto showroom and supply
+^33[2-35],regex,Personal & Repair Services,true,"Repair garage, self-service station, car wash"
+^334,regex,Retail,true,Service center or retail
+^33[6-8],regex,Garage,true,Parking garages and lots
+^339,regex,Personal & Repair Services,true,Self-service car wash
+^34[03-8],regex,Professional Technical Services,true,Office buildings
+^341,regex,Bank,true,Bank building
+^342,regex,Medical Office,true,Medical office
+^350,regex,Government Services,true,Postal service
+^351,regex,Average School,true,Training or private education
+^353,regex,Entertainment/Recreation,true,Social club
+^355,regex,Personal & Repair Services,true,Funeral home
+^356,regex,Professional Technical Services,true,Commercial condo
+^357,regex,Retail,true,Retail condo
+^358,regex,Professional Technical Services,true,Office condo
+^359,regex,Garage,true,Condo parking (commercial)
+^36[01],regex,Entertainment/Recreation,true,"Museum, gallery, night club"
+^36[2-4],regex,Theater,true,Theaters
+^36[5-9],regex,Entertainment/Recreation,true,"Auditorium, fieldhouse, race track, fairground, artist studio"
+^37[0-7],regex,Entertainment/Recreation,true,Indoor recreation
+^38[0-6],regex,Entertainment/Recreation,true,Outdoor recreation and marinas
+^387,regex,Garage,true,Pay parking lot
+^399,regex,Agricultural,true,Commercial greenhouse
+^40[01358],regex,Light Industrial,true,"Manufacturing, industrial warehouse and loft, machine shop, newspaper plant"
+^402,regex,Professional Technical Services,true,Office (industrial use)
+^40[46],regex,High Technology,true,"Light manufacturing and R&D, computer equipment building"
+^41[02],regex,Metals/Minerals processing,true,"Mining, quarrying, metal processing"
+^41[4-7],regex,Food/Drug/Chemical,true,"Food processing, bottling, cannery, dairy"
+^42[0-8],regex,Heavy Industrial,true,"Tanks, power plant, substations, gas plant and storage"
+^446,regex,Heavy Industrial,true,Water or sewer utility
+^450,regex,Light Industrial,true,Industrial condo
+^908,regex,Multi Family,true,Boston Housing Authority
+^950,regex,Retail,true,Retail condo (exempt)
+^960,regex,Professional Technical Services,true,Office condo (exempt)
+^965,regex,Government Services,true,Government office building
+^970,regex,Church,true,"Church, synagogue"
+^97[23],regex,Government Services,true,Correctional and administrative buildings
+^97[45],regex,Emergency Response,true,Fire and police stations
+^976,regex,Average School,true,School
+^977,regex,College/University,true,College (academic)
+^978,regex,Government Services,true,Library
+^979,regex,Hospital,true,Hospital (exempt)
+^98[01],regex,Heavy Industrial,true,Water treatment and incineration plants
+^982,regex,Government Services,true,Armory
+^984,regex,Entertainment/Recreation,true,Public beach
+^995,regex,Multi Family,true,"Condo main, the building record of a condominium whose units carry 102"
