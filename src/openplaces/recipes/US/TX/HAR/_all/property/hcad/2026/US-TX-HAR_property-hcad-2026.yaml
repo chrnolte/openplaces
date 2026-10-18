@@ -55,6 +55,22 @@
 # pending (plans/value-viewer-new-places-sources.md, 2026-10-17). A
 # newer export may value some of them for 2026; re-ingest first.
 #
+# STATE CLASS CROSSWALK. The statewide TxGIO crosswalk keys on the
+# first letter, so F1 (HCAD: "Real, Commercial") and F2 ("Real,
+# Industrial") both read "commercial and industrial", and the parcel
+# vote's keyword INDUSTRIAL classed Harris office towers, hospitals
+# and shops Industrial. The crosswalk beside this recipe
+# (US-TX-HAR_property-hcad-2026_use-group-code-remap.csv) keys on two
+# characters, written from HCAD's code list (desc_r_01_state_class.txt
+# in Code_description_real.zip, 2026). It repeats the statewide labels
+# for every other code; codes it does not name (1D, TMBR, Z0 to Z5,
+# HH, U0) keep whatever the statewide crosswalk gave them. It overrides
+# the statewide one because it covers most of the spine (see
+# link_by_id's remap rule).
+# Measured 2026-10-18 on US-TX-HAR: 58,842 of 64,220 F1 parcels were classed Industrial.
+# The building type that splits F1 further comes from
+# US-TX-HAR_property-hcad-2026_building-other (plans/houston-sliver-check.md).
+#
 # NOT MAPPED. mailto and the mail_* block (owner name and mailing
 # address) are deliberately left out. yr_impr is ambiguous (year built
 # or year of the latest improvement; the file does not say) and is

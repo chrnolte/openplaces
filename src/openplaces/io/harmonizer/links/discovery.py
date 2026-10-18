@@ -4,6 +4,8 @@ and the remap sidecars applied to a discovered source.
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from openplaces.core.schema import (
@@ -181,6 +183,73 @@ def _select_supplements(matches: list[dict], spine_source_ids: set[str]) -> list
     ]
 
 
+#: Share of a crosswalk's matched codes that may be longer than their
+#: key before a merge of distinct codes is reported. Where the source
+#: writes a code both bare and with a suffix (Massachusetts: 101 and
+#: 1010, 101R; measured 2026-10-18 on US-MA: 1,242,800 of 2,550,012
+#: codes carry the fourth character), the key is the source's own base
+#: code. Where nearly every code is longer than its key, the cut drops
+#: a character the source always writes, as the one-letter Texas state
+#: category tables do (F for F1 commercial and F2 industrial; measured
+#: 2026-10-18 on US-TX-GAL: 180,079 of 180,079 codes cut).
+REMAP_CUT_SHARE_WARNING = 0.95
+
+
+def _match_longest_prefix(codes: pd.Series, keys: pd.Index) -> pd.Series:
+    """Each code's longest crosswalk key that it starts with, else missing.
+
+    A crosswalk may name a code at several lengths (F beside F1 and
+    F2): the longest one that fits decides, so a table can split what a
+    shorter key would merge.
+    """
+    matched = pd.Series(pd.NA, index=codes.index, dtype='string')
+    lengths = sorted({len(k) for k in keys.astype(str)}, reverse=True)
+    key_set = set(keys.astype(str))
+    for length in lengths:
+        open_ = matched.isna() & codes.notna() & (codes.str.len() >= length)
+        if not open_.any():
+            continue
+        prefix = codes[open_].str.slice(0, length)
+        hit = prefix.isin(key_set)
+        matched.loc[prefix.index[hit]] = prefix[hit]
+    return matched
+
+
+def _report_merges(codes: pd.Series, matched: pd.Series, csv_name: str) -> None:
+    """Warn when a crosswalk's cut gives distinct codes one label.
+
+    Checked against the codes the source actually holds, before the
+    labels are written: a key that absorbs several longer codes is a
+    merge, and it is reported when the source writes nearly every code
+    longer than its key (`REMAP_CUT_SHARE_WARNING`), the sign that the
+    cut drops part of the code rather than an optional suffix.
+    """
+    stated = matched.notna()
+    if not stated.any():
+        return
+    cut = stated & (codes.str.len() > matched.str.len())
+    if cut.sum() / stated.sum() < REMAP_CUT_SHARE_WARNING:
+        return
+    pairs = pd.DataFrame({'key': matched[cut], 'code': codes[cut]})
+    counts = pairs.value_counts().reset_index(name='n')
+    merged = counts.groupby('key').filter(lambda g: len(g) > 1)
+    if merged.empty:
+        return
+    examples = '; '.join(
+        f'{key} <- '
+        + ', '.join(f'{c} ({n:,})' for c, n in zip(g['code'], g['n'], strict=True))
+        for key, g in list(merged.groupby('key', sort=False))[:5]
+    )
+    warnings.warn(
+        f'{csv_name}: {cut.sum() / stated.sum():.0%} of the matched codes are '
+        f'longer than their key, and {merged["key"].nunique()} keys give '
+        f'distinct codes one label ({examples}). If the source defines '
+        'these codes differently, name each in the crosswalk; the longest '
+        'key that fits a code decides.',
+        stacklevel=2,
+    )
+
+
 def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     """Auto-apply any ``{recipe_id}_*-remap.csv`` crosswalk found beside *recipe_id*.
 
@@ -188,9 +257,12 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     ``-remap.csv``, dashes replaced by underscores) names the spine column it
     remaps; applied only when that column is present. Output columns are
     whichever non-key columns the crosswalk's own header defines (e.g.
-    ``use_group``/``use_subgroup`` for a use-code crosswalk). The crosswalk's
-    own key length determines how much to truncate codes before lookup
-    (handles e.g. 3- vs 4-digit codes sharing one 3-digit crosswalk).
+    ``use_group``/``use_subgroup`` for a use-code crosswalk). A code takes
+    the longest key it starts with, so a 3-digit key covers a 4-digit
+    code that refines it (Massachusetts 1010 under 101), and a crosswalk
+    can name a longer code where it means something else (F1 beside F).
+    Before writing, the codes are checked for keys that merge codes the
+    source always writes in full (`_report_merges`), which warns.
 
     An optional ``admin_id`` column scopes a row to one admin unit and
     its descendants; a scoped row overrides the unscoped row for the
@@ -234,9 +306,9 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
                 .drop(columns=['_depth', 'admin_id'])
             )
         table = table.drop_duplicates(subset=[key_col]).set_index(key_col)
-        key_lengths = table.index.to_series().astype(str).str.len()
-        key_length = int(key_lengths.mode().iat[0])
-        codes = spine[column].astype('string').str.slice(0, key_length)
+        full = spine[column].astype('string')
+        codes = _match_longest_prefix(full, table.index)
+        _report_merges(full, codes, csv_path.name)
         for target in table.columns:
             # Gap-fill, never wholesale replace: auto-discovery
             # calls this once per matched source, and a county

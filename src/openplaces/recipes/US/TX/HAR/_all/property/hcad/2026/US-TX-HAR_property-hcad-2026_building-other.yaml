@@ -1,0 +1,105 @@
+# Recipe: Harris County, TX appraisal district non-residential buildings
+# (HCAD). Supplement of US-TX-HAR_property-hcad-2026; see that recipe
+# for the PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. building_other.txt in Real_building_land.zip:
+# tab-delimited with header, one row per commercial, apartment, exempt
+# or utility building (acct, bld_num). Measured 2026-10-18 on
+# US-TX-HAR: 162,359 rows over 70,629 accounts (state class F1 58,518,
+# B1 5,809, X1 to X3 4,768, F2 885); none of them is in
+# building_res.txt.
+#
+# WHAT IS MAPPED:
+#   impr_tp   building_type_code, HCAD's building type ("Building
+#             Type" in the codebook; its descriptions are
+#             desc_r_02_building_type_code.txt in
+#             Code_description_real.zip): 4211 garden apartments, 4353
+#             low-rise office, 4380 distribution warehouse, 4640
+#             hospital and so on. The parcel curate translates it
+#             (US-TX-HAR_parcel-openplaces-2026). The state class F1
+#             says only "commercial"; this code says what stands on the
+#             lot.
+#
+# SEVERAL BUILDINGS. 24,898 accounts have more than one building and
+# 10,353 of them mix building types. An account's type is the one
+# holding most of its building value: a `group` transformation writes
+# the value-weighted mode (weights Depr_Val, the building's
+# depreciated value) onto every row of the account, so the registry's
+# `first` reduction then reads it whatever the row order. The file's
+# first row alone is the largest building (by act_ar) on 76.3% of the
+# mixed accounts (measured 2026-10-18), and an apartment complex
+# whose first row is its clubhouse would read as a club.
+#
+# NOT MAPPED. The area columns: act_ar and base_ar are populated on
+# every row but equal on high-rise offices (median ratio 1.00 on type
+# 4354), so which of them is floor area over all floors is not settled;
+# heat_ar and gross_ar are populated on 0.1% of rows. units and nra
+# (35%) come from HCAD's income survey. date_erected, eff and the value
+# columns are left for a later sibling.
+#
+# QUOTING. As in building_res.txt, the notes field holds unbalanced
+# double quotes; the ingester's default read returns 162,058 of
+# 162,359 rows (301 lost, 0.19%), measured 2026-10-18.
+
+description: >-
+  Harris County, TX appraisal non-residential building table (HCAD PDATA
+  building_other): the building type code per account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "building_other.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  building_type_code: impr_tp
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: building_type_code
+    output: building_type_code
+  # See SEVERAL BUILDINGS.
+  - type: group
+    operation: weighted_mode
+    inputs: [building_type_code, Depr_Val]
+    args:
+      by: parcel_id_assessor
+    output: building_type_code
+
+columns_to_categorical:
+  - building_type_code
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: building-other
