@@ -72,3 +72,12 @@ places:
     extent_note: The island of Nantucket
     state: US-MA
     admin_ids: [US-MA-NTC]
+  # A team page (maintainer, 2026-10-18): `team: true` reads the team
+  # bundles, is published only behind a password, never appears on the
+  # landing page and is left out of `--all`.
+  - slug: nantucket-team
+    title: Nantucket, Massachusetts (team)
+    extent_note: The island of Nantucket, for the research team
+    state: US-MA
+    admin_ids: [US-MA-NTC]
+    team: true

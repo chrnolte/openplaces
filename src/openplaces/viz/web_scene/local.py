@@ -29,6 +29,7 @@ import shapely
 import yaml
 
 from openplaces.config import cfg
+from openplaces.io.delivery import TEAM_SUFFIX
 from openplaces.io.readers import get_admin
 from openplaces.viz.web_scene import _region_members, build_web_scene
 
@@ -122,6 +123,10 @@ def place_extent(place, radius_km, slug):
         raise SystemExit(f'{slug}: no delivered bundles cover this place.')
     if missing:
         print(f'{slug}: no bundles for {", ".join(missing)}; left out.')
+    if place.get('team'):
+        # The team twin of each region; the scene is then marked a team
+        # page, published only behind a password.
+        regions = [f'{r}{TEAM_SUFFIX}' for r in regions]
     return circle, built, regions
 
 

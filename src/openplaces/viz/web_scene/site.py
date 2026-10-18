@@ -10,7 +10,10 @@ The published counterpart of `local` (maintainer, 2026-10-18)::
 
 ``build`` writes each place's page (15 km) and phone page (7 km) from
 the delivered bundles into ``<share>/web/values``, or a single page of
-whole units for a place listing `admin_ids` (an island); ``landing`` writes
+whole units for a place listing `admin_ids` (an island). A place with
+``team: true`` reads the team bundles (``<region>.team``): its page is
+published only behind a password, never listed on the landing page,
+and left out of ``--all``; ``landing`` writes
 the landing page, its card photos, the list of places and the methods
 page; ``refresh`` copies the page files and the known issues into every
 built page without rebuilding data (for a change to the viewer alone).
@@ -103,7 +106,9 @@ def landing(config, thumbnails=True) -> None:
             root / p['slug'],
         )
         for p in config['places']
-        if (root / p['slug'] / 'scene.json').exists()
+        # A team page is never listed: it is reached by its address,
+        # with the password.
+        if not p.get('team') and (root / p['slug'] / 'scene.json').exists()
     ]
     build_landing(cards, root, thumbnails=thumbnails)
     print('landing:', [c.slug for c in cards])
@@ -158,7 +163,10 @@ def main(argv=None) -> None:
     unknown = sorted(set(args.places) - set(by_slug))
     if unknown:
         raise SystemExit(f'Not in places.yaml: {", ".join(unknown)}.')
-    chosen = config['places'] if args.all else [by_slug[s] for s in args.places]
+    # `--all` is the public pages; a team page is built and published
+    # only when named.
+    public = [p for p in config['places'] if not p.get('team')]
+    chosen = public if args.all else [by_slug[s] for s in args.places]
     if args.action in ('build', 'publish') and not chosen:
         raise SystemExit('Name the places, or pass --all.')
     if args.action == 'build':
