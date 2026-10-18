@@ -552,6 +552,20 @@ def test_buildings_on_exempt_lots_are_not_homes_unless_the_roll_counts_them():
     ]
 
 
+def test_local_command_never_uploads():
+    from openplaces.viz.web_scene import local
+
+    source = (STATIC.parent / 'local.py').read_text(encoding='utf-8')
+    # No deploy code at all: no upload path to take by mistake.
+    assert not re.search(r'deploy_web_scene\(|deploy_landing|rclone|ssh', source, re.I)
+    with pytest.raises(SystemExit, match='never uploads'):
+        local.main(['boston', '--deploy'])
+    # Every place has a center and a state; the order is editorial.
+    places = local.load_places()
+    assert places['radius_km'] > places['phone_radius_km'] > 0
+    assert all(len(p['center']) == 2 and p['state'] for p in places['places'])
+
+
 def test_value_sources_are_counted_apart_from_outline_sources():
     provenance = pd.Series(
         ['parcel.massgis'] * 6

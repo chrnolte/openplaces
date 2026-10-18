@@ -1,0 +1,54 @@
+# Places of the value pages: an editorial list (maintainer's choices,
+# 2026-10-17). Each page shows everything whose center lies within
+# `radius_km` of a fixed point; phones get a smaller circle. The points
+# are chosen by hand (a university plaza, city halls located by address
+# in the delivered parcel bundles), never derived from the data or from
+# the held land-market regions (register items 13 and LVR-1).
+#
+# Order: descending number of dwellings inside the circle (measured
+# 2026-10-17 on the delivered building outlines).
+
+radius_km: 15
+phone_radius_km: 7
+
+places:
+  - slug: boston
+    title: Boston area
+    state: US-MA
+    center: [-71.1055, 42.3503]
+    center_note: Boston University, Marsh Plaza
+  - slug: charlotte
+    title: Charlotte, North Carolina
+    state: US-NC
+    center: [-80.83927, 35.22128]
+    center_note: City hall lot, 600 E 4th St
+  - slug: raleigh
+    title: Raleigh, North Carolina
+    state: US-NC
+    center: [-78.64298, 35.77873]
+    center_note: City hall lot, 222 W Hargett St
+  - slug: greensboro
+    title: Greensboro, North Carolina
+    state: US-NC
+    center: [-79.79281, 36.07090]
+    center_note: City hall lot, 300 W Washington St
+  - slug: winston-salem
+    title: Winston-Salem, North Carolina
+    state: US-NC
+    center: [-80.24304, 36.09527]
+    center_note: City hall lot, 101 N Main St
+  - slug: durham
+    title: Durham, North Carolina
+    state: US-NC
+    center: [-78.8986, 35.9940]
+    center_note: City hall
+  - slug: asheville
+    title: Asheville, North Carolina
+    state: US-NC
+    center: [-82.5515, 35.5951]
+    center_note: City hall
+  - slug: wilmington
+    title: Wilmington, North Carolina
+    state: US-NC
+    center: [-77.9447, 34.2357]
+    center_note: City hall
