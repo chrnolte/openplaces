@@ -339,8 +339,9 @@ everywhere:
   `imputed` marker in its `{col}_source` (`provenance.mark_imputed`).
 
 `export_delivery` pools a curated region into a bundle and **withholds what
-restricted sources supplied**; team bundles (`<region>.team`) are never
-published (`io/delivery/README.md`). A narrow debug run of the DAG stops at
+restricted sources supplied**; a team bundle (`<region>.team`) is
+published only on a password-protected team value page, never openly
+(`io/delivery/README.md`). A narrow debug run of the DAG stops at
 curate, so a one-county rebuild cannot overwrite a shipped regional file
 (`flow/README.md`).
 
