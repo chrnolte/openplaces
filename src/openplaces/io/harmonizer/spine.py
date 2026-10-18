@@ -293,12 +293,14 @@ def resolve_spine(
     from a lower-priority source is added to the spine only if its IoU with
     every existing spine geometry is below ``overlap_iou_max`` (default 0.02).
 
-    Source entries may include an ``auto_discover: true`` sentinel entry,
-    which is replaced at runtime by all ingest recipes of the same entity
-    type that are scoped to child admin_ids of the recipe's ``admin_id``,
-    excluding any recipe with ``exclude_from_auto_discover: true`` (a
-    reference dataset meant to be consumed only via an explicit crosswalk,
-    not folded into the canonical spine's geometry).
+    Discovered ingest recipes of the same entity type, scoped to child
+    admin_ids of the recipe's ``admin_id``, are added to the listed
+    sources whether or not the list holds an ``auto_discover: true``
+    sentinel; the sentinel only says where they rank, and an
+    ``auto_discover: false`` entry turns discovery off. Excluded are
+    recipes with ``exclude_from_auto_discover: true`` (a reference
+    dataset meant to be consumed only via an explicit crosswalk, not
+    folded into the canonical spine's geometry).
 
     Parameters
     ----------

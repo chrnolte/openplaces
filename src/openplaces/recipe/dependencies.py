@@ -183,8 +183,9 @@ def get_recipe_dependencies(
     admin_str = str(admin_id) if admin_id is not None else None
     if admin_id is not None and recipe.get('pipeline'):
         # The unit runs the recipe with its patches applied, so its jobs
-        # read what the patches name too: a state patch that merges an
-        # enrichment (US-MA_footprint-openplaces-2026) must schedule it.
+        # read what the patches name too: a patch that adds a step
+        # reading another recipe (a state patch merging an enrichment
+        # into US_footprint-openplaces-2026) must schedule it.
         try:
             recipe, _ = _recipe.apply_recipe_patches(recipe, admin_id)
         except Exception:  # noqa: BLE001 - a patch that cannot apply adds nothing

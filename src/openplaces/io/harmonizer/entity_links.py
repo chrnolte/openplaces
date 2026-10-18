@@ -523,11 +523,46 @@ ADDRESS_RANGE_METHOD = 'address_range'
 
 
 @_register('link_entities_by_id')
+def _first_shared_key(spine, ref, spine_key, ref_key) -> tuple[str, str]:
+    """The first (spine, reference) key pair both tables state a value in.
+
+    Each key may be a column name or an ordered list of them; *ref_key*
+    pairs with *spine_key* position by position, and a single name
+    stands for itself at every position. The first pair whose two
+    columns both exist and hold a value somewhere is used, as
+    `curator.aggregation.aggregate_from_entities` chooses its join key,
+    so that the link table and the curate's key join read one key: a
+    roll bundled with MassGIS's layer carries `parcel_id_admin2` and no
+    `parcel_id_local`, and with the local key alone its link came out
+    empty (Somerville MA, 2026-10-17). Falls back to the first pair, so
+    a table with neither key yields an empty link as before.
+    """
+    spine_keys = [spine_key] if isinstance(spine_key, str) else list(spine_key)
+    ref_keys = [ref_key] if isinstance(ref_key, str) else list(ref_key)
+    if len(ref_keys) == 1 and len(spine_keys) > 1:
+        ref_keys = ref_keys * len(spine_keys)
+    if len(spine_keys) == 1 and len(ref_keys) > 1:
+        spine_keys = spine_keys * len(ref_keys)
+    if len(spine_keys) != len(ref_keys):
+        raise ValueError(
+            'link_entities_by_id: spine_key and ref_key list different numbers '
+            f'of keys ({spine_keys} and {ref_keys}).'
+        )
+    for s_key, r_key in zip(spine_keys, ref_keys, strict=True):
+        s_values = _key_values(spine, s_key)
+        r_values = _key_values(ref, r_key)
+        if s_values is None or r_values is None:
+            continue
+        if pd.notna(s_values).any() and pd.notna(r_values).any():
+            return s_key, r_key
+    return spine_keys[0], ref_keys[0]
+
+
 def link_entities_by_id(
     state: HarmonizeState,
     recipe_id: str,
-    spine_key: str = 'parcel_id_local',
-    ref_key: str = 'parcel_id_local',
+    spine_key: str | list[str] = 'parcel_id_local',
+    ref_key: str | list[str] | None = None,
     link_method: str | None = None,
 ) -> HarmonizeState:
     """Write the n:m link table between the spine and another entity.
@@ -554,18 +589,23 @@ def link_entities_by_id(
     ----------
     recipe_id : str
         Recipe of the other entity (e.g. `US_property-spine-2026`).
-    spine_key, ref_key : str
-        Key columns on the spine and on the other entity. Only an exact
-        match on the standardized key is supported by design: the
-        punctuation-free fallback keys are shared by hundreds of parcels
-        in some counties, which a key join survives (fill_only) and an
-        n:m table does not.
+    spine_key, ref_key : str or list of str
+        Key columns on the spine and on the other entity, or ordered
+        lists of them; the first pair both tables hold values in is used
+        for every row (`_first_shared_key`), and the link label names
+        it. *ref_key* defaults to *spine_key*. Only an exact match on the
+        standardized key is supported by design: the punctuation-free
+        fallback keys are shared by hundreds of parcels in some counties,
+        which a key join survives (fill_only) and an n:m table does not.
+        A link that comes out empty while both tables have rows warns.
     link_method : str, optional
         Label written to every link row. Defaults to *ref_key*.
     """
     if state.spine is None:
         warnings.warn('link_entities_by_id: spine is None; skipping.')
         return state
+    if ref_key is None:
+        ref_key = spine_key
 
     own_id = get_recipe_id(state.recipe)
     # Link sidecars are named after the recipe that mints the rows: the
@@ -599,6 +639,14 @@ def link_entities_by_id(
     ref_is_finer = ENTITY_LINK_ORDER.index(ref_type) > ENTITY_LINK_ORDER.index(
         spine_type
     )
+    requested = (spine_key, ref_key)
+    # The stacked-unit passes match the split's lot keys, which are
+    # values of the first listed key (`parcel_id_local`), whichever key
+    # the main pass falls back to.
+    lot_spine_key, lot_ref_key = (
+        k if isinstance(k, str) else list(k)[0] for k in requested
+    )
+    spine_key, ref_key = _first_shared_key(state.spine, ref, spine_key, ref_key)
     ref_id = f'{ref_type}_id'
     spine_id = f'{spine_type}_id'
     if ref_is_finer:
@@ -623,10 +671,20 @@ def link_entities_by_id(
         )
 
     if ref_is_finer and ref_type == 'property' and spine_type == 'parcel':
+        if lot_spine_key not in state.spine.columns:
+            lot_spine_key = spine_key
+        if lot_ref_key not in ref.columns:
+            lot_ref_key = ref_key
         links = _add_stacked_unit_links(
-            links, ref, state.spine, ref_key, spine_key, ref_id, spine_id, state
+            links, ref, state.spine, lot_ref_key, lot_spine_key, ref_id, spine_id, state
         )
     links = apportion_shares(links, state.spine if ref_is_finer else ref)
+    if links.empty and len(ref) and len(state.spine):
+        warnings.warn(
+            f'link_entities_by_id: no {recipe_id} row of {state.admin_id} links to '
+            f'this spine on any of the keys {requested}; the link table is empty.',
+            stacklevel=2,
+        )
 
     write_entity_link(
         path,

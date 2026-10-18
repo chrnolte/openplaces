@@ -220,9 +220,11 @@ pipeline:
   # meaningless and, measured 2026-10-17 on US-NC-BUN: one 0.012 m2
   # polygon carries a $77,100 land value, about $26B per acre. Measured
   # 2026-10-17 on US: 1,691 NC, 2,848 TX and 21 MA curated parcels fall
-  # below 1 m2 (median 0.1 m2). Every curated parcel has an area_ha, so
-  # the step drops only slivers. Design limits checked: L20 (one step
-  # closer, approved by the maintainer 2026-10-17; centroids are not
+  # below 1 m2 (median 0.1 m2). The step also drops a parcel with no
+  # area_ha, since a missing value is never at least the minimum.
+  # Measured 2026-10-17 on US: 0 of 12,181,742 curated parcels lack an
+  # area_ha, so today it drops only slivers. Design limits checked: L20
+  # (one step closer, approved by the maintainer 2026-10-17; centroids are not
   # moved and nothing is served for search, so two elements stay
   # absent).
   - step: filter_numeric_at_least
