@@ -570,6 +570,9 @@ def test_local_command_never_uploads():
             assert len(p['center']) == 2 and p['around']
         else:
             assert p['admin_ids'] and p['extent_note'] and 'center' not in p
+    # A team page is a separate place, never the public one.
+    team = [p for p in places['places'] if p.get('team')]
+    assert all(p['slug'].endswith('-team') for p in team)
 
 
 def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
@@ -597,6 +600,10 @@ def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
         ('boston', False),
         ('/', False),
     ]
+    # `--all` leaves team pages out; they go up only when named.
+    calls.clear()
+    site.main(['publish', '--all'])
+    assert calls and not any(slug.endswith('-team') for slug, _ in calls)
     with pytest.raises(SystemExit, match='Not in places.yaml'):
         site.main(['publish', 'atlantis'])
     with pytest.raises(SystemExit, match='--all'):
@@ -729,6 +736,84 @@ def test_local_only_scene_is_never_deployed(tmp_path):
     )
     with pytest.raises(ValueError, match='local use only'):
         web_scene.deploy_web_scene(tmp_path, go=False)
+
+
+def test_a_scene_reading_a_team_bundle_is_a_team_scene():
+    assert web_scene.scene_audience('nantucket-ma.team') == 'team'
+    assert web_scene.scene_audience(['western-nc', 'nantucket-ma.team']) == 'team'
+    assert web_scene.scene_audience(['western-nc']) == 'public'
+    assert web_scene.scene_audience(None) == 'public'
+
+
+def _team_scene(tmp_path):
+    (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
+    (tmp_path / '.htaccess').write_text('Options -Indexes\n', encoding='utf-8')
+    (tmp_path / 'scene.json').write_text(
+        json.dumps({'build_id': 'x', 'audience': 'team', 'layers': []}),
+        encoding='utf-8',
+    )
+    return tmp_path
+
+
+def _fake_host(monkeypatch, team_passwd, on_host):
+    settings = {
+        'host': 'host.example',
+        'user': 'someone',
+        'path': '/home/someone/public_html/values',
+        'key': '',
+        'known_hosts': '',
+        'url': '',
+        'team_passwd': team_passwd,
+    }
+    calls = []
+    monkeypatch.setattr(web_scene, 'load_deploy_settings', lambda env_file: settings)
+    monkeypatch.setattr(web_scene, '_rclone_env', lambda settings: {})
+    monkeypatch.setattr(
+        web_scene,
+        '_rclone_output',
+        lambda env, *args: (
+            'passwd\n' if args[0] == 'lsf' and args[1] in on_host else None
+        ),
+    )
+    monkeypatch.setattr(web_scene, '_rclone', lambda env, *args: calls.append(args))
+    return calls
+
+
+def test_team_page_goes_up_only_behind_a_password(tmp_path, monkeypatch):
+    scene = _team_scene(tmp_path)
+    passwd = '/home/someone/.htpasswds/values/nantucket-team/passwd'
+    _fake_host(monkeypatch, '', on_host=set())
+    with pytest.raises(ValueError, match='only behind a password'):
+        web_scene.deploy_web_scene(scene, go=True, subpath='nantucket-team')
+
+    _fake_host(monkeypatch, passwd, on_host=set())
+    with pytest.raises(FileNotFoundError, match='names no file on the host'):
+        web_scene.deploy_web_scene(scene, go=True, subpath='nantucket-team')
+
+    calls = _fake_host(monkeypatch, passwd, on_host={f'bh:{passwd}'})
+    web_scene.deploy_web_scene(scene, go=True, subpath='nantucket-team')
+    # The password goes up before any file of the page.
+    assert calls[0][0] == 'copyto' and calls[0][2].endswith('/nantucket-team/.htaccess')
+    htaccess = (scene / '.htaccess').read_text(encoding='utf-8')
+    assert f'AuthUserFile "{passwd}"' in htaccess and 'Require valid-user' in htaccess
+
+
+def test_team_password_path_is_checked_and_public_pages_carry_none(
+    tmp_path, monkeypatch
+):
+    with pytest.raises(ValueError, match='absolute path'):
+        web_scene.team_htaccess('passwd')
+    with pytest.raises(ValueError, match='absolute path'):
+        web_scene.team_htaccess('/home/a b/passwd')
+    scene = _team_scene(tmp_path)
+    (scene / 'scene.json').write_text(
+        json.dumps({'build_id': 'x', 'audience': 'public', 'layers': []}),
+        encoding='utf-8',
+    )
+    (scene / '.htaccess').write_text(web_scene.team_htaccess('/p'), encoding='utf-8')
+    _fake_host(monkeypatch, '/p', on_host={'bh:/p'})
+    with pytest.raises(ValueError, match='asks for a password'):
+        web_scene.deploy_web_scene(scene, go=False)
 
 
 def test_identical_outlines_merge_into_one_feature():

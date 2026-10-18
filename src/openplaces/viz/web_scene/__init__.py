@@ -69,7 +69,7 @@ import shapely
 
 from openplaces.core.attribute_registry import is_personal_attribute
 from openplaces.core.provenance import is_imputed
-from openplaces.io.delivery import PersonalColumnError, delivery_paths
+from openplaces.io.delivery import TEAM_SUFFIX, PersonalColumnError, delivery_paths
 from openplaces.io.readers import get_admin
 from openplaces.viz.colors import get_diverging_colormap
 
@@ -2174,6 +2174,16 @@ def contrast_focus(
     }
 
 
+def scene_audience(region) -> str:
+    """'team' when any region read is a team bundle, else 'public'.
+
+    Derived from the regions rather than passed as a flag, so a scene
+    that read team data cannot be marked public by mistake.
+    """
+    regions = [] if region is None else [region] if isinstance(region, str) else region
+    return 'team' if any(str(r).endswith(TEAM_SUFFIX) for r in regions) else 'public'
+
+
 def build_web_scene(
     region,
     admin_ids,
@@ -2200,7 +2210,9 @@ def build_web_scene(
         unit is read from the region that pools it. None builds a
         **local preview** from the curated per-unit files instead: no
         delivery withholding applies, so the manifest is marked
-        `preview` and `deploy_web_scene` refuses to publish it.
+        `preview` and `deploy_web_scene` refuses to publish it. A team
+        region (`<region>.team`) marks the manifest `audience: team`,
+        and `deploy_web_scene` then publishes it only behind a password.
     admin_ids : sequence of str
         Units (`admin3_id`) of the region to include. All of them load
         when the page opens.
@@ -2668,6 +2680,7 @@ def build_web_scene(
         ],
         'preview': region is None,
         'local_only': bool(local_only),
+        'audience': scene_audience(region),
         'landmarks': marks,
         'phone_scene': phone_scene,
         'known_issues': known_issues(admin_ids),
@@ -2764,12 +2777,17 @@ def load_deploy_settings(env_file=None) -> dict:
         `HOST`, `USER` and `PATH` (absolute path of the site's folder on
         the host) are required; `KEY` (private key file),
         `KNOWN_HOSTS` (pinned host key file) and `URL` (public address)
-        are optional.
+        are optional, and so is `TEAM_PASSWD`: the absolute path, on the
+        host, of the password file guarding team pages
+        (`deploy_web_scene`). The maintainer creates that file on the
+        host (cPanel's "Directory Privacy"), so no password passes
+        through openplaces.
 
     Returns
     -------
     dict
-        `host`, `user`, `path`, `key`, `known_hosts`, `url`.
+        `host`, `user`, `path`, `key`, `known_hosts`, `url`,
+        `team_passwd`.
     """
     import os
 
@@ -2815,7 +2833,44 @@ def load_deploy_settings(env_file=None) -> dict:
         'key': _file('KEY'),
         'known_hosts': _file('KNOWN_HOSTS'),
         'url': values.get(DEPLOY_PREFIX + 'URL', '').rstrip('/'),
+        'team_passwd': values.get(DEPLOY_PREFIX + 'TEAM_PASSWD', ''),
     }
+
+
+def team_htaccess(passwd_path) -> str:
+    """The `.htaccess` of a team page: a password, then the usual rules.
+
+    Apache's basic authentication in the page folder covers its `data/`
+    folder too, so no file of a team page is served without the
+    password. Crawlers are asked not to index what they cannot open
+    anyway.
+
+    Parameters
+    ----------
+    passwd_path : str
+        Absolute path of the password file on the host.
+
+    Returns
+    -------
+    str
+        The file's text.
+    """
+    if not passwd_path.startswith('/') or re.search(r'["\s]', passwd_path):
+        raise ValueError(
+            f'{DEPLOY_PREFIX}TEAM_PASSWD must be an absolute path on the host '
+            f'without spaces or quotes, got {passwd_path!r}.'
+        )
+    guard = (
+        '# A team page: readable only with the team password.\n'
+        'AuthType Basic\n'
+        'AuthName "openplaces team page"\n'
+        f'AuthUserFile "{passwd_path}"\n'
+        'Require valid-user\n'
+        '<IfModule mod_headers.c>\n'
+        '  Header set X-Robots-Tag "noindex, nofollow"\n'
+        '</IfModule>\n\n'
+    )
+    return guard + (STATIC_DIR / 'htaccess').read_text(encoding='utf-8')
 
 
 def _rclone_env(settings) -> dict:
@@ -2885,6 +2940,11 @@ def deploy_web_scene(
        build's are kept), so a page opened just before the switch still
        finds its files.
 
+    A team scene (`audience: team`, built from a `<region>.team` bundle)
+    is published only behind a password: its `.htaccess`
+    (`team_htaccess`) goes up before anything else, and the deploy
+    refuses when `TEAM_PASSWD` is not set or names no file on the host.
+
     Parameters
     ----------
     output_dir : str or Path
@@ -2936,6 +2996,38 @@ def deploy_web_scene(
     if settings['url']:
         print(f'URL   : {settings["url"]}/')
     print(f'Mode  : {"PUBLISH" if go else "dry run"}')
+
+    team = manifest.get('audience') == 'team'
+    if team:
+        passwd = settings['team_passwd']
+        if not passwd:
+            raise ValueError(
+                f'{output_dir} is a team page and is published only behind a '
+                f'password. Create the password file on the host and name it '
+                f'in {DEPLOY_PREFIX}TEAM_PASSWD.'
+            )
+        # Written before the check, so a bad path fails without a call
+        # to the host.
+        (output_dir / '.htaccess').write_text(team_htaccess(passwd), encoding='utf-8')
+        if not _rclone_output(env, 'lsf', f'bh:{passwd}'):
+            raise FileNotFoundError(
+                f'{DEPLOY_PREFIX}TEAM_PASSWD names no file on the host '
+                f'({passwd}); the team page was not published.'
+            )
+        print('\nPhase 0: password (.htaccess) before any file of the page')
+        _rclone(
+            env,
+            'copyto',
+            str(output_dir / '.htaccess'),
+            f'{target}/.htaccess',
+            *_without_filters(RCLONE_SFTP_FLAGS),
+            *dry,
+        )
+    elif 'AuthUserFile' in (output_dir / '.htaccess').read_text(encoding='utf-8'):
+        raise ValueError(
+            f'{output_dir} is a public page but its .htaccess asks for a '
+            'password; rebuild it.'
+        )
 
     # The build currently online, read before the switch, stays.
     previous = _rclone_output(env, 'cat', f'{target}/scene.json')

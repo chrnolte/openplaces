@@ -579,7 +579,7 @@ const TOUR = {
   focusPitch: 55,
   contrastZoom: 13.5,
   contrastPitch: 48,
-  contrastOrbit: 40,
+  contrastOrbit: 45,
   degreesPerSecond: 2.5,
   descent: 22,
   orbit: 18,
@@ -604,32 +604,41 @@ const TOUR = {
 // changed) count down from three (`countdown`; maintainer, 2026-10-17).
 // Visitors read "home"; the data's term is "dwelling" (one house,
 // apartment or condo).
-// The explanation of a home appears seven seconds before its switch
-// and stays eight after it (maintainer, 2026-10-17: it needs time).
+// The two switches explain themselves on two lines, what the visitor
+// will see and why, and stay five seconds longer than a plain hint
+// (maintainer, 2026-10-18). The explanation of a home appears seven
+// seconds before its switch and stays thirteen after it.
 const TOUR_CONTRAST_ACTIONS = [
   {
     at: 2,
     hint: {
       target: 'buildings',
-      text: 'Hiding the buildings to show land value alone',
+      text: [
+        'Hiding the buildings to show land value alone',
+        'A house can be built anywhere. Its spot on the map cannot, ' +
+          'and the land carries that price.',
+      ],
       countdown: 3,
-      linger: 6,
+      linger: 11,
     },
   },
   {at: 5, buildings: false},
   {
-    at: 9,
+    at: 14,
     hint: {
       target: 'dwelling',
-      text: 'Next: value per home (one house, apartment, or condo)',
+      text: [
+        'Next: value per home, where wealthy and poorer neighborhoods stand apart',
+        'A home is one apartment, house, or condo.',
+      ],
       countdown: 3,
       countdownAfter: 4,
-      linger: 15,
+      linger: 20,
     },
   },
-  {at: 16, view: 'dwelling'},
-  {at: 27, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
-  {at: 29, buildings: true},
+  {at: 21, view: 'dwelling'},
+  {at: 37, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
+  {at: 39, buildings: true},
 ];
 const TOUR_LEAVE_ACTIONS = [
   {at: 0, hint: {target: 'area', text: 'Back to value per ground area', linger: 4}},
@@ -1524,13 +1533,24 @@ async function main() {
   const later = (ms, fn) => bannerTimers.push(setTimeout(fn, ms));
   // `countdown`: from that number, one a second, starting
   // `countdownAfter` seconds after the message appears; `linger`: how
-  // long the message stays in all.
+  // long the message stays in all. `text` may be a list of lines, the
+  // first one the message, the others smaller.
+  const showLines = (text) => {
+    banner.replaceChildren(
+      ...[].concat(text).map((words, i) => {
+        const line = document.createElement('div');
+        line.textContent = words;
+        if (i > 0) {
+          line.className = 'tour-sub';
+        }
+        return line;
+      }),
+    );
+  };
   const showHint = ({target, text, countdown, countdownAfter = 0, linger = 5}) => {
     hideHint();
     banner.classList.remove('fading');
-    const line = document.createElement('div');
-    line.textContent = text;
-    banner.replaceChildren(line);
+    showLines(text);
     if (countdown) {
       const count = document.createElement('div');
       count.className = 'tour-count';
@@ -1595,11 +1615,19 @@ async function main() {
       tourStopped,
     )
     : {stop: () => {}, ready: () => {}};
+  // The opening line says how to take over with what the visitor
+  // holds: a mouse or a finger (maintainer, 2026-10-18).
   if (tour) {
-    banner.textContent = 'Flying on autopilot. Take control anytime.';
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    showLines([
+      'Flying on autopilot. Take control anytime.',
+      touch
+        ? 'Drag a finger to pan, pinch to zoom, twist two fingers to rotate.'
+        : 'Drag the mouse to pan, scroll to zoom, right-drag to rotate.',
+    ]);
     banner.hidden = false;
-    later(6000, () => banner.classList.add('fading'));
-    later(7200, hideHint);
+    later(9000, () => banner.classList.add('fading'));
+    later(10200, hideHint);
   }
 
   // For measuring the page (frame rate, load time) from a test browser.
