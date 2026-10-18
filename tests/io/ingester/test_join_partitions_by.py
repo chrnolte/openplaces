@@ -19,6 +19,10 @@ from openplaces.recipe import get_output_path, get_recipe_by_id
 
 RECIPE_ID = 'US_parcel-placeslab-fmv2026'
 ADMIN_ID = 'US-NY-AE'  # Allegany; LG died in the 2026-08 re-mint
+# The partitions `_seed_table_partitions` writes. Naming them keeps an
+# ingest offline: the recipe's `crosswalk` table is not seeded, and an
+# unrestricted run would try to download it.
+SEEDED = ['boundaries', 'predictions', 'predictors']
 
 
 @pytest.fixture
@@ -181,7 +185,7 @@ def test_ingest_auto_joins_table_partitions_end_to_end(cache_to_tmp):
     keys = ['k1', 'k2']
     _seed_table_partitions(recipe, keys)
 
-    ingest(RECIPE_ID, admin_ids=[ADMIN_ID], verbose=False)
+    ingest(RECIPE_ID, admin_ids=[ADMIN_ID], partition_ids=SEEDED, verbose=False)
 
     out_path = get_output_path(recipe, ADMIN_ID)
     assert out_path.exists()
@@ -202,7 +206,7 @@ def test_ingest_second_call_is_a_no_op(cache_to_tmp, monkeypatch):
     `admin_ids` list -- a safe no-op, not a special-cased skip."""
     recipe = get_recipe_by_id(RECIPE_ID)
     _seed_table_partitions(recipe, ['k1'])
-    ingest(RECIPE_ID, admin_ids=[ADMIN_ID], verbose=False)
+    ingest(RECIPE_ID, admin_ids=[ADMIN_ID], partition_ids=SEEDED, verbose=False)
 
     calls = []
     monkeypatch.setattr(
@@ -214,10 +218,73 @@ def test_ingest_second_call_is_a_no_op(cache_to_tmp, monkeypatch):
 
     assert calls == [
         {
-            'table_names': ['boundaries', 'predictions', 'predictors'],
+            'table_names': ['boundaries', 'predictions', 'predictors', 'crosswalk'],
             'admin_ids': [],
             'join_key_name': 'parcel_id_int',
             'keep_original': False,
+            'sidecar_tables': ['crosswalk'],
             'verbose': False,
         }
     ]
+
+
+def test_early_warnings_raises_on_unknown_sidecar_table():
+    recipe = {
+        'join_partitions_by': {'sidecar_tables': ['crosswalk']},
+        'download_by': {'partition': 'table', 'table_names': ['boundaries']},
+    }
+
+    with pytest.raises(ValueError, match='sidecar_tables'):
+        _bare_ingester(recipe)._early_warnings()
+
+
+def test_sidecar_table_is_copied_as_received(cache_to_tmp, tmp_path):
+    """The crosswalk keeps its bytes, and so the provenance in its footer."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    recipe = get_recipe_by_id(RECIPE_ID)
+    table = pa.table({'parcel_id_new': ['new_1'], 'reference_parcel_id': ['k1']})
+    table = table.replace_schema_metadata({b'bundle_file': b'fake.parquet'})
+    received = tmp_path / 'received' / 'fake_parcel_crosswalk.parquet'
+    received.parent.mkdir()
+    pq.write_table(table, received)
+    ing = _bare_ingester(
+        recipe,
+        download_partition={
+            'partition_id_to_download': 'crosswalk',
+            'data_path': received,
+        },
+        verbose=False,
+    )
+
+    ing._save_sidecar_table(ADMIN_ID)
+
+    out_path = get_output_path(recipe, ADMIN_ID, partition_id='crosswalk')
+    assert out_path.read_bytes() == received.read_bytes()
+    footer = pq.read_metadata(out_path).metadata
+    assert footer[b'bundle_file'] == b'fake.parquet'
+
+
+def test_ingest_joins_a_crosswalk_county_without_boundaries(cache_to_tmp):
+    """Predictions and predictors on disk with a crosswalk and no
+    boundaries: the join writes them without geometry and keeps the
+    crosswalk for the enrich step."""
+    recipe = get_recipe_by_id(RECIPE_ID)
+    keys = ['k1', 'k2']
+    _seed_table_partitions(recipe, keys)
+    boundaries = get_output_path(recipe, ADMIN_ID, partition_id='boundaries')
+    boundaries.unlink()
+    boundaries.with_stem(boundaries.stem + '_geo').unlink()
+    crosswalk_path = get_output_path(recipe, ADMIN_ID, partition_id='crosswalk')
+    pd.DataFrame(
+        {'parcel_id_new': ['new_1', 'new_2'], 'reference_parcel_id': keys}
+    ).to_parquet(crosswalk_path)
+
+    # Naming only partitions already on disk keeps the run offline.
+    ingest(RECIPE_ID, admin_ids=[ADMIN_ID], partition_ids=['crosswalk'])
+
+    result = read_parquet(get_output_path(recipe, ADMIN_ID))
+    assert set(result['parcel_id_int']) == set(keys)
+    assert set(result['slope']) == {2.0, 4.0}
+    assert crosswalk_path.exists()

@@ -243,7 +243,12 @@ def _load_published_crosswalk(crosswalk_path, old, join_key_name):
     underneath it) yields NaN -- downstream inner merges against *old* simply
     drop those rows rather than mismatching.
     """
-    published = pd.read_parquet(crosswalk_path)
+    return _published_to_internal(pd.read_parquet(crosswalk_path), old, join_key_name)
+
+
+def _published_to_internal(published, old, join_key_name):
+    """The internal crosswalk shape of a published one (see
+    `_load_published_crosswalk`)."""
     if join_key_name and join_key_name in published.columns:
         reverse_map = pd.Series(old.index, index=old[join_key_name])
         parcel_id_old = published[join_key_name].map(reverse_map).to_numpy()
@@ -260,6 +265,124 @@ def _load_published_crosswalk(crosswalk_path, old, join_key_name):
     )
 
 
+# A delivered crosswalk replaces the one this step would build when
+# the reference source withholds its geometry. Design limits checked
+# (plans/design-limits/DESIGN_LIMITS.md, record linking): L14, L17,
+# L28, L3 for the geometry-derived reference ids, and L6 for the
+# aggregation (none crossed). The delivered pairs are read as given
+# and joined on exact ids: no trained or fuzzy matching, no score per
+# pair (`match_type` stays a fixed label from
+# `build_id_or_overlay_crosswalk`), no pair removed on
+# reconsideration, ids only join tables (nothing is looked up and
+# displayed by them), and values are weighted only by overlap area,
+# the spatial evidence L6 leaves open.
+_DELIVERED_CROSSWALK_COLUMNS = (
+    'parcel_id_new',
+    'reference_parcel_id',
+    'area_ha',
+    'fraction_of_old',
+    'match_type',
+)
+# The labels `build_id_or_overlay_crosswalk` writes.
+_DELIVERED_MATCH_TYPES = frozenset(
+    {'geo_id', 'geo_id_calibrated', 'geo_id_kdtree', 'overlay'}
+)
+_MIN_DELIVERED_COVERAGE = 0.99
+_FRACTION_TOLERANCE = 1e-6
+
+
+def _delivered_crosswalk_path(reference_recipe, admin_id, table):
+    """Path of the reference's delivered crosswalk sidecar, or None.
+
+    None when no table is named, when the reference saves geometry for
+    *admin_id* (the delivered crosswalk replaces geometry, it does not
+    override it), or when no sidecar was delivered for the unit.
+    """
+    if not table:
+        return None
+    path = get_output_path(reference_recipe, admin_id, partition_id=table)
+    if not path.exists():
+        return None
+    entity_path = get_output_path(reference_recipe, admin_id)
+    if entity_path.with_stem(entity_path.stem + '_geo').exists():
+        return None
+    return path
+
+
+def _load_delivered_crosswalk(path, old, join_key_name, spine_index):
+    """Read and check a delivered crosswalk; return the internal shape.
+
+    The file names current parcels by the `parcel_id` of the openplaces
+    bundle it was built against, so it is only valid for a spine that
+    still carries those ids. Refuses it (ValueError) when fewer than
+    99 percent of the spine's ids appear in it, or fewer than 99 percent
+    of its ids in the spine, quoting the bundle and commit from its
+    footer; refuses an unknown `match_type`; and warns when the
+    fractions of a reference parcel do not sum to 1.
+    """
+    published = pd.read_parquet(path)
+    footer = read_file_metadata(path)
+    origin = (
+        f'bundle_file={footer.get("bundle_file", "unknown")}, '
+        f'openplaces_commit={footer.get("openplaces_commit", "unknown")}'
+    )
+    missing = [c for c in _DELIVERED_CROSSWALK_COLUMNS if c not in published]
+    if missing:
+        raise ValueError(f'{path.name} lacks columns {missing} ({origin}).')
+
+    labels = published['match_type']
+    unknown = sorted(set(labels.dropna().astype(str)) - _DELIVERED_MATCH_TYPES)
+    if unknown or labels.isna().any():
+        raise ValueError(
+            f'{path.name} carries match_type values outside '
+            f'{sorted(_DELIVERED_MATCH_TYPES)}: {unknown or "null"} ({origin}).'
+        )
+
+    delivered_ids = pd.Index(published['parcel_id_new'].dropna().unique())
+    spine_ids = pd.Index(spine_index)
+    spine_share = spine_ids.isin(delivered_ids).mean() if len(spine_ids) else 0.0
+    delivered_share = (
+        delivered_ids.isin(spine_ids).mean() if len(delivered_ids) else 0.0
+    )
+    if min(spine_share, delivered_share) < _MIN_DELIVERED_COVERAGE:
+        raise ValueError(
+            f'{path.name} was built against other parcels than this spine: '
+            f'{spine_share:.2%} of spine parcel ids appear in its '
+            f'parcel_id_new, {delivered_share:.2%} of its ids appear in the '
+            f'spine (both must reach {_MIN_DELIVERED_COVERAGE:.0%}). '
+            f'Built from {origin}; ask for a crosswalk against the '
+            'current bundle.'
+        )
+
+    sums = published.groupby('reference_parcel_id')['fraction_of_old'].sum()
+    off = (sums - 1).abs() > _FRACTION_TOLERANCE
+    if off.any():
+        warnings.warn(
+            f'{path.name}: fraction_of_old does not sum to 1 for '
+            f'{int(off.sum()):,} of {len(sums):,} reference parcels '
+            f'({origin}).',
+            stacklevel=3,
+        )
+
+    key = join_key_name or 'reference_parcel_id'
+    crosswalk = _published_to_internal(
+        published.rename(
+            columns={'parcel_id_new': 'parcel_id', 'reference_parcel_id': key}
+        ),
+        old,
+        join_key_name,
+    )
+    unmatched = crosswalk['parcel_id_old'].isna()
+    if unmatched.any():
+        warnings.warn(
+            f'{path.name}: {int(unmatched.sum()):,} of {len(crosswalk):,} pairs '
+            'name a reference parcel the reference tables do not carry; '
+            'they add nothing.',
+            stacklevel=3,
+        )
+    return crosswalk
+
+
 @_register('enrich_parcels_from_reference_crosswalk')
 def enrich_parcels_from_reference_crosswalk(
     state: EnrichState,
@@ -272,6 +395,7 @@ def enrich_parcels_from_reference_crosswalk(
     id_columns: list[str] | None = None,
     save_crosswalk: bool = False,
     on_duplicate_geo_id: str = 'groupby',
+    delivered_crosswalk_table: str | None = None,
 ) -> EnrichState:
     """Attach a reference parcel dataset's attributes as area-weighted evidence.
 
@@ -341,6 +465,18 @@ def enrich_parcels_from_reference_crosswalk(
         -- is an expected, unremarkable pattern for this step's current-
         parcels side, so it defaults here to aggregating each duplicate
         group via `aggregate_rows` rather than erroring.
+    delivered_crosswalk_table : str, optional
+        A `join_partitions_by.sidecar_tables` entry of the reference
+        recipe holding a crosswalk its source delivered (columns
+        `parcel_id_new`, `reference_parcel_id`, `area_ha`,
+        `fraction_of_old`, `match_type`). For a unit whose reference has
+        that sidecar and no geometry, the crosswalk is read instead of
+        built, and the area QA check and `save_crosswalk` are skipped,
+        since both need reference geometry. It is refused (ValueError)
+        unless at least 99 percent of the spine's parcel ids appear in
+        it and 99 percent of its ids in the spine, and when a
+        `match_type` is unknown; fractions of one reference parcel that
+        do not sum to 1 only warn.
     """
     reference_recipe_id = reference_parcel_recipe_id or state.recipe.get(
         'reference_parcel_recipe_id'
@@ -351,9 +487,17 @@ def enrich_parcels_from_reference_crosswalk(
             "'reference_parcel_recipe_id'."
         )
     reference_recipe = get_recipe_by_id(reference_recipe_id)
+    join_key_name = (reference_recipe.get('join_partitions_by') or {}).get(
+        'join_key_name'
+    )
+    delivered_path = _delivered_crosswalk_path(
+        reference_recipe, state.admin_id, delivered_crosswalk_table
+    )
 
     try:
-        old = get_entities(reference_recipe, state.admin_id, geom=True)
+        old = get_entities(
+            reference_recipe, state.admin_id, geom=delivered_path is None
+        )
     except FileNotFoundError:
         return state
     if old is None or old.empty:
@@ -389,11 +533,7 @@ def enrich_parcels_from_reference_crosswalk(
                 old[col] = old[col] / 100
 
     crosswalk_path = None
-    join_key_name = None
-    if save_crosswalk:
-        join_key_name = (reference_recipe.get('join_partitions_by') or {}).get(
-            'join_key_name'
-        )
+    if save_crosswalk and delivered_path is None:
         out_path = get_output_path(
             state.recipe, state.admin_id, entity_recipe_id=state.entity_recipe
         )
@@ -423,7 +563,13 @@ def enrich_parcels_from_reference_crosswalk(
             f'  crosswalk sidecar {crosswalk_path.name} was built from other '
             'parcels; rebuilding'
         )
-    if reloaded:
+    if delivered_path is not None:
+        crosswalk = _load_delivered_crosswalk(
+            delivered_path, old, join_key_name, state.spine.index
+        )
+        if state.verbose:
+            print(f'  read delivered crosswalk {delivered_path.name}')
+    elif reloaded:
         crosswalk = _load_published_crosswalk(crosswalk_path, old, join_key_name)
         if state.verbose:
             print(f'  reloaded crosswalk sidecar {crosswalk_path.name}')
@@ -458,11 +604,18 @@ def enrich_parcels_from_reference_crosswalk(
             f'({n_old_matched / len(old):.1%})'
         )
 
-    warn_on_geo_id_area_mismatch(
-        crosswalk, state.spine, old, tolerance=area_ratio_tolerance, silent=silent_qa
-    )
-    if state.timer:
-        state.timer.mark('QA area mismatch check')
+    if delivered_path is None:
+        # Compares spine and reference polygon areas; a delivered
+        # crosswalk comes without reference geometry to compare.
+        warn_on_geo_id_area_mismatch(
+            crosswalk,
+            state.spine,
+            old,
+            tolerance=area_ratio_tolerance,
+            silent=silent_qa,
+        )
+        if state.timer:
+            state.timer.mark('QA area mismatch check')
 
     if crosswalk_path is not None and not reloaded:
         _save_published_crosswalk(crosswalk, old, join_key_name, crosswalk_path, inputs)

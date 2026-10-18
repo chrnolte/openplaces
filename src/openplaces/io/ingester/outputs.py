@@ -63,6 +63,11 @@ class _OutputMixin:
             Whether this run was asked to rebuild existing outputs.
         """
         stale = getattr(self, '_unavailable_units', set()) if reprocess else set()
+        # A table-partitioned unit missing one table is not uncovered: a
+        # fmv county delivers either boundaries or a crosswalk, never
+        # both, so one partition is always unavailable. A unit the join
+        # wrote this run is covered.
+        stale = set(stale) - getattr(self, '_joined_units', set())
         for admin_id in self.admin_ids_to_save or []:
             out_path = get_output_path(self.recipe, admin_id)
             replacing = out_path.exists() and str(admin_id) in stale
@@ -195,14 +200,49 @@ class _OutputMixin:
         from openplaces.io.aggregate import join_partitions_by_index
 
         join_cfg = self.recipe.get('join_partitions_by') or {}
-        join_partitions_by_index(
+        written = join_partitions_by_index(
             self.recipe,
             table_names=self.recipe['download_by']['table_names'],
             admin_ids=self.admin_ids_to_save,
             join_key_name=join_cfg.get('join_key_name'),
             keep_original=join_cfg.get('keep_original', False),
+            sidecar_tables=join_cfg.get('sidecar_tables'),
             verbose=self.verbose,
         )
+        self._joined_units = {str(a) for a in written or []}
+
+    def _save_sidecar_table(self, admin_id_to_process, process_in_chunks=False):
+        """Copy a `join_partitions_by.sidecar_tables` partition as received.
+
+        A sidecar is not an entity table (the placeslab fmv crosswalk has
+        one row per pair of parcels), so the column mapping, index and
+        registry checks of `TableIngester` do not apply to it, and a
+        rewrite would drop the provenance its producer put in the parquet
+        footer (bundle file, hash and commit), which the enrich step
+        quotes when it refuses a crosswalk. The file is copied byte for
+        byte to the partition's output path.
+        """
+        import shutil
+
+        partition_id = self.download_partition.get('partition_id_to_download')
+        data_path = self.download_partition.get('data_path')
+        if process_in_chunks:
+            raise ValueError(
+                f'Sidecar table {partition_id!r} cannot be split by process_by; '
+                'it is copied whole for the unit it was downloaded for.'
+            )
+        if data_path is None or data_path.suffix.lower() != '.parquet':
+            raise ValueError(
+                f'Sidecar table {partition_id!r} must arrive as one parquet file; '
+                f'got {data_path}.'
+            )
+        output_path = get_output_path(self.recipe, admin_id_to_process, partition_id)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = output_path.with_name(output_path.name + '.part')
+        shutil.copyfile(data_path, temp_path)
+        temp_path.replace(output_path)
+        if self.verbose:
+            print(f'Saved sidecar {partition_id!r} as received -> {output_path.name}')
 
     def _aggregate_to(self):
         """Aggregate process-level intermediate files into save-level outputs.

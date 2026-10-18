@@ -410,3 +410,192 @@ def test_sidecar_built_from_renamed_spine_is_rebuilt(
     assert result.evidence.loc['hash_b', 'slope'] == pytest.approx(9.0)
     saved = pd.read_parquet(crosswalk_path)
     assert set(saved['parcel_id']) == {'hash_a', 'hash_b'}
+
+
+# A delivered crosswalk: the reference ships no geometry, only pairs
+# of (current parcel, reference parcel). Every id, value and footer
+# entry below is fabricated.
+_FOOTER = {
+    'openplaces_commit': 'c0ffee0',
+    'bundle_file': 'fake-region_parcel.parquet',
+    'bundle_sha256': '0' * 64,
+    'bundle_rows': '2',
+}
+
+
+def _delivered_pairs(**overrides):
+    pairs = {
+        'parcel_id_new': ['new_1', 'new_1', 'new_2'],
+        'reference_parcel_id': ['sha_a', 'sha_b', 'sha_b'],
+        'area_ha': [0.2, 0.1, 0.3],
+        'fraction_of_old': [1.0, 0.25, 0.75],
+        'match_type': ['geo_id', 'overlay', 'overlay'],
+    }
+    pairs.update(overrides)
+    return pd.DataFrame(pairs)
+
+
+def _write_delivered(path, pairs, footer=_FOOTER):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    table = pa.Table.from_pandas(pairs, preserve_index=False)
+    metadata = dict(table.schema.metadata or {})
+    metadata.update({k.encode(): v.encode() for k, v in footer.items()})
+    pq.write_table(table.replace_schema_metadata(metadata), path)
+
+
+def _reference_without_geometry():
+    """Joined reference tables as ingest writes them without boundaries."""
+    return pd.DataFrame(
+        {
+            'parcel_id_int': ['sha_a', 'sha_b'],
+            'slope': [4.0, 8.0],
+            'm2_bld_fp': [100.0, 200.0],
+        },
+        index=pd.Index(['sha_a', 'sha_b'], name='parcel_id'),
+    )
+
+
+@pytest.fixture
+def delivered_setup(monkeypatch, tmp_path):
+    """Reference recipe paths in tmp_path, a delivered crosswalk on disk."""
+    reference_recipe = {'join_partitions_by': {'join_key_name': 'parcel_id_int'}}
+    monkeypatch.setattr(parcels_mod, 'get_recipe_by_id', lambda rid: reference_recipe)
+
+    def fake_output_path(recipe, admin_id, partition_id=None, **kwargs):
+        if recipe is reference_recipe:
+            name = f'ref_{partition_id}' if partition_id else 'ref'
+        else:
+            name = 'evidence'
+        return tmp_path / f'{name}.parquet'
+
+    monkeypatch.setattr(parcels_mod, 'get_output_path', fake_output_path)
+    geom_requests = []
+
+    def fake_get_entities(recipe, admin_id, geom=False, **kwargs):
+        geom_requests.append(geom)
+        return _reference_without_geometry()
+
+    monkeypatch.setattr(parcels_mod, 'get_entities', fake_get_entities)
+    _write_delivered(tmp_path / 'ref_crosswalk.parquet', _delivered_pairs())
+    return SimpleNamespace(tmp_path=tmp_path, geom_requests=geom_requests)
+
+
+def _spine(*ids):
+    return _gdf({pid: box(i, 0, i + 0.001, 0.001) for i, pid in enumerate(ids)})
+
+
+def test_delivered_crosswalk_is_read_and_aggregated(monkeypatch, delivered_setup):
+    def _raise(*a, **k):
+        raise AssertionError('a delivered crosswalk is read, not built or QAed')
+
+    monkeypatch.setattr(parcels_mod, 'build_id_or_overlay_crosswalk', _raise)
+    monkeypatch.setattr(parcels_mod, 'warn_on_geo_id_area_mismatch', _raise)
+    state = _make_state(_spine('new_1', 'new_2'))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        result = enrich_parcels_from_reference_crosswalk(
+            state,
+            mean_columns=['slope'],
+            sum_columns=['m2_bld_fp'],
+            save_crosswalk=True,
+            delivered_crosswalk_table='crosswalk',
+        )
+
+    assert delivered_setup.geom_requests == [False]
+    # Mean weighted by overlap area, sum apportioned by fraction_of_old.
+    assert result.evidence.loc['new_1', 'slope'] == pytest.approx(1.6 / 0.3)
+    assert result.evidence.loc['new_2', 'slope'] == pytest.approx(8.0)
+    assert result.evidence.loc['new_1', 'm2_bld_fp'] == pytest.approx(150.0)
+    assert result.evidence.loc['new_2', 'm2_bld_fp'] == pytest.approx(150.0)
+    # The delivered file is the publication; no second sidecar is written.
+    assert not (delivered_setup.tmp_path / 'evidence_crosswalk.parquet').exists()
+
+
+def test_delivered_crosswalk_for_other_parcels_is_refused(delivered_setup):
+    state = _make_state(_spine('new_1', 'new_2', 'new_3', 'new_4'))
+
+    with pytest.raises(ValueError) as excinfo:
+        enrich_parcels_from_reference_crosswalk(
+            state, mean_columns=['slope'], delivered_crosswalk_table='crosswalk'
+        )
+
+    message = str(excinfo.value)
+    assert 'bundle_file=fake-region_parcel.parquet' in message
+    assert 'openplaces_commit=c0ffee0' in message
+    assert '50.00%' in message  # spine ids found in the crosswalk
+    assert '100.00%' in message  # crosswalk ids found in the spine
+
+
+def test_delivered_crosswalk_naming_unknown_parcels_is_refused(delivered_setup):
+    _write_delivered(
+        delivered_setup.tmp_path / 'ref_crosswalk.parquet',
+        _delivered_pairs(parcel_id_new=['new_1', 'gone_1', 'new_2']),
+    )
+    state = _make_state(_spine('new_1', 'new_2'))
+
+    with pytest.raises(ValueError, match='66.67%'):
+        enrich_parcels_from_reference_crosswalk(
+            state, mean_columns=['slope'], delivered_crosswalk_table='crosswalk'
+        )
+
+
+def test_delivered_crosswalk_with_unknown_match_type_is_refused(delivered_setup):
+    _write_delivered(
+        delivered_setup.tmp_path / 'ref_crosswalk.parquet',
+        _delivered_pairs(match_type=['geo_id', 'fuzzy', 'overlay']),
+    )
+    state = _make_state(_spine('new_1', 'new_2'))
+
+    with pytest.raises(ValueError, match='fuzzy'):
+        enrich_parcels_from_reference_crosswalk(
+            state, mean_columns=['slope'], delivered_crosswalk_table='crosswalk'
+        )
+
+
+def test_delivered_fractions_off_one_warn(delivered_setup):
+    _write_delivered(
+        delivered_setup.tmp_path / 'ref_crosswalk.parquet',
+        _delivered_pairs(fraction_of_old=[1.0, 0.25, 0.70]),
+    )
+    state = _make_state(_spine('new_1', 'new_2'))
+
+    with pytest.warns(UserWarning, match='1 of 2 reference parcels'):
+        result = enrich_parcels_from_reference_crosswalk(
+            state, mean_columns=['slope'], delivered_crosswalk_table='crosswalk'
+        )
+
+    assert result.evidence.loc['new_2', 'slope'] == pytest.approx(8.0)
+
+
+def test_reference_with_geometry_builds_its_crosswalk(monkeypatch, delivered_setup):
+    """A county that keeps its boundaries ignores a delivered crosswalk."""
+    tmp_path = delivered_setup.tmp_path
+    (tmp_path / 'ref.parquet').touch()
+    (tmp_path / 'ref_geo.parquet').touch()
+    old = _gdf(
+        {'h1': box(0, 0, 0.001, 0.001)},
+        extra={'slope': [5.0], 'parcel_id_int': ['sha_a']},
+    )
+    monkeypatch.setattr(parcels_mod, 'get_entities', lambda *a, **k: old)
+    calls = []
+    real_build = parcels_mod.build_id_or_overlay_crosswalk
+
+    def _spy(*a, **k):
+        calls.append(1)
+        return real_build(*a, **k)
+
+    monkeypatch.setattr(parcels_mod, 'build_id_or_overlay_crosswalk', _spy)
+    state = _make_state(_gdf({'new_1': box(0, 0, 0.001, 0.001)}))
+
+    result = enrich_parcels_from_reference_crosswalk(
+        state,
+        mean_columns=['slope'],
+        silent_qa=True,
+        delivered_crosswalk_table='crosswalk',
+    )
+
+    assert calls == [1]
+    assert result.evidence.loc['new_1', 'slope'] == pytest.approx(5.0)

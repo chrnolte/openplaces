@@ -54,6 +54,11 @@ record, "the best source available at build time" is not reproducible.
 - `join_partitions_by` - for `download_by: {partition: table}` recipes, left-joins the
   per-table outputs into one entity file per admin unit after ingest (`join_key_name`,
   optional `keep_original`). See `io.aggregate.join_partitions_by_index`.
+  `sidecar_tables` lists tables that are downloaded but never joined: the
+  ingester copies each byte for byte to its partition file, footer included,
+  and a unit that has a sidecar but no base table gets its attribute tables
+  joined without geometry, indexed by the join key (placeslab fmv counties
+  deliver a parcel crosswalk in place of restricted boundaries).
 - `additional_layers` - list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
 - `entity_recipe` - predecessor entity recipe used by enrichment or curation
 - `pipeline` - ordered named steps for harmonization, enrichment, or curation

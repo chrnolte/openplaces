@@ -193,7 +193,9 @@ degenerate source column, empty column — is in
   intermediates such as transactions, `share` for deliverables),
   `admin_level`, optional `retention`.
 - `join_partitions_by:` — left-join per-table partitions into one file per
-  admin unit.
+  admin unit. `sidecar_tables:` names tables that are downloaded but
+  copied as received and never joined (a many-to-many crosswalk); a unit
+  with a sidecar and no base table is joined without geometry.
 - **Stacked units are split at ingest, by default, for every parcel table.**
   A source that stacks several ownership records on one lot polygon
   (every condo unit carrying its building's outline; every account on a
