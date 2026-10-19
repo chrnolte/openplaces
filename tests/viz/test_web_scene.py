@@ -112,8 +112,10 @@ def test_page_has_no_input_control_and_no_background_map():
     # none. The fifth and sixth fold the controls away and back; the
     # seventh shares a link to the view (camera and settings only); the
     # eighth turns the view north up; the ninth, in the menu under
-    # "Modeled" on a team page, picks which model colors the lots.
-    assert len(re.findall(r"createElement\('button'\)", script)) == 9
+    # "Modeled" on a team page, picks which model colors the lots; the
+    # tenth, beside it, the models' scale (to the assessments, or in
+    # today's dollars).
+    assert len(re.findall(r"createElement\('button'\)", script)) == 10
     for kind in (
         'dataset.palette',
         'dataset.layer',
@@ -505,6 +507,23 @@ def test_contrast_focus_lies_between_the_dearest_and_cheapest_nearby_homes():
     )
     assert 231_500 < x < 232_500
     assert focus['km'] == pytest.approx(1.0) and focus['claim']
+    # From a downtown beside the first two blocks, their milder contrast
+    # (1.25 times) is preferred over the sharper one 2 km away.
+    downtown = (
+        gpd.GeoSeries(gpd.points_from_xy([230_600], [900_050]), crs=26986)
+        .to_crs(4326)
+        .iloc[0]
+    )
+    focus = web_scene.contrast_focus(
+        gdf,
+        'land_value_per_dwelling',
+        cell_m=500,
+        radius_m=1200,
+        min_homes=40,
+        near=(downtown.x, downtown.y),
+        near_m=800,
+    )
+    assert focus['near'] and focus['ratio'] == pytest.approx(1.2, abs=0.05)
     # The claim holds only if the colors on screen agree: land per home
     # higher on the costly side.
     agree = gdf.assign(land=np.where(np.array(values) > 1e6, 90_000.0, 30_000.0))
@@ -779,6 +798,100 @@ def test_a_scene_reading_a_team_bundle_is_a_team_scene():
     assert web_scene.scene_audience(['western-nc', 'nantucket-ma.team']) == 'team'
     assert web_scene.scene_audience(['western-nc']) == 'public'
     assert web_scene.scene_audience(None) == 'public'
+
+
+def test_dollars_factors_extend_a_short_county_series_with_its_state():
+    # Fabricated indexes: CPI 200 in October 2010 and 250 in January
+    # 2022 (to 2010 dollars: 0.8). County 11111 runs 2010-2025 and
+    # doubles; county 22222 stops in 2021 at 1.5 times its 2010 value,
+    # and its state grows 1.2 times from 2021 to 2025.
+    consumer = pd.DataFrame(
+        {
+            'series_id_bls': [web_scene.CONSUMER_PRICE_SERIES] * 2,
+            'year': [2010, 2022],
+            'period_bls': ['M10', 'M01'],
+            'consumer_price_index': [200.0, 250.0],
+        }
+    )
+    house = pd.DataFrame(
+        {
+            'county_fips': ['11111', '11111', '22222', '22222', '22222'],
+            'year': [2010, 2025, 2010, 2021, 2025],
+            'house_price_index': [100.0, 200.0, 100.0, 150.0, np.nan],
+        }
+    )
+    state = pd.DataFrame(
+        {
+            'admin2_id': ['US-YY', 'US-YY'],
+            'year': [2021, 2025],
+            'house_price_index': [100.0, 120.0],
+        }
+    )
+    counties = {'11111': 'US-XX', '22222': 'US-YY', '33333': 'US-YY'}
+    factors = web_scene.dollars_factors(counties, house, consumer, state)
+    assert factors['11111'] == {'factor': 1.6, 'to_year': 2025, 'estimated': False}
+    assert factors['22222'] == {'factor': 1.44, 'to_year': 2025, 'estimated': True}
+    # No 2010 value: no factor.
+    assert '33333' not in factors
+    # Without the state index, the short series stops at its last year.
+    alone = web_scene.dollars_factors(counties, house, consumer)
+    assert alone['22222'] == {'factor': 1.2, 'to_year': 2021, 'estimated': False}
+
+
+def test_residential_lots_take_a_single_home_class_as_its_own_evidence():
+    # Fabricated lots, each with a counted home on it:
+    lots = pd.DataFrame(
+        {
+            'n_dwellings': [1.0, 1.0, 1.0, 1.0, 40.0, 0.0],
+            'land_use_class': [
+                # a house whose roll keeps its own use code (no count);
+                'Single-Family',
+                # an exempt lot classed single-family;
+                'Single-Family',
+                # an arboretum classed "Multi-Family", exempt;
+                'Multi-Family',
+                # an office;
+                'Office',
+                # public housing, exempt, with the roll's own count;
+                'Multi-Family',
+                # a house lot without any home counted.
+                'Single-Family',
+            ],
+            'use_group': [
+                'SFR GOLF',
+                'exempt',
+                'exempt',
+                'commercial',
+                'exempt',
+                'SFR',
+            ],
+            web_scene.ROLL_DWELLINGS: [np.nan, np.nan, np.nan, np.nan, 40.0, np.nan],
+        }
+    )
+    assert list(web_scene.residential_lots(lots)) == [
+        True,
+        False,
+        False,
+        False,
+        True,
+        False,
+    ]
+
+
+def test_downtown_stop_names_the_unit_holding_it():
+    admin = gpd.GeoDataFrame(
+        {'admin3_id': ['US-XX-AAA', 'US-XX-BBB']},
+        geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)],
+        crs=4326,
+    )
+    stop = web_scene.downtown_stop((1.5, 0.5), admin)
+    assert stop == {'longitude': 1.5, 'latitude': 0.5, 'admin3_id': 'US-XX-BBB'}
+    assert web_scene.downtown_stop(None, admin) is None
+    # Every place has a downtown for its tour: its own, or its center.
+    from openplaces.viz.web_scene import local
+
+    for place in local.load_places()['places']:
+        assert len(local.downtown_of(place)) == 2
 
 
 def test_a_layer_without_a_team_twin_reads_the_public_bundle(monkeypatch):

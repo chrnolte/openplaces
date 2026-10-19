@@ -130,6 +130,11 @@ def place_extent(place, radius_km, slug):
     return circle, built, regions
 
 
+def downtown_of(place):
+    """The tour's first stop: the place's `downtown`, else its center."""
+    return place.get('downtown') or place.get('center')
+
+
 def extent_label(place, radius_km) -> str:
     """The extent in words, for build messages."""
     return f'{radius_km:g} km' if has_circle(place) else ', '.join(place['admin_ids'])
@@ -151,6 +156,7 @@ def build_place(place, radius_km, slug, phone_scene=None) -> Path:
         elevation_recipe=ELEVATION_RECIPE,
         local_only=True,
         phone_scene=phone_scene,
+        downtown=downtown_of(place),
         verbose=False,
     )
     return output
