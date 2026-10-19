@@ -264,6 +264,19 @@ function renderSources(container, scene) {
       container.appendChild(el('p', 'src-note', 'None known for this place at the moment.'));
     }
   }
+  // Values a model filled in (the building imputation): what it is,
+  // where its code lives, and that "Tax assessor" leaves it out.
+  if (scene.value_notes && scene.value_notes.length) {
+    container.appendChild(el('h3', 'src-layer', 'Imputed values'));
+    const notes = el('ul', 'src-list');
+    for (const note of scene.value_notes) {
+      const item = el('li', 'src-item');
+      item.appendChild(el('div', 'src-head')).appendChild(el('span', 'src-name', note.name));
+      item.appendChild(el('div', 'src-credit', note.credit));
+      notes.appendChild(item);
+    }
+    container.appendChild(notes);
+  }
   // A team page's models: what they are and whom they credit.
   if (scene.model_sources && scene.model_sources.length) {
     container.appendChild(el('h3', 'src-layer', 'Models'));

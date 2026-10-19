@@ -78,6 +78,10 @@ MAGIC = b'OPVS'
 FORMAT_VERSION = 2
 SOURCE_SUFFIX = '_source'
 STATIC_DIR = files('openplaces.viz.web_scene') / 'static'
+# The openplaces logo as the pages' icons (maintainer, 2026-10-19): the
+# browser tab's and a phone's home-screen size, made from
+# Admin/openplaces/Visualization/openplaces_icon_transparent.png.
+ICON_FILES = ('icon-32.png', 'icon-180.png')
 KNOWN_ISSUES = files('openplaces.viz.web_scene') / 'known_issues.yaml'
 
 
@@ -207,6 +211,11 @@ class SceneLayer:
         Model land values offered as further colorings of this layer,
         on team pages only (`build_web_scene`); a view whose column is
         missing or empty is left out.
+    imputed_columns : tuple of str
+        Columns taken from a region's imputed twin bundle
+        (`<region>.imputed`, beside the regular one) where the model
+        filled them (`IMPUTATION_TOKEN` in their `_source`); every other
+        cell stays the regular bundle's (`overlay_imputed_values`).
     """
 
     name: str
@@ -225,6 +234,23 @@ class SceneLayer:
     per_dwelling_label: str | None = None
     recorded_column: str | None = None
     model_views: tuple = ()
+    imputed_columns: tuple = ()
+
+
+# The building imputation (maintainer, 2026-10-19: shown on the public
+# pages, marked as imputed): its bundles sit beside the regular ones as
+# `<region>.imputed`, written by branch `building-imputation`, which is
+# not merged into main; its filled cells carry this token.
+IMPUTED_SUFFIX = '.imputed'
+IMPUTATION_TOKEN = 'building-imputation'
+IMPUTATION_NOTE = {
+    'name': 'Imputed building values (openplaces building imputation, v0.3)',
+    'credit': 'Buildings the assessor gives no usable value are filled by a '
+    'model and marked "estimated"; "Tax assessor" shows only recorded values. '
+    'Manufactured homes the roll does not list get a model of their own per '
+    'county, trained on the listed ones. Model code: openplaces branch '
+    'building-imputation, commit 6647b77e.',
+}
 
 
 @dataclass(frozen=True)
@@ -612,6 +638,7 @@ VALUE_SCENE_LAYERS = (
         # (maintainer, 2026-10-16: 131-135 Willow Ave vanished in the
         # assessment view though the roll values it).
         recorded_column='improvement_value_parcel',
+        imputed_columns=('structure_value',),
         # A building whose height was capped keeps its color: the
         # notebook's translucent magenta marker read as a pink wash
         # over exactly the tallest towers.
@@ -2506,6 +2533,67 @@ def contrast_focus(
     return out
 
 
+def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame, int]:
+    """Take the model's values from a region's imputed twin bundle.
+
+    The twin (`<region>.imputed`) sits beside the regular bundle and is
+    read alongside it, never copied over it. Only cells whose `_source`
+    carries `IMPUTATION_TOKEN` are taken, with their source, so each is
+    marked imputed on the page; every other cell keeps the regular
+    bundle's value.
+
+    Parameters
+    ----------
+    part : pandas.DataFrame
+        Rows read from the regular bundle, indexed like it.
+    recipe : str
+        The layer's recipe.
+    region : str
+        The regular region id.
+    columns : sequence of str
+        Columns to take where the model filled them.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, int)
+        The rows, and how many cells came from the model (0 without a
+        twin).
+    """
+    if not columns:
+        return part, 0
+    try:
+        canonical = delivery_paths(recipe, region=region)['canonical']
+    except (KeyError, ValueError):
+        # A region without a delivery path has no twin either.
+        return part, 0
+    twin = canonical.parent.parent / f'{canonical.parent.name}{IMPUTED_SUFFIX}'
+    twin = twin / canonical.name
+    if not twin.exists() or not columns:
+        return part, 0
+    wanted = [c for c in columns if c in part.columns]
+    read = wanted + [f'{c}{SOURCE_SUFFIX}' for c in wanted]
+    imputed = pd.read_parquet(twin, columns=read).reindex(part.index)
+    part = part.copy()
+    taken = 0
+    for column in wanted:
+        source = f'{column}{SOURCE_SUFFIX}'
+        filled = (
+            imputed[source]
+            .astype('string')
+            .str.contains(IMPUTATION_TOKEN)
+            .fillna(False)
+            & imputed[column].notna()
+        )
+        part.loc[filled, column] = imputed.loc[filled, column]
+        if source in part.columns:
+            part[source] = part[source].astype('string')
+            part.loc[filled, source] = imputed.loc[filled, source].astype('string')
+        else:
+            part[source] = imputed[source].astype('string').where(filled)
+        taken += int(filled.sum())
+    return part, taken
+
+
 def layer_region(recipe, region) -> str:
     """The region a layer reads: a team region where its recipe ships
     one, else that region's public bundle.
@@ -2837,6 +2925,8 @@ def build_web_scene(
         }
 
     rendered = {}
+    # Cells the building imputation supplied (`overlay_imputed_values`).
+    imputed_cells = 0
     # Per county, the factor of the models' views in today's dollars.
     model_dollars = {}
     estimated_by_layer = {}
@@ -2874,6 +2964,10 @@ def build_web_scene(
                 wanted = [a for a in admin_ids if a in members]
                 if wanted:
                     part = read_bundle(layer.recipe, name, wanted)
+                    part, taken = overlay_imputed_values(
+                        part, layer.recipe, name, layer.imputed_columns
+                    )
+                    imputed_cells += taken
                     if layer.recorded_column and layer.recorded_column not in part:
                         extra = read_evidence_columns(
                             layer.recipe, name, [layer.recorded_column]
@@ -3241,6 +3335,8 @@ def build_web_scene(
         # Team pages with models: the factors to today's dollars per
         # county, and the models' credits for the Sources panel.
         'model_dollars': model_dollars,
+        # Notes on values a model filled, for the Sources panel.
+        'value_notes': [IMPUTATION_NOTE] if imputed_cells else [],
         'model_sources': (
             list(MODEL_SOURCE_NOTES)
             if any(
@@ -3616,7 +3712,7 @@ def deploy_web_scene(
             *_without_filters(RCLONE_SFTP_FLAGS),
             *dry,
         )
-    print('\nPhase 2: switch (index.html, viewer.js, scene.json, .htaccess)')
+    print('\nPhase 2: switch (index.html, viewer.js, scene.json, .htaccess, icons)')
     _rclone(
         env,
         'copy',
@@ -3626,7 +3722,7 @@ def deploy_web_scene(
         '1',
         *RCLONE_SFTP_FLAGS,
         '--filter',
-        '+ /{index.html,viewer.js,scene.json,.htaccess}',
+        '+ /{index.html,viewer.js,scene.json,.htaccess,' + ','.join(ICON_FILES) + '}',
         '--filter',
         '- **',
         *dry,
@@ -3706,6 +3802,8 @@ def deploy_landing(output_dir, env_file=None, go=False):
         '+ /places.json',
         '--filter',
         '+ /methods.html',
+        '--filter',
+        '+ /{' + ','.join(ICON_FILES) + '}',
         '--filter',
         '- **',
         *dry,

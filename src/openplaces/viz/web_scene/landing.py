@@ -17,7 +17,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from openplaces.viz.web_scene import DEFAULT_TITLE
+from openplaces.viz.web_scene import DEFAULT_TITLE, ICON_FILES
 
 
 @dataclass(frozen=True)
@@ -154,6 +154,11 @@ def build_landing(
     (output_dir / 'methods.html').write_bytes(
         (Path(__file__).parent / 'static' / 'methods.html').read_bytes()
     )
+    # The openplaces logo, the landing and methods pages' icons.
+    for icon in ICON_FILES:
+        (output_dir / icon).write_bytes(
+            (Path(__file__).parent / 'static' / icon).read_bytes()
+        )
     # Read by each scene for its back link and its menu of the other
     # places (viewer.js `buildPlaceNav`).
     (output_dir / 'places.json').write_text(

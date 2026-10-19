@@ -419,6 +419,61 @@ def test_palettes_take_scene_bounds_and_color_stops():
     assert pastel['theme'] == 'light'
 
 
+def test_imputed_twin_supplies_only_the_models_cells(tmp_path, monkeypatch):
+    # Fabricated: three buildings. The regular bundle has a recorded
+    # value for the first two; its imputed twin keeps the first,
+    # replaces the second and fills the third, marking only those two.
+    regular_dir = tmp_path / 'region-x'
+    twin_dir = tmp_path / 'region-x.imputed'
+    regular_dir.mkdir()
+    twin_dir.mkdir()
+    name = 'US-XX_footprint-openplaces-2026.parquet'
+    monkeypatch.setattr(
+        web_scene,
+        'delivery_paths',
+        lambda recipe, region: {'canonical': regular_dir / name},
+    )
+    index = pd.Index(['a', 'b', 'c'], name='footprint_id')
+    part = pd.DataFrame(
+        {
+            'structure_value': [100.0, 0.0, np.nan],
+            'structure_value_source': ['roll', 'roll', None],
+        },
+        index=index,
+    )
+    pd.DataFrame(
+        {
+            'structure_value': [100.0, 250.0, 300.0],
+            'structure_value_source': [
+                'roll',
+                'building-imputation-v0.3+imputed',
+                'building-imputation-v0.3+imputed',
+            ],
+        },
+        index=index,
+    ).to_parquet(twin_dir / name)
+    out, taken = web_scene.overlay_imputed_values(
+        part, 'r', 'region-x', ('structure_value',)
+    )
+    assert taken == 2
+    assert list(out['structure_value']) == [100.0, 250.0, 300.0]
+    assert list(out['structure_value_source'].astype(str)) == [
+        'roll',
+        'building-imputation-v0.3+imputed',
+        'building-imputation-v0.3+imputed',
+    ]
+    # The page marks them estimated through the usual marker.
+    from openplaces.core.provenance import is_imputed
+
+    assert list(is_imputed(out['structure_value_source'])) == [False, True, True]
+    # Without a twin, nothing changes.
+    (twin_dir / name).unlink()
+    same, none = web_scene.overlay_imputed_values(
+        part, 'r', 'region-x', ('structure_value',)
+    )
+    assert none == 0 and same is part
+
+
 def test_lot_total_value_falls_back_to_land_and_improvement():
     # Fabricated lots: a roll total; none but land and improvement;
     # land alone; nothing.
@@ -461,7 +516,9 @@ def test_landing_page_is_links_only(tmp_path):
     page = (out / 'index.html').read_text(encoding='utf-8')
     # Navigation between pre-built pages: no search, filter or picker.
     assert not re.search(r'<(input|select|textarea|form|button|script)\b', page, re.I)
-    assert re.findall(r'href="([^"]+)"', page) == ['aaa/', 'bbb/']
+    assert re.findall(r'<a\b[^>]*href="([^"]+)"', page) == ['aaa/', 'bbb/']
+    # The logo as its icon, copied beside it.
+    assert all((out / icon).exists() for icon in web_scene.ICON_FILES)
     places = json.loads((out / 'places.json').read_text(encoding='utf-8'))
     assert [p['slug'] for p in places] == ['aaa', 'bbb']
     # The methods page beside it, plain text and links, with the
