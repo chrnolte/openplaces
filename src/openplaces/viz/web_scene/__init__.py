@@ -2683,6 +2683,7 @@ def build_web_scene(
     landmarks=None,
     phone_scene=None,
     downtown=None,
+    place_title=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -2752,6 +2753,9 @@ def build_web_scene(
         point: the tour's first stop, where it rests longest and hides
         the buildings (maintainer, 2026-10-18). None starts the tour at
         its densest stop instead.
+    place_title : str, optional
+        The place's name ("Boston area"), shown at the top of the page
+        for a few seconds as it opens (maintainer, 2026-10-18).
     verbose : bool
 
     Returns
@@ -3180,6 +3184,7 @@ def build_web_scene(
         'tour': foci,
         'tour_contrast': contrast,
         'tour_downtown': downtown_stop(downtown, admin),
+        'place_title': place_title,
         # Team pages with models: the factors to today's dollars per
         # county, and the models' credits for the Sources panel.
         'model_dollars': model_dollars,

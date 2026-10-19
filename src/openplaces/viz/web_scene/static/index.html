@@ -240,16 +240,36 @@
   .legend.hidden .legend-other-note { opacity: 0.4; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  /* "Sources" stays a chip in the bar; opened, its document pops up
+     above the chip, so the other controls never move (maintainer,
+     2026-10-18). Its own dark panel and colors read over any palette
+     and page. */
   #about-panel {
-    position: static;
-    max-width: min(460px, calc(100vw - 32px));
-    max-height: 50vh;
-    overflow: auto;
+    position: relative;
     padding: 8px 12px;
+  }
+  #notices {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: min(420px, calc(100vw - 32px));
+    max-height: 60vh;
+    overflow: auto;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.94);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    --text: #e8eaf0;
+    --muted: #a9afba;
+    color: var(--text);
+    text-shadow: none;
+    z-index: 6;
   }
   /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
-  #controls-chip, #share-chip {
+  /* "Replay tour": shown once the visitor has taken over. */
+  #replay-chip[hidden] { display: none; }
+  #controls-chip, #share-chip, #replay-chip {
     position: static;
     flex: none;
     font: inherit;
@@ -277,7 +297,6 @@
   #legend-panel { padding-top: 14px; }
   #about-panel summary { cursor: pointer; font-weight: 600; }
   #about-panel pre { white-space: pre-wrap; font-size: 11px; color: var(--muted); }
-  #about-panel[open] { width: min(420px, calc(100vw - 32px)); }
   #notices { font-size: 12.5px; line-height: 1.45; }
   .src-intro { color: var(--muted); margin: 10px 0 4px; }
   .src-layer {
@@ -347,19 +366,33 @@
   /* The countdown under a message: 3, 2, 1. */
   .tour-count { font-size: 22px; font-weight: 700; margin-top: 2px; }
   .tour-count:empty { display: none; }
-  /* Two blinks as a message appears, so it is not missed. */
-  @keyframes tour-blink {
-    0%, 30%, 60% { opacity: 1; }
-    15%, 45% { opacity: 0.1; }
-    100% { opacity: 1; }
+  /* The place's name, top center for a few seconds as the page opens
+     (viewer.js `showPlaceTitle`). */
+  #place-title {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    translate: -50% 0;
+    max-width: calc(100vw - 32px);
+    padding: 8px 20px;
+    border-radius: 18px;
+    background: rgba(8, 11, 20, 0.72);
+    color: #f2f4f8;
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 1.5s ease;
   }
-  #autopilot.blink, #tour-tip.blink { animation: tour-blink 1.2s ease-in-out; }
-  /* The control the hint is about glows twice with it. */
-  @keyframes tour-pulse {
-    0%, 30%, 60%, 100% { box-shadow: 0 0 0 0 rgba(255, 224, 102, 0); }
-    15%, 45% { box-shadow: 0 0 0 3px rgba(255, 224, 102, 0.9); }
+  #place-title.fading { opacity: 0; }
+  /* The bubble's arrow flickers once as it appears, pointing out the
+     button; the texts never flicker (maintainer, 2026-10-18). */
+  @keyframes tour-flick {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
   }
-  .tour-pulse { animation: tour-pulse 1.2s ease-in-out; }
+  #tour-tip.flick::after { animation: tour-flick 0.6s ease-in-out; }
   /* The hover tooltip, placed beside the cursor by viewer.js. */
   .hover-tip {
     position: fixed;
@@ -492,10 +525,9 @@
     #legend-box { padding: 6px 10px; }
     #legend-box .legend { margin-bottom: 4px; }
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
-    #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
-    /* Opened, the Sources document takes a row of its own. */
-    #about-panel[open] { flex: 1 1 100%; width: auto; max-height: 55vh; }
-    #controls-chip, #share-chip { padding: 6px 10px; }
+    #about-panel { flex: 1; padding: 6px 10px; }
+    #notices { max-height: 55vh; }
+    #controls-chip, #share-chip, #replay-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }
