@@ -83,6 +83,13 @@ places:
     state: US-WI
     center: [-89.3824, 43.07243]
     center_note: City-County Building lot, 210 Martin Luther King Jr Blvd
+  # Beaumont (maintainer, 2026-10-19), not Port Arthur.
+  - slug: beaumont
+    title: Beaumont, Texas
+    around: downtown Beaumont
+    state: US-TX
+    center: [-94.09515, 30.08256]
+    center_note: City hall lot, 801 Main St
   # The island, not a circle (maintainer, 2026-10-18): a place listing
   # `admin_ids` shows those units whole, with no phone page, and
   # `extent_note` is its landing card's line. The town of Nantucket

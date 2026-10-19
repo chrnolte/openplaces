@@ -2576,9 +2576,11 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
     except (KeyError, ValueError):
         # A region without a delivery path has no twin either.
         return part, 0
-    twin = canonical.parent.parent / f'{canonical.parent.name}{IMPUTED_SUFFIX}'
+    twin = imputed_twin_dir(canonical, region)
+    if twin is None:
+        return part, 0
     twin = twin / canonical.name
-    if not twin.exists() or not columns:
+    if not twin.exists():
         return part, 0
     wanted = [c for c in columns if c in part.columns]
     read = wanted + [f'{c}{SOURCE_SUFFIX}' for c in wanted]
@@ -2604,6 +2606,24 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
     return part, taken
 
 
+def imputed_twin_dir(bundle_file, region):
+    """The folder of a region's imputed twin bundle, or None.
+
+    A region's bundle sits in a folder of its own name, its twin beside
+    it (`<region>.imputed`); a state's only region sits in the state's
+    folder itself, its twin then inside it (measured 2026-10-19:
+    cheer-coastal-tx, whose regular bundle is the US-TX file).
+    """
+    folder = Path(bundle_file).parent
+    for candidate in (
+        folder.parent / f'{folder.name}{IMPUTED_SUFFIX}',
+        folder / f'{region}{IMPUTED_SUFFIX}',
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def imputed_model_code(recipe, region) -> list[str]:
     """The model code lines (`MODEL_CODE_LINE`) of a region's imputed
     twin bundle's notice; empty without a twin or such a line."""
@@ -2611,8 +2631,9 @@ def imputed_model_code(recipe, region) -> list[str]:
         terms = delivery_paths(recipe, region=region)['terms']
     except (KeyError, ValueError):
         return []
-    notice = terms.parent.parent / f'{terms.parent.name}{IMPUTED_SUFFIX}' / terms.name
-    if not notice.exists():
+    twin = imputed_twin_dir(terms, region)
+    notice = twin / terms.name if twin is not None else None
+    if notice is None or not notice.exists():
         return []
     text = ' '.join(notice.read_text(encoding='utf-8').split())
     return MODEL_CODE_LINE.findall(text)
