@@ -693,7 +693,7 @@ const TOUR_TO_CONTRAST_ACTIONS = [
     at: 0,
     hint: {
       target: 'dwelling',
-      text: 'You can also color land by their *value per home*.',
+      text: 'You can visualize wealth distributions by switching to value *per home*.',
       tip: 'A home is one apartment, house, or condo.',
       countdown: 5,
       countdownAfter: 1,
@@ -2338,7 +2338,7 @@ async function main() {
         widthUnits: 'pixels',
         visible: shown[entry.spec.name],
         pickable: false,
-        updateTriggers: {getColor: [palette.id, valueView, withEstimates]},
+        updateTriggers: {getColor: [palette.id, valueView, withEstimates, colorRange]},
       })
       : null;
     const outline = topEdges || (lineColors
@@ -2354,7 +2354,7 @@ async function main() {
             return lineColors.subarray(4 * f, 4 * f + 4);
           }
           : spec.line,
-        updateTriggers: {getLineColor: [palette.id, valueView, withEstimates]},
+        updateTriggers: {getLineColor: [palette.id, valueView, withEstimates, colorRange]},
       })
       : null);
     const faces = new SolidPolygonLayer({
@@ -2393,7 +2393,7 @@ async function main() {
         return colors.subarray(4 * f, 4 * f + 4);
       },
       updateTriggers: {
-        getFillColor: [palette.id, valueView, withEstimates],
+        getFillColor: [palette.id, valueView, withEstimates, colorRange],
       },
       ...ghostFilter('solid'),
     });
@@ -2418,8 +2418,8 @@ async function main() {
         },
         parameters: {depthWriteEnabled: false},
         updateTriggers: {
-          getFillColor: [palette.id, valueView, withEstimates],
-          getLineColor: [palette.id, valueView, withEstimates],
+          getFillColor: [palette.id, valueView, withEstimates, colorRange],
+          getLineColor: [palette.id, valueView, withEstimates, colorRange],
         },
         ...ghostFilter('ghosts'),
       }));
