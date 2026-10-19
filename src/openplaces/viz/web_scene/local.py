@@ -157,6 +157,7 @@ def build_place(place, radius_km, slug, phone_scene=None) -> Path:
         local_only=True,
         phone_scene=phone_scene,
         downtown=downtown_of(place),
+        place_title=place['title'],
         verbose=False,
     )
     return output

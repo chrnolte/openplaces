@@ -630,7 +630,7 @@ const TOUR = {
 
 // What the tour does at the contrast stop, by seconds into the orbit:
 // a hint above the control first (`target`: the buildings switch, or a
-// value view's button), which blinks twice and then stays, and the
+// value view's button), which stays, and the
 // switch three seconds later (maintainer, 2026-10-17: a hint shown
 // only briefly was easy to miss).
 // The two switches a visitor might not expect (buildings gone, colors
@@ -1745,9 +1745,9 @@ async function main() {
   // above the legend: "Flying on autopilot" as it starts, then what is
   // about to switch, then what the visitor can now see. Beside them a
   // bubble above the button about to switch, pointing at it, with the
-  // definition and the countdown 3, 2, 1. Both blink twice as they
-  // appear and stay a while after the switch, so a visitor learns what
-  // the controls do by watching; the control glows with the blinks.
+  // definition and the countdown 3, 2, 1, 0. Both stay a while after
+  // the switch, so a visitor learns what the controls do by watching;
+  // the bubble's arrow flickers once as it appears.
   const banner = document.createElement('div');
   banner.id = 'autopilot';
   banner.hidden = true;
@@ -1842,40 +1842,42 @@ async function main() {
   // only when it has something to say.
   const showHint = ({target, text, tip: definition, countdown, countdownAfter = 0, linger = 5}) => {
     hideHint();
-    const blink = (box) => {
-      box.classList.remove('fading', 'blink');
-      void box.offsetWidth;
-      box.classList.add('blink');
-    };
+    // Texts appear steadily; only the bubble's arrow flickers once,
+    // pointing out the button (maintainer, 2026-10-18).
+    banner.classList.remove('fading');
+    tip.classList.remove('fading', 'flick');
     showLines(text);
     tipAnchor = controlFor(target);
     if (tipAnchor && (definition || countdown)) {
       showLines(definition || [], tip);
       if (countdown) {
+        // 3, 2, 1 and 0 at the switch; a second later the count goes,
+        // and a bubble with nothing else to say goes with it, never
+        // left empty.
         const count = document.createElement('div');
         count.className = 'tour-count';
         tip.appendChild(count);
-        for (let n = countdown; n >= 1; n--) {
+        for (let n = countdown; n >= 0; n--) {
           later((countdownAfter + countdown - n) * 1000, () => {
             count.textContent = String(n);
             placeAll();
           });
         }
-        later((countdownAfter + countdown) * 1000, () => {
-          count.textContent = '';
+        later((countdownAfter + countdown + 1) * 1000, () => {
+          if (definition) {
+            count.remove();
+            placeAll();
+          } else {
+            tip.hidden = true;
+          }
         });
       }
       tip.hidden = false;
-      blink(tip);
+      void tip.offsetWidth;
+      tip.classList.add('flick');
     }
     banner.hidden = false;
-    blink(banner);
     placeAll();
-    if (tipAnchor) {
-      tipAnchor.classList.remove('tour-pulse');
-      void tipAnchor.offsetWidth;
-      tipAnchor.classList.add('tour-pulse');
-    }
     later(linger * 1000 - 1200, () => {
       banner.classList.add('fading');
       tip.classList.add('fading');
@@ -1917,6 +1919,16 @@ async function main() {
       scene.tour_downtown,
     )
     : {stop: () => {}, ready: () => {}};
+  // The place's name at the top for a few seconds as the page opens
+  // (maintainer, 2026-10-18), tour or not.
+  if (scene.place_title) {
+    const placeTitle = document.createElement('div');
+    placeTitle.id = 'place-title';
+    placeTitle.textContent = scene.place_title;
+    document.body.appendChild(placeTitle);
+    setTimeout(() => placeTitle.classList.add('fading'), 4500);
+    setTimeout(() => placeTitle.remove(), 6000);
+  }
   // The opening line says how to take over with what the visitor
   // holds: a mouse or a finger (maintainer, 2026-10-18).
   if (tour) {

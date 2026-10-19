@@ -70,6 +70,7 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
         elevation_recipe=ELEVATION_RECIPE,
         phone_scene=phone_scene,
         downtown=downtown_of(place),
+        place_title=place['title'],
         verbose=False,
     )
     print(
@@ -117,7 +118,9 @@ def landing(config, thumbnails=True) -> None:
 
 
 def refresh() -> None:
-    """Page files and known issues into every built page, data unchanged."""
+    """Page files, known issues and place titles into every built page,
+    data unchanged."""
+    titles = {p['slug']: p['title'] for p in load_places()['places']}
     for folder in sorted(
         p for p in site_root().iterdir() if (p / 'scene.json').exists()
     ):
@@ -130,6 +133,10 @@ def refresh() -> None:
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
         units = sorted({u for layer in manifest['layers'] for u in layer['files']})
         manifest['known_issues'] = known_issues(units)
+        # A phone page (`<slug>-phone`) shows its place's title.
+        slug = folder.name.removesuffix('-phone')
+        if slug in titles:
+            manifest['place_title'] = titles[slug]
         manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
         print('refreshed', folder.name)
 
