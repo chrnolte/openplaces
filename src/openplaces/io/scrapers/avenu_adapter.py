@@ -211,21 +211,34 @@ class AvenuAdapter:
             """)
             await asyncio.sleep(0.2)
 
-        # Select document type via JS (same visibility issue)
+        # Select document type via JS (same visibility issue). Matched
+        # ignoring spaces and case, and an unmatched label raises: a
+        # select left empty searches every type, which is how 'UNITDEED'
+        # returned 414 rows of all types where the dropdown says
+        # 'UNIT DEED' (Nantucket, 2026-10-19).
         if doc_type is not None:
-            safe_label = doc_type.replace("'", "\\'")
-            await self.page.evaluate(f"""
+            safe_label = doc_type.replace("'", "\\'").replace(' ', '').upper()
+            matched = await self.page.evaluate(f"""
                 (() => {{
                     const el = document.querySelector('{DOC_TYPE_DROPDOWN}');
                     for (const o of el.options) o.selected = false;
                     for (const o of el.options) {{
-                        if (o.text.trim() === '{safe_label}') {{
-                            o.selected = true; break;
+                        const t = o.text.replace(/\\s+/g, '').toUpperCase();
+                        if (t === '{safe_label}') {{
+                            o.selected = true;
+                            el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                            return true;
                         }}
                     }}
-                    el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                    return false;
                 }})()
             """)
+            if not matched:
+                raise ValueError(
+                    f'Avenu: no document type {doc_type!r} in the dropdown of '
+                    f'{self.base_url}; searching without it would return '
+                    'every type.'
+                )
             await asyncio.sleep(0.2)
 
         # Submit — wait for networkidle, then wait for the AJAX-populated results

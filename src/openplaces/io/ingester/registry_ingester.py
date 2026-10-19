@@ -268,7 +268,7 @@ class RegistryIngester:
                             page_count=page_count,
                         )
                         records = self._drop_mismatched_records(
-                            records, town_name, date_from, date_to, ck
+                            records, town_name, date_from, date_to, ck, doc_type
                         )
                         if records is None:
                             continue  # criteria failed; retry next run
@@ -385,15 +385,20 @@ class RegistryIngester:
         date_from: str,
         date_to: str,
         partition_id: str,
+        doc_type: str | None = None,
     ) -> list[dict] | None:
-        """Drop crawled rows that do not match the queried town and dates.
+        """Drop crawled rows that do not match the queried town, dates and type.
 
         When the registry search silently fails to apply its criteria, the
         result grid shows the portal's default listing (registry-wide,
         current date). Saving that would poison the per-town partition and
-        produce duplicates across partitions. Returns the matching records,
-        or None when every record mismatches (the partition is then not
-        saved and not checkpointed, so the next run retries it).
+        produce duplicates across partitions. The document type is checked
+        as well: a search whose type filter did not apply returns every
+        instrument of the town and dates, mortgages and liens among them,
+        and its deeds then appear in two partitions. Returns the matching
+        records, or None when every record mismatches (the partition is
+        then not saved and not checkpointed, so the next run retries it).
+        Measured 2026-10-19 on US-MA-NTC: one such search gave 21 types.
         """
         if not records:
             return records
@@ -401,6 +406,7 @@ class RegistryIngester:
         col_map = self.recipe.get('columns', {})
         town_key = col_map.get('town', 'town')
         date_key = col_map.get('recorded_date', 'recorded_date')
+        type_key = col_map.get('doc_type', 'doc_type')
         lo, hi = pd.Timestamp(date_from), pd.Timestamp(date_to)
 
         kept = []
@@ -408,6 +414,17 @@ class RegistryIngester:
         for rec in records:
             rec_town = rec.get(town_key)
             if rec_town is not None and str(rec_town).upper() != town.upper():
+                n_dropped += 1
+                continue
+            rec_type = rec.get(type_key)
+            # Compared without spaces: a dropdown label ('UNITDEED') and
+            # the type a record shows need not space it the same way.
+            if (
+                doc_type is not None
+                and rec_type is not None
+                and str(rec_type).replace(' ', '').upper()
+                != doc_type.replace(' ', '').upper()
+            ):
                 n_dropped += 1
                 continue
             rec_date = pd.to_datetime(rec.get(date_key), errors='coerce')
@@ -419,16 +436,17 @@ class RegistryIngester:
         if n_dropped and not kept:
             warnings.warn(
                 f'{partition_id}: all {n_dropped} crawled row(s) are for other '
-                'towns or dates - the search criteria did not apply (default '
-                'registry listing?). Partition not saved; it will be retried '
-                'on the next run.',
+                'towns, dates or document types - the search criteria did not '
+                'apply (default registry listing?). Partition not saved; it '
+                'will be retried on the next run.',
                 stacklevel=2,
             )
             return None
         if n_dropped:
             warnings.warn(
                 f'{partition_id}: dropped {n_dropped} crawled row(s) for other '
-                f'towns or dates; saving the {len(kept)} matching row(s).',
+                f'towns, dates or document types; saving the {len(kept)} '
+                'matching row(s).',
                 stacklevel=2,
             )
         return kept
