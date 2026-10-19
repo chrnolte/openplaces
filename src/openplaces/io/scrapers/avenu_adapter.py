@@ -462,11 +462,44 @@ class AvenuAdapter:
         cls = await el.get_attribute('class') or ''
         return 'disabled' not in cls.lower()
 
-    async def next_page(self) -> None:
-        """Navigate to the next results page via the Next postback link."""
+    async def _first_row_text(self) -> str:
+        """The first result row's text, or '' when the grid has none."""
+        return await self.page.evaluate(
+            '(sel) => { const tr = document.querySelector(sel); '
+            "return tr ? tr.innerText.trim() : ''; }",
+            RESULTS_ROW,
+        )
+
+    async def next_page(self, timeout: float = 15.0) -> None:
+        """Navigate to the next results page via the Next postback link.
+
+        Returns once the grid shows the new page: its first row differs
+        from the one before the click. Network idle comes before the
+        grid's partial update, and reading rows then gave the first row of
+        the new page the book and page of the old page's first row while
+        its click loaded the new row's details, which is the one repeated
+        (book, page) of every multi-page month. Measured 2026-10-19 on
+        US-MA-NTC: page 2 of 2024-04 read 8 rows from the old grid.
+
+        Raises
+        ------
+        TimeoutError
+            When the grid has not changed within *timeout* seconds, so a
+            stale page is never parsed as the next one.
+        """
+        before = await self._first_row_text()
         await self._wait_unblocked()
         await self.page.click(NEXT_BUTTON)
         await self.page.wait_for_load_state('networkidle')
+        for _ in range(int(timeout / 0.3)):
+            current = await self._first_row_text()
+            if current and current != before:
+                return
+            await asyncio.sleep(0.3)
+        raise TimeoutError(
+            'Avenu: the results grid did not change after Next; refusing to '
+            'parse the previous page again.'
+        )
 
     async def dump_details_candidates(self) -> None:
         """Print frame URLs and locate the "Consideration" label across all frames.
