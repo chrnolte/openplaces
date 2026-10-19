@@ -1,0 +1,86 @@
+# Recipe: FHFA House Price Index, states, annual, all-transactions
+#
+# The state counterpart of US_economy-price-house-fhfa-2026 (counties):
+# FHFA's developmental annual state index ("HPI for states
+# (All-Transactions Index)", not seasonally adjusted), one row per
+# state and year. FHFA ships it as a separate workbook in the same "Annual
+# House Price Indexes" list, so it is a second recipe of the same
+# dataset rather than a second table of one download. Same layout as
+# the county file: one sheet, five note rows above the header.
+#
+# Measured 2026-10-18 on the file "last updated March 31, 2026":
+# 2,601 rows, 51 states (DC included), 1975 to 2025, one row per state
+# and year; both index columns kept are filled on every row, and the
+# annual change is missing only in 1975. Every admin2_id is in the
+# admin-2 spine.
+#
+# Columns kept, under the county recipe's names: Year, Annual Change
+# (%), "HPI" (house_price_index, 100 in 1975 for every state) and "HPI
+# with 2000 base". Key: admin2_id (US-XX), the spine's state id, built
+# from the two-letter Abbreviation. Left unmapped: "HPI with 1990
+# base", the state name and its 2-digit FIPS code.
+#
+# Design limits checked: L7, L29. This recipe ingests an index FHFA
+# publishes, as published; nothing in openplaces builds a price index.
+
+description: >-
+  FHFA all-transactions house price index for US states, annual, with
+  2000 = 100 and the published annual percent change.
+
+admin_id: US
+
+dataset:
+  theme: economy-price-house
+  source:
+    source_id: fhfa
+    # Checked 2026-10-18; terms as in the county recipe beside this one.
+    license: >-
+      public-domain (US Government work, 17 U.S.C. 105); required notice:
+      'This product uses FHFA data but is neither endorsed nor certified
+      by FHFA.'
+    terms_url: "https://www.fhfa.gov/about/fhfa-policies/website-privacy-policy"
+    redistribution_restricted: false
+    portal_url: "https://www.fhfa.gov/data/hpi/datasets?tab=additional-data"
+    download_url: "https://www.fhfa.gov/hpi/download/annual/hpi_at_state.xlsx"
+  version: "2026"
+
+uncompressed_file_name: "hpi_at_state.xlsx"
+
+sheet_name: state
+header: 5
+
+columns:
+  year: Year
+  house_price_index_annual_change: Annual Change (%)
+  house_price_index: HPI
+  house_price_index_base_2000: HPI with 2000 base
+
+transformations:
+  - type: string
+    operation: add_prefix
+    input: Abbreviation
+    args: {prefix: "US-"}
+    output: admin2_id
+  - type: unary
+    operation: to_numeric
+    input: house_price_index_annual_change
+    output: house_price_index_annual_change
+  - type: unary
+    operation: to_numeric
+    input: house_price_index
+    output: house_price_index
+  - type: unary
+    operation: to_numeric
+    input: house_price_index_base_2000
+    output: house_price_index_base_2000
+
+# Keep the derived admin2_id (not a `columns:` key), and drop the raw
+# columns it and the names came from.
+keep_unnamed_columns: true
+drop_columns: [State, Abbreviation, FIPS, HPI with 1990 base]
+
+save_to:
+  data_dir: core
+  # Explicit filename, or this and the county recipe (same dataset,
+  # differing only in the recipe-id suffix) write the same file.
+  filename: state
