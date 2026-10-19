@@ -256,6 +256,8 @@ county_fips,"County FIPS code (5-digit state+county), read as the `county` segme
 census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
 census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
+census_place_id,"Census place identifier (7-digit state+place FIPS) of the incorporated place or census-designated place holding the entity; null outside every place",,string,first,,,harmonize
+census_place_geoid,"Census place code (7-digit state+place FIPS, TIGER GEOID) on a place tile row of US_tile-census-2025_place; the value link steps copy into census_place_id",,string,first,,,ingest
 zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical approximation of ZIP code service areas, not the authoritative ZIP code (see postal_zip5)",,string,first,,,harmonize
 postal_code_conflict,ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree,,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
