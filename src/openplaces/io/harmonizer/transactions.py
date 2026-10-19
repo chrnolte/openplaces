@@ -295,6 +295,7 @@ def link_transactions(
     parcel_key: str = 'parcel_link_key',
     lot_column: str = 'lot_id_local',
     property_key: str = 'parcel_id_local',
+    parcel_id_keys: tuple[str, ...] = (),
     address_keys: tuple[str, ...] = ('address_id_local_city', 'address_id_local'),
     address_ranges: bool = True,
     kind_column: str = 'sale_record_kind',
@@ -320,6 +321,11 @@ def link_transactions(
        where the row reached the lot through its unit (*lot_column* set),
        or `assessor_last_sale` where the row is a roll's last-sale field
        and so was never matched at all, the key being the roll row's own;
+    1a. any further parcel ids the record carries (*parcel_id_keys*),
+       each against the parcel spine's column of the same name and
+       labeled with it: a Massachusetts last sale is a MassGIS assessor
+       row with no `parcel_id_local` but its parcel's `parcel_id_admin2`,
+       which the address passes below would only approximate;
     2. the address keys, town-scoped then county-scoped
        (`address_id_local_city`, `address_id_local`), for a registry that
        carries no parcel number (Massachusetts);
@@ -344,6 +350,10 @@ def link_transactions(
     parcel_key, lot_column, property_key : str
         Spine columns: the key the parcel passes join on, the column a
         unit's lot was written to, and the record's own number.
+    parcel_id_keys : tuple of str
+        Spine columns holding another parcel id, tried in order after
+        the parcel key and before the addresses, each present on the
+        parcel spine under the same name (default none).
     address_keys : tuple of str
         Spine columns tried in order after the parcel key, each present
         on the parcel spine under the same name.
@@ -366,6 +376,7 @@ def link_transactions(
         parcel_key,
         lot_column,
         property_key,
+        *parcel_id_keys,
         *address_keys,
         'address_street',
         'address_number',
@@ -426,6 +437,8 @@ def link_transactions(
             via_lot & ~is_last_sale, parcel_key, 'parcel_id_local', STACKED_UNITS_METHOD
         )
         _tier(everything, parcel_key, 'parcel_id_local', PARCEL_KEY_METHOD)
+        for key in parcel_id_keys:
+            _tier(everything, key, key, key)
         for key, method in zip(address_keys, (ADDRESS_CITY_METHOD, ADDRESS_METHOD)):
             _tier(everything, key, key, method)
         if (
@@ -523,7 +536,9 @@ def link_transactions(
                 property_key,
                 TRANSACTION_ID,
                 'property_id',
-                PARCEL_KEY_METHOD,
+                # The label names the key that matched, as on the
+                # parcel passes; the default key is PARCEL_KEY_METHOD.
+                property_key,
                 source_column=source_column,
             )
             # A folded deed is linked through its member rows, and two
