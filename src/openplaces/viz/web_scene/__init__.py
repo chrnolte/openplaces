@@ -251,12 +251,16 @@ class ModelView:
         Natural log of the predicted land value per hectare.
     aoa_column : str, optional
         Area of applicability index; inside where at most 1.
+    scale_column : str
+        The recorded value the scale is taken from (`land_value`, as
+        the assessor recorded it).
     """
 
     key: str
     label: str
     log_column: str
     aoa_column: str | None = None
+    scale_column: str = 'land_value'
 
 
 # The PLACES-FMV region-with-neighbors variants cleared for the
@@ -2289,8 +2293,16 @@ def layer_region(recipe, region) -> str:
     return region if region in declared else region.removesuffix(TEAM_SUFFIX)
 
 
-def model_view_arrays(gdf, layer, raw_value) -> tuple[dict, dict]:
+def model_view_arrays(gdf, layer, homes=None, home_view=None) -> tuple[dict, dict]:
     """Per-feature arrays and manifest entries of a layer's model views.
+
+    Each view's scale is the median, over the lots with both, of the
+    recorded land value per hectare (`ModelView.scale_column`, the
+    assessor's own figure, never openplaces' fills; maintainer,
+    2026-10-18) over the predicted one: one number per page and view.
+    With `homes`, each model also gets a per-home view (maintainer,
+    2026-10-18): the lot's scaled model land value over its homes,
+    on the same lots and scale as the layer's own per-home view.
 
     Parameters
     ----------
@@ -2298,17 +2310,23 @@ def model_view_arrays(gdf, layer, raw_value) -> tuple[dict, dict]:
         The rendered layer.
     layer : SceneLayer
         Its `model_views` and `area_unit`.
-    raw_value : numpy.ndarray
-        The recorded (or filled) value of each feature, for the scale.
+    homes : numpy.ndarray, optional
+        Dwellings per feature where the layer's per-home view counts it
+        as homes, NaN elsewhere.
+    home_view : dict, optional
+        The layer's per-home view (`vmin`, `vmax`, `other`), whose scale
+        the models' per-home views share.
 
     Returns
     -------
     tuple of (dict, dict)
         Arrays for the scene file (`value_<key>`, the scaled prediction
-        per area unit; `aoa_<key>`, 2 inside the area of applicability,
-        1 outside, 0 unknown) and views for the manifest (`label`,
-        `unit`, `model`, `scale`). A view without predictions, or with
-        no lot to scale it on, is left out.
+        per area unit; `value_<key>__home`, per home; `aoa_<key>`, 2
+        inside the area of applicability, 1 outside, 0 unknown) and
+        views for the manifest (`label`, `unit`, `model`, `scale`; a
+        per-home view also `per_home` and `base`, the per-area view's
+        key). A view without predictions, or without a recorded value
+        to scale it on, is left out.
     """
     metric = (
         gdf.geometry
@@ -2316,11 +2334,12 @@ def model_view_arrays(gdf, layer, raw_value) -> tuple[dict, dict]:
         else gdf.geometry.to_crs(gdf.estimate_utm_crs())
     )
     hectares = metric.area.to_numpy() / 1e4
-    land_per_ha = np.where(hectares > 0, raw_value / hectares, np.nan)
     arrays, views = {}, {}
     for view in layer.model_views:
-        if view.log_column not in gdf.columns:
+        if view.log_column not in gdf.columns or view.scale_column not in gdf.columns:
             continue
+        recorded = gdf[view.scale_column].to_numpy(dtype=float)
+        land_per_ha = np.where(hectares > 0, recorded / hectares, np.nan)
         predicted = np.exp(gdf[view.log_column].to_numpy(dtype=float))
         both = np.isfinite(predicted) & (predicted > 0) & (land_per_ha > 0)
         if not both.any():
@@ -2340,6 +2359,22 @@ def model_view_arrays(gdf, layer, raw_value) -> tuple[dict, dict]:
             'model': True,
             'scale': round(scale, 3),
         }
+        if homes is not None and home_view is not None:
+            lot_value = predicted * scale * hectares
+            arrays[f'value_{view.key}__home'] = np.where(
+                homes > 0, lot_value / homes, np.nan
+            )
+            views[f'{view.key}__home'] = {
+                **{
+                    k: home_view[k] for k in ('vmin', 'vmax', 'other') if k in home_view
+                },
+                'label': view.label,
+                'unit': 'dwelling',
+                'model': True,
+                'per_home': True,
+                'base': view.key,
+                'scale': round(scale, 3),
+            }
     return arrays, views
 
 
@@ -2662,7 +2697,19 @@ def build_web_scene(
                 },
             }
         if layer.model_views and scene_audience(region) == 'team':
-            arrays, model_views = model_view_arrays(out, layer, raw_value)
+            homes = None
+            if 'dwelling' in views:
+                # The lots the per-home view counts as homes.
+                homes = np.where(
+                    np.isfinite(
+                        out[f'{layer.value_column}_per_dwelling'].to_numpy(dtype=float)
+                    ),
+                    out['n_dwellings'].to_numpy(dtype=float),
+                    np.nan,
+                )
+            arrays, model_views = model_view_arrays(
+                out, layer, homes=homes, home_view=views.get('dwelling')
+            )
             extra.update(arrays)
             views.update(model_views)
         # Which values openplaces filled itself (the `imputed` mark in

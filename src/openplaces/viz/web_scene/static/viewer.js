@@ -1188,21 +1188,34 @@ async function main() {
   const modelViews = [];
   for (const layer of scene.layers) {
     for (const [key, view] of Object.entries(layer.views || {})) {
-      if (view.model && !modelViews.some(([k]) => k === key)) {
+      if (view.model && !view.per_home && !modelViews.some(([k]) => k === key)) {
         modelViews.push([key, view.label]);
       }
     }
   }
-  const viewKeys = new Set(['area', 'dwelling', ...modelViews.map(([key]) => key)]);
+  // A model has two views: per ground area (`<key>`) and per home
+  // (`<key>__home`), chosen with the same toggle as the assessor's.
+  const HOME_SUFFIX = '__home';
+  const modelBase = (key) => (key.endsWith(HOME_SUFFIX) ? key.slice(0, -HOME_SUFFIX.length) : key);
+  const isModel = (key) => modelViews.some(([k]) => k === modelBase(key));
+  const isPerHome = (key) => key === 'dwelling' || (isModel(key) && key.endsWith(HOME_SUFFIX));
+  const viewKeys = new Set(['area', 'dwelling']);
+  for (const layer of scene.layers) {
+    Object.keys(layer.views || {}).forEach((key) => viewKeys.add(key));
+  }
   let valueView = viewKeys.has(params.get('view')) ? params.get('view') : 'area';
   let withEstimates = params.get('values') !== 'assessed';
+  // The model a "Modeled" choice shows: the one in the address, else
+  // the first.
+  let modelKey = isModel(valueView) ? modelBase(valueView) : (modelViews[0] || [null])[0];
+  const modelView = (perHome) => (perHome ? `${modelKey}${HOME_SUFFIX}` : modelKey);
   const hasDwellingView = scene.layers.some((l) => viewOf(l, 'dwelling'));
-  // Rows: per area or per dwelling, the models (team pages), then with
-  // estimates or the assessment alone.
+  // Rows: per area or per dwelling; then where the values come from
+  // (maintainer, 2026-10-18): "Tax assessor", "+ imputed" (the
+  // default) and, on a team page, "Modeled", which alone shows a menu
+  // of the models.
   const viewSwitch = document.createElement('div');
   viewSwitch.id = 'view-switch';
-  const modelSwitch = document.createElement('div');
-  modelSwitch.id = 'model-switch';
   const valuesSwitch = document.createElement('div');
   valuesSwitch.id = 'values-switch';
   const choices = [];
@@ -1216,14 +1229,17 @@ async function main() {
     // "Home", not "dwelling", for visitors (maintainer, 2026-10-17).
     choices.push(['view', 'dwelling', 'Value per home']);
   }
-  for (const [key, label] of modelViews) {
-    choices.push(['model', key, label]);
+  if (scene.layers.some((l) => l.n_estimated > 0) || modelViews.length) {
+    choices.push(['values', 'assessed', 'Tax assessor'], ['values', 'estimates', '+ imputed']);
   }
-  if (scene.layers.some((l) => l.n_estimated > 0)) {
-    // "Imputed": the assessment with openplaces' fills (maintainer,
-    // 2026-10-16); a third, "Our estimates", is planned.
-    choices.push(['values', 'estimates', 'Imputed'], ['values', 'assessed', 'Assessment']);
+  if (modelViews.length) {
+    choices.push(['values', 'model', 'Modeled']);
   }
+  const titles = {
+    assessed: 'Values the assessor recorded; values openplaces filled in are drawn as no value',
+    estimates: "The assessor's values, with openplaces' fills where the roll has none",
+    model: 'Land value from a 2010 model, scaled to the place\'s assessments',
+  };
   let setChoice = () => {};
   for (const [group, id, label] of choices) {
     const button = document.createElement('button');
@@ -1231,40 +1247,59 @@ async function main() {
     button.dataset.group = group;
     button.dataset.choice = id;
     button.textContent = label;
-    button.title = id === 'assessed'
-      ? 'Values the assessor recorded; values openplaces filled in are drawn as no value'
-      : '';
+    button.title = titles[id] || '';
     button.setAttribute('role', 'radio');
-    // A model button sets the value view like the others.
-    button.addEventListener('click', () => setChoice(group === 'model' ? 'view' : group, id));
-    ({view: viewSwitch, model: modelSwitch, values: valuesSwitch})[group].appendChild(button);
+    button.addEventListener('click', () => setChoice(group, id));
+    (group === 'view' ? viewSwitch : valuesSwitch).appendChild(button);
   }
-  if (modelViews.length) {
-    // The models' row says what they are: one 2010 land value model
-    // each, scaled to the place's assessments.
-    const caption = document.createElement('span');
-    caption.className = 'switch-caption';
-    caption.textContent = 'Model, 2010:';
-    modelSwitch.prepend(caption);
+  // The models' menu: a folded list of buttons under "Modeled", shown
+  // only while "Modeled" is chosen. A display choice, like the
+  // palettes: it selects no features.
+  const modelMenu = document.createElement('details');
+  modelMenu.id = 'model-menu';
+  const modelSummary = document.createElement('summary');
+  modelMenu.append(modelSummary);
+  const modelList = document.createElement('div');
+  modelList.setAttribute('role', 'radiogroup');
+  modelList.setAttribute('aria-label', 'Model shown');
+  for (const [key, label] of modelViews) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.group = 'model';
+    button.dataset.choice = key;
+    button.textContent = label;
+    button.setAttribute('role', 'radio');
+    button.addEventListener('click', () => {
+      modelMenu.open = false;
+      setChoice('model', key);
+    });
+    modelList.append(button);
   }
+  modelMenu.append(modelList);
   // Each pair is one segmented toggle, one option always chosen
   // (maintainer, 2026-10-17: clearly a toggle, not two buttons).
   viewSwitch.setAttribute('role', 'radiogroup');
   viewSwitch.setAttribute('aria-label', 'Value shown');
-  modelSwitch.setAttribute('role', 'radiogroup');
-  modelSwitch.setAttribute('aria-label', 'Model shown');
   valuesSwitch.setAttribute('role', 'radiogroup');
   valuesSwitch.setAttribute('aria-label', 'Values used');
-  layerSwitch.after(viewSwitch, modelSwitch, valuesSwitch);
+  layerSwitch.after(viewSwitch, valuesSwitch, modelMenu);
   const markViewSwitch = () => {
-    const buttons = [...viewSwitch.children, ...modelSwitch.children, ...valuesSwitch.children];
-    for (const button of buttons.filter((b) => b.dataset.group)) {
-      const on = button.dataset.group === 'values'
-        ? (button.dataset.choice === 'estimates') === withEstimates
-        : button.dataset.choice === valueView;
+    const modeled = isModel(valueView);
+    const source = modeled ? 'model' : withEstimates ? 'estimates' : 'assessed';
+    const buttons = [...viewSwitch.children, ...valuesSwitch.children, ...modelList.children];
+    for (const button of buttons) {
+      const {group, choice} = button.dataset;
+      const on = group === 'values'
+        ? choice === source
+        : group === 'model'
+          ? choice === modelKey
+          : choice === (isPerHome(valueView) ? 'dwelling' : 'area');
       button.classList.toggle('active', on);
       button.setAttribute('aria-checked', String(on));
     }
+    modelMenu.hidden = !modeled;
+    const current = modelViews.find(([key]) => key === modelKey);
+    modelSummary.textContent = current ? `Model, 2010: ${current[1]}` : '';
   };
   markViewSwitch();
   // A layer's coloring under the current choices: its scale (bounds,
@@ -1288,9 +1323,10 @@ async function main() {
     const own = view && arrays[`value_${valueView}`];
     let values = own && !perArea ? own : entry.featureValue;
     // A model's values are the model's: the assessment choices below
-    // do not apply to them.
+    // do not apply to them. Per area (the non-residential lots of a
+    // per-home view), the model's own per-area values.
     if (own && view.model) {
-      return values;
+      return perArea ? arrays[`value_${view.base || valueView}`] || values : values;
     }
     if (!withEstimates && arrays.estimated) {
       // Not a recorded zero: drawn as no value.
@@ -2377,9 +2413,21 @@ async function main() {
   // switched off they are rebuilt resting on the ground.
   const bottom = scene.layers[0].name;
   setChoice = (group, id) => {
-    if (group === 'view') {
-      valueView = id;
+    // "Modeled", or a model from its menu: that model's view, per
+    // ground area or per home as the other toggle stands. The toggle
+    // keeps working under a model; another source returns to the
+    // assessor's values the same way.
+    const perHome = isPerHome(valueView);
+    if (group === 'model' || (group === 'values' && id === 'model')) {
+      modelKey = group === 'model' ? id : modelKey;
+      valueView = modelView(perHome);
+      group = 'view';
+    } else if (group === 'view') {
+      valueView = isModel(valueView) ? modelView(id === 'dwelling') : id;
     } else {
+      if (isModel(valueView)) {
+        valueView = perHome ? 'dwelling' : 'area';
+      }
       withEstimates = id === 'estimates';
       // Estimated features change height, so the pin and the geometry
       // follow.

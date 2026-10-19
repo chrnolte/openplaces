@@ -172,8 +172,52 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.04);
   }
-  /* Seven models wrap onto a second line inside a rounder track. */
-  #model-switch { flex-wrap: wrap; border-radius: 14px; }
+  /* The models' menu under "Modeled" (team pages): folded to the
+     chosen model's name, a list of buttons when open. */
+  /* The list opens upward from the chosen model's name, on its own
+     dark panel, so it reads over any palette and page. */
+  #model-menu { position: relative; width: fit-content; margin: -4px 0 10px; font-size: 12px; }
+  #model-menu[hidden] { display: none; }
+  #model-menu summary {
+    width: fit-content;
+    padding: 3px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+  }
+  #model-menu summary::-webkit-details-marker { display: none; }
+  #model-menu summary::after { content: " \25B4"; }
+  #model-menu[open] summary::after { content: " \25BE"; }
+  #model-menu > div {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100%;
+    padding: 6px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.92);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    z-index: 5;
+    text-shadow: none;
+  }
+  #model-menu button {
+    font: inherit;
+    color: rgba(232, 234, 240, 0.72);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    padding: 4px 12px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  #model-menu button:hover { color: #fff; }
+  #model-menu button.active { color: #fff; background: rgba(255, 255, 255, 0.14); font-weight: 600; }
   #view-switch button, #model-switch button, #values-switch button { border: 0; padding: 3px 12px; }
   #view-switch button.active, #model-switch button.active, #values-switch button.active {
     color: #10131c;
