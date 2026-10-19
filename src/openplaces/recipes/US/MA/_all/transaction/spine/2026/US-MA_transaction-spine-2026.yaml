@@ -32,3 +32,14 @@ pipeline_patch:
         - [sale_clerk_instrument]
         - [instrument_number]
         - [sale_book, sale_page]
+
+  # A last sale is a MassGIS assessor row: it names its parcel by the
+  # statewide id (`parcel_id_admin2`, LOC_ID) and its account by
+  # MAP_PAR_ID (`property_id_assessor`), and has no `parcel_id_local`,
+  # so the national passes reached it by address only. Both ids are
+  # exact. Measured 2026-10-18 on US-MA-NTC: parcel_id_admin2 names one parcel for 0.967 of sales.
+  # Measured 2026-10-18 on US-MA-NTC: the address link agrees on 10,801 of 10,805 sales.
+  - set: link_transactions
+    params:
+      parcel_id_keys: [parcel_id_admin2]
+      property_key: property_id_assessor
