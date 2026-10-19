@@ -158,8 +158,12 @@ def consolidate_condo_cluster_footprints(
         return state
 
     from openplaces.io.harmonizer.attributes import _cluster_condo_parcels
+    from openplaces.io.harmonizer.spine import in_unit_extent
 
-    ref_for_clustering = ref_polys.copy()
+    # Only parcels within the unit's extent: one outside it is a stray
+    # the parcel geospine drops by the same rule, and its cluster's
+    # outline would lie in another unit.
+    ref_for_clustering = ref_polys[in_unit_extent(ref_polys, state.admin_id)].copy()
     if 'area_ha' not in ref_for_clustering.columns:
         ref_for_clustering['area_ha'] = get_areas(ref_for_clustering, 'ha')
 

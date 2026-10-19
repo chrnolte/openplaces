@@ -204,6 +204,12 @@ def infer_spine_additions(
 
     parcel_ids_with_footprint = crosswalk.index.get_level_values('parcel_id').unique()
     mask_without_footprint = ~ref_polys.index.isin(parcel_ids_with_footprint)
+    # A parcel outside the unit's extent is one the parcel geospine
+    # drops as a stray, by the same rule; an outline made from it
+    # would have no parcel here and lie in another unit.
+    from openplaces.io.harmonizer.spine import in_unit_extent
+
+    mask_without_footprint &= in_unit_extent(ref_polys, state.admin_id)
 
     # Reference-wide lower bound, calibrated on the parcels that *do* carry a
     # real footprint: how little assessed improvement per hectare still comes
