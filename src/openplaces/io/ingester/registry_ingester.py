@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from openplaces.io import save_parquet
 from openplaces.io.aggregate import (
@@ -270,8 +271,42 @@ class RegistryIngester:
                         records = self._drop_mismatched_records(
                             records, town_name, date_from, date_to, ck, doc_type
                         )
+                        if not records:
+                            # A session whose searches stop applying
+                            # their criteria stays that way, and the
+                            # refresh below ran only after a saved
+                            # month, so every later month was lost. A
+                            # failed search can also come back empty,
+                            # which looks like a month without deeds.
+                            # Measured 2026-10-19 on US-MA-NTC: a fresh
+                            # session found 50 deeds in a rejected month.
+                            await context.close()
+                            context = await browser.new_context()
+                            adapter = adapter_class(base_url, context)
+                            await adapter.start_session()
+                            records, page_count = await self._crawl_partition(
+                                adapter,
+                                admin4_id,
+                                date_from,
+                                date_to,
+                                town=town_name.upper(),
+                                doc_type=doc_type,
+                                page_count=0,
+                            )
+                            records = self._drop_mismatched_records(
+                                records, town_name, date_from, date_to, ck, doc_type
+                            )
                         if records is None:
-                            continue  # criteria failed; retry next run
+                            continue  # criteria failed twice; retry next run
+                        if not records and self._partition_rows(admin4_id, ck):
+                            # Never replace a month's rows with none.
+                            warnings.warn(
+                                f'{ck}: two searches found no rows where the '
+                                'saved partition has some; kept the saved '
+                                'partition.',
+                                stacklevel=2,
+                            )
+                            continue
                         self._save(records, admin4_id, partition_id=ck)
                         self.timer.mark(f'{admin4_id} {ck}')
 
@@ -574,6 +609,13 @@ class RegistryIngester:
 
     def _town_name_for(self, admin4_id: str) -> str:
         return self._crosswalk[admin4_id]['town_name']
+
+    def _partition_rows(self, admin4_id: str, checkpoint_key: str) -> int:
+        """Rows in the saved partition file, or 0 when there is none."""
+        path = get_output_path(self.recipe, admin4_id, partition_id=checkpoint_key)
+        if not path.exists():
+            return 0
+        return pq.ParquetFile(path).metadata.num_rows
 
     def _is_done(self, admin4_id: str, checkpoint_key: str) -> bool:
         """Whether a town × month × doc-type partition is completely scraped.
