@@ -31,41 +31,64 @@ from openplaces.io.harmonizer import (
 from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
-from openplaces.recipe import raise_if_coverage_complete, version_sort_key
+from openplaces.recipe import (
+    get_recipe_by_id,
+    raise_if_coverage_complete,
+    version_sort_key,
+)
+
+STRAY_MARGIN_DEG = 0.02
 
 
-def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
+def in_unit_extent(gdf, admin_id, margin_deg=STRAY_MARGIN_DEG) -> np.ndarray:
+    """Which rows of *gdf* lie within the admin unit's extent.
+
+    The one stray rule: a row is in the unit when its representative
+    point falls inside the unit's bounding box plus *margin_deg*. The
+    margin keeps genuine border-straddling buildings, matching the
+    delivery gate's own bbox logic. Every input a spine turns into rows
+    passes this test: the sources `resolve_spine` reads
+    (`_drop_out_of_unit_rows`) and the parcels the footprint geospine
+    turns into outlines (`infer_spine_additions`,
+    `consolidate_condo_cluster_footprints`). A parcel the parcel
+    geospine drops as a stray must not come back as an outline.
+
+    Every row counts as in the unit when the rows cannot be placed
+    against it: no geometry, no CRS (synthetic fixtures, or a source
+    whose CRS was never declared), or no polygon for *admin_id*.
+    """
+    n = 0 if gdf is None else len(gdf)
+    everywhere = np.ones(n, dtype=bool)
+    if n == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
+        return everywhere
+    if getattr(gdf, 'crs', None) is None:
+        return everywhere
+    try:
+        unit = get_admin([str(admin_id)], geom=True)
+        bounds = unit.total_bounds
+    except Exception:
+        return everywhere
+    pts = gdf.geometry.representative_point()
+    if unit.crs is not None and gdf.crs != unit.crs:
+        pts = pts.to_crs(unit.crs)
+    return (
+        (pts.x >= bounds[0] - margin_deg)
+        & (pts.y >= bounds[1] - margin_deg)
+        & (pts.x <= bounds[2] + margin_deg)
+        & (pts.y <= bounds[3] + margin_deg)
+    ).to_numpy()
+
+
+def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=STRAY_MARGIN_DEG):
     """Drop source rows far outside the admin unit being harmonized.
 
     A per-county source file is trusted to contain that county's rows,
     and mostly does - but real files carry strays (the NCDPS Cabarrus
     footprints include a 52-building block that sits in Buncombe,
-    190 km away), which then fail the delivery bbox gate. Rows whose
-    representative point falls outside the unit's bounding box plus a
-    margin are dropped with a warning; the margin keeps genuine
-    border-straddling buildings, matching the gate's own bbox logic.
+    190 km away), which then fail the delivery bbox gate. Rows outside
+    `in_unit_extent` are dropped with a warning.
     """
-    if gdf is None or len(gdf) == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
-        return gdf
-    # Without a CRS the rows cannot be placed against the unit at all
-    # (synthetic fixtures, or a source whose CRS was never declared), so
-    # nothing is dropped.
-    if getattr(gdf, 'crs', None) is None:
-        return gdf
-    try:
-        unit = get_admin([str(admin_id)], geom=True)
-        bounds = unit.total_bounds
-    except Exception:
-        return gdf
-    pts = gdf.geometry.representative_point()
-    if unit.crs is not None and gdf.crs != unit.crs:
-        pts = pts.to_crs(unit.crs)
-    inside = (
-        (pts.x >= bounds[0] - margin_deg)
-        & (pts.y >= bounds[1] - margin_deg)
-        & (pts.x <= bounds[2] + margin_deg)
-        & (pts.y <= bounds[3] + margin_deg)
-    )
+    inside = in_unit_extent(gdf, admin_id, margin_deg)
     n_out = int((~inside).sum())
     if n_out:
         warnings.warn(
@@ -75,6 +98,21 @@ def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
         )
         return gdf[inside]
     return gdf
+
+
+def _is_spine_product(recipe_id: str) -> bool:
+    """Whether *recipe_id* is a harmonize recipe (another spine's output).
+
+    Such a source is this unit's spine already, built under the stray
+    rule from inputs that passed it. Testing its rows again is a second
+    decision that can disagree with the first: the building geospine
+    dropped 466 Winnebago (US-WI-WI) outlines its footprint geospine
+    kept, and `load_geospine` then refused the pair.
+    """
+    try:
+        return get_recipe_by_id(recipe_id).get('stage') == 'harmonize'
+    except Exception:
+        return False
 
 
 def _add_neighbor_rows(source_gdfs: dict, state) -> None:
@@ -545,6 +583,11 @@ def resolve_spine(
     from a lower-priority source is added to the spine only if its IoU with
     every existing spine geometry is below ``overlap_iou_max`` (default 0.02).
 
+    A source's rows outside the unit's extent (`in_unit_extent`) are
+    dropped as strays, except a harmonize recipe's: another spine of this
+    unit, built under the same rule, whose rows this spine keeps as they
+    are (the building geospine carries every footprint geospine row).
+
     Discovered ingest recipes of the same entity type, scoped to child
     admin_ids of the recipe's ``admin_id``, are added to the listed
     sources whether or not the list holds an ``auto_discover: true``
@@ -648,7 +691,8 @@ def resolve_spine(
         label = src.get('label', recipe_id)
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
-            gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
+            if not _is_spine_product(recipe_id):
+                gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
             source_gdfs[recipe_id] = gdf
             loaded.append(src)
             if state.verbose:
