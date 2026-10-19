@@ -424,7 +424,7 @@ def _catalog_terms() -> dict[str, list[dict]]:
     return index
 
 
-def bundle_terms(recipe, geometry_source=None) -> dict:
+def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
     """Describe the licence obligations a bundle inherits.
 
     Parameters
@@ -435,6 +435,13 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
         The bundle's own `geometry_source` column. When given, each
         contributing source is reported with its share of the geometry, so
         the notice states how much of the bundle each licence reaches.
+    admin_ids : list of str, optional
+        The units the bundle pools. The walk then runs as each unit runs
+        the recipe: its patches applied and its auto-discovered county
+        sources reached, as `restricted_inputs` does. Without them the
+        notice sees declared inputs only, which missed a state's own
+        sales feed and listed another state's roll that the national
+        recipe named (the Wisconsin transaction bundle, 2026-10-19).
 
     Returns
     -------
@@ -456,7 +463,7 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
 
-    known = _source_terms(recipe)
+    known = _source_terms(recipe, admin_ids)
     known_ids = {entry['source_id'] for entry in known.values()}
 
     shares: dict[str, float] = {}

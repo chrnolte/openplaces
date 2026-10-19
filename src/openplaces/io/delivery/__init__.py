@@ -1107,7 +1107,9 @@ def export_delivery(
     evidence = coerce_mixed_object_columns(evidence)
     to_parquet(evidence, staged['evidence'])
 
-    terms = bundle_terms(recipe, geometry_source)
+    terms = bundle_terms(
+        recipe, geometry_source, [process_id for process_id, _ in inputs]
+    )
     withheld = merge_counts(withheld_first, withheld_second)
     by_source = {entry['source_id']: entry for entry in restricted}
     terms['withheld'] = [
