@@ -56,7 +56,11 @@ REAL_PAGE_INDICATOR = 'D/Default.aspx'
 # Ordered by expected frequency; DEED covers most arm's-length residential sales.
 TRANSACTION_DOC_TYPES = [
     'DEED',
-    # 'UNITDEED',
+    # A condominium unit is conveyed by a unit deed, a type of its
+    # own in the dropdown; a crawl of DEED alone misses a town's
+    # condo sales.
+    # Measured 2026-10-18 on US-MA-NTC: 0.122 of condo sales found.
+    'UNIT DEED',
     'FORECLOSURE DEED',
     # 'SHERIFFS DEED',
     # 'SHERF DD',
