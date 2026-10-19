@@ -1565,23 +1565,45 @@ def _nice(value: float, up: bool) -> float:
     return float(next(s for s in reversed(steps) if s * power <= value) * power)
 
 
-def scene_bounds(per_area, low_q=0.02, high_q=0.995) -> tuple[float, float]:
-    """Color bounds from a scene's own values per area.
+def scene_bounds(per_area, spread=2.0) -> tuple[float, float]:
+    """Color bounds from a scene's own values (the local scale).
 
     Fixed bounds failed across places. Measured 2026-10-15 on US-NC-HYD:
     with Boston's $50K-$50M per acre, rural land fell almost wholly
     below the lower bound and drew in the ramp's darkest color, next
-    to invisible on the dark page. The 2nd and 99.5th percentiles,
-    rounded outward to 1-2-5 numbers, keep a scene's spread on the
-    ramp and leave its extremes saturated.
+    to invisible on the dark page. The ramp therefore follows the
+    place's own distribution (maintainer, 2026-10-18: its mean and
+    standard deviation): on a log scale, the mean plus and minus
+    `spread` standard deviations, never wider than the values
+    themselves, rounded outward to 1-2-5 numbers. A few extreme lots
+    then saturate the ends instead of stretching the ramp. The page
+    also offers fixed nationwide bounds (`NATIONAL_BOUNDS`).
     """
     values = np.asarray(per_area, dtype=float)
     values = values[np.isfinite(values) & (values > 0)]
     if not len(values):
         return 1.0, 10.0
-    low, high = np.quantile(values, [low_q, high_q])
+    logs = np.log10(values)
+    mean, sd = logs.mean(), logs.std()
+    low = 10 ** max(mean - spread * sd, logs.min())
+    high = 10 ** min(mean + spread * sd, logs.max())
     low, high = _nice(low, up=False), _nice(high, up=True)
     return (low, high) if high > low else (low, low * 10)
+
+
+# Fixed color bounds, the same for every place, per display unit
+# (maintainer, 2026-10-18: a nationwide gradient beside the local
+# one). Land from rural acreage to the dearest downtowns; buildings
+# from sheds to towers; per home, land or building, from a modest
+# share to an estate. Measured 2026-10-15 on boston-inner-core: land
+# per acre had p99 $51M and structure value per sq ft p99 $3,407.
+NATIONAL_BOUNDS = {
+    'ac': (1_000.0, 100_000_000.0),
+    'ha': (2_000.0, 200_000_000.0),
+    'sqft': (10.0, 10_000.0),
+    'm2': (100.0, 100_000.0),
+    'dwelling': (10_000.0, 10_000_000.0),
+}
 
 
 @dataclass(frozen=True)
@@ -2171,6 +2193,28 @@ def border_paths(lines, land) -> list:
     return paths
 
 
+def lot_total_value(gdf, value_column) -> np.ndarray:
+    """Each lot's whole value, land and buildings, for choosing tour
+    stops: the roll's `total_value` where it has one, else land plus
+    improvement value where both are known, else `value_column`.
+
+    A roll may leave `total_value` empty throughout. Measured 2026-10-18
+    on US-MA-NTC: 0 of 13,803 lots carry it, against 97% with a land
+    value; the tour then summed nothing and its stops fell arbitrarily
+    on the island's west end.
+    """
+
+    def column(name):
+        if name not in gdf.columns:
+            return np.full(len(gdf), np.nan)
+        return gdf[name].to_numpy(dtype=float)
+
+    total = column('total_value')
+    parts = column('land_value') + column('improvement_value')
+    total = np.where(total > 0, total, parts)
+    return np.where(total > 0, total, column(value_column))
+
+
 def tour_foci(
     gdf,
     value_column,
@@ -2200,8 +2244,8 @@ def tour_foci(
     value_column : str
         Value to sum per cell. The bottom layer's value (land) picks
         a district of costly land, which need not be the center a
-        visitor knows; so `total_value` (land and buildings) is used
-        whenever the table has it, and this column otherwise.
+        visitor knows; so the lot's whole value (`lot_total_value`) is
+        used wherever it is known, and this column otherwise.
         Measured 2026-10-15 on boston-inner-core: land value alone put
         the first stop in Kendall Square, total value in downtown
         Boston.
@@ -2239,11 +2283,7 @@ def tour_foci(
         {
             'i': np.floor(points.x / cell_m).astype(int),
             'j': np.floor(points.y / cell_m).astype(int),
-            'value': gdf[
-                'total_value' if 'total_value' in gdf.columns else value_column
-            ]
-            .fillna(0)
-            .to_numpy(dtype=float),
+            'value': np.nan_to_num(lot_total_value(gdf, value_column)),
             'admin3_id': gdf['admin3_id'].to_numpy(),
         }
     )
@@ -3122,9 +3162,9 @@ def build_web_scene(
         # the lot has both; land alone mostly measures density: on
         # 2026-10-17 it put Boston's stop at the Fenway, where a condo
         # unit's share of land is small whatever the unit is worth.
-        if {'total_value', 'n_dwellings', per_dwelling} <= set(lots.columns):
+        if {'n_dwellings', per_dwelling} <= set(lots.columns):
             homes = np.isfinite(lots[per_dwelling].to_numpy(dtype=float))
-            total = lots['total_value'].to_numpy(dtype=float) / lots[
+            total = lot_total_value(lots, bottom.value_column) / lots[
                 'n_dwellings'
             ].to_numpy(dtype=float)
             lots = lots[['geometry']].assign(
@@ -3184,6 +3224,9 @@ def build_web_scene(
         'tour': foci,
         'tour_contrast': contrast,
         'tour_downtown': downtown_stop(downtown, admin),
+        # The nationwide color bounds per display unit, beside the
+        # scene's own (local) ones in the palettes and views.
+        'national_bounds': {unit: list(b) for unit, b in NATIONAL_BOUNDS.items()},
         'place_title': place_title,
         # Team pages with models: the factors to today's dollars per
         # county, and the models' credits for the Sources panel.
