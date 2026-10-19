@@ -201,7 +201,9 @@ def test_massachusetts_names_its_documents_by_book_and_page():
 
     def _candidates(admin_id):
         patched, applied = apply_recipe_patches(spine, admin_id)
-        (step,) = [s for s in patched['pipeline'] if s['step'] == 'derive_document_id']
+        # The first names the sale; Massachusetts adds a second for the
+        # unscoped reference its deed and roll rows share.
+        step = next(s for s in patched['pipeline'] if s['step'] == 'derive_document_id')
         return step['candidates'], applied
 
     national, applied = _candidates('US-WI-VI')
