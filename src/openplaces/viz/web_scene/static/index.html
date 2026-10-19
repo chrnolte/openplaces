@@ -115,10 +115,12 @@
   #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   #place-menu a { color: var(--muted); text-decoration: none; }
   #place-menu a:hover { color: var(--text); }
-  #layer-switch, #view-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  #view-switch:empty, #values-switch:empty { display: none; }
+  #layer-switch, #view-switch, #model-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #view-switch:empty, #model-switch:empty, #values-switch:empty { display: none; }
   .switch-label { font-size: 12px; color: var(--muted); align-self: center; }
-  #layer-switch button, #view-switch button, #values-switch button, #palette-switch button {
+  /* "Model, 2010:" at the start of the team page's model row. */
+  .switch-caption { font-size: 12px; color: var(--muted); align-self: center; padding: 0 6px 0 8px; }
+  #layer-switch button, #view-switch button, #model-switch button, #values-switch button, #palette-switch button {
     font: inherit;
     font-size: 12px;
     color: var(--muted);
@@ -160,7 +162,7 @@
   }
   /* Two-way choices as one segmented toggle: a track holding both
      options, the chosen one filled. */
-  #view-switch, #values-switch {
+  #view-switch, #model-switch, #values-switch {
     display: flex;
     width: fit-content;
     max-width: 100%;
@@ -170,8 +172,54 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.04);
   }
-  #view-switch button, #values-switch button { border: 0; padding: 3px 12px; }
-  #view-switch button.active, #values-switch button.active {
+  /* The models' menu under "Modeled" (team pages): folded to the
+     chosen model's name, a list of buttons when open. */
+  /* The list opens upward from the chosen model's name, on its own
+     dark panel, so it reads over any palette and page. */
+  #model-menu { position: relative; width: fit-content; margin: -4px 0 10px; font-size: 12px; }
+  #model-menu[hidden] { display: none; }
+  #model-menu summary {
+    width: fit-content;
+    padding: 3px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+  }
+  #model-menu summary::-webkit-details-marker { display: none; }
+  #model-menu summary::after { content: " \25B4"; }
+  #model-menu[open] summary::after { content: " \25BE"; }
+  #model-menu > div {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100%;
+    padding: 6px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.92);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    z-index: 5;
+    text-shadow: none;
+  }
+  #model-menu button {
+    font: inherit;
+    color: rgba(232, 234, 240, 0.72);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    padding: 4px 12px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  #model-menu button:hover { color: #fff; }
+  #model-menu button.active { color: #fff; background: rgba(255, 255, 255, 0.14); font-weight: 600; }
+  #view-switch button, #model-switch button, #values-switch button { border: 0; padding: 3px 12px; }
+  #view-switch button.active, #model-switch button.active, #values-switch button.active {
     color: #10131c;
     background: rgba(255, 255, 255, 0.88);
     font-weight: 600;
@@ -259,29 +307,31 @@
   .src-note { color: var(--muted); font-size: 11.5px; margin: 4px 0 0; padding: 6px 8px; border-left: 2px solid rgba(128, 128, 128, 0.4); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
   .deck-tooltip { font-size: 13px !important; max-width: 320px; }
-  /* The tour's messages: a bubble above the button a message is about,
-     pointing at it (viewer.js `placeBanner`, which sets left, bottom
-     and --arrow-x); the opening line sits centered above the bottom
-     bar, pointing nowhere. */
-  #autopilot {
+  /* The tour's messages (viewer.js `placeBanner`, `placeTip`, which
+     set left and bottom): the main ones centered at about a quarter
+     of the map's height, above the legend; the definition and the
+     countdown in a bubble above the switching button, pointing at it
+     (--arrow-x). */
+  #autopilot, #tour-tip {
     position: fixed;
     left: 16px;
     bottom: 96px;
     width: max-content;
-    max-width: min(380px, calc(100vw - 32px));
+    max-width: min(420px, calc(100vw - 32px));
     padding: 7px 14px;
     border-radius: 16px;
     line-height: 1.35;
     background: rgba(8, 11, 20, 0.78);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     text-align: center;
     pointer-events: none;
-    /* Over the control panels it points into. */
+    /* Over the control panels. */
     z-index: 10;
     transition: opacity 1.2s ease;
   }
-  #autopilot.pointing::after {
+  #tour-tip { max-width: min(260px, calc(100vw - 32px)); font-size: 12px; }
+  #tour-tip::after {
     content: "";
     position: absolute;
     top: 100%;
@@ -290,10 +340,10 @@
     border: 8px solid transparent;
     border-top-color: rgba(8, 11, 20, 0.78);
   }
-  #autopilot.fading { opacity: 0; }
+  #autopilot.fading, #tour-tip.fading { opacity: 0; }
   /* A message's second line: why, or how. */
   .tour-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  #autopilot[hidden] { display: none; }
+  #autopilot[hidden], #tour-tip[hidden] { display: none; }
   /* The countdown under a message: 3, 2, 1. */
   .tour-count { font-size: 22px; font-weight: 700; margin-top: 2px; }
   .tour-count:empty { display: none; }
@@ -303,7 +353,7 @@
     15%, 45% { opacity: 0.1; }
     100% { opacity: 1; }
   }
-  #autopilot.blink { animation: tour-blink 1.2s ease-in-out; }
+  #autopilot.blink, #tour-tip.blink { animation: tour-blink 1.2s ease-in-out; }
   /* The control the hint is about glows twice with it. */
   @keyframes tour-pulse {
     0%, 30%, 60%, 100% { box-shadow: 0 0 0 0 rgba(255, 224, 102, 0); }
@@ -407,7 +457,7 @@
     }
     #bottom-bar #legend-panel > div { margin-bottom: 0; }
     #bottom-bar #layer-switch { flex-wrap: nowrap; }
-    #bottom-bar #view-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
+    #bottom-bar #view-switch, #bottom-bar #model-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
     #controls-chip, #legend-minimize { display: none; }
     /* On a light page the bare controls turn dark. */
     .light-page #bottom-bar #legend-panel {
@@ -421,11 +471,13 @@
       border-color: rgba(20, 24, 36, 0.7);
       background: rgba(20, 24, 36, 0.06);
     }
-    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #values-switch {
+    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #model-switch,
+    .light-page #bottom-bar #values-switch {
       border-color: rgba(20, 24, 36, 0.3);
       background: rgba(255, 255, 255, 0.5);
     }
     .light-page #bottom-bar #view-switch button.active,
+    .light-page #bottom-bar #model-switch button.active,
     .light-page #bottom-bar #values-switch button.active {
       color: #fff;
       background: rgba(20, 24, 36, 0.85);

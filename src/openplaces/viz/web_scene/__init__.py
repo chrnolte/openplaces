@@ -203,6 +203,10 @@ class SceneLayer:
         fills (read from the bundle, or its evidence supplement). The
         assessment view shows it where `value_column` was estimated,
         so a feature with a recorded value never disappears there.
+    model_views : tuple of ModelView
+        Model land values offered as further colorings of this layer,
+        on team pages only (`build_web_scene`); a view whose column is
+        missing or empty is left out.
     """
 
     name: str
@@ -220,6 +224,67 @@ class SceneLayer:
     simplify_m: float | None = None
     per_dwelling_label: str | None = None
     recorded_column: str | None = None
+    model_views: tuple = ()
+
+
+@dataclass(frozen=True)
+class ModelView:
+    """One model's land value, a coloring of a team page's lots.
+
+    The page shows the model's prediction per area, scaled by one
+    constant per scene and model: the median, over lots with both, of
+    the recorded land value per hectare over the predicted one. The
+    prediction is a 2010 value; the constant brings it to the scene's
+    current assessment level without sale prices or periods (design
+    limit L29; `value-viewer-assessment-estimate-toggle.md`, section 5).
+    The area of applicability travels with each lot for its tooltip
+    only; nothing is hidden or dimmed by it (L4, until the maintainer
+    settles it).
+
+    Parameters
+    ----------
+    key : str
+        Short id, the page's view name (`?view=<key>`).
+    label : str
+        Name on the page's button.
+    log_column : str
+        Natural log of the predicted land value per hectare.
+    aoa_column : str, optional
+        Area of applicability index; inside where at most 1.
+    scale_column : str
+        The recorded value the scale is taken from (`land_value`, as
+        the assessor recorded it).
+    """
+
+    key: str
+    label: str
+    log_column: str
+    aoa_column: str | None = None
+    scale_column: str = 'land_value'
+
+
+# The PLACES-FMV region-with-neighbors variants cleared for the
+# research team (maintainer, 2026-10-18; source
+# `US_parcel-placeslab-fmv2026open`), in the order of their buttons.
+TEAM_MODEL_VIEWS = tuple(
+    ModelView(
+        f'model_{variant}',
+        label,
+        f'land_value_per_ha_log_region_nb_{variant}',
+        f'area_of_applicability_region_nb_{variant}',
+    )
+    for variant, label in (
+        ('bare', 'Base'),
+        ('people', '+ people'),
+        ('buildings', '+ buildings'),
+        ('wealth', '+ wealth'),
+        ('peoplewealth', '+ people, wealth'),
+        ('peoplebuildings', '+ people, buildings'),
+        ('popbldwealth', '+ all three'),
+    )
+)
+# Hectares in one display area unit.
+HECTARES_PER_UNIT = {'ha': 1.0, 'ac': 0.40468564224, 'm2': 1e-4, 'sqft': 9.290304e-6}
 
 
 # The notebook's scene (notebooks/09_show/03_show_land_and_building_
@@ -335,6 +400,7 @@ VALUE_SCENE_LAYERS = (
         # Lots count the dwellings of the homes on them where the roll
         # states none (`_count_dwellings_from_above`).
         per_dwelling_label='Land value per home',
+        model_views=TEAM_MODEL_VIEWS,
         render={
             'drop_corridors': True,
             'height_clip_percentile': 99.9999,
@@ -2210,6 +2276,108 @@ def contrast_focus(
     return out
 
 
+def layer_region(recipe, region) -> str:
+    """The region a layer reads: a team region where its recipe ships
+    one, else that region's public bundle.
+
+    A team page's footprints have no team twin when no source of them
+    is cleared for team sharing; they then come from the public bundle,
+    which withholds as much or more.
+    """
+    from openplaces.io.delivery import delivery_regions
+
+    region = str(region)
+    if not region.endswith(TEAM_SUFFIX):
+        return region
+    declared = {str(spec.get('region_id')) for spec in delivery_regions(recipe)}
+    return region if region in declared else region.removesuffix(TEAM_SUFFIX)
+
+
+def model_view_arrays(gdf, layer, homes=None, home_view=None) -> tuple[dict, dict]:
+    """Per-feature arrays and manifest entries of a layer's model views.
+
+    Each view's scale is the median, over the lots with both, of the
+    recorded land value per hectare (`ModelView.scale_column`, the
+    assessor's own figure, never openplaces' fills; maintainer,
+    2026-10-18) over the predicted one: one number per page and view.
+    With `homes`, each model also gets a per-home view (maintainer,
+    2026-10-18): the lot's scaled model land value over its homes,
+    on the same lots and scale as the layer's own per-home view.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        The rendered layer.
+    layer : SceneLayer
+        Its `model_views` and `area_unit`.
+    homes : numpy.ndarray, optional
+        Dwellings per feature where the layer's per-home view counts it
+        as homes, NaN elsewhere.
+    home_view : dict, optional
+        The layer's per-home view (`vmin`, `vmax`, `other`), whose scale
+        the models' per-home views share.
+
+    Returns
+    -------
+    tuple of (dict, dict)
+        Arrays for the scene file (`value_<key>`, the scaled prediction
+        per area unit; `value_<key>__home`, per home; `aoa_<key>`, 2
+        inside the area of applicability, 1 outside, 0 unknown) and
+        views for the manifest (`label`, `unit`, `model`, `scale`; a
+        per-home view also `per_home` and `base`, the per-area view's
+        key). A view without predictions, or without a recorded value
+        to scale it on, is left out.
+    """
+    metric = (
+        gdf.geometry
+        if gdf.crs.is_projected
+        else gdf.geometry.to_crs(gdf.estimate_utm_crs())
+    )
+    hectares = metric.area.to_numpy() / 1e4
+    arrays, views = {}, {}
+    for view in layer.model_views:
+        if view.log_column not in gdf.columns or view.scale_column not in gdf.columns:
+            continue
+        recorded = gdf[view.scale_column].to_numpy(dtype=float)
+        land_per_ha = np.where(hectares > 0, recorded / hectares, np.nan)
+        predicted = np.exp(gdf[view.log_column].to_numpy(dtype=float))
+        both = np.isfinite(predicted) & (predicted > 0) & (land_per_ha > 0)
+        if not both.any():
+            continue
+        scale = float(np.median(land_per_ha[both] / predicted[both]))
+        arrays[f'value_{view.key}'] = (
+            predicted * scale * HECTARES_PER_UNIT[layer.area_unit]
+        )
+        if view.aoa_column and view.aoa_column in gdf.columns:
+            aoa = gdf[view.aoa_column].to_numpy(dtype=float)
+            arrays[f'aoa_{view.key}'] = np.where(
+                np.isfinite(aoa), np.where(aoa <= 1, 2, 1), 0
+            ).astype(np.uint8)
+        views[view.key] = {
+            'label': view.label,
+            'unit': layer.area_unit,
+            'model': True,
+            'scale': round(scale, 3),
+        }
+        if homes is not None and home_view is not None:
+            lot_value = predicted * scale * hectares
+            arrays[f'value_{view.key}__home'] = np.where(
+                homes > 0, lot_value / homes, np.nan
+            )
+            views[f'{view.key}__home'] = {
+                **{
+                    k: home_view[k] for k in ('vmin', 'vmax', 'other') if k in home_view
+                },
+                'label': view.label,
+                'unit': 'dwelling',
+                'model': True,
+                'per_home': True,
+                'base': view.key,
+                'scale': round(scale, 3),
+            }
+    return arrays, views
+
+
 def scene_audience(region) -> str:
     """'team' when any region read is a team bundle, else 'public'.
 
@@ -2356,7 +2524,10 @@ def build_web_scene(
             # Several regions: each unit is read from the bundle of the
             # region it belongs to. An entity on a boundary between two
             # regions can sit in both bundles; the first copy is kept.
-            regions = [region] if isinstance(region, str) else list(region)
+            regions = [
+                layer_region(layer.recipe, name)
+                for name in ([region] if isinstance(region, str) else region)
+            ]
             parts = []
             for name in regions:
                 members = set(_region_members(layer.recipe, name))
@@ -2525,6 +2696,22 @@ def build_web_scene(
                     'vmax': other_high,
                 },
             }
+        if layer.model_views and scene_audience(region) == 'team':
+            homes = None
+            if 'dwelling' in views:
+                # The lots the per-home view counts as homes.
+                homes = np.where(
+                    np.isfinite(
+                        out[f'{layer.value_column}_per_dwelling'].to_numpy(dtype=float)
+                    ),
+                    out['n_dwellings'].to_numpy(dtype=float),
+                    np.nan,
+                )
+            arrays, model_views = model_view_arrays(
+                out, layer, homes=homes, home_view=views.get('dwelling')
+            )
+            extra.update(arrays)
+            views.update(model_views)
         # Which values openplaces filled itself (the `imputed` mark in
         # the value's `_source`); the page can draw them as no value.
         source = f'{layer.value_column}_source'

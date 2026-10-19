@@ -111,8 +111,9 @@ def test_page_has_no_input_control_and_no_background_map():
     # openplaces' estimates), which recolors every feature and hides
     # none. The fifth and sixth fold the controls away and back; the
     # seventh shares a link to the view (camera and settings only); the
-    # eighth turns the view north up.
-    assert len(re.findall(r"createElement\('button'\)", script)) == 8
+    # eighth turns the view north up; the ninth, in the menu under
+    # "Modeled" on a team page, picks which model colors the lots.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 9
     for kind in (
         'dataset.palette',
         'dataset.layer',
@@ -778,6 +779,77 @@ def test_a_scene_reading_a_team_bundle_is_a_team_scene():
     assert web_scene.scene_audience(['western-nc', 'nantucket-ma.team']) == 'team'
     assert web_scene.scene_audience(['western-nc']) == 'public'
     assert web_scene.scene_audience(None) == 'public'
+
+
+def test_a_layer_without_a_team_twin_reads_the_public_bundle(monkeypatch):
+    from openplaces.io import delivery
+
+    declared = {
+        'parcels': [{'region_id': 'nantucket-ma'}, {'region_id': 'nantucket-ma.team'}],
+        'footprints': [{'region_id': 'nantucket-ma'}],
+    }
+    monkeypatch.setattr(delivery, 'delivery_regions', lambda recipe: declared[recipe])
+    assert web_scene.layer_region('parcels', 'nantucket-ma.team') == 'nantucket-ma.team'
+    assert web_scene.layer_region('footprints', 'nantucket-ma.team') == 'nantucket-ma'
+    assert web_scene.layer_region('footprints', 'nantucket-ma') == 'nantucket-ma'
+
+
+def test_model_views_scale_to_the_assessment_and_carry_the_aoa():
+    # Fabricated: four 1-ha lots whose recorded land is twice what the
+    # model predicts, so the scale is 2; one lot lacks a prediction.
+    # The shown value (with fills) differs and must not enter it.
+    lots = gpd.GeoDataFrame(
+        {
+            'log_v': np.log([10_000.0, 20_000.0, 40_000.0, np.nan]),
+            'aoa_v': [0.5, 1.0, 3.0, np.nan],
+            'land_value': [20_000.0, 40_000.0, 80_000.0, 5_000.0],
+            'v': [90_000.0, 90_000.0, 90_000.0, 90_000.0],
+        },
+        geometry=[box(1000 * k, 0, 1000 * k + 100, 100) for k in range(4)],
+        crs='EPSG:26986',
+    )
+    layer = SceneLayer(
+        name='parcels',
+        label='Land',
+        recipe='r',
+        value_column='v',
+        area_unit='ha',
+        vmin=1,
+        vmax=2,
+        model_views=(web_scene.ModelView('model_v', 'V', 'log_v', 'aoa_v'),),
+    )
+    arrays, views = web_scene.model_view_arrays(lots, layer)
+    assert views['model_v'] == {'label': 'V', 'unit': 'ha', 'model': True, 'scale': 2.0}
+    assert arrays['value_model_v'][:3] == pytest.approx([20_000, 40_000, 80_000])
+    assert np.isnan(arrays['value_model_v'][3])
+    # Inside where at most 1, outside above, unknown without a value.
+    assert list(arrays['aoa_model_v']) == [2, 2, 1, 0]
+    # Per home: the lot's scaled model value over its homes, on the
+    # per-home view's own scale; lots that are not homes have none.
+    home_view = {'vmin': 1_000, 'vmax': 1_000_000, 'other': {'unit': 'ha'}}
+    homes = np.array([2.0, np.nan, 4.0, 1.0])
+    arrays, views = web_scene.model_view_arrays(
+        lots, layer, homes=homes, home_view=home_view
+    )
+    home = views['model_v__home']
+    assert (home['unit'], home['base'], home['per_home'], home['vmax']) == (
+        'dwelling',
+        'model_v',
+        True,
+        1_000_000,
+    )
+    # 1 ha lots: $20,000 over 2 homes, none, $80,000 over 4 homes.
+    per_home = arrays['value_model_v__home']
+    assert per_home[0] == pytest.approx(10_000) and np.isnan(per_home[1])
+    assert per_home[2] == pytest.approx(20_000)
+    # No predictions: no view.
+    empty = lots.assign(log_v=np.nan)
+    assert web_scene.model_view_arrays(empty, layer) == ({}, {})
+    # No recorded value to scale on: no view either.
+    assert web_scene.model_view_arrays(lots.drop(columns='land_value'), layer) == (
+        {},
+        {},
+    )
 
 
 def _team_scene(tmp_path):

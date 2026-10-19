@@ -482,7 +482,9 @@ function formatValue(value, kind, unit) {
   }
 }
 
-function tooltipHtml(layerInfo, index) {
+// `extra`: rows the page adds from the feature's own arrays (a model
+// view's value and area of applicability).
+function tooltipHtml(layerInfo, index, extra = '') {
   const rows = layerInfo.spec.tooltip.map((tip) => {
     const value = layerInfo.values[tip.column][index];
     // A count without a value means "not applicable" (e.g. records on
@@ -498,7 +500,7 @@ function tooltipHtml(layerInfo, index) {
     return `<div><b>${escapeHtml(tip.label)}:</b> ${text}</div>`;
   });
   return `<div><i>${escapeHtml(layerInfo.spec.label)}</i></div>` +
-    rows.join('');
+    rows.join('') + extra;
 }
 
 // Tick values at 1 and 3 times each power of ten inside the bounds
@@ -656,10 +658,12 @@ const TOUR = {
 // changed) count down from three (`countdown`; maintainer, 2026-10-17).
 // Visitors read "home"; the data's term is "dwelling" (one house,
 // apartment or condo).
-// Each switch has two messages in the same bubble above its button
-// (maintainer, 2026-10-18): the action, what is about to change, with
-// its countdown and a few seconds after; then the insight, what the
-// visitor can now see. Insights name no figures from the map.
+// Two places for words (maintainer, 2026-10-18). The main messages,
+// centered at about a quarter of the map's height: the autopilot line,
+// what is about to switch (`text`), and afterwards what the visitor
+// can now see (an insight, naming no figures from the map). A bubble
+// above the switching button keeps the definition (`tip`) and the
+// countdown.
 const TOUR_CONTRAST_ACTIONS = [
   {
     at: 2,
@@ -674,7 +678,6 @@ const TOUR_CONTRAST_ACTIONS = [
   {
     at: 9,
     hint: {
-      target: 'buildings',
       text: 'Land shows the value of location: how *much* people benefit from ' +
         'living or doing business there.',
       linger: 9,
@@ -684,7 +687,8 @@ const TOUR_CONTRAST_ACTIONS = [
     at: 18,
     hint: {
       target: 'dwelling',
-      text: ['Next: value per home', 'A home is one apartment, house, or condo.'],
+      text: 'Next: value per home',
+      tip: 'A home is one apartment, house, or condo.',
       countdown: 3,
       countdownAfter: 4,
       linger: 10,
@@ -1178,31 +1182,64 @@ async function main() {
   // fills (`estimated`), which "Assessment" draws as no value.
   // Per footprint area, imputed, by default (maintainer, 2026-10-17);
   // per dwelling where the address asks (`?view=dwelling`).
-  let valueView = params.get('view') === 'dwelling' ? 'dwelling' : 'area';
+  // A layer's other colorings (`views`): per dwelling, and on a team
+  // page the model land values (`model`), each a button of its own.
+  const viewOf = (layer, key = valueView) => (layer.views && layer.views[key]) || null;
+  const modelViews = [];
+  for (const layer of scene.layers) {
+    for (const [key, view] of Object.entries(layer.views || {})) {
+      if (view.model && !view.per_home && !modelViews.some(([k]) => k === key)) {
+        modelViews.push([key, view.label]);
+      }
+    }
+  }
+  // A model has two views: per ground area (`<key>`) and per home
+  // (`<key>__home`), chosen with the same toggle as the assessor's.
+  const HOME_SUFFIX = '__home';
+  const modelBase = (key) => (key.endsWith(HOME_SUFFIX) ? key.slice(0, -HOME_SUFFIX.length) : key);
+  const isModel = (key) => modelViews.some(([k]) => k === modelBase(key));
+  const isPerHome = (key) => key === 'dwelling' || (isModel(key) && key.endsWith(HOME_SUFFIX));
+  const viewKeys = new Set(['area', 'dwelling']);
+  for (const layer of scene.layers) {
+    Object.keys(layer.views || {}).forEach((key) => viewKeys.add(key));
+  }
+  let valueView = viewKeys.has(params.get('view')) ? params.get('view') : 'area';
   let withEstimates = params.get('values') !== 'assessed';
-  const hasDwellingView = scene.layers.some((l) => l.views && l.views.dwelling);
-  // Two rows: per area or per dwelling, then with estimates or the
-  // assessment alone.
+  // The model a "Modeled" choice shows: the one in the address, else
+  // the first.
+  let modelKey = isModel(valueView) ? modelBase(valueView) : (modelViews[0] || [null])[0];
+  const modelView = (perHome) => (perHome ? `${modelKey}${HOME_SUFFIX}` : modelKey);
+  const hasDwellingView = scene.layers.some((l) => viewOf(l, 'dwelling'));
+  // Rows: per area or per dwelling; then where the values come from
+  // (maintainer, 2026-10-18): "Tax assessor", "+ imputed" (the
+  // default) and, on a team page, "Modeled", which alone shows a menu
+  // of the models.
   const viewSwitch = document.createElement('div');
   viewSwitch.id = 'view-switch';
   const valuesSwitch = document.createElement('div');
   valuesSwitch.id = 'values-switch';
   const choices = [];
-  if (hasDwellingView) {
+  if (hasDwellingView || modelViews.length) {
     // Per ground area first (the default), then per dwelling. "Ground"
     // covers both a lot's area and a building's footprint, the two
     // areas the bars divide by.
-    choices.push(
-      ['view', 'area', 'Value per ground area'],
-      // "Home", not "dwelling", for visitors (maintainer, 2026-10-17).
-      ['view', 'dwelling', 'Value per home'],
-    );
+    choices.push(['view', 'area', 'Value per ground area']);
   }
-  if (scene.layers.some((l) => l.n_estimated > 0)) {
-    // "Imputed": the assessment with openplaces' fills (maintainer,
-    // 2026-10-16); a third, "Our estimates", is planned.
-    choices.push(['values', 'estimates', 'Imputed'], ['values', 'assessed', 'Assessment']);
+  if (hasDwellingView) {
+    // "Home", not "dwelling", for visitors (maintainer, 2026-10-17).
+    choices.push(['view', 'dwelling', 'Value per home']);
   }
+  if (scene.layers.some((l) => l.n_estimated > 0) || modelViews.length) {
+    choices.push(['values', 'assessed', 'Tax assessor'], ['values', 'estimates', '+ imputed']);
+  }
+  if (modelViews.length) {
+    choices.push(['values', 'model', 'Modeled']);
+  }
+  const titles = {
+    assessed: 'Values the assessor recorded; values openplaces filled in are drawn as no value',
+    estimates: "The assessor's values, with openplaces' fills where the roll has none",
+    model: 'Land value from a 2010 model, scaled to the place\'s assessments',
+  };
   let setChoice = () => {};
   for (const [group, id, label] of choices) {
     const button = document.createElement('button');
@@ -1210,50 +1247,87 @@ async function main() {
     button.dataset.group = group;
     button.dataset.choice = id;
     button.textContent = label;
-    button.title = id === 'assessed'
-      ? 'Values the assessor recorded; values openplaces filled in are drawn as no value'
-      : '';
+    button.title = titles[id] || '';
     button.setAttribute('role', 'radio');
     button.addEventListener('click', () => setChoice(group, id));
     (group === 'view' ? viewSwitch : valuesSwitch).appendChild(button);
   }
+  // The models' menu: a folded list of buttons under "Modeled", shown
+  // only while "Modeled" is chosen. A display choice, like the
+  // palettes: it selects no features.
+  const modelMenu = document.createElement('details');
+  modelMenu.id = 'model-menu';
+  const modelSummary = document.createElement('summary');
+  modelMenu.append(modelSummary);
+  const modelList = document.createElement('div');
+  modelList.setAttribute('role', 'radiogroup');
+  modelList.setAttribute('aria-label', 'Model shown');
+  for (const [key, label] of modelViews) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.group = 'model';
+    button.dataset.choice = key;
+    button.textContent = label;
+    button.setAttribute('role', 'radio');
+    button.addEventListener('click', () => {
+      modelMenu.open = false;
+      setChoice('model', key);
+    });
+    modelList.append(button);
+  }
+  modelMenu.append(modelList);
   // Each pair is one segmented toggle, one option always chosen
   // (maintainer, 2026-10-17: clearly a toggle, not two buttons).
   viewSwitch.setAttribute('role', 'radiogroup');
   viewSwitch.setAttribute('aria-label', 'Value shown');
   valuesSwitch.setAttribute('role', 'radiogroup');
   valuesSwitch.setAttribute('aria-label', 'Values used');
-  layerSwitch.after(viewSwitch, valuesSwitch);
+  layerSwitch.after(viewSwitch, valuesSwitch, modelMenu);
   const markViewSwitch = () => {
-    const buttons = [...viewSwitch.children, ...valuesSwitch.children];
-    for (const button of buttons.filter((b) => b.dataset.group)) {
-      const on = button.dataset.group === 'view'
-        ? button.dataset.choice === valueView
-        : (button.dataset.choice === 'estimates') === withEstimates;
+    const modeled = isModel(valueView);
+    const source = modeled ? 'model' : withEstimates ? 'estimates' : 'assessed';
+    const buttons = [...viewSwitch.children, ...valuesSwitch.children, ...modelList.children];
+    for (const button of buttons) {
+      const {group, choice} = button.dataset;
+      const on = group === 'values'
+        ? choice === source
+        : group === 'model'
+          ? choice === modelKey
+          : choice === (isPerHome(valueView) ? 'dwelling' : 'area');
       button.classList.toggle('active', on);
       button.setAttribute('aria-checked', String(on));
     }
+    modelMenu.hidden = !modeled;
+    const current = modelViews.find(([key]) => key === modelKey);
+    modelSummary.textContent = current ? `Model, 2010: ${current[1]}` : '';
   };
   markViewSwitch();
   // A layer's coloring under the current choices: its scale (bounds,
   // unit) and the value of each feature.
+  // A model view keeps the layer's own bounds, so its colors read on
+  // the same scale as the assessed values.
   const layerScale = (layer, spec) => {
-    const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
+    const view = viewOf(layer);
     return view
-      ? {...spec, vmin: view.vmin, vmax: view.vmax, unit: 'dwelling'}
+      ? {...spec, vmin: view.vmin ?? spec.vmin, vmax: view.vmax ?? spec.vmax, unit: view.unit}
       : {...spec, unit: layer.unit};
   };
   // The non-residential part of a layer's per-dwelling view, if shown.
   const otherView = (entry) => {
-    const view = valueView === 'dwelling' && entry.spec.views && entry.spec.views.dwelling;
+    const view = viewOf(entry.spec);
     return view && view.other && entry.decoded.arrays.nonresidential ? view.other : null;
   };
   const featureValues = (entry, perArea = false) => {
     const {arrays} = entry.decoded;
-    const view = valueView === 'dwelling' && entry.spec.views && entry.spec.views.dwelling;
-    let values = view && arrays.value_dwelling && !perArea
-      ? arrays.value_dwelling
-      : entry.featureValue;
+    const view = viewOf(entry.spec);
+    const own = view && arrays[`value_${valueView}`];
+    let values = own && !perArea ? own : entry.featureValue;
+    // A model's values are the model's: the assessment choices below
+    // do not apply to them. Per area (the non-residential lots of a
+    // per-home view), the model's own per-area values.
+    if (own && view.model) {
+      return perArea ? arrays[`value_${view.base || valueView}`] || values : values;
+    }
     if (!withEstimates && arrays.estimated) {
       // Not a recorded zero: drawn as no value.
       values = values.map((v, i) => (arrays.estimated[i] ? NaN : v));
@@ -1277,7 +1351,7 @@ async function main() {
       const spec = layerScale(layer, palette.layers[layer.name]);
       // Per dwelling: the non-residential ramp, drawn as a strip under
       // the main one.
-      const view = valueView === 'dwelling' && layer.views && layer.views.dwelling;
+      const view = viewOf(layer);
       const ramp = spec.other_line_lut || spec.other_lut;
       const other = view && view.other && ramp
         ? {
@@ -1289,7 +1363,7 @@ async function main() {
         : null;
       drawLegend(legends, {
         shown: shown[layer.name],
-        label: layer.label,
+        label: view && view.model ? `${layer.label}, model ${view.label}` : layer.label,
         unit: spec.unit,
         vmin: spec.vmin,
         vmax: spec.vmax,
@@ -1299,7 +1373,7 @@ async function main() {
           (_, i) => i % 8 === 0 || i === spec.lut.length - 1,
         ),
         other,
-        source: valuesShown,
+        source: view && view.model ? '2010, scaled to assessments' : valuesShown,
       });
     }
     // No row for features without a value (maintainer, 2026-10-17).
@@ -1403,6 +1477,25 @@ async function main() {
   let hoverKey = null;
   let hoverTimer = null;
   let pointer = null;
+  // Under a model view: the model's value of the feature and whether it
+  // lies inside the model's area of applicability. Shown as text only;
+  // nothing is hidden or dimmed by it (design limit L4).
+  const modelRows = (layerId, feature) => {
+    const entry = layers.find((e) => e.id === layerId || `${e.id}-ghosts` === layerId);
+    const view = entry && viewOf(entry.spec);
+    const values = view && view.model && entry.decoded.arrays[`value_${valueView}`];
+    if (!values) {
+      return '';
+    }
+    const value = values[feature];
+    const text = Number.isFinite(value)
+      ? formatValue(value, 'money_per_area', view.unit)
+      : 'none';
+    const aoa = entry.decoded.arrays[`aoa_${valueView}`];
+    const inside = aoa ? ['unknown', 'outside', 'inside'][aoa[feature]] : null;
+    return `<div><b>Model ${escapeHtml(view.label)}:</b> ${text}</div>` +
+      (inside ? `<div><b>Area of applicability:</b> ${inside}</div>` : '');
+  };
   // What a pick shows: a key naming the feature, and its tooltip.
   const describe = ({index, layer, object}) => {
     // A landmark's own name and kind, written into the page.
@@ -1422,7 +1515,10 @@ async function main() {
     if (pin && pin.layerId === layer.id && pin.feature === feature) {
       return null;
     }
-    return {key: `${layer.id}:${feature}`, html: () => tooltipHtml(info, feature)};
+    return {
+      key: `${layer.id}:${feature}:${valueView}`,
+      html: () => tooltipHtml(info, feature, modelRows(layer.id, feature)),
+    };
   };
   const hideHover = () => {
     clearTimeout(hoverTimer);
@@ -1522,7 +1618,7 @@ async function main() {
       : 0;
     const [longitude, latitude] = featureCenter(entry, feature);
     pin = {layerId: layer.id, feature, position: [longitude, latitude, top]};
-    pinBox.innerHTML = tooltipHtml(info, feature);
+    pinBox.innerHTML = tooltipHtml(info, feature, modelRows(layer.id, feature));
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'pin-close';
@@ -1571,19 +1667,25 @@ async function main() {
     event.preventDefault();
   });
 
-  // The tour's own messages (maintainer, 2026-10-17 and 2026-10-18):
-  // "Flying on autopilot" as it starts, centered above the bottom bar;
-  // then, in a bubble above the button about to switch and pointing at
-  // it, a message that blinks twice as it appears, may count down 3, 2,
-  // 1, and stays a while after the switch, so a visitor learns what the
-  // controls do by watching. The control glows with the blinks.
+  // The tour's own messages (maintainer, 2026-10-17 and 2026-10-18).
+  // The main ones, centered at about a quarter of the map's height and
+  // above the legend: "Flying on autopilot" as it starts, then what is
+  // about to switch, then what the visitor can now see. Beside them a
+  // bubble above the button about to switch, pointing at it, with the
+  // definition and the countdown 3, 2, 1. Both blink twice as they
+  // appear and stay a while after the switch, so a visitor learns what
+  // the controls do by watching; the control glows with the blinks.
   const banner = document.createElement('div');
   banner.id = 'autopilot';
   banner.hidden = true;
   document.body.appendChild(banner);
+  const tip = document.createElement('div');
+  tip.id = 'tour-tip';
+  tip.hidden = true;
+  document.body.appendChild(tip);
   let bannerTimers = [];
-  // The element the bubble points at, or null: centered, no pointer.
-  let bannerAnchor = null;
+  // The button the bubble points at, or null.
+  let tipAnchor = null;
   const controlFor = (target) => {
     if (!target) {
       return null;
@@ -1594,35 +1696,47 @@ async function main() {
     // Folded controls (a phone): their chip stands in.
     return control && control.getClientRects().length > 0 ? control : restore;
   };
+  const margin = 16;
+  // A quarter of the way up the map, but never over the legend, the
+  // bottom bar or the button bubble.
   const placeBanner = () => {
-    const margin = 16;
-    const width = banner.offsetWidth;
-    if (bannerAnchor) {
-      const rect = bannerAnchor.getBoundingClientRect();
-      const center = rect.left + rect.width / 2;
-      const left = Math.min(
-        Math.max(margin, center - width / 2),
-        window.innerWidth - margin - width,
-      );
-      banner.style.left = `${left}px`;
-      banner.style.bottom = `${window.innerHeight - rect.top + 12}px`;
-      banner.style.setProperty('--arrow-x', `${center - left}px`);
-    } else {
-      const bar = document.getElementById('bottom-bar').getBoundingClientRect();
-      banner.style.left = `${Math.max(margin, (window.innerWidth - width) / 2)}px`;
-      banner.style.bottom = `${window.innerHeight - bar.top + 12}px`;
+    const height = window.innerHeight;
+    let floor = height * 0.25;
+    for (const id of ['legend-box', 'bottom-bar']) {
+      const element = document.getElementById(id);
+      if (element && element.getClientRects().length) {
+        floor = Math.max(floor, height - element.getBoundingClientRect().top + 12);
+      }
     }
-    banner.classList.toggle('pointing', Boolean(bannerAnchor));
+    if (!tip.hidden) {
+      floor = Math.max(floor, height - tip.getBoundingClientRect().top + 12);
+    }
+    banner.style.left = `${Math.max(margin, (window.innerWidth - banner.offsetWidth) / 2)}px`;
+    banner.style.bottom = `${floor}px`;
   };
-  window.addEventListener('resize', () => {
+  const placeTip = () => {
+    const width = tip.offsetWidth;
+    const rect = tipAnchor.getBoundingClientRect();
+    const center = rect.left + rect.width / 2;
+    const left = Math.min(Math.max(margin, center - width / 2), window.innerWidth - margin - width);
+    tip.style.left = `${left}px`;
+    tip.style.bottom = `${window.innerHeight - rect.top + 12}px`;
+    tip.style.setProperty('--arrow-x', `${center - left}px`);
+  };
+  const placeAll = () => {
+    if (!tip.hidden && tipAnchor) {
+      placeTip();
+    }
     if (!banner.hidden) {
       placeBanner();
     }
-  });
+  };
+  window.addEventListener('resize', placeAll);
   const hideHint = () => {
     bannerTimers.forEach(clearTimeout);
     bannerTimers = [];
     banner.hidden = true;
+    tip.hidden = true;
   };
   const later = (ms, fn) => bannerTimers.push(setTimeout(fn, ms));
   // `countdown`: from that number, one a second, starting
@@ -1630,8 +1744,8 @@ async function main() {
   // long the message stays in all. `text` may be a list of lines, the
   // first one the message, the others smaller; a word in *asterisks*
   // is stressed.
-  const showLines = (text) => {
-    banner.replaceChildren(
+  const showLines = (text, box = banner) => {
+    box.replaceChildren(
       ...[].concat(text).map((words, i) => {
         const line = document.createElement('div');
         words.split(/\*([^*]+)\*/).forEach((part, j) => {
@@ -1650,35 +1764,49 @@ async function main() {
       }),
     );
   };
-  const showHint = ({target, text, countdown, countdownAfter = 0, linger = 5}) => {
+  // `text` goes in the main message, `tip` (the definition) and the
+  // countdown in the bubble above `target`'s button; the bubble shows
+  // only when it has something to say.
+  const showHint = ({target, text, tip: definition, countdown, countdownAfter = 0, linger = 5}) => {
     hideHint();
-    banner.classList.remove('fading');
+    const blink = (box) => {
+      box.classList.remove('fading', 'blink');
+      void box.offsetWidth;
+      box.classList.add('blink');
+    };
     showLines(text);
-    if (countdown) {
-      const count = document.createElement('div');
-      count.className = 'tour-count';
-      banner.appendChild(count);
-      for (let n = countdown; n >= 1; n--) {
-        later((countdownAfter + countdown - n) * 1000, () => {
-          count.textContent = String(n);
+    tipAnchor = controlFor(target);
+    if (tipAnchor && (definition || countdown)) {
+      showLines(definition || [], tip);
+      if (countdown) {
+        const count = document.createElement('div');
+        count.className = 'tour-count';
+        tip.appendChild(count);
+        for (let n = countdown; n >= 1; n--) {
+          later((countdownAfter + countdown - n) * 1000, () => {
+            count.textContent = String(n);
+            placeAll();
+          });
+        }
+        later((countdownAfter + countdown) * 1000, () => {
+          count.textContent = '';
         });
       }
-      later((countdownAfter + countdown) * 1000, () => {
-        count.textContent = '';
-      });
+      tip.hidden = false;
+      blink(tip);
     }
     banner.hidden = false;
-    banner.classList.remove('blink');
-    void banner.offsetWidth;
-    banner.classList.add('blink');
-    bannerAnchor = controlFor(target);
-    placeBanner();
-    if (bannerAnchor) {
-      bannerAnchor.classList.remove('tour-pulse');
-      void bannerAnchor.offsetWidth;
-      bannerAnchor.classList.add('tour-pulse');
+    blink(banner);
+    placeAll();
+    if (tipAnchor) {
+      tipAnchor.classList.remove('tour-pulse');
+      void tipAnchor.offsetWidth;
+      tipAnchor.classList.add('tour-pulse');
     }
-    later(linger * 1000 - 1200, () => banner.classList.add('fading'));
+    later(linger * 1000 - 1200, () => {
+      banner.classList.add('fading');
+      tip.classList.add('fading');
+    });
     later(linger * 1000, hideHint);
   };
   // Buildings the tour switched off come back when the visitor takes
@@ -1714,7 +1842,7 @@ async function main() {
       showHint(action.hint);
     }
     if (action.insight === 'dwelling' && valueView === 'dwelling') {
-      showHint({target: 'dwelling', text: dwellingInsight(), linger: 10});
+      showHint({text: dwellingInsight(), linger: 10});
     }
     if (action.view && action.view !== valueView) {
       setChoice('view', action.view);
@@ -1754,7 +1882,6 @@ async function main() {
         : 'Drag the mouse to pan, scroll to zoom, right-drag to rotate.',
     ]);
     banner.hidden = false;
-    bannerAnchor = null;
     placeBanner();
     later(9000, () => banner.classList.add('fading'));
     later(10200, hideHint);
@@ -2286,9 +2413,21 @@ async function main() {
   // switched off they are rebuilt resting on the ground.
   const bottom = scene.layers[0].name;
   setChoice = (group, id) => {
-    if (group === 'view') {
-      valueView = id;
+    // "Modeled", or a model from its menu: that model's view, per
+    // ground area or per home as the other toggle stands. The toggle
+    // keeps working under a model; another source returns to the
+    // assessor's values the same way.
+    const perHome = isPerHome(valueView);
+    if (group === 'model' || (group === 'values' && id === 'model')) {
+      modelKey = group === 'model' ? id : modelKey;
+      valueView = modelView(perHome);
+      group = 'view';
+    } else if (group === 'view') {
+      valueView = isModel(valueView) ? modelView(id === 'dwelling') : id;
     } else {
+      if (isModel(valueView)) {
+        valueView = perHome ? 'dwelling' : 'area';
+      }
       withEstimates = id === 'estimates';
       // Estimated features change height, so the pin and the geometry
       // follow.
