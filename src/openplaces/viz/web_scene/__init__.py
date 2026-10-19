@@ -243,14 +243,24 @@ class SceneLayer:
 # not merged into main; its filled cells carry this token.
 IMPUTED_SUFFIX = '.imputed'
 IMPUTATION_TOKEN = 'building-imputation'
-IMPUTATION_NOTE = {
-    'name': 'Imputed building values (openplaces building imputation, v0.3)',
-    'credit': 'Buildings the assessor gives no usable value are filled by a '
-    'model and marked "estimated"; "Tax assessor" shows only recorded values. '
+IMPUTATION_NOTE_NAME = 'Imputed building values (openplaces building imputation)'
+IMPUTATION_NOTE_TEXT = (
+    'Buildings the assessor gives no usable value are filled by a model and '
+    'marked "estimated"; "Tax assessor" shows only recorded values. '
     'Manufactured homes the roll does not list get a model of their own per '
-    'county, trained on the listed ones. Model code: openplaces branch '
-    'building-imputation, commit 6647b77e.',
-}
+    'county, trained on the listed ones.'
+)
+# The model code's line in an imputed bundle's notice; the commit is read
+# from there, never written here, so the page names the code that made
+# the values it shows.
+MODEL_CODE_LINE = re.compile(r'Model code:[^.]*?commit [0-9a-f]{7,40}\.')
+
+
+def imputation_note(model_code) -> dict:
+    """The Sources note on imputed values, with the model code lines the
+    imputed bundles' notices state."""
+    credit = ' '.join([IMPUTATION_NOTE_TEXT, *sorted(set(model_code))])
+    return {'name': IMPUTATION_NOTE_NAME, 'credit': credit}
 
 
 @dataclass(frozen=True)
@@ -2594,6 +2604,20 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
     return part, taken
 
 
+def imputed_model_code(recipe, region) -> list[str]:
+    """The model code lines (`MODEL_CODE_LINE`) of a region's imputed
+    twin bundle's notice; empty without a twin or such a line."""
+    try:
+        terms = delivery_paths(recipe, region=region)['terms']
+    except (KeyError, ValueError):
+        return []
+    notice = terms.parent.parent / f'{terms.parent.name}{IMPUTED_SUFFIX}' / terms.name
+    if not notice.exists():
+        return []
+    text = ' '.join(notice.read_text(encoding='utf-8').split())
+    return MODEL_CODE_LINE.findall(text)
+
+
 def layer_region(recipe, region) -> str:
     """The region a layer reads: a team region where its recipe ships
     one, else that region's public bundle.
@@ -2927,6 +2951,8 @@ def build_web_scene(
     rendered = {}
     # Cells the building imputation supplied (`overlay_imputed_values`).
     imputed_cells = 0
+    # The model code lines their bundles' notices state.
+    model_code = []
     # Per county, the factor of the models' views in today's dollars.
     model_dollars = {}
     estimated_by_layer = {}
@@ -2968,6 +2994,8 @@ def build_web_scene(
                         part, layer.recipe, name, layer.imputed_columns
                     )
                     imputed_cells += taken
+                    if taken:
+                        model_code += imputed_model_code(layer.recipe, name)
                     if layer.recorded_column and layer.recorded_column not in part:
                         extra = read_evidence_columns(
                             layer.recipe, name, [layer.recorded_column]
@@ -3336,7 +3364,7 @@ def build_web_scene(
         # county, and the models' credits for the Sources panel.
         'model_dollars': model_dollars,
         # Notes on values a model filled, for the Sources panel.
-        'value_notes': [IMPUTATION_NOTE] if imputed_cells else [],
+        'value_notes': [imputation_note(model_code)] if imputed_cells else [],
         'model_sources': (
             list(MODEL_SOURCE_NOTES)
             if any(

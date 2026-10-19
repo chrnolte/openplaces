@@ -428,11 +428,27 @@ def test_imputed_twin_supplies_only_the_models_cells(tmp_path, monkeypatch):
     regular_dir.mkdir()
     twin_dir.mkdir()
     name = 'US-XX_footprint-openplaces-2026.parquet'
+    notice = 'US-XX_footprint-openplaces-2026_LICENSE.txt'
     monkeypatch.setattr(
         web_scene,
         'delivery_paths',
-        lambda recipe, region: {'canonical': regular_dir / name},
+        lambda recipe, region: {
+            'canonical': regular_dir / name,
+            'terms': regular_dir / notice,
+        },
     )
+    # The twin's notice names the model's code; the page reads it from
+    # there (fabricated commit).
+    (twin_dir / notice).write_text(
+        'Imputed values\n... Model code: openplaces branch\nbuilding-imputation, '
+        'commit 0123abcd.\n',
+        encoding='utf-8',
+    )
+    code = web_scene.imputed_model_code('r', 'region-x')
+    assert code == [
+        'Model code: openplaces branch building-imputation, commit 0123abcd.'
+    ]
+    assert web_scene.imputation_note(code + code)['credit'].endswith('commit 0123abcd.')
     index = pd.Index(['a', 'b', 'c'], name='footprint_id')
     part = pd.DataFrame(
         {
