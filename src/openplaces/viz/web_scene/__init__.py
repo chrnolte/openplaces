@@ -3295,7 +3295,11 @@ def build_web_scene(
         for mark in marks:
             print(f'landmark {mark["name"]}: top {mark["position"][2]:.0f} m')
 
-    center = admin.union_all().centroid
+    # The page opens, and the tour starts, over the circle's center
+    # (maintainer, 2026-10-19); a place of whole units over theirs. The
+    # units a circle touches reach far beyond it, so their centroid sat
+    # off to one side (Boston: the middle of the towns, not BU).
+    center = crop.centroid if crop is not None else admin.union_all().centroid
     bottom = layers[0]
     foci = tour_foci(
         rendered[bottom.name].gdf,
