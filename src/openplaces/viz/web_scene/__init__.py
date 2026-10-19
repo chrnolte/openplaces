@@ -2855,13 +2855,22 @@ def build_web_scene(
             # Several regions: each unit is read from the bundle of the
             # region it belongs to. An entity on a boundary between two
             # regions can sit in both bundles; the first copy is kept.
+            # A layer reads only the regions its own recipe ships: the
+            # parcels and the buildings of one place may come from
+            # differently named regions (Houston: parcels in
+            # `houston-tx`, buildings in `cheer-coastal-tx`).
             regions = [
                 layer_region(layer.recipe, name)
                 for name in ([region] if isinstance(region, str) else region)
             ]
             parts = []
+            used = []
             for name in regions:
-                members = set(_region_members(layer.recipe, name))
+                try:
+                    members = set(_region_members(layer.recipe, name))
+                except KeyError:
+                    # A region of the other layer's recipe.
+                    continue
                 wanted = [a for a in admin_ids if a in members]
                 if wanted:
                     part = read_bundle(layer.recipe, name, wanted)
@@ -2871,12 +2880,13 @@ def build_web_scene(
                         )
                         part = part.join(extra, how='left')
                     parts.append(part)
+                    used.append(name)
             if not parts:
                 raise ValueError(f'No unit of {admin_ids} is in {regions}.')
             gdf = pd.concat(parts)
             gdf = gdf[~gdf.index.duplicated(keep='first')]
             notices[layer.recipe] = '\n\n'.join(
-                bundle_notice(layer.recipe, name) for name in regions
+                bundle_notice(layer.recipe, name) for name in used
             )
         if crop is not None:
             gdf = crop_to_area(gdf, crop)
