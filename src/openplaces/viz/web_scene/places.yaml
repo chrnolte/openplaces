@@ -84,7 +84,7 @@ places:
     center: [-89.3824, 43.07243]
     center_note: City-County Building lot, 210 Martin Luther King Jr Blvd
   # Port Arthur, the CHEER pilot (maintainer, 2026-10-19), in place of
-  # Beaumont; both are in Jefferson County (region beaumont-tx).
+  # Beaumont; both are in Jefferson County (region jefferson-county-tx).
   - slug: port-arthur
     title: Port Arthur, Texas
     around: downtown Port Arthur

@@ -821,12 +821,14 @@ share:
       # reads its counties out of these, as the footprint recipe ships.
       - western-nc
       - cheer-eastern-nc
-      # Houston and Beaumont, the viewer's Texas places (2026-10-17).
-      # One county each rather than cheer-coastal-tx, which the
-      # footprint recipe ships, so this recipe still reads each county
-      # from one region. Region ids name the place a user knows.
+      # Harris and Jefferson counties, the viewer's Texas places
+      # (2026-10-17). One county each rather than cheer-coastal-tx,
+      # which the footprint recipe ships, so this recipe still reads
+      # each county from one region. Jefferson's region carries the
+      # county's name, since its pages (Port Arthur, Beaumont) are
+      # two cities in it (maintainer, 2026-10-19).
       - houston-tx
-      - beaumont-tx
+      - jefferson-county-tx
       # Madison WI, Dane County (2026-10-17).
       - madison-wi
       # Nantucket MA, the whole island (2026-10-18).
