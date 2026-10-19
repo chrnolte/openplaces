@@ -424,7 +424,9 @@ def _catalog_terms() -> dict[str, list[dict]]:
     return index
 
 
-def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
+def bundle_terms(
+    recipe, geometry_source=None, admin_ids=None, value_cells=None
+) -> dict:
     """Describe the licence obligations a bundle inherits.
 
     Parameters
@@ -442,6 +444,13 @@ def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
         notice sees declared inputs only, which missed a state's own
         sales feed and listed another state's roll that the national
         recipe named (the Wisconsin transaction bundle, 2026-10-19).
+    value_cells : dict of str to int, optional
+        Cells each source supplied, from the bundle's own `_source`
+        columns (`value_source_cells`). Sources named here and not in
+        the geometry are reported under ``values`` and take part in the
+        attribution, restriction and unrecorded checks like the
+        geometry's sources: a roll that supplies a county's values ships
+        in the bundle as surely as an outline does.
 
     Returns
     -------
@@ -459,6 +468,8 @@ def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
         ``unrecorded`` -- sources whose terms nobody has checked yet.
         ``unknown_share`` -- the share of the bundle's geometry whose
         source the bundle itself does not record.
+        ``values`` -- one entry per set of terms of a source that
+        supplied values but no geometry, each with its ``cells`` count.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -520,11 +531,37 @@ def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
 
     sources.sort(key=lambda entry: (-(entry['share'] or 0), entry['source_id']))
 
+    # Sources that filled values but drew no geometry. A token is a
+    # source only where a recipe declares that source id (the walk's or
+    # the catalog's); the other tokens a sidecar carries name a method
+    # (`group_statistic`, `rule`, `postal_code`), not a source whose
+    # terms could be recorded.
+    by_id: dict[str, list[dict]] = {}
+    for entry in known.values():
+        by_id.setdefault(entry['source_id'], []).append(entry)
+    values = []
+    value_counts: dict[str, int] = {}
+    for token, count in (value_cells or {}).items():
+        source_id = _resolve_source_id(token, known_ids)
+        if source_id not in known_ids and source_id not in catalog:
+            continue
+        value_counts[source_id] = value_counts.get(source_id, 0) + count
+    for source_id, count in sorted(value_counts.items(), key=lambda kv: -kv[1]):
+        if source_id in listed:
+            continue
+        entries = by_id.get(source_id) or catalog.get(source_id)
+        seen_licences = set()
+        for entry in entries:
+            if entry['license'] in seen_licences:
+                continue
+            seen_licences.add(entry['license'])
+            values.append({**entry, 'share': None, 'cells': count})
+
     share_alike: dict[str, float] = {}
     attribution, restricted, unrecorded = [], [], []
     resale_restricted = []
     counted: set[tuple[str, str]] = set()
-    for entry in sources:
+    for entry in [*sources, *values]:
         if entry['redistribution_restricted']:
             restricted.append(entry)
         if entry.get('resale_restricted'):
@@ -553,7 +590,34 @@ def bundle_terms(recipe, geometry_source=None, admin_ids=None) -> dict:
         'resale_restricted': resale_restricted,
         'unrecorded': unrecorded,
         'unknown_share': unknown_share,
+        'values': values,
     }
+
+
+def value_source_cells(frame) -> dict[str, int]:
+    """Cells each source supplied, counted from the frame's `_source` columns.
+
+    The provenance a bundle ships is the only record of which source
+    filled which value: a roll that supplies a county's land values
+    contributes no geometry, so the geometry shares alone never name it.
+    Counted per specific token (`hcad` in `hcad+imputed`); tokens that
+    name a layer or a method (`parcel`, `imputed`) and withheld cells are
+    not sources. `geometry_source` is left to the geometry shares.
+    Measured 2026-10-19 on houston-tx: hcad supplies 16,522,746 cells.
+    """
+    from openplaces.io.delivery.redaction import _UNSPECIFIC, WITHHELD, _tokens
+
+    cells: dict[str, int] = {}
+    for column in frame.columns:
+        if not column.endswith('_source') or column == 'geometry_source':
+            continue
+        counts = frame[column].astype('string').value_counts()
+        for value, count in counts.items():
+            for token in _tokens(value):
+                if token in _UNSPECIFIC or token == WITHHELD:
+                    continue
+                cells[token] = cells.get(token, 0) + int(count)
+    return cells
 
 
 def _resolve_source_id(value: str, known_ids: set[str]) -> str:
@@ -640,6 +704,24 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             f'{"(source not recorded)":<20} {_UNRECORDED}'
         )
     lines.append('')
+
+    if terms.get('values'):
+        # Sources that filled values in this bundle but drew none of its
+        # outlines: an assessment roll, read through the property spine.
+        lines += [
+            'Values from',
+            '-' * 70,
+            'These sources supplied values in this bundle (counted from its',
+            "'_source' columns) but none of its geometry.",
+        ]
+        for entry in terms['values']:
+            license_text = entry['license'] or _UNRECORDED
+            cells = f'{entry["cells"]:>10,}  '
+            lines.append(f'{cells}{entry["source_id"]:<20} {license_text}')
+            url = entry['terms_url'] or entry['portal_url']
+            if url:
+                lines.append(f'{" " * 12}{"":<20} {url}')
+        lines.append('')
 
     # Which recipe roots the build read from. Auto-discovery takes the
     # most specific recipe those roots hold, so the roots and their
@@ -774,7 +856,12 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         ]
         for entry in terms['unrecorded']:
             share = entry['share']
-            share_text = f'{share:.1%} of geometry' if share is not None else ''
+            if share is not None:
+                share_text = f'{share:.1%} of geometry'
+            elif entry.get('cells'):
+                share_text = f'{entry["cells"]:,} values'
+            else:
+                share_text = ''
             lines.append(f'  {entry["source_id"]}  {share_text}')
         lines.append('')
 

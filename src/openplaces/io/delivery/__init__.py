@@ -46,6 +46,7 @@ from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
     restricted_inputs,
+    value_source_cells,
 )
 from openplaces.io.readers import get_admin
 from openplaces.recipe import (
@@ -1107,8 +1108,14 @@ def export_delivery(
     evidence = coerce_mixed_object_columns(evidence)
     to_parquet(evidence, staged['evidence'])
 
+    # Counted on the evidence after withholding: it carries every
+    # shipped '_source' column, the canonical table's included, so a
+    # source is named for exactly the cells that leave the build.
     terms = bundle_terms(
-        recipe, geometry_source, [process_id for process_id, _ in inputs]
+        recipe,
+        geometry_source,
+        [process_id for process_id, _ in inputs],
+        value_cells=value_source_cells(evidence),
     )
     withheld = merge_counts(withheld_first, withheld_second)
     by_source = {entry['source_id']: entry for entry in restricted}
