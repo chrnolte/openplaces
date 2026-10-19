@@ -605,8 +605,8 @@ const TOUR = {
   focusPitch: 42,
   contrastZoom: 13.5,
   contrastPitch: 36,
-  contrastOrbit: 38,
-  downtownOrbit: 24,
+  contrastOrbit: 46,
+  downtownOrbit: 26,
   slowFlight: 1.6,
   // Share of the descent in which the center reaches the first stop.
   centerShare: 0.35,
@@ -628,13 +628,12 @@ const TOUR = {
   smoothing: 1.2,
 };
 
-// What the tour does at the contrast stop, by seconds into the orbit:
-// a hint above the control first (`target`: the buildings switch, or a
-// value view's button), which stays, and the
-// switch three seconds later (maintainer, 2026-10-17: a hint shown
-// only briefly was easy to miss).
-// The two switches a visitor might not expect (buildings gone, colors
-// changed) count down from three (`countdown`; maintainer, 2026-10-17).
+// What the tour does at each stop, by seconds into the segment: a
+// hint above the control first (`target`: the buildings switch, or a
+// value view's button), which stays, and the switch when the countdown
+// reaches 0 (maintainer, 2026-10-17: a hint shown only briefly was
+// easy to miss). Switches count down from five (`countdown`;
+// maintainer, 2026-10-19).
 // Visitors read "home"; the data's term is "dwelling" (one house,
 // apartment or condo).
 // Two places for words (maintainer, 2026-10-18). The main messages,
@@ -650,13 +649,13 @@ const TOUR_DOWNTOWN_ACTIONS = [
     hint: {
       target: 'buildings',
       text: 'Hiding the buildings to show land value alone',
-      countdown: 3,
-      linger: 7,
+      countdown: 5,
+      linger: 9,
     },
   },
-  {at: 7, buildings: false},
+  {at: 9, buildings: false},
   {
-    at: 11,
+    at: 13,
     hint: {
       text: 'Land shows the value of location: how *much* people benefit from ' +
         'living or doing business there.',
@@ -668,12 +667,13 @@ const TOUR_DOWNTOWN_ACTIONS = [
 // left.
 const TOUR_DOWNTOWN_ONLY_ACTIONS = [
   ...TOUR_DOWNTOWN_ACTIONS,
-  {at: 21, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
-  {at: 23, buildings: true},
+  {at: 23, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
+  {at: 25, buildings: true},
 ];
 // Leaving downtown for the contrast: the switch to value per home
 // comes 6 s after leaving (maintainer, 2026-10-18: no more than about
-// 7 s), while the camera glides on. The flight lasts at least 16 s
+// 7 s), while the camera glides on: one second for the message, then
+// the countdown from five. The flight lasts at least 16 s
 // (`flightBase` x `slowFlight`), so the insight at 10 s always runs.
 const TOUR_TO_CONTRAST_ACTIONS = [
   {
@@ -682,8 +682,8 @@ const TOUR_TO_CONTRAST_ACTIONS = [
       target: 'dwelling',
       text: 'You can also color land by their *value per home*.',
       tip: 'A home is one apartment, house, or condo.',
-      countdown: 3,
-      countdownAfter: 3,
+      countdown: 5,
+      countdownAfter: 1,
       linger: 9,
     },
   },
@@ -699,18 +699,18 @@ const TOUR_TO_CONTRAST_ACTIONS = [
 const TOUR_CONTRAST_ACTIONS = [
   {
     at: 10,
-    hint: {target: 'area', text: 'Back to value per ground area', countdown: 3, linger: 6},
+    hint: {target: 'area', text: 'Back to value per ground area', countdown: 5, linger: 8},
   },
-  {at: 13, view: 'area'},
-  {at: 19, hint: {target: 'dwelling', text: 'Value per home again', countdown: 3, linger: 6}},
-  {at: 22, view: 'dwelling'},
+  {at: 15, view: 'area'},
+  {at: 21, hint: {target: 'dwelling', text: 'Value per home again', countdown: 5, linger: 8}},
+  {at: 26, view: 'dwelling'},
   {
-    at: 28,
-    hint: {target: 'area', text: 'And back to value per ground area', countdown: 3, linger: 6},
+    at: 32,
+    hint: {target: 'area', text: 'And back to value per ground area', countdown: 5, linger: 8},
   },
-  {at: 31, view: 'area'},
-  {at: 34, hint: {target: 'buildings', text: 'Buildings back', linger: 4}},
-  {at: 36, buildings: true},
+  {at: 37, view: 'area'},
+  {at: 41, hint: {target: 'buildings', text: 'Buildings back', linger: 4}},
+  {at: 43, buildings: true},
 ];
 // Leaving the contrast: per ground area in any case.
 const TOUR_LEAVE_ACTIONS = [{at: 0, view: 'area'}];
@@ -1763,7 +1763,7 @@ async function main() {
   // above the legend: "Flying on autopilot" as it starts, then what is
   // about to switch, then what the visitor can now see. Beside them a
   // bubble above the button about to switch, pointing at it, with the
-  // definition and the countdown 3, 2, 1, 0. Both stay a while after
+  // definition and the countdown 5 to 0. Both stay a while after
   // the switch, so a visitor learns what the controls do by watching;
   // the bubble's arrow flickers once as it appears.
   const banner = document.createElement('div');
@@ -1869,7 +1869,7 @@ async function main() {
     if (tipAnchor && (definition || countdown)) {
       showLines(definition || [], tip);
       if (countdown) {
-        // 3, 2, 1 and 0 at the switch; a second later the count goes,
+        // 5 down to 1, and 0 at the switch; a second later the count goes,
         // and a bubble with nothing else to say goes with it, never
         // left empty.
         const count = document.createElement('div');
