@@ -267,7 +267,9 @@
   }
   /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
-  #controls-chip, #share-chip {
+  /* "Replay tour": shown once the visitor has taken over. */
+  #replay-chip[hidden] { display: none; }
+  #controls-chip, #share-chip, #replay-chip {
     position: static;
     flex: none;
     font: inherit;
@@ -525,7 +527,7 @@
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
     #about-panel { flex: 1; padding: 6px 10px; }
     #notices { max-height: 55vh; }
-    #controls-chip, #share-chip { padding: 6px 10px; }
+    #controls-chip, #share-chip, #replay-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }

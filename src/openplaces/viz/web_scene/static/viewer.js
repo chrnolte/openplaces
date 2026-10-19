@@ -841,7 +841,10 @@ function startTour(
   onAction = () => {},
   onStop = () => {},
   downtown = null,
+  from = null,
 ) {
+  // `from`: the camera as the visitor left it, for a replay, which
+  // then glides out from there instead of jumping to the overview.
   const {hold, intro, loop} = buildTour(view, foci, contrast, downtown);
   // The segment entered last, and how many of its actions have run.
   let entered = -1;
@@ -885,10 +888,12 @@ function startTour(
     const target = segments[index].view(t);
     // The turn is continuous for the whole tour, so it needs no
     // smoothing: it never changes speed.
-    const bearing = (TOUR.degreesPerSecond * (now - start)) / 1000;
+    const bearing =
+      (from ? from.bearing : 0) + (TOUR.degreesPerSecond * (now - start)) / 1000;
     if (stage1 === null) {
-      stage1 = {...target};
-      stage2 = {...target};
+      const first = from || target;
+      stage1 = Object.fromEntries(keys.map((key) => [key, first[key]]));
+      stage2 = {...stage1};
     }
     // Frame time, capped so a stalled tab does not jump on return.
     const dt = Math.min(0.1, last === null ? 0 : (now - last) / 1000);
@@ -1019,7 +1024,11 @@ async function main() {
     location.replace(`${scene.phone_scene}${location.search}${location.hash}`);
     return;
   }
-  document.title = scene.title;
+  // "[place]: Land and building values" in the browser's tab and
+  // bookmarks (maintainer, 2026-10-18).
+  document.title = scene.place_title
+    ? `${scene.place_title}: Land and building values`
+    : scene.title;
   document.getElementById('title').textContent = scene.title;
   // No subtitle on the scene: what the values are follows from the
   // controls (with estimates, or the assessment alone).
@@ -1907,27 +1916,27 @@ async function main() {
     }
     tourHidBuildings = false;
   };
-  const tourControl = tour
-    ? startTour(
-      deckgl,
-      scene.view,
-      scene.tour,
-      document.getElementById('scene'),
-      hasDwellingView ? scene.tour_contrast : null,
-      tourAction,
-      tourStopped,
-      scene.tour_downtown,
-    )
-    : {stop: () => {}, ready: () => {}};
-  // The place's name at the top for a few seconds as the page opens
-  // (maintainer, 2026-10-18), tour or not.
+  const launchTour = (from = null) => startTour(
+    deckgl,
+    scene.view,
+    scene.tour,
+    document.getElementById('scene'),
+    hasDwellingView ? scene.tour_contrast : null,
+    tourAction,
+    tourStopped,
+    scene.tour_downtown,
+    from,
+  );
+  let tourControl = tour ? launchTour() : {stop: () => {}, ready: () => {}};
+  // The place's name at the top as the page opens, tour or not, for
+  // about eight seconds (maintainer, 2026-10-18).
   if (scene.place_title) {
     const placeTitle = document.createElement('div');
     placeTitle.id = 'place-title';
     placeTitle.textContent = scene.place_title;
     document.body.appendChild(placeTitle);
-    setTimeout(() => placeTitle.classList.add('fading'), 4500);
-    setTimeout(() => placeTitle.remove(), 6000);
+    setTimeout(() => placeTitle.classList.add('fading'), 8000);
+    setTimeout(() => placeTitle.remove(), 9500);
   }
   // The opening line says how to take over with what the visitor
   // holds: a mouse or a finger (maintainer, 2026-10-18).
@@ -1946,19 +1955,63 @@ async function main() {
   }
 
   // For measuring the page (frame rate, load time) from a test browser.
-  window.openplacesScene = {deck: deckgl, loaded: false, stopTour: tourControl.stop};
+  window.openplacesScene = {deck: deckgl, loaded: false, stopTour: () => tourControl.stop()};
 
-  // Whether the tour still runs; it stops on the visitor's first touch.
+  // Whether the tour still runs; it stops on the visitor's first touch,
+  // and the replay button appears (maintainer, 2026-10-18).
   let touring = tour;
-  for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
-    (type === 'keydown' ? window : document.getElementById('scene')).addEventListener(
-      type,
-      () => {
-        touring = false;
-      },
-      {once: true, passive: true},
-    );
+  const replayButton = document.createElement('button');
+  replayButton.type = 'button';
+  replayButton.id = 'replay-chip';
+  replayButton.className = 'panel';
+  replayButton.dataset.replay = 'tour';
+  replayButton.textContent = '▶ Replay tour';
+  replayButton.title = 'Start the guided flight again';
+  replayButton.hidden = tour || !(scene.tour && scene.tour.length);
+  const watchForTakeover = () => {
+    for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
+      (type === 'keydown' ? window : document.getElementById('scene')).addEventListener(
+        type,
+        () => {
+          touring = false;
+          replayButton.hidden = false;
+        },
+        {once: true, passive: true},
+      );
+    }
+  };
+  if (tour) {
+    watchForTakeover();
   }
+  // A replay starts from where the visitor left the camera, with value
+  // per ground area and every layer as the tour expects them.
+  replayButton.addEventListener('click', () => {
+    if (touring) {
+      return;
+    }
+    replayButton.hidden = true;
+    if (pin) {
+      unpin();
+    }
+    if (valueView !== 'area') {
+      setChoice('view', 'area');
+    }
+    if ('buildings' in shown && !shown.buildings) {
+      toggleLayer('buildings');
+    }
+    const v = deckgl.getViewports()[0];
+    tourControl = launchTour({
+      longitude: v.longitude,
+      latitude: v.latitude,
+      zoom: v.zoom,
+      pitch: v.pitch,
+      bearing: v.bearing,
+    });
+    // Everything is loaded: the overview needs no wait beyond its own.
+    tourControl.ready();
+    touring = true;
+    watchForTakeover();
+  });
   buildPlaceNav(places, deckgl, () => touring, shown);
 
   // Tilt with two fingers moving up or down together (maintainer,
@@ -2010,6 +2063,7 @@ async function main() {
         if (touring) {
           tourControl.stop();
           touring = false;
+          replayButton.hidden = false;
         }
       } else if (change > 20) {
         tilt.decided = 'other';
@@ -2052,6 +2106,7 @@ async function main() {
   shareButton.textContent = 'Share';
   shareButton.setAttribute('aria-label', 'Share a link to this view');
   bar.insertBefore(shareButton, document.getElementById('about-panel'));
+  bar.insertBefore(replayButton, shareButton);
 
   // Compass: its needle points north as the view turns; a click turns
   // the view back to north up (the tilt stays).
@@ -2083,6 +2138,7 @@ async function main() {
     if (touring) {
       tourControl.stop();
       touring = false;
+      replayButton.hidden = false;
     }
     const v = deckgl.getViewports()[0];
     deckgl.setProps({

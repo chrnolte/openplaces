@@ -114,8 +114,8 @@ def test_page_has_no_input_control_and_no_background_map():
     # eighth turns the view north up; the ninth, in the menu under
     # "Modeled" on a team page, picks which model colors the lots; the
     # tenth, beside it, the models' scale (to the assessments, or in
-    # today's dollars).
-    assert len(re.findall(r"createElement\('button'\)", script)) == 10
+    # today's dollars); the eleventh replays the guided tour.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 11
     for kind in (
         'dataset.palette',
         'dataset.layer',
@@ -124,6 +124,7 @@ def test_page_has_no_input_control_and_no_background_map():
         'dataset.fold',
         'dataset.share',
         'dataset.compass',
+        'dataset.replay',
     ):
         assert kind in script
     # Only the scene's own layers; nothing that draws a background map.
