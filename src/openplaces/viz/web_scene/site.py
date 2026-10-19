@@ -42,6 +42,7 @@ from openplaces.viz.web_scene import (
 )
 from openplaces.viz.web_scene.local import (
     ELEVATION_RECIPE,
+    downtown_of,
     extent_label,
     has_circle,
     load_places,
@@ -68,6 +69,7 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
         crop=circle,
         elevation_recipe=ELEVATION_RECIPE,
         phone_scene=phone_scene,
+        downtown=downtown_of(place),
         verbose=False,
     )
     print(

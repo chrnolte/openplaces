@@ -286,6 +286,161 @@ TEAM_MODEL_VIEWS = tuple(
 # Hectares in one display area unit.
 HECTARES_PER_UNIT = {'ha': 1.0, 'ac': 0.40468564224, 'm2': 1e-4, 'sqft': 9.290304e-6}
 
+# The models in today's dollars (maintainer, 2026-10-18): a prediction
+# (2010 land value in real January 2022 dollars) times CPI-U(October
+# 2010) / CPI-U(January 2022), back to 2010 dollars, times the lot's
+# county house price index, latest year over 2010. Where a county's
+# series ends early, the state's index carries it on to the latest year
+# and the page marks the value as an estimate. Both indexes are
+# published (FHFA, BLS); nothing here builds one (design limits L7,
+# L29).
+HOUSE_PRICE_RECIPE = 'US_economy-price-house-fhfa-2026'
+# The state index that extends a county series ending early. Without
+# it, a short county series stops at its last year.
+STATE_HOUSE_PRICE_RECIPE = 'US_economy-price-house-fhfa-2026_state'
+CONSUMER_PRICE_RECIPE = 'US_economy-price-consumer-bls-2026'
+CONSUMER_PRICE_SERIES = 'CUUR0000SA0'
+# The predictions' reference month (2010-10-31; the maintainer's
+# choice of base) and the month of their dollars.
+MODEL_REFERENCE = (2010, 'M10')
+MODEL_DOLLARS = (2022, 'M01')
+HOUSE_PRICE_BASE_YEAR = 2010
+# Credits the team page's Sources panel shows for its models. FHFA
+# requires its notice wherever its data are used; BLS asks to be
+# cited; Zillow's standard acknowledgment covers the ZTRAX training
+# data.
+MODEL_SOURCE_NOTES = (
+    {
+        'name': 'PLACES-FMV land value models, 2010 (region with neighbors)',
+        'credit': 'Data provided by Zillow through the Zillow Transaction and '
+        'Assessment Dataset (ZTRAX). More information on accessing the data can '
+        'be found at http://www.zillow.com/ztrax. The results and opinions are '
+        'those of the author(s) and do not reflect the position of Zillow Group.',
+    },
+    {
+        'name': 'Covariates of the models',
+        'credit': 'IPUMS NHGIS, University of Minnesota (www.nhgis.org); '
+        'Microsoft Building Footprints (ODbL).',
+    },
+    {
+        'name': 'FHFA House Price Index, counties (all-transactions, annual)',
+        'credit': 'This product uses FHFA data but is neither endorsed nor '
+        'certified by FHFA.',
+    },
+    {
+        'name': 'Consumer Price Index',
+        'credit': 'U.S. Bureau of Labor Statistics, Consumer Price Index for All '
+        'Urban Consumers (CPI-U), U.S. city average, all items (CUUR0000SA0).',
+    },
+)
+
+
+def dollars_factors(counties, house, consumer, state_house=None) -> dict:
+    """Factors that bring a 2010 model to today's dollars, per county.
+
+    Parameters
+    ----------
+    counties : dict of str to str
+        Five-digit county FIPS code to the admin id of its state
+        (`US-MA`).
+    house : pandas.DataFrame
+        The county house price index (`county_fips`, `year`,
+        `house_price_index`).
+    consumer : pandas.DataFrame
+        The consumer price index (`series_id_bls`, `year`,
+        `period_bls`, `consumer_price_index`).
+    state_house : pandas.DataFrame, optional
+        A state house price index (`admin2_id`, `year`,
+        `house_price_index`) that extends a county series ending
+        before the latest year any county reaches.
+
+    Returns
+    -------
+    dict
+        Per county: `factor`, `to_year` (the index year the factor
+        reaches) and `estimated` (True where the state index carried
+        the series on). A county without a 2010 value is left out.
+    """
+    cpi = consumer[consumer['series_id_bls'] == CONSUMER_PRICE_SERIES]
+
+    def month(year, period):
+        hit = cpi[(cpi['year'] == year) & (cpi['period_bls'] == period)]
+        return float(hit['consumer_price_index'].iloc[0])
+
+    to_2010 = month(*MODEL_REFERENCE) / month(*MODEL_DOLLARS)
+    house = house.dropna(subset=['house_price_index'])
+    latest = int(house['year'].max())
+    out = {}
+    for county, state_id in sorted(counties.items()):
+        series = house[house['county_fips'] == county].set_index('year')[
+            'house_price_index'
+        ]
+        if HOUSE_PRICE_BASE_YEAR not in series.index:
+            continue
+        last = int(series.index.max())
+        growth = series[last] / series[HOUSE_PRICE_BASE_YEAR]
+        estimated = False
+        if last < latest and state_house is not None:
+            state = (
+                state_house[state_house['admin2_id'] == state_id]
+                .dropna(subset=['house_price_index'])
+                .set_index('year')['house_price_index']
+            )
+            if {last, latest} <= set(state.index):
+                growth *= state[latest] / state[last]
+                last, estimated = latest, True
+        out[county] = {
+            'factor': round(float(to_2010 * growth), 4),
+            'to_year': last,
+            'estimated': estimated,
+        }
+    return out
+
+
+def lot_dollars_factors(gdf) -> tuple[np.ndarray, dict]:
+    """Each lot's factor to today's dollars, from its unit's county, and
+    the factors per county; NaN and an empty dict where the indexes are
+    missing.
+
+    The county is the first five digits of the unit's Census GEOID
+    (`admin3_id_admin1`): a county's own, or the county prefix of a New
+    England town's. Lots' `census_tract_id` was not used: it is empty
+    for whole towns (measured 2026-10-18: all 13,803 Nantucket lots).
+    """
+    from openplaces.io.readers import get_dataset
+
+    nothing = np.full(len(gdf), np.nan), {}
+    if 'admin3_id' not in gdf.columns:
+        return nothing
+    units = gdf['admin3_id'].astype('string')
+    admin = get_admin(sorted(units.dropna().unique()), level=3, geom=False)
+    if 'admin3_id' not in admin.columns:
+        admin = admin.reset_index()
+    county_of = dict(
+        zip(
+            admin['admin3_id'],
+            admin['admin3_id_admin1'].astype(str).str[:5],
+            strict=True,
+        )
+    )
+    counties = units.map(county_of)
+    states = units.str.split('-').str[:2].str.join('-')
+    try:
+        house = get_dataset(HOUSE_PRICE_RECIPE)
+        consumer = get_dataset(CONSUMER_PRICE_RECIPE)
+    except (FileNotFoundError, KeyError, ValueError):
+        return nothing
+    try:
+        state = get_dataset(STATE_HOUSE_PRICE_RECIPE)
+    except (FileNotFoundError, KeyError, ValueError):
+        state = None
+    pairs = pd.DataFrame({'county': counties, 'state': states}).dropna()
+    factors = dollars_factors(
+        dict(zip(pairs['county'], pairs['state'], strict=True)), house, consumer, state
+    )
+    lot = counties.map(lambda c: factors.get(c, {}).get('factor', np.nan))
+    return lot.to_numpy(dtype=float), factors
+
 
 # The notebook's scene (notebooks/09_show/03_show_land_and_building_
 # values_3d), with buildings without a value drawn flat at their
@@ -330,6 +485,9 @@ RESIDENTIAL_LAND_USE = frozenset(
         'Manufactured Home',
     }
 )
+# The residential classes whose name says what each unit is, one home:
+# a lot of one of these needs no further evidence that it holds homes.
+SINGLE_HOME_LAND_USE = RESIDENTIAL_LAND_USE - {'Multi-Family'}
 # The page's own class of a building (maintainer, 2026-10-16/17, handoff
 # item 1f): the roll's land use class of its lot (`land_use_class_parcel`:
 # Condominium, Townhome, Multiple Single-Family, Office, ...), which
@@ -2156,7 +2314,14 @@ CONTRAST_CLAIM_RATIO = 3.0
 
 
 def contrast_focus(
-    gdf, column, cell_m=1000.0, radius_m=3000.0, min_homes=200, shown=None
+    gdf,
+    column,
+    cell_m=1000.0,
+    radius_m=3000.0,
+    min_homes=200,
+    shown=None,
+    near=None,
+    near_m=4000.0,
 ) -> dict | None:
     """The point where homes' value per dwelling differs most nearby.
 
@@ -2192,6 +2357,13 @@ def contrast_focus(
         stop (land value per home, while buildings are hidden). Its
         median in each of the two cells is returned, so the page can
         name the colors the visitor sees there.
+    near : tuple of float, optional
+        (longitude, latitude) the tour comes from (downtown). The pair
+        whose midpoint lies within `near_m` of it is preferred, so the
+        tour reaches the contrast within seconds (maintainer,
+        2026-10-18); without such a pair, the sharpest anywhere.
+    near_m : float
+        How far from `near` a preferred midpoint may lie.
 
     Returns
     -------
@@ -2202,7 +2374,8 @@ def contrast_focus(
         `low_shown`; and `claim`, whether the page may say that costly
         and modest homes stand close (`ratio` at least
         `CONTRAST_CLAIM_RATIO` and, with `shown`, the costly cell also
-        colored higher). None where no two cells qualify.
+        colored higher); with `near`, `near` (whether the pair lies
+        within `near_m`). None where no two cells qualify.
     """
     if gdf.empty or column not in gdf.columns:
         return None
@@ -2236,8 +2409,23 @@ def contrast_focus(
     median = cells['median'].to_numpy()
     # All pairs at once: a few thousand cells make a matrix of a few
     # million entries.
-    near = np.hypot(x[:, None] - x[None, :], y[:, None] - y[None, :]) <= radius_m
-    gap = np.where(near, np.abs(median[:, None] - median[None, :]), -1.0)
+    close = np.hypot(x[:, None] - x[None, :], y[:, None] - y[None, :]) <= radius_m
+    gap = np.where(close, np.abs(median[:, None] - median[None, :]), -1.0)
+    reached = None
+    if near is not None:
+        # Pairs whose midpoint lies near where the tour comes from.
+        origin = (
+            gpd.GeoSeries([shapely.Point(*near)], crs=4326)
+            .to_crs(projected.crs)
+            .iloc[0]
+        )
+        midpoint_m = np.hypot(
+            (x[:, None] + x[None, :]) / 2 - origin.x,
+            (y[:, None] + y[None, :]) / 2 - origin.y,
+        )
+        reached = bool(((midpoint_m <= near_m) & (gap >= 0)).any())
+        if reached:
+            gap = np.where(midpoint_m <= near_m, gap, -1.0)
     a, b = np.unravel_index(np.argmax(gap), gap.shape)
     if median[a] < median[b]:
         a, b = b, a
@@ -2273,6 +2461,8 @@ def contrast_focus(
         # The colors must say what the words say.
         claim = claim and out['high_shown'] > out['low_shown']
     out['claim'] = bool(claim)
+    if reached is not None:
+        out['near'] = reached
     return out
 
 
@@ -2293,7 +2483,9 @@ def layer_region(recipe, region) -> str:
     return region if region in declared else region.removesuffix(TEAM_SUFFIX)
 
 
-def model_view_arrays(gdf, layer, homes=None, home_view=None) -> tuple[dict, dict]:
+def model_view_arrays(
+    gdf, layer, homes=None, home_view=None, dollars=None
+) -> tuple[dict, dict]:
     """Per-feature arrays and manifest entries of a layer's model views.
 
     Each view's scale is the median, over the lots with both, of the
@@ -2316,17 +2508,23 @@ def model_view_arrays(gdf, layer, homes=None, home_view=None) -> tuple[dict, dic
     home_view : dict, optional
         The layer's per-home view (`vmin`, `vmax`, `other`), whose scale
         the models' per-home views share.
+    dollars : numpy.ndarray, optional
+        Each lot's factor from the prediction to today's dollars
+        (`lot_dollars_factors`). With it, each model also gets views in
+        today's dollars (`<key>__2026`, `<key>__2026__home`) beside the
+        ones scaled to the assessments; a lot without a factor has no
+        value there.
 
     Returns
     -------
     tuple of (dict, dict)
-        Arrays for the scene file (`value_<key>`, the scaled prediction
-        per area unit; `value_<key>__home`, per home; `aoa_<key>`, 2
-        inside the area of applicability, 1 outside, 0 unknown) and
-        views for the manifest (`label`, `unit`, `model`, `scale`; a
-        per-home view also `per_home` and `base`, the per-area view's
-        key). A view without predictions, or without a recorded value
-        to scale it on, is left out.
+        Arrays for the scene file (`value_<view>` for every view;
+        `aoa_<key>`, 2 inside the area of applicability, 1 outside, 0
+        unknown) and views for the manifest (`label`, `unit`, `model`,
+        `scale` or `dollars`; a per-home view also `per_home` and
+        `base`, the per-area view of the same scale). A model without
+        predictions, or without a recorded value to scale it on, is
+        left out.
     """
     metric = (
         gdf.geometry
@@ -2345,37 +2543,118 @@ def model_view_arrays(gdf, layer, homes=None, home_view=None) -> tuple[dict, dic
         if not both.any():
             continue
         scale = float(np.median(land_per_ha[both] / predicted[both]))
-        arrays[f'value_{view.key}'] = (
-            predicted * scale * HECTARES_PER_UNIT[layer.area_unit]
-        )
         if view.aoa_column and view.aoa_column in gdf.columns:
             aoa = gdf[view.aoa_column].to_numpy(dtype=float)
             arrays[f'aoa_{view.key}'] = np.where(
                 np.isfinite(aoa), np.where(aoa <= 1, 2, 1), 0
             ).astype(np.uint8)
-        views[view.key] = {
-            'label': view.label,
-            'unit': layer.area_unit,
-            'model': True,
-            'scale': round(scale, 3),
-        }
-        if homes is not None and home_view is not None:
-            lot_value = predicted * scale * hectares
-            arrays[f'value_{view.key}__home'] = np.where(
-                homes > 0, lot_value / homes, np.nan
+        # Per hectare, scaled to the assessments; and in today's dollars.
+        scalings = [(view.key, predicted * scale, {'scale': round(scale, 3)})]
+        if dollars is not None and np.isfinite(dollars).any():
+            scalings.append(
+                (f'{view.key}__2026', predicted * dollars, {'dollars': True})
             )
-            views[f'{view.key}__home'] = {
-                **{
-                    k: home_view[k] for k in ('vmin', 'vmax', 'other') if k in home_view
-                },
+        for key, per_ha, note in scalings:
+            arrays[f'value_{key}'] = per_ha * HECTARES_PER_UNIT[layer.area_unit]
+            views[key] = {
                 'label': view.label,
-                'unit': 'dwelling',
+                'unit': layer.area_unit,
                 'model': True,
-                'per_home': True,
-                'base': view.key,
-                'scale': round(scale, 3),
+                **note,
             }
+            if homes is not None and home_view is not None:
+                arrays[f'value_{key}__home'] = np.where(
+                    homes > 0, per_ha * hectares / homes, np.nan
+                )
+                views[f'{key}__home'] = {
+                    **{
+                        k: home_view[k]
+                        for k in ('vmin', 'vmax', 'other')
+                        if k in home_view
+                    },
+                    'label': view.label,
+                    'unit': 'dwelling',
+                    'model': True,
+                    'per_home': True,
+                    'base': key,
+                    **note,
+                }
     return arrays, views
+
+
+def residential_lots(lots) -> np.ndarray:
+    """Which lots the per-home view treats as homes.
+
+    Residential only where two sources agree, the roll's land use and
+    dwellings (its own count, or homes standing on it). A park, river
+    bank or public campus holding a stray residential outline stays
+    non-residential (maintainer, 2026-10-16: the Esplanade, the Fens).
+
+    A third check: the roll states dwellings itself, or its use group
+    is residential or mixed, or the class names one home per unit
+    (`SINGLE_HOME_LAND_USE`) on a lot that is not exempt. A land use of
+    "Multi-Family" on an exempt or unclassed lot with one outline
+    counted as a home is not enough (125 Arborway, the Arnold
+    Arboretum: 157 acres, one counted dwelling; maintainer,
+    2026-10-16). Public housing keeps its roll's own count; a
+    homeowners' association's common land fails the use-group test.
+    Rolls that keep their own use codes in `use_group` ("SFR GOLF",
+    "PATIO HOME") and state no dwellings failed the test on every
+    house before the class could confirm itself (Brunswick County NC;
+    maintainer, 2026-10-18).
+
+    Parameters
+    ----------
+    lots : pandas.DataFrame
+        `n_dwellings`, and where present `land_use_class`, `use_group`
+        and the roll's own count (`ROLL_DWELLINGS`).
+
+    Returns
+    -------
+    numpy.ndarray of bool
+    """
+    empty = pd.Series(pd.NA, index=lots.index, dtype='string')
+    dwellings = lots['n_dwellings'].to_numpy(dtype=float)
+    land_use = (
+        lots['land_use_class'].astype('string') if 'land_use_class' in lots else empty
+    )
+    roll_count = (
+        lots[ROLL_DWELLINGS].to_numpy(dtype=float)
+        if ROLL_DWELLINGS in lots
+        else np.full(len(lots), np.nan)
+    )
+    use = (
+        lots['use_group'].astype('string').str.strip().str.lower()
+        if 'use_group' in lots
+        else empty
+    )
+    use_says_home = (
+        (use.str.startswith('res') | use.str.contains('mixed')).fillna(False).to_numpy()
+    )
+    exempt = use.str.startswith('exempt').fillna(False).to_numpy()
+    own_class = land_use.isin(SINGLE_HOME_LAND_USE).fillna(False).to_numpy()
+    confirmed = (roll_count > 0) | use_says_home | (own_class & ~exempt)
+    return (
+        (dwellings > 0)
+        & land_use.isin(RESIDENTIAL_LAND_USE).fillna(False).to_numpy()
+        & confirmed
+    )
+
+
+def downtown_stop(downtown, admin) -> dict | None:
+    """The tour's downtown stop for the manifest, with the unit holding
+    it (`admin3_id`), which the page then loads first; None without
+    one."""
+    if downtown is None:
+        return None
+    point = shapely.Point(float(downtown[0]), float(downtown[1]))
+    units = admin.to_crs(4326) if admin.crs is not None else admin
+    holding = units.loc[units.contains(point), 'admin3_id']
+    return {
+        'longitude': round(point.x, 6),
+        'latitude': round(point.y, 6),
+        'admin3_id': str(holding.iloc[0]) if len(holding) else None,
+    }
 
 
 def scene_audience(region) -> str:
@@ -2403,6 +2682,7 @@ def build_web_scene(
     local_only=False,
     landmarks=None,
     phone_scene=None,
+    downtown=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -2467,6 +2747,11 @@ def build_web_scene(
         low-memory device opening this page goes there instead, unless
         the address carries `full=1`. A phone held the full Boston scene
         poorly or crashed (maintainer's Pixel 9, 2026-10-17).
+    downtown : tuple of float, optional
+        (longitude, latitude) of the place's downtown, an editorial
+        point: the tour's first stop, where it rests longest and hides
+        the buildings (maintainer, 2026-10-18). None starts the tour at
+        its densest stop instead.
     verbose : bool
 
     Returns
@@ -2508,6 +2793,8 @@ def build_web_scene(
         }
 
     rendered = {}
+    # Per county, the factor of the models' views in today's dollars.
+    model_dollars = {}
     estimated_by_layer = {}
     source_docs = {}
     bounds = {}
@@ -2618,46 +2905,7 @@ def build_web_scene(
                 ).to_numpy()
                 known = occupancy.notna().to_numpy()
             else:
-                # Lots: residential only where two sources agree, the
-                # roll's land use and dwellings (its own count, or homes
-                # standing on it). A park, river bank or public campus
-                # holding a stray residential outline stays
-                # non-residential (maintainer, 2026-10-16: the
-                # Esplanade, the Fens).
-                land_use = (
-                    out['land_use_class'].astype('string')
-                    if 'land_use_class' in out.columns
-                    else pd.Series(pd.NA, index=out.index, dtype='string')
-                )
-                # A third check: the roll states dwellings itself, or
-                # its use group is residential or mixed. A land use of
-                # "Multi-Family" on an exempt or unclassed lot with one
-                # outline counted as a home is not enough (125 Arborway,
-                # the Arnold Arboretum: 157 acres, one counted dwelling;
-                # maintainer, 2026-10-16). Public housing keeps its
-                # roll's own count; a homeowners' association's common
-                # land fails the use-group test.
-                roll_count = (
-                    out[ROLL_DWELLINGS].to_numpy(dtype=float)
-                    if ROLL_DWELLINGS in out.columns
-                    else np.full(len(out), np.nan)
-                )
-                use = (
-                    out['use_group'].astype('string').str.strip().str.lower()
-                    if 'use_group' in out.columns
-                    else pd.Series(pd.NA, index=out.index, dtype='string')
-                )
-                use_says_home = (
-                    (use.str.startswith('res') | use.str.contains('mixed'))
-                    .fillna(False)
-                    .to_numpy()
-                )
-                confirmed = (roll_count > 0) | use_says_home
-                residential = (
-                    (dwellings > 0)
-                    & land_use.isin(RESIDENTIAL_LAND_USE).to_numpy()
-                    & confirmed
-                )
+                residential = residential_lots(out)
                 known = np.ones(len(out), dtype=bool)
             # Everything that is not a home and carries a value, accessory
             # types included: campus buildings classed "Secondary" on a
@@ -2707,8 +2955,13 @@ def build_web_scene(
                     out['n_dwellings'].to_numpy(dtype=float),
                     np.nan,
                 )
+            dollars, model_dollars = lot_dollars_factors(out)
             arrays, model_views = model_view_arrays(
-                out, layer, homes=homes, home_view=views.get('dwelling')
+                out,
+                layer,
+                homes=homes,
+                home_view=views.get('dwelling'),
+                dollars=dollars,
             )
             extra.update(arrays)
             views.update(model_views)
@@ -2880,6 +3133,7 @@ def build_web_scene(
             lots,
             per_dwelling,
             shown='shown_per_dwelling' if shown is not None else None,
+            near=downtown,
         )
         if verbose and contrast:
             print(f'per-dwelling tour stop: {contrast}')
@@ -2925,6 +3179,19 @@ def build_web_scene(
         ),
         'tour': foci,
         'tour_contrast': contrast,
+        'tour_downtown': downtown_stop(downtown, admin),
+        # Team pages with models: the factors to today's dollars per
+        # county, and the models' credits for the Sources panel.
+        'model_dollars': model_dollars,
+        'model_sources': (
+            list(MODEL_SOURCE_NOTES)
+            if any(
+                v.get('model')
+                for layer in manifest_layers
+                for v in layer['views'].values()
+            )
+            else []
+        ),
         'terrain': {
             'elevation_recipe': elevation_recipe,
             'terrain_exaggeration': terrain_exaggeration if ground else None,

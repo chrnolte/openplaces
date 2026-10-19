@@ -7,6 +7,11 @@
 #
 # Order: descending number of dwellings inside the circle (measured
 # 2026-10-17 on the delivered building outlines).
+#
+# The tour's first stop is downtown (maintainer, 2026-10-18): the
+# place's `downtown`, else its `center` (a city hall lot). Downtown
+# points are city or town halls located by address in the delivered
+# parcel bundles.
 
 radius_km: 15
 phone_radius_km: 7
@@ -20,6 +25,8 @@ places:
     state: US-MA
     center: [-71.1055, 42.3503]
     center_note: Boston University, Marsh Plaza
+    downtown: [-71.05801, 42.36028]
+    downtown_note: City hall lot, 1 City Hall Sq
   - slug: charlotte
     title: Charlotte, North Carolina
     around: downtown Charlotte
@@ -72,6 +79,8 @@ places:
     extent_note: The island of Nantucket
     state: US-MA
     admin_ids: [US-MA-NTC]
+    downtown: [-70.09911, 41.28501]
+    downtown_note: Town building lot, 16 Broad St
   # A team page (maintainer, 2026-10-18): `team: true` reads the team
   # bundles, is published only behind a password, never appears on the
   # landing page and is left out of `--all`.
@@ -80,4 +89,6 @@ places:
     extent_note: The island of Nantucket, for the research team
     state: US-MA
     admin_ids: [US-MA-NTC]
+    downtown: [-70.09911, 41.28501]
+    downtown_note: Town building lot, 16 Broad St
     team: true

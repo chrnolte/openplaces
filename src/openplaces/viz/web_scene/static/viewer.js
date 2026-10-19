@@ -186,58 +186,6 @@ function hexToRgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Plain names for the colors the tour mentions ("pink", "sky blue"),
-// matched in OKLab, where distance follows what the eye sees.
-const COLOR_NAMES = {
-  white: '#ffffff', 'pale gray': '#d9dbe0', gray: '#8a8f98', black: '#000000',
-  'pale blue': '#dcebff', 'sky blue': '#8ec5ff', blue: '#3a6fd8', navy: '#1a2a6c',
-  teal: '#2a9d8f', mint: '#bfeee0', green: '#4caf50', 'dark green': '#1f5a2a',
-  lime: '#c6f03a', 'pale yellow': '#fff3b0', yellow: '#ffd23f', sand: '#e3d3a0',
-  peach: '#ffcfa8', orange: '#ff9a3c', terracotta: '#cf6a55', 'brick red': '#a8443f',
-  red: '#e53935', pink: '#ffb3c7', 'hot pink': '#ff2fb0', lilac: '#e3b3f0',
-  purple: '#8e44ad', violet: '#b54dff',
-};
-
-function oklab([r, g, b]) {
-  const lin = (c) => {
-    const s = c / 255;
-    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  const [R, G, B] = [lin(r), lin(g), lin(b)];
-  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
-  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
-  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-  ];
-}
-
-function colorName(rgb) {
-  const [L, A, B] = oklab(rgb);
-  let best = null;
-  let bestDistance = Infinity;
-  for (const [name, hex] of Object.entries(COLOR_NAMES)) {
-    const [l, a, b] = oklab(hexToRgb(hex));
-    const distance = Math.hypot(L - l, A - a, B - b);
-    if (distance < bestDistance) {
-      [best, bestDistance] = [name, distance];
-    }
-  }
-  return best;
-}
-
-// The color a value takes on a layer's scale; where the faces are
-// near black and the edges carry the color (Neon), the edge color.
-function valueColor(value, spec) {
-  const lo = Math.log1p(spec.vmin);
-  const t = Math.min(1, Math.max(0, (Math.log1p(value) - lo) / (Math.log1p(spec.vmax) - lo)));
-  const pick = (rgb) => rgb[Math.round(t * (rgb.length - 1))];
-  const fill = pick(spec.rgb);
-  return spec.lineSpec && oklab(fill)[0] < 0.3 ? pick(spec.lineSpec.rgb) : fill;
-}
-
 function preparePalette(palette) {
   for (const spec of Object.values(palette.layers)) {
     spec.rgb = spec.lut.map(hexToRgb);
@@ -315,6 +263,24 @@ function renderSources(container, scene) {
     } else {
       container.appendChild(el('p', 'src-note', 'None known for this place at the moment.'));
     }
+  }
+  // A team page's models: what they are and whom they credit.
+  if (scene.model_sources && scene.model_sources.length) {
+    container.appendChild(el('h3', 'src-layer', 'Models'));
+    const models = el('ul', 'src-list');
+    for (const source of scene.model_sources) {
+      const item = el('li', 'src-item');
+      item.appendChild(el('div', 'src-head')).appendChild(el('span', 'src-name', source.name));
+      item.appendChild(el('div', 'src-credit', source.credit));
+      models.appendChild(item);
+    }
+    const estimated = Object.entries(scene.model_dollars || {}).filter(([, c]) => c.estimated);
+    if (estimated.length) {
+      models.appendChild(el('li', 'src-item', `Estimated: where a county's FHFA index ends ` +
+        `before the latest year (${estimated.map(([fips, c]) => `${fips}, to ${c.to_year}`)
+          .join('; ')}), its state's index carries it on.`));
+    }
+    container.appendChild(models);
   }
   const sections = scene.sources || [];
   const shareOf = (source) => {
@@ -625,15 +591,28 @@ function drawLegend(container, legend) {
 // descent, stops seen from farther up. One stop (`tour_contrast`)
 // shows the per-dwelling view over the sharpest contrast between
 // costly and inexpensive homes, from higher still, for longer.
+// It starts sooner and looks down a quarter less steeply (maintainer,
+// 2026-10-18: `highHold` 14 to 9 s; pitches 55 and 48 to 42 and 36).
+// The first stop is downtown, held longer (`downtownOrbit`), where the
+// buildings go; the camera then travels slowly (`slowFlight`) to the
+// contrast of costly and modest homes, where the view switches between
+// value per ground area and per home twice.
 const TOUR = {
   farZoomOffset: -1.5,
   farPitch: 0,
-  highHold: 14,
+  highHold: 9,
   focusZoom: 14.3,
-  focusPitch: 55,
+  focusPitch: 42,
   contrastZoom: 13.5,
-  contrastPitch: 48,
-  contrastOrbit: 46,
+  contrastPitch: 36,
+  contrastOrbit: 38,
+  downtownOrbit: 24,
+  slowFlight: 1.6,
+  // Share of the descent in which the center reaches the first stop.
+  centerShare: 0.35,
+  // A contrast farther than this from downtown is shown from higher up
+  // rather than flown to (maintainer, 2026-10-18: zoom out instead).
+  nearKm: 4,
   degreesPerSecond: 2.5,
   descent: 22,
   orbit: 18,
@@ -664,9 +643,10 @@ const TOUR = {
 // can now see (an insight, naming no figures from the map). A bubble
 // above the switching button keeps the definition (`tip`) and the
 // countdown.
-const TOUR_CONTRAST_ACTIONS = [
+// Downtown, the first stop: the buildings go, and land speaks alone.
+const TOUR_DOWNTOWN_ACTIONS = [
   {
-    at: 2,
+    at: 4,
     hint: {
       target: 'buildings',
       text: 'Hiding the buildings to show land value alone',
@@ -674,37 +654,66 @@ const TOUR_CONTRAST_ACTIONS = [
       linger: 7,
     },
   },
-  {at: 5, buildings: false},
+  {at: 7, buildings: false},
   {
-    at: 9,
+    at: 11,
     hint: {
       text: 'Land shows the value of location: how *much* people benefit from ' +
         'living or doing business there.',
-      linger: 9,
-    },
-  },
-  {
-    at: 18,
-    hint: {
-      target: 'dwelling',
-      text: 'Next: value per home',
-      tip: 'A home is one apartment, house, or condo.',
-      countdown: 3,
-      countdownAfter: 4,
       linger: 10,
     },
   },
-  {at: 25, view: 'dwelling'},
-  // The insight: close-by contrast only where the build found it
-  // (`contrast_focus`'s `claim`), a general line elsewhere.
-  {at: 28, insight: 'dwelling'},
-  {at: 38, hint: {target: 'buildings', text: 'Buildings back, also per home', linger: 4}},
-  {at: 40, buildings: true},
 ];
-const TOUR_LEAVE_ACTIONS = [
-  {at: 0, hint: {target: 'area', text: 'Back to value per ground area', linger: 4}},
-  {at: 3, view: 'area'},
+// Without a contrast stop, the buildings return before downtown is
+// left.
+const TOUR_DOWNTOWN_ONLY_ACTIONS = [
+  ...TOUR_DOWNTOWN_ACTIONS,
+  {at: 21, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
+  {at: 23, buildings: true},
 ];
+// Leaving downtown for the contrast: the switch to value per home
+// comes 6 s after leaving (maintainer, 2026-10-18: no more than about
+// 7 s), while the camera glides on. The flight lasts at least 16 s
+// (`flightBase` x `slowFlight`), so the insight at 10 s always runs.
+const TOUR_TO_CONTRAST_ACTIONS = [
+  {
+    at: 0,
+    hint: {
+      target: 'dwelling',
+      text: 'You can also color land by their *value per home*.',
+      tip: 'A home is one apartment, house, or condo.',
+      countdown: 3,
+      countdownAfter: 3,
+      linger: 9,
+    },
+  },
+  {at: 6, view: 'dwelling'},
+  {
+    at: 10,
+    hint: {text: 'This shows you where the rich and the poor tend to live.', linger: 10},
+  },
+];
+// At the contrast: back to per ground area, per home again, and back
+// (maintainer, 2026-10-18: switch back once or twice); the buildings
+// return last.
+const TOUR_CONTRAST_ACTIONS = [
+  {
+    at: 10,
+    hint: {target: 'area', text: 'Back to value per ground area', countdown: 3, linger: 6},
+  },
+  {at: 13, view: 'area'},
+  {at: 19, hint: {target: 'dwelling', text: 'Value per home again', countdown: 3, linger: 6}},
+  {at: 22, view: 'dwelling'},
+  {
+    at: 28,
+    hint: {target: 'area', text: 'And back to value per ground area', countdown: 3, linger: 6},
+  },
+  {at: 31, view: 'area'},
+  {at: 34, hint: {target: 'buildings', text: 'Buildings back', linger: 4}},
+  {at: 36, buildings: true},
+];
+// Leaving the contrast: per ground area in any case.
+const TOUR_LEAVE_ACTIONS = [{at: 0, view: 'area'}];
 
 function ease(t) {
   return 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
@@ -723,7 +732,7 @@ function distanceKm(a, b) {
 // zoom, pitch); the bearing is the tour's own, shared by all.
 // A segment may carry `valueView` ('area' or 'dwelling'): the coloring
 // the tour switches to as the segment begins.
-function buildTour(view, foci, contrast) {
+function buildTour(view, foci, contrast, downtown = null) {
   const far = {
     longitude: view.longitude,
     latitude: view.latitude,
@@ -737,23 +746,30 @@ function buildTour(view, foci, contrast) {
     zoom,
     pitch,
   });
+  // The center reaches the first stop in the first third of the
+  // descent and stays on it while the camera comes down, so downtown
+  // sits near the middle of the screen until arrival (maintainer,
+  // 2026-10-18).
   const descend = (to) => ({
     duration: TOUR.descent,
     view: (t) => {
       const s = ease(t / TOUR.descent);
+      const c = ease(t / (TOUR.descent * TOUR.centerShare));
       return {
-        longitude: lerp(far.longitude, to.longitude, s),
-        latitude: lerp(far.latitude, to.latitude, s),
+        longitude: lerp(far.longitude, to.longitude, c),
+        latitude: lerp(far.latitude, to.latitude, c),
         zoom: lerp(far.zoom, to.zoom, s),
         pitch: lerp(far.pitch, to.pitch, s),
       };
     },
   });
   const orbit = (at, duration = TOUR.orbit) => ({duration, view: () => ({...at})});
-  const fly = (from, to) => {
+  // `slow`: longer and lower, for a glide rather than a hop.
+  const fly = (from, to, slow = 1) => {
     const km = distanceKm(from, to);
-    const duration = Math.min(TOUR.flightMax, TOUR.flightBase + TOUR.flightPerKm * km);
-    const climb = Math.min(TOUR.climbMax, TOUR.climbPerKm * km);
+    const duration =
+      slow * Math.min(TOUR.flightMax, TOUR.flightBase + TOUR.flightPerKm * km);
+    const climb = Math.min(TOUR.climbMax, TOUR.climbPerKm * km) / slow;
     return {
       duration,
       view: (t) => {
@@ -774,38 +790,44 @@ function buildTour(view, foci, contrast) {
   // ground; its duration is set when they are.
   const hold = {duration: Infinity, view: () => ({...far})};
 
-  if (!foci || !foci.length) {
-    // No foci: circle the center of the area.
-    const center = stop({longitude: view.longitude, latitude: view.latitude});
-    return {hold, intro: [hold, descend(center)], loop: [orbit(center)]};
+  // Downtown first, always (maintainer, 2026-10-18); without a
+  // downtown, the densest stop, or the area's center.
+  const stops = (foci || []).map((f) => stop(f));
+  const first = downtown
+    ? stop(downtown)
+    : stops.shift() || stop({longitude: view.longitude, latitude: view.latitude});
+  const loop = [];
+  let at = first;
+  if (contrast) {
+    // Downtown, buildings off; a slow glide to the contrast, turning
+    // to its angle, land alone; there the switching between per
+    // ground area and per home; then on to the other stops.
+    // A contrast far from downtown is seen from higher up, so the
+    // glide stays short and both ends fit the view.
+    const km = distanceKm(first, contrast);
+    const zoom = km > TOUR.nearKm
+      ? TOUR.contrastZoom - Math.log2(km / TOUR.nearKm)
+      : TOUR.contrastZoom;
+    const high = stop(contrast, zoom, TOUR.contrastPitch);
+    loop.push(
+      {...orbit(first, TOUR.downtownOrbit), actions: TOUR_DOWNTOWN_ACTIONS},
+      {...fly(first, high, TOUR.slowFlight), actions: TOUR_TO_CONTRAST_ACTIONS},
+      {...orbit(high, TOUR.contrastOrbit), actions: TOUR_CONTRAST_ACTIONS},
+    );
+    at = high;
+  } else {
+    loop.push({...orbit(first, TOUR.downtownOrbit), actions: TOUR_DOWNTOWN_ONLY_ACTIONS});
   }
-  const stops = foci.map((f) => stop(f));
-  if (!contrast) {
-    const loop = [];
-    for (let i = 0; i < stops.length; i++) {
-      loop.push(orbit(stops[i]));
-      if (stops.length > 1) {
-        loop.push(fly(stops[i], stops[(i + 1) % stops.length]));
-      }
-    }
-    return {hold, intro: [hold, descend(stops[0])], loop};
+  for (const [i, next] of stops.entries()) {
+    loop.push(i === 0 && contrast ? {...fly(at, next), actions: TOUR_LEAVE_ACTIONS} : fly(at, next));
+    loop.push(orbit(next));
+    at = next;
   }
-  // With a contrast, the tour descends onto it first, so the switching
-  // happens early (maintainer, 2026-10-17): there it shows all four
-  // combinations of buildings on or off and value per area or per
-  // dwelling, each switch announced by a short hint above its control,
-  // then flies on to the stops with value per area and buildings on,
-  // and comes back to the contrast at the end of each round.
-  const high = stop(contrast, TOUR.contrastZoom, TOUR.contrastPitch);
-  const loop = [
-    {...orbit(high, TOUR.contrastOrbit), actions: TOUR_CONTRAST_ACTIONS},
-    {...fly(high, stops[0]), actions: TOUR_LEAVE_ACTIONS},
-  ];
-  for (let i = 0; i < stops.length; i++) {
-    loop.push(orbit(stops[i]));
-    loop.push(fly(stops[i], i + 1 < stops.length ? stops[i + 1] : high));
+  // Each round ends back downtown.
+  if (at !== first) {
+    loop.push(fly(at, first));
   }
-  return {hold, intro: [hold, descend(high)], loop};
+  return {hold, intro: [hold, descend(first)], loop};
 }
 
 // `onAction` carries out a segment's timed `actions` (hints and
@@ -818,8 +840,9 @@ function startTour(
   contrast = null,
   onAction = () => {},
   onStop = () => {},
+  downtown = null,
 ) {
-  const {hold, intro, loop} = buildTour(view, foci, contrast);
+  const {hold, intro, loop} = buildTour(view, foci, contrast, downtown);
   // The segment entered last, and how many of its actions have run.
   let entered = -1;
   let fired = 0;
@@ -1188,17 +1211,27 @@ async function main() {
   const modelViews = [];
   for (const layer of scene.layers) {
     for (const [key, view] of Object.entries(layer.views || {})) {
-      if (view.model && !view.per_home && !modelViews.some(([k]) => k === key)) {
+      const plain = !view.per_home && !view.dollars;
+      if (view.model && plain && !modelViews.some(([k]) => k === key)) {
         modelViews.push([key, view.label]);
       }
     }
   }
-  // A model has two views: per ground area (`<key>`) and per home
-  // (`<key>__home`), chosen with the same toggle as the assessor's.
+  // A model's views: per ground area (`<key>`) or per home
+  // (`<key>__home`), chosen with the same toggle as the assessor's;
+  // scaled to the assessments, or in today's dollars (`<key>__2026`).
   const HOME_SUFFIX = '__home';
-  const modelBase = (key) => (key.endsWith(HOME_SUFFIX) ? key.slice(0, -HOME_SUFFIX.length) : key);
+  const DOLLARS_SUFFIX = '__2026';
+  const modelBase = (key) => key.replace(HOME_SUFFIX, '').replace(DOLLARS_SUFFIX, '');
   const isModel = (key) => modelViews.some(([k]) => k === modelBase(key));
   const isPerHome = (key) => key === 'dwelling' || (isModel(key) && key.endsWith(HOME_SUFFIX));
+  const hasDollars = scene.layers.some((l) =>
+    Object.values(l.views || {}).some((v) => v.dollars));
+  // The year the dollars reach, and whether a county's series was
+  // carried on by its state's (an estimate).
+  const dollarCounties = Object.values(scene.model_dollars || {});
+  const dollarsYear = Math.max(...dollarCounties.map((c) => c.to_year), 0);
+  const dollarsEstimated = dollarCounties.some((c) => c.estimated);
   const viewKeys = new Set(['area', 'dwelling']);
   for (const layer of scene.layers) {
     Object.keys(layer.views || {}).forEach((key) => viewKeys.add(key));
@@ -1208,7 +1241,9 @@ async function main() {
   // The model a "Modeled" choice shows: the one in the address, else
   // the first.
   let modelKey = isModel(valueView) ? modelBase(valueView) : (modelViews[0] || [null])[0];
-  const modelView = (perHome) => (perHome ? `${modelKey}${HOME_SUFFIX}` : modelKey);
+  let modelDollars = valueView.includes(DOLLARS_SUFFIX);
+  const modelView = (perHome) =>
+    `${modelKey}${modelDollars ? DOLLARS_SUFFIX : ''}${perHome ? HOME_SUFFIX : ''}`;
   const hasDwellingView = scene.layers.some((l) => viewOf(l, 'dwelling'));
   // Rows: per area or per dwelling; then where the values come from
   // (maintainer, 2026-10-18): "Tax assessor", "+ imputed" (the
@@ -1276,28 +1311,61 @@ async function main() {
     modelList.append(button);
   }
   modelMenu.append(modelList);
+  // Under "Modeled": the models scaled to the assessments, or in
+  // today's dollars (maintainer, 2026-10-18).
+  const scaleSwitch = document.createElement('div');
+  scaleSwitch.id = 'scale-switch';
+  scaleSwitch.setAttribute('role', 'radiogroup');
+  scaleSwitch.setAttribute('aria-label', 'Model scale');
+  if (hasDollars) {
+    const scales = [
+      ['scaled', 'Scaled to assessments',
+        'Each model times one number: the median of recorded over predicted land value'],
+      ['dollars', `${dollarsYear} dollars`,
+        'Each model brought to today with consumer and house price indexes (CPI-U, FHFA)'],
+    ];
+    for (const [id, label, title] of scales) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.group = 'scale';
+      button.dataset.choice = id;
+      button.textContent = label;
+      button.title = title;
+      button.setAttribute('role', 'radio');
+      button.addEventListener('click', () => setChoice('scale', id));
+      scaleSwitch.append(button);
+    }
+  }
   // Each pair is one segmented toggle, one option always chosen
   // (maintainer, 2026-10-17: clearly a toggle, not two buttons).
   viewSwitch.setAttribute('role', 'radiogroup');
   viewSwitch.setAttribute('aria-label', 'Value shown');
   valuesSwitch.setAttribute('role', 'radiogroup');
   valuesSwitch.setAttribute('aria-label', 'Values used');
-  layerSwitch.after(viewSwitch, valuesSwitch, modelMenu);
+  layerSwitch.after(viewSwitch, valuesSwitch, modelMenu, scaleSwitch);
   const markViewSwitch = () => {
     const modeled = isModel(valueView);
     const source = modeled ? 'model' : withEstimates ? 'estimates' : 'assessed';
-    const buttons = [...viewSwitch.children, ...valuesSwitch.children, ...modelList.children];
+    const buttons = [
+      ...viewSwitch.children,
+      ...valuesSwitch.children,
+      ...modelList.children,
+      ...scaleSwitch.children,
+    ];
     for (const button of buttons) {
       const {group, choice} = button.dataset;
       const on = group === 'values'
         ? choice === source
         : group === 'model'
           ? choice === modelKey
-          : choice === (isPerHome(valueView) ? 'dwelling' : 'area');
+          : group === 'scale'
+            ? (choice === 'dollars') === modelDollars
+            : choice === (isPerHome(valueView) ? 'dwelling' : 'area');
       button.classList.toggle('active', on);
       button.setAttribute('aria-checked', String(on));
     }
     modelMenu.hidden = !modeled;
+    scaleSwitch.hidden = !modeled || !hasDollars;
     const current = modelViews.find(([key]) => key === modelKey);
     modelSummary.textContent = current ? `Model, 2010: ${current[1]}` : '';
   };
@@ -1373,7 +1441,11 @@ async function main() {
           (_, i) => i % 8 === 0 || i === spec.lut.length - 1,
         ),
         other,
-        source: view && view.model ? '2010, scaled to assessments' : valuesShown,
+        source: !(view && view.model)
+          ? valuesShown
+          : view.dollars
+            ? `2010 model in ${dollarsYear} dollars${dollarsEstimated ? ', estimated' : ''}`
+            : '2010, scaled to assessments',
       });
     }
     // No row for features without a value (maintainer, 2026-10-17).
@@ -1402,7 +1474,7 @@ async function main() {
   const shared = params.has('lon') && params.has('lat');
   const center = shared
     ? {longitude: Number(params.get('lon')), latitude: Number(params.get('lat'))}
-    : scene.tour && scene.tour.length ? scene.tour[0] : scene.view;
+    : scene.tour_downtown || (scene.tour && scene.tour.length ? scene.tour[0] : scene.view);
   const startView = passed
     ? {
       longitude: center.longitude,
@@ -1493,7 +1565,8 @@ async function main() {
       : 'none';
     const aoa = entry.decoded.arrays[`aoa_${valueView}`];
     const inside = aoa ? ['unknown', 'outside', 'inside'][aoa[feature]] : null;
-    return `<div><b>Model ${escapeHtml(view.label)}:</b> ${text}</div>` +
+    const scale = view.dollars ? `${dollarsYear} dollars` : 'scaled';
+    return `<div><b>Model ${escapeHtml(view.label)} (${scale}):</b> ${text}</div>` +
       (inside ? `<div><b>Area of applicability:</b> ${inside}</div>` : '');
   };
   // What a pick shows: a key naming the feature, and its tooltip.
@@ -1812,37 +1885,9 @@ async function main() {
   // Buildings the tour switched off come back when the visitor takes
   // over; the coloring the tour chose stays.
   let tourHidBuildings = false;
-  // What the per-home view shows, once it is on. Where the build found
-  // costly and modest homes close together in this view (`claim`), it
-  // says so, naming their colors in the palette on screen unless both
-  // get the same name; elsewhere a general line. No figures from the
-  // map (maintainer, 2026-10-18).
-  const dwellingInsight = () => {
-    const contrast = scene.tour_contrast;
-    const lots = scene.layers[0];
-    const view = lots.views && lots.views.dwelling;
-    if (!contrast || !contrast.claim || !view) {
-      return 'Colors now follow what one home is worth, so costly and modest ' +
-        'neighborhoods stand apart.';
-    }
-    const spec = {...palette.layers[lots.name], vmin: view.vmin, vmax: view.vmax};
-    let costly = 'costly homes';
-    let modest = 'modest ones';
-    if (contrast.high_shown > 0 && contrast.low_shown > 0) {
-      const high = colorName(valueColor(contrast.high_shown, spec));
-      const low = colorName(valueColor(contrast.low_shown, spec));
-      if (high !== low) {
-        [costly, modest] = [`costly homes (${high})`, `modest ones (${low})`];
-      }
-    }
-    return `Here, ${costly} stand only a short way from ${modest}.`;
-  };
   const tourAction = (action) => {
     if (action.hint) {
       showHint(action.hint);
-    }
-    if (action.insight === 'dwelling' && valueView === 'dwelling') {
-      showHint({text: dwellingInsight(), linger: 10});
     }
     if (action.view && action.view !== valueView) {
       setChoice('view', action.view);
@@ -1869,6 +1914,7 @@ async function main() {
       hasDwellingView ? scene.tour_contrast : null,
       tourAction,
       tourStopped,
+      scene.tour_downtown,
     )
     : {stop: () => {}, ready: () => {}};
   // The opening line says how to take over with what the visitor
@@ -2418,7 +2464,11 @@ async function main() {
     // keeps working under a model; another source returns to the
     // assessor's values the same way.
     const perHome = isPerHome(valueView);
-    if (group === 'model' || (group === 'values' && id === 'model')) {
+    if (group === 'scale') {
+      modelDollars = id === 'dollars';
+      valueView = modelView(perHome);
+      group = 'view';
+    } else if (group === 'model' || (group === 'values' && id === 'model')) {
       modelKey = group === 'model' ? id : modelKey;
       valueView = modelView(perHome);
       group = 'view';
@@ -2495,7 +2545,8 @@ async function main() {
   // The tour's first stop's unit loads first, all its layers, so the
   // descent can start as soon as that unit is complete; the others
   // follow bottom layer first, each drawn as soon as it arrives.
-  const firstUnit = scene.tour && scene.tour.length ? scene.tour[0].admin3_id : null;
+  const firstUnit = (scene.tour_downtown && scene.tour_downtown.admin3_id) ||
+    (scene.tour && scene.tour.length ? scene.tour[0].admin3_id : null);
   const first = jobs.filter((j) => j.unit === firstUnit);
   const rest = jobs.filter((j) => j.unit !== firstUnit);
   let firstLeft = first.length;

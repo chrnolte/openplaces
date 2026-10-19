@@ -115,12 +115,12 @@
   #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   #place-menu a { color: var(--muted); text-decoration: none; }
   #place-menu a:hover { color: var(--text); }
-  #layer-switch, #view-switch, #model-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  #view-switch:empty, #model-switch:empty, #values-switch:empty { display: none; }
+  #layer-switch, #view-switch, #scale-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #view-switch:empty, #scale-switch:empty, #values-switch:empty { display: none; }
+  /* The models' scale, shown only under "Modeled". */
+  #scale-switch[hidden] { display: none; }
   .switch-label { font-size: 12px; color: var(--muted); align-self: center; }
-  /* "Model, 2010:" at the start of the team page's model row. */
-  .switch-caption { font-size: 12px; color: var(--muted); align-self: center; padding: 0 6px 0 8px; }
-  #layer-switch button, #view-switch button, #model-switch button, #values-switch button, #palette-switch button {
+  #layer-switch button, #view-switch button, #scale-switch button, #values-switch button, #palette-switch button {
     font: inherit;
     font-size: 12px;
     color: var(--muted);
@@ -162,7 +162,7 @@
   }
   /* Two-way choices as one segmented toggle: a track holding both
      options, the chosen one filled. */
-  #view-switch, #model-switch, #values-switch {
+  #view-switch, #scale-switch, #values-switch {
     display: flex;
     width: fit-content;
     max-width: 100%;
@@ -218,8 +218,8 @@
   }
   #model-menu button:hover { color: #fff; }
   #model-menu button.active { color: #fff; background: rgba(255, 255, 255, 0.14); font-weight: 600; }
-  #view-switch button, #model-switch button, #values-switch button { border: 0; padding: 3px 12px; }
-  #view-switch button.active, #model-switch button.active, #values-switch button.active {
+  #view-switch button, #scale-switch button, #values-switch button { border: 0; padding: 3px 12px; }
+  #view-switch button.active, #scale-switch button.active, #values-switch button.active {
     color: #10131c;
     background: rgba(255, 255, 255, 0.88);
     font-weight: 600;
@@ -457,7 +457,7 @@
     }
     #bottom-bar #legend-panel > div { margin-bottom: 0; }
     #bottom-bar #layer-switch { flex-wrap: nowrap; }
-    #bottom-bar #view-switch, #bottom-bar #model-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
+    #bottom-bar #view-switch, #bottom-bar #scale-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
     #controls-chip, #legend-minimize { display: none; }
     /* On a light page the bare controls turn dark. */
     .light-page #bottom-bar #legend-panel {
@@ -471,13 +471,13 @@
       border-color: rgba(20, 24, 36, 0.7);
       background: rgba(20, 24, 36, 0.06);
     }
-    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #model-switch,
+    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #scale-switch,
     .light-page #bottom-bar #values-switch {
       border-color: rgba(20, 24, 36, 0.3);
       background: rgba(255, 255, 255, 0.5);
     }
     .light-page #bottom-bar #view-switch button.active,
-    .light-page #bottom-bar #model-switch button.active,
+    .light-page #bottom-bar #scale-switch button.active,
     .light-page #bottom-bar #values-switch button.active {
       color: #fff;
       background: rgba(20, 24, 36, 0.85);
