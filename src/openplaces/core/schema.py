@@ -137,6 +137,7 @@ TOP_LEVEL_THEMES = [
     'persons',  # data of persons, e.g. property owners (sensitive)
     'risk',  # floods, storms, wildfires
     'rules',  # zoning, conservation
+    'economy',  # published price indices and other economic series
     'reference',  # cross-references/lookups between id systems, not a
     # spatial entity or a domain measurement in its own right (e.g. a
     # NUTS/ITL crosswalk, a metro-area definition)
