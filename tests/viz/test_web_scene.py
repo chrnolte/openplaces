@@ -114,8 +114,9 @@ def test_page_has_no_input_control_and_no_background_map():
     # eighth turns the view north up; the ninth, in the menu under
     # "Modeled" on a team page, picks which model colors the lots; the
     # tenth, beside it, the models' scale (to the assessments, or in
-    # today's dollars); the eleventh replays the guided tour.
-    assert len(re.findall(r"createElement\('button'\)", script)) == 11
+    # today's dollars); the eleventh replays the guided tour; the
+    # twelfth sets the color bounds (local, or nationwide).
+    assert len(re.findall(r"createElement\('button'\)", script)) == 12
     for kind in (
         'dataset.palette',
         'dataset.layer',
@@ -125,6 +126,7 @@ def test_page_has_no_input_control_and_no_background_map():
         'dataset.share',
         'dataset.compass',
         'dataset.replay',
+        'dataset.range',
     ):
         assert kind in script
     # Only the scene's own layers; nothing that draws a background map.
@@ -417,10 +419,32 @@ def test_palettes_take_scene_bounds_and_color_stops():
     assert pastel['theme'] == 'light'
 
 
-def test_scene_bounds_round_outward():
-    values = np.concatenate([np.full(98, 3_000.0), [17.0, 9_700.0]])
-    low, high = web_scene.scene_bounds(values, low_q=0.0, high_q=1.0)
-    assert (low, high) == (10.0, 10_000.0)
+def test_lot_total_value_falls_back_to_land_and_improvement():
+    # Fabricated lots: a roll total; none but land and improvement;
+    # land alone; nothing.
+    lots = pd.DataFrame(
+        {
+            'total_value': [500.0, np.nan, np.nan, np.nan],
+            'land_value': [100.0, 200.0, 300.0, np.nan],
+            'improvement_value': [400.0, 50.0, np.nan, np.nan],
+            'land_value_imputed': [100.0, 200.0, 300.0, 7.0],
+        }
+    )
+    total = web_scene.lot_total_value(lots, 'land_value_imputed')
+    assert list(total) == [500.0, 250.0, 300.0, 7.0]
+
+
+def test_scene_bounds_follow_the_mean_and_spread_and_round_outward():
+    # Fabricated: 98 lots at $1,000 and two outliers, $1 and $1M. On a
+    # log scale the mean is 3 and the standard deviation 0.42, so the
+    # ramp spans about $141 to $7,079, rounded outward; the outliers
+    # saturate the ends instead of stretching it.
+    values = np.concatenate([np.full(98, 1_000.0), [1.0, 1_000_000.0]])
+    assert web_scene.scene_bounds(values) == (100.0, 10_000.0)
+    # Never wider than the values themselves.
+    assert web_scene.scene_bounds([100.0, 1_000.0, 10_000.0]) == (100.0, 10_000.0)
+    # Every display unit has nationwide bounds.
+    assert set(web_scene.NATIONAL_BOUNDS) >= {'ac', 'sqft', 'dwelling'}
 
 
 def test_landing_page_is_links_only(tmp_path):

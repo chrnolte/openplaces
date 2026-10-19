@@ -1247,6 +1247,14 @@ async function main() {
   }
   let valueView = viewKeys.has(params.get('view')) ? params.get('view') : 'area';
   let withEstimates = params.get('values') !== 'assessed';
+  // Local color bounds (the scene's own) or nationwide ones
+  // (`national_bounds`, per display unit).
+  let colorRange = params.get('range') === 'national' ? 'national' : 'local';
+  const boundsFor = (unit, vmin, vmax) => {
+    const national = colorRange === 'national' && scene.national_bounds &&
+      scene.national_bounds[unit];
+    return national ? {vmin: national[0], vmax: national[1]} : {vmin, vmax};
+  };
   // The model a "Modeled" choice shows: the one in the address, else
   // the first.
   let modelKey = isModel(valueView) ? modelBase(valueView) : (modelViews[0] || [null])[0];
@@ -1385,9 +1393,11 @@ async function main() {
   // the same scale as the assessed values.
   const layerScale = (layer, spec) => {
     const view = viewOf(layer);
-    return view
-      ? {...spec, vmin: view.vmin ?? spec.vmin, vmax: view.vmax ?? spec.vmax, unit: view.unit}
-      : {...spec, unit: layer.unit};
+    const unit = view ? view.unit : layer.unit;
+    const local = view
+      ? {vmin: view.vmin ?? spec.vmin, vmax: view.vmax ?? spec.vmax}
+      : {vmin: spec.vmin, vmax: spec.vmax};
+    return {...spec, ...boundsFor(unit, local.vmin, local.vmax), unit};
   };
   // The non-residential part of a layer's per-dwelling view, if shown.
   const otherView = (entry) => {
@@ -1433,8 +1443,7 @@ async function main() {
       const other = view && view.other && ramp
         ? {
           unit: view.other.unit,
-          vmin: view.other.vmin,
-          vmax: view.other.vmax,
+          ...boundsFor(view.other.unit, view.other.vmin, view.other.vmax),
           colors: ramp.filter((_, i) => i % 8 === 0 || i === ramp.length - 1),
         }
         : null;
@@ -2166,6 +2175,7 @@ async function main() {
       palette: palette.id,
       view: valueView,
       values: withEstimates ? 'imputed' : 'assessed',
+      range: colorRange,
     });
     if (shown.ghosts) {
       query.set('show', 'ghosts');
@@ -2232,7 +2242,7 @@ async function main() {
     if (other && spec.otherRgb) {
       const otherValues = featureValues(entry, true);
       const flags = entry.decoded.arrays.nonresidential;
-      const scale = {vmin: other.vmin, vmax: other.vmax, alpha: spec.alpha};
+      const scale = {...boundsFor(other.unit, other.vmin, other.vmax), alpha: spec.alpha};
       const fill = featureColors(otherValues, {...scale, rgb: spec.otherRgb}, palette.no_value);
       const edge = spec.otherLineRgb && lineColors
         ? featureColors(
@@ -2602,6 +2612,46 @@ async function main() {
       setPalette(option);
     });
     switcher.appendChild(button);
+  }
+  // The ramp's bounds: the place's own spread (local, the default) or
+  // the same for every place (nationwide), so places compare
+  // (maintainer, 2026-10-18). Display only, like the palettes.
+  const rangeSwitch = document.createElement('div');
+  rangeSwitch.id = 'range-switch';
+  rangeSwitch.setAttribute('role', 'radiogroup');
+  rangeSwitch.setAttribute('aria-label', 'Color scale');
+  const markRange = () => {
+    for (const button of rangeSwitch.children) {
+      const on = button.dataset.range === colorRange;
+      button.classList.toggle('active', on);
+      button.setAttribute('aria-checked', String(on));
+    }
+  };
+  if (scene.national_bounds) {
+    const ranges = [
+      ['local', 'Local scale', "Colors spread over this place's own values"],
+      ['national', 'Nationwide scale', 'The same colors for the same values in every place'],
+    ];
+    for (const [id, label, title] of ranges) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.range = id;
+      button.textContent = label;
+      button.title = title;
+      button.setAttribute('role', 'radio');
+      button.addEventListener('click', () => {
+        colorRange = id;
+        markRange();
+        drawLegends();
+        for (const entry of layers) {
+          entry.layer = makeLayer(entry);
+        }
+        redraw();
+      });
+      rangeSwitch.appendChild(button);
+    }
+    markRange();
+    legends.before(rangeSwitch);
   }
 
   const jobs = [];
