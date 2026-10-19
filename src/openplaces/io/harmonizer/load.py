@@ -520,6 +520,11 @@ def _restore_link(
         linked = _load_point_link_sidecar(
             sidecar_path, fingerprint, verbose=state.verbose
         )
+        # An empty file is what the geospine writes for a reference with
+        # no points in the unit; it restores exactly as no file did, by
+        # the reference check below.
+        if linked is not None and linked.empty:
+            linked = None
         if linked is None:
             probe = get_entities(
                 resolved_id, state.admin_id, geom=False, missing='ignore', columns=[]
