@@ -256,7 +256,9 @@ def _fabricated_source_terms(monkeypatch, **overrides):
         **overrides,
     }
     monkeypatch.setattr(
-        module, '_source_terms', lambda recipe: {module._terms_key(entry): entry}
+        module,
+        '_source_terms',
+        lambda recipe, admin_ids=None: {module._terms_key(entry): entry},
     )
     monkeypatch.setattr(module, '_catalog_terms', lambda: {})
     return bundle_terms(RECIPE, None)
