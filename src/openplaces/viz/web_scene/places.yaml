@@ -69,6 +69,20 @@ places:
     state: US-NC
     center: [-77.9447, 34.2357]
     center_note: City hall
+  # Houston and Madison (maintainer, 2026-10-19), placed after the
+  # North Carolina places until their dwellings are counted.
+  - slug: houston
+    title: Houston, Texas
+    around: downtown Houston
+    state: US-TX
+    center: [-95.36936, 29.76019]
+    center_note: City hall lot, 901 Bagby St
+  - slug: madison
+    title: Madison, Wisconsin
+    around: downtown Madison
+    state: US-WI
+    center: [-89.3824, 43.07243]
+    center_note: City-County Building lot, 210 Martin Luther King Jr Blvd
   # The island, not a circle (maintainer, 2026-10-18): a place listing
   # `admin_ids` shows those units whole, with no phone page, and
   # `extent_note` is its landing card's line. The town of Nantucket

@@ -66,7 +66,10 @@ def delivery_regions(recipe) -> list[str]:
 
 def units_and_regions(state, circle_metric=None, admin_ids=None):
     """Level-3 units the circle touches (or `admin_ids`) that both
-    bundles deliver, and the regions that pool them. Units without
+    recipes deliver, and the regions that pool them. The two recipes
+    may deliver a unit under differently named regions (Houston:
+    parcels in `houston-tx`, buildings in `cheer-coastal-tx`); each
+    layer then reads its own (`build_web_scene`). Units without
     bundles are reported."""
     if admin_ids is not None:
         touched = list(admin_ids)
@@ -85,13 +88,22 @@ def units_and_regions(state, circle_metric=None, admin_ids=None):
                 )
             except KeyError:
                 continue
-    both = {
-        region: by_recipe[PARCEL_RECIPE] & by_recipe[FOOTPRINT_RECIPE]
-        for region, by_recipe in members.items()
-        if len(by_recipe) == 2
+    delivered = {
+        recipe: set().union(
+            *(by_recipe.get(recipe, set()) for by_recipe in members.values())
+        )
+        for recipe in (PARCEL_RECIPE, FOOTPRINT_RECIPE)
     }
-    built = [a for a in touched if any(a in m for m in both.values())]
-    regions = sorted(r for r, m in both.items() if m & set(built))
+    built = [
+        a
+        for a in touched
+        if a in delivered[PARCEL_RECIPE] & delivered[FOOTPRINT_RECIPE]
+    ]
+    regions = sorted(
+        region
+        for region, by_recipe in members.items()
+        if any(m & set(built) for m in by_recipe.values())
+    )
     missing = sorted(set(touched) - set(built))
     return built, regions, missing
 
