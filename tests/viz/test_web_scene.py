@@ -780,6 +780,52 @@ def test_a_scene_reading_a_team_bundle_is_a_team_scene():
     assert web_scene.scene_audience(None) == 'public'
 
 
+def test_a_layer_without_a_team_twin_reads_the_public_bundle(monkeypatch):
+    from openplaces.io import delivery
+
+    declared = {
+        'parcels': [{'region_id': 'nantucket-ma'}, {'region_id': 'nantucket-ma.team'}],
+        'footprints': [{'region_id': 'nantucket-ma'}],
+    }
+    monkeypatch.setattr(delivery, 'delivery_regions', lambda recipe: declared[recipe])
+    assert web_scene.layer_region('parcels', 'nantucket-ma.team') == 'nantucket-ma.team'
+    assert web_scene.layer_region('footprints', 'nantucket-ma.team') == 'nantucket-ma'
+    assert web_scene.layer_region('footprints', 'nantucket-ma') == 'nantucket-ma'
+
+
+def test_model_views_scale_to_the_assessment_and_carry_the_aoa():
+    # Fabricated: four 1-ha lots whose recorded land is twice what the
+    # model predicts, so the scale is 2; one lot lacks a prediction.
+    lots = gpd.GeoDataFrame(
+        {
+            'log_v': np.log([10_000.0, 20_000.0, 40_000.0, np.nan]),
+            'aoa_v': [0.5, 1.0, 3.0, np.nan],
+        },
+        geometry=[box(1000 * k, 0, 1000 * k + 100, 100) for k in range(4)],
+        crs='EPSG:26986',
+    )
+    layer = SceneLayer(
+        name='parcels',
+        label='Land',
+        recipe='r',
+        value_column='v',
+        area_unit='ha',
+        vmin=1,
+        vmax=2,
+        model_views=(web_scene.ModelView('model_v', 'V', 'log_v', 'aoa_v'),),
+    )
+    recorded = np.array([20_000.0, 40_000.0, 80_000.0, 5_000.0])
+    arrays, views = web_scene.model_view_arrays(lots, layer, recorded)
+    assert views['model_v'] == {'label': 'V', 'unit': 'ha', 'model': True, 'scale': 2.0}
+    assert arrays['value_model_v'][:3] == pytest.approx([20_000, 40_000, 80_000])
+    assert np.isnan(arrays['value_model_v'][3])
+    # Inside where at most 1, outside above, unknown without a value.
+    assert list(arrays['aoa_model_v']) == [2, 2, 1, 0]
+    # No predictions: no view.
+    empty = lots.assign(log_v=np.nan)
+    assert web_scene.model_view_arrays(empty, layer, recorded) == ({}, {})
+
+
 def _team_scene(tmp_path):
     (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
     (tmp_path / '.htaccess').write_text('Options -Indexes\n', encoding='utf-8')
