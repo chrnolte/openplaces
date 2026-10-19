@@ -270,7 +270,14 @@ population_native_american_share,Population share: American Indian/Alaska Native
 population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
 population_gravity_index,Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster,,float,mean,,,enrich
 census_tract_id,Census tract identifier,,string,first,,,harmonize
-county_fips,"County FIPS code (5-digit state+county), read as the `county` segment of the unit's own national code rather than stored anywhere: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
+county_fips,"County FIPS code (5-digit state+county). On an entity table it is read as the `county` segment of the unit's own national code rather than stored: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A county-level federal reference table (the FHFA house price index) carries it as its key, since New England counties have no admin id. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
+year,"Calendar year a published statistic refers to: the period key of a reference table (a price index), not an event on an entity",,float,first,,,ingest
+house_price_index_base_2000,"Published house price index with the year 2000 as base (2000 = 100); a ratio of two years gives the published price change between them",index (2000 = 100),float,mean,,,ingest
+house_price_index,"Published house price index as its publisher bases it, which can differ by series (FHFA's county index is 100 in each county's own first year); only a ratio of two years within one series is meaningful",index,float,mean,,,ingest
+house_price_index_annual_change,Published percent change of a house price index from the previous year,percent,float,mean,,,ingest
+series_id_bls,"Bureau of Labor Statistics time-series identifier (CUUR0000SA0: CPI-U, US city average, all items, not seasonally adjusted)",,string,first,,,ingest
+period_bls,"Bureau of Labor Statistics period code: M01 to M12 a month, M13 the annual average",,string,first,,,ingest
+consumer_price_index,"Published consumer price index level (CPI-U, 1982-84 = 100); a ratio of two periods gives the published change in consumer prices between them",index (1982-84 = 100),float,mean,,,ingest
 census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
 census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
