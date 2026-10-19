@@ -1,9 +1,9 @@
 # Recipe: FHFA House Price Index, counties, annual, all-transactions
 #
 # FHFA's developmental county index ("HPI for Counties
-# (All-Transactions Index)", not seasonally adjusted), one row per county and year. The
-# workbook's own note asks that these annual county indexes be treated
-# as developmental. Listed on the FHFA HPI datasets page
+# (All-Transactions Index)", not seasonally adjusted), one row per
+# county and year. The workbook's own note asks that these annual
+# county indexes be treated as developmental. Listed on the FHFA HPI datasets page
 # (https://www.fhfa.gov/data/hpi/datasets?tab=additional-data) under
 # "Annual House Price Indexes"; the bulk file is one xlsx sheet with
 # five note rows above the header (header row index 5). The .csv URL
