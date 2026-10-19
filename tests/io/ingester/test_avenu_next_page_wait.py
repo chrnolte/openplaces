@@ -49,3 +49,17 @@ def test_next_refuses_a_grid_that_never_changes(monkeypatch):
     page = _FakePage(['1/10 DEED'])
     with pytest.raises(TimeoutError, match='did not change'):
         asyncio.run(_adapter(page, monkeypatch).next_page(timeout=0.6))
+
+
+def test_search_results_wait_past_the_old_grid_and_a_blank_redraw(monkeypatch):
+    # The previous month's grid, a blank redraw, then the new month.
+    page = _FakePage(['1/10 DEED', '', '2/20 DEED'])
+    adapter = _adapter(page, monkeypatch)
+    asyncio.run(adapter._wait_for_new_results('1/10 DEED', timeout=3))
+    assert page._rows == ['2/20 DEED']
+
+
+def test_search_results_wait_gives_up_without_raising(monkeypatch):
+    # A search with no results leaves an empty grid.
+    page = _FakePage([''])
+    asyncio.run(_adapter(page, monkeypatch)._wait_for_new_results('1/10', 0.6))
