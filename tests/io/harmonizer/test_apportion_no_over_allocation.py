@@ -133,6 +133,107 @@ class TestWholeValueIsSplitNotRepeated:
         assert out.loc['f3', 'land_value'] == pytest.approx(90_000.0)
 
 
+class TestAParcelNoPrincipalDrawsFrom:
+    """A whole value reaches the entities linked to a parcel even where
+    that parcel is none of their largest overlaps."""
+
+    def test_a_row_outline_takes_both_lots_land(self):
+        pairs = _pairs([('f1', 'p1', 60.0), ('f1', 'p2', 40.0)])
+        ref = pd.DataFrame(
+            {'land_value': [340_000.0, 340_000.0], 'total_value': [9.0e5, 8.0e5]},
+            index=['p1', 'p2'],
+        )
+        priority = pd.Series({'f1': 'primary'})
+
+        out = _apportion(pairs, ref, priority=priority)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(680_000.0)
+        assert out.loc['f1', 'total_value'] == pytest.approx(1.7e6)
+
+    def test_a_lot_that_pays_its_own_house_keeps_paying_it_alone(self):
+        """A neighbor's outline reaching over the line takes nothing
+        from a lot whose own house already draws its land."""
+        pairs = _pairs([('f1', 'p1', 150.0), ('f2', 'p2', 120.0), ('f2', 'p1', 50.0)])
+        ref = pd.DataFrame({'land_value': [700_000.0, 500_000.0]}, index=['p1', 'p2'])
+        priority = pd.Series({'f1': 'primary', 'f2': 'primary'})
+
+        out = _apportion(pairs, ref, priority=priority)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(700_000.0)
+        assert out.loc['f2', 'land_value'] == pytest.approx(500_000.0)
+
+    def test_the_fallback_divides_by_overlap_area(self):
+        pairs = _pairs(
+            [
+                ('f1', 'p1', 200.0),
+                ('f2', 'p2', 200.0),
+                ('f1', 'p3', 30.0),
+                ('f2', 'p3', 10.0),
+            ]
+        )
+        ref = pd.DataFrame(
+            {'land_value': [0.0, 0.0, 400_000.0]}, index=['p1', 'p2', 'p3']
+        )
+        priority = pd.Series({'f1': 'primary', 'f2': 'primary'})
+
+        out = _apportion(pairs, ref, priority=priority)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(300_000.0)
+        assert out.loc['f2', 'land_value'] == pytest.approx(100_000.0)
+
+    def test_a_lot_with_only_secondary_outlines_stays_unallocated(self):
+        pairs = _pairs([('f1', 'p1', 200.0), ('f2', 'p2', 30.0)])
+        ref = pd.DataFrame({'land_value': [500_000.0, 250_000.0]}, index=['p1', 'p2'])
+        priority = pd.Series({'f1': 'primary', 'f2': 'secondary'})
+
+        out = _apportion(pairs, ref, priority=priority)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(500_000.0)
+        assert pd.isna(out.loc['f2', 'land_value'])
+        assert out['land_value'].sum() == pytest.approx(500_000.0)
+
+    def test_a_secondary_dominant_lot_passes_to_a_neighbors_primary(self):
+        """A lot whose own outline is a garage, reached by the house next
+        door, gives the house its land rather than nobody."""
+        pairs = _pairs([('f1', 'p1', 200.0), ('f1', 'p2', 40.0), ('f2', 'p2', 30.0)])
+        ref = pd.DataFrame({'land_value': [500_000.0, 250_000.0]}, index=['p1', 'p2'])
+        priority = pd.Series({'f1': 'primary', 'f2': 'secondary'})
+
+        out = _apportion(pairs, ref, priority=priority)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(750_000.0)
+        assert pd.isna(out.loc['f2', 'land_value'])
+
+    def test_a_suppressed_pair_takes_no_fallback_share(self):
+        pairs = _pairs(
+            [
+                ('f1', 'p1', 200.0),
+                ('f2', 'p2', 200.0),
+                ('f1', 'p3', 50.0),
+                ('f2', 'p3', 50.0),
+            ]
+        )
+        ref = pd.DataFrame(
+            {'land_value': [0.0, 0.0, 300_000.0]}, index=['p1', 'p2', 'p3']
+        )
+        priority = pd.Series({'f1': 'unknown', 'f2': 'primary'})
+
+        out = _apportion(pairs, ref, priority=priority, dwelling_linked_ids={'f2'})
+
+        # f1 is not primary, so p1 (its own lot, $0) falls back to it;
+        # of p3 it takes nothing, being suppressed there.
+        assert out.loc['f2', 'land_value'] == pytest.approx(300_000.0)
+        assert out.loc['f1', 'land_value'] == pytest.approx(0.0)
+
+    def test_without_priority_the_fallback_does_not_run(self):
+        pairs = _pairs([('f1', 'p1', 60.0), ('f1', 'p2', 40.0)])
+        ref = pd.DataFrame({'land_value': [340_000.0, 340_000.0]}, index=['p1', 'p2'])
+
+        out = _apportion(pairs, ref)
+
+        assert out.loc['f1', 'land_value'] == pytest.approx(340_000.0)
+
+
 class TestTheGate:
     def test_over_allocation_raises_naming_the_reference(self, monkeypatch):
         """Simulate the old duplicating behavior and confirm the gate stops
@@ -146,7 +247,9 @@ class TestTheGate:
             {'land_value': [400_000.0, 400_000.0]},
             index=pd.Index(['f1', 'f2'], name='footprint_id'),
         )
-        dominant_ref = pd.Series(['p1', 'p1'], index=['f1', 'f2'], name='parcel_id')
+        allocations = pd.DataFrame(
+            {'parcel_id': ['p1', 'p1'], 'amount': [400_000.0, 400_000.0]}
+        )
 
         with pytest.raises(ValueOverAllocationError, match="'land_value'"):
             mod._assert_not_over_allocated(
@@ -154,9 +257,31 @@ class TestTheGate:
                 pairs=pairs,
                 ref_values=ref,
                 value_cols=['land_value'],
-                spine_id_col='footprint_id',
                 ref_id_col='parcel_id',
-                dominant_ref=dominant_ref,
+                whole_allocations={'land_value': allocations},
+            )
+
+    def test_a_value_outside_the_recorded_split_raises(self):
+        """The recorded allocations have to account for the result, or
+        the per-reference check would be checking something else."""
+        from openplaces.io.harmonizer import apportion as mod
+
+        pairs = _pairs([('f1', 'p1', 100.0), ('f2', 'p1', 100.0)])
+        ref = pd.DataFrame({'land_value': [400_000.0]}, index=['p1'])
+        result = pd.DataFrame(
+            {'land_value': [400_000.0, 400_000.0]},
+            index=pd.Index(['f1', 'f2'], name='footprint_id'),
+        )
+        allocations = pd.DataFrame({'parcel_id': ['p1'], 'amount': [400_000.0]})
+
+        with pytest.raises(ValueOverAllocationError, match='outside the recorded'):
+            mod._assert_not_over_allocated(
+                result,
+                pairs=pairs,
+                ref_values=ref,
+                value_cols=['land_value'],
+                ref_id_col='parcel_id',
+                whole_allocations={'land_value': allocations},
             )
 
     def test_under_allocation_is_allowed(self):

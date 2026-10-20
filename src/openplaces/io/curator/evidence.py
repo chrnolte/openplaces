@@ -122,11 +122,14 @@ def _apportioned_sources(
     apportionment ran on.
 
     Two rules, and one covers both apportionment styles. The token is the
-    **dominant** reference's -- exact for a
-    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS` column,
-    which goes to the principal entity from that one reference, and the
-    best available label for a proportional split, which is a weighted sum
-    over several. The derived marker is then applied if **any** contributing
+    **dominant** reference's, or the largest-overlap reference's that has
+    one where the dominant reference has none. That is exact for a
+    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS` column
+    drawn from one reference, and the best available label for a sum over
+    several: a proportional split, or a whole value that also draws on
+    references no principal entity took (the fallback in
+    :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`).
+    The derived marker is then applied if **any** contributing
     reference's value was derived, because a sum containing one estimated
     dollar is itself an estimate. Erring toward marking is the safe
     direction: a value wrongly called original is a false claim, a value
@@ -158,15 +161,23 @@ def _apportioned_sources(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[list(sides.values())]
     )
-    dominant = (
-        pairs.sort_values('area_intersection_m2', ascending=False)
-        .drop_duplicates(spine_id_col)
-        .set_index(spine_id_col)['parcel_id']
-    )
+    ranked = pairs.sort_values('area_intersection_m2', ascending=False)
+    dominant = ranked.drop_duplicates(spine_id_col).set_index(spine_id_col)['parcel_id']
 
     out = {}
     for col, side in sides.items():
-        tokens = dominant.map(lookup[side]).reindex(index).astype(object)
+        first_known = (
+            ranked.assign(_token=ranked['parcel_id'].map(lookup[side]))
+            .dropna(subset=['_token'])
+            .drop_duplicates(spine_id_col)
+            .set_index(spine_id_col)['_token']
+        )
+        tokens = (
+            dominant.map(lookup[side])
+            .reindex(index)
+            .astype(object)
+            .fillna(first_known.reindex(index))
+        )
         # Record the entity-crossing hop the same way geometry_source
         # does (`parcel.pamlicocounty`): the token names the lane and
         # the dataset it carried, so `parcel.floridagio` and the flat

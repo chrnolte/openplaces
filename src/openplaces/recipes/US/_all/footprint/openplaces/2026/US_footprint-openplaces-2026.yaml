@@ -360,7 +360,9 @@ pipeline:
   #   structure gets none, and its share passes to the lot's other
   #   footprints; on a non-residential lot every structure keeps its own.
   # - land_value and total_value go to the principal footprints, divided
-  #   among them by overlap area where a lot has several.
+  #   among them by overlap area where a lot has several. A lot that is
+  #   no principal footprint's largest overlap divides them among the
+  #   non-secondary footprints linked to it.
   # - imputed land and improvement values are directly mapped to canonical land_value and
   #   structure_value columns without extra reconciliation.
   - step: apportion_curated_values
