@@ -3840,6 +3840,9 @@ def build_web_scene(
                 # Other colorings of this layer (`per_dwelling_label`).
                 'views': views,
                 'n_estimated': int(estimated.sum()),
+                # Features drawn; for the lots, the page's parcel count,
+                # which orders the site's places (`site.landing`).
+                'n_features': int(len(out)),
                 'n_ghosts': int(ghost.sum()),
             }
         )
