@@ -398,8 +398,39 @@ pipeline:
 
       # Multiple Single-Family homes on a single parcel.
       # Requires min_score 4 to ensure genuine multiplicity evidence is present.
+      #
+      # Footprints alone reach that score (two primary outlines, none
+      # small and elongated, a FEMA single-family reading, any land
+      # share), so the roll gets a veto: a land use naming a
+      # non-residential class, with no residential word beside it,
+      # keeps the lot out. The lot then falls to that class's own
+      # decision below. Vacant and commercial land with a few sheds
+      # or service buildings had drawn as homes on the value pages.
+      # Measured 2026-10-19 on US-TX-HAR: 954 of 10,655 MSF lots vetoed
+      # Measured 2026-10-19 on US-NC-MEC: 74 of 941 MSF lots vetoed
+      # Measured 2026-10-19 on US-NC-BRU: 13 of 538 MSF lots vetoed
+      # In Harris 579 read open_space | vacant and 561 of the 954 have
+      # no improvement value; in Mecklenburg most are convenience
+      # stores and industrial land. A commercial code beside SINGLE
+      # FAMILY RESIDENTIAL stays MSF, as do 49 of Brunswick's 62
+      # commercial-keyword MSF lots.
       - class: Multiple Single-Family
         min_score: 4
+        require:
+          - type: none_of
+            indicators:
+              - type: all_of
+                indicators:
+                  - type: in_set
+                    column: keyword_class
+                    values:
+                      [Vacant, Industrial, Commercial, Retail, Office,
+                       Institutional]
+                  - type: none_of
+                    indicators:
+                      - type: keyword
+                        column: use_group_combined
+                        pattern: 'RESID|FAMILY|DWELL|HOMESITE|\bRES\b|\bSFR\b'
         indicators:
           - type: any_of
             indicators:
