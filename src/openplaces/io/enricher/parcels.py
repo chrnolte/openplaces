@@ -287,7 +287,18 @@ _DELIVERED_CROSSWALK_COLUMNS = (
 _DELIVERED_MATCH_TYPES = frozenset(
     {'geo_id', 'geo_id_calibrated', 'geo_id_kdtree', 'overlay'}
 )
-_MIN_DELIVERED_COVERAGE = 0.99
+# The two coverage checks are asymmetric on purpose. A crosswalk id
+# missing from the spine means the crosswalk names parcels this spine
+# no longer has: our ids change on rebuild, so that is the sign of a
+# crosswalk built on stale ids, and it is refused below 99 percent.
+# A spine id missing from the crosswalk is often legitimate: parcels
+# created after the reference vintage (new subdivisions, splits) have
+# no reference parcel to name them, and real deliveries reach 96.6 to
+# 98.9 percent in about a third of units. That share only warns
+# between 90 and 99 percent and is refused below 90.
+_MIN_DELIVERED_IDS_IN_SPINE = 0.99
+_MIN_SPINE_IDS_IN_DELIVERED = 0.90
+_WARN_SPINE_IDS_IN_DELIVERED = 0.99
 _FRACTION_TOLERANCE = 1e-6
 
 
@@ -315,10 +326,11 @@ def _load_delivered_crosswalk(path, old, join_key_name, spine_index):
     The file names current parcels by the `parcel_id` of the openplaces
     bundle it was built against, so it is only valid for a spine that
     still carries those ids. Refuses it (ValueError) when fewer than
-    99 percent of the spine's ids appear in it, or fewer than 99 percent
-    of its ids in the spine, quoting the bundle and commit from its
-    footer; refuses an unknown `match_type`; and warns when the
-    fractions of a reference parcel do not sum to 1.
+    99 percent of its ids appear in the spine, or fewer than 90 percent
+    of the spine's ids in it, quoting the bundle and commit from its
+    footer; warns when 90 to 99 percent of the spine's ids appear in
+    it; refuses an unknown `match_type`; and warns when the fractions
+    of a reference parcel do not sum to 1.
     """
     published = pd.read_parquet(path)
     footer = read_file_metadata(path)
@@ -344,14 +356,25 @@ def _load_delivered_crosswalk(path, old, join_key_name, spine_index):
     delivered_share = (
         delivered_ids.isin(spine_ids).mean() if len(delivered_ids) else 0.0
     )
-    if min(spine_share, delivered_share) < _MIN_DELIVERED_COVERAGE:
+    if (
+        delivered_share < _MIN_DELIVERED_IDS_IN_SPINE
+        or spine_share < _MIN_SPINE_IDS_IN_DELIVERED
+    ):
         raise ValueError(
             f'{path.name} was built against other parcels than this spine: '
             f'{spine_share:.2%} of spine parcel ids appear in its '
-            f'parcel_id_new, {delivered_share:.2%} of its ids appear in the '
-            f'spine (both must reach {_MIN_DELIVERED_COVERAGE:.0%}). '
-            f'Built from {origin}; ask for a crosswalk against the '
-            'current bundle.'
+            f'parcel_id_new (must reach {_MIN_SPINE_IDS_IN_DELIVERED:.0%}), '
+            f'{delivered_share:.2%} of its ids appear in the spine (must '
+            f'reach {_MIN_DELIVERED_IDS_IN_SPINE:.0%}). Built from '
+            f'{origin}; ask for a crosswalk against the current bundle.'
+        )
+    if spine_share < _WARN_SPINE_IDS_IN_DELIVERED:
+        warnings.warn(
+            f'{path.name}: only {spine_share:.2%} of spine parcel ids appear '
+            'in its parcel_id_new; the rest (parcels newer than the '
+            'reference, or a crosswalk for other parcels) get no '
+            f'evidence ({origin}).',
+            stacklevel=3,
         )
 
     sums = published.groupby('reference_parcel_id')['fraction_of_old'].sum()
@@ -473,10 +496,11 @@ def enrich_parcels_from_reference_crosswalk(
         that sidecar and no geometry, the crosswalk is read instead of
         built, and the area QA check and `save_crosswalk` are skipped,
         since both need reference geometry. It is refused (ValueError)
-        unless at least 99 percent of the spine's parcel ids appear in
-        it and 99 percent of its ids in the spine, and when a
-        `match_type` is unknown; fractions of one reference parcel that
-        do not sum to 1 only warn.
+        unless at least 99 percent of its ids appear in the spine and
+        90 percent of the spine's parcel ids in it, and when a
+        `match_type` is unknown. A spine share between 90 and 99
+        percent (parcels newer than the reference) only warns, as do
+        fractions of one reference parcel that do not sum to 1.
     """
     reference_recipe_id = reference_parcel_recipe_id or state.recipe.get(
         'reference_parcel_recipe_id'
