@@ -1271,7 +1271,10 @@ async function main() {
   // The model a "Modeled" choice shows: the one in the address, else
   // the first.
   let modelKey = isModel(valueView) ? modelBase(valueView) : (modelViews[0] || [null])[0];
-  let modelDollars = valueView.includes(DOLLARS_SUFFIX);
+  // Models in today's dollars already (`model_year` null) open in
+  // their own dollars; PLACES-FMV's 2010 ones scaled to assessments.
+  let modelDollars = valueView.includes(DOLLARS_SUFFIX) ||
+    (scene.model_year === null && !isModel(valueView));
   const modelView = (perHome) =>
     `${modelKey}${modelDollars ? DOLLARS_SUFFIX : ''}${perHome ? HOME_SUFFIX : ''}`;
   const hasDwellingView = scene.layers.some((l) => viewOf(l, 'dwelling'));
@@ -1300,10 +1303,15 @@ async function main() {
   if (modelViews.length) {
     choices.push(['values', 'model', 'Modeled']);
   }
+  // The year the models describe (PLACES-FMV: 2010); none for models
+  // handed over in today's dollars (`model_year` null).
+  const modelYear = scene.model_year === undefined ? 2010 : scene.model_year;
   const titles = {
     assessed: 'Values the assessor recorded; values openplaces filled in are drawn as no value',
     estimates: "The assessor's values, with openplaces' fills where the roll has none",
-    model: 'Land value from a 2010 model, scaled to the place\'s assessments',
+    model: modelYear
+      ? `Land value from a ${modelYear} model, scaled to the place's assessments`
+      : 'Land value from a model',
   };
   let setChoice = () => {};
   for (const [group, id, label] of choices) {
@@ -1352,7 +1360,10 @@ async function main() {
       ['scaled', 'Scaled to assessments',
         'Each model times one number: the median of recorded over predicted land value'],
       ['dollars', `${dollarsYear} dollars`,
-        'Each model brought to today with consumer and house price indexes (CPI-U, FHFA)'],
+        modelYear
+          ? 'Each model brought to today with consumer and house price indexes (CPI-U, FHFA)'
+          : `Each model's own prediction, in ${dollarsYear} dollars${
+            scene.model_basis ? ` (${scene.model_basis})` : ''}`],
     ];
     for (const [id, label, title] of scales) {
       const button = document.createElement('button');
@@ -1397,7 +1408,9 @@ async function main() {
     modelMenu.hidden = !modeled;
     scaleSwitch.hidden = !modeled || !hasDollars;
     const current = modelViews.find(([key]) => key === modelKey);
-    modelSummary.textContent = current ? `Model, 2010: ${current[1]}` : '';
+    modelSummary.textContent = current
+      ? `Model${modelYear ? `, ${modelYear}` : ''}: ${current[1]}`
+      : '';
   };
   markViewSwitch();
   // A layer's coloring under the current choices: its scale (bounds,
@@ -1475,8 +1488,9 @@ async function main() {
         source: !(view && view.model)
           ? valuesShown
           : view.dollars
-            ? `2010 model in ${dollarsYear} dollars${dollarsEstimated ? ', estimated' : ''}`
-            : '2010, scaled to assessments',
+            ? `${modelYear ? `${modelYear} model` : 'model'} in ${dollarsYear} dollars`
+              + (dollarsEstimated ? ', estimated' : '')
+            : `${modelYear ? `${modelYear}, ` : ''}scaled to assessments`,
       });
     }
     // No row for features without a value (maintainer, 2026-10-17).

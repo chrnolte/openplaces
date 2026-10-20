@@ -833,6 +833,8 @@ share:
       - madison-wi
       # Nantucket MA, the whole island (2026-10-18).
       - nantucket-ma
+      # Lake County FL, for the team model page (2026-10-19).
+      - lake-county-fl
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps the
     # placeslab land values cleared for team sharing only, which every

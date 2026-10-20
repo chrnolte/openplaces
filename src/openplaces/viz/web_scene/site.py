@@ -41,12 +41,14 @@ from openplaces.viz.web_scene import (
     known_issues,
 )
 from openplaces.viz.web_scene.local import (
-    ELEVATION_RECIPE,
     downtown_of,
     extent_label,
     has_circle,
     load_places,
+    place_elevation,
     place_extent,
+    place_lots_file,
+    place_models,
 )
 
 TITLE = 'Land & structure value'
@@ -60,6 +62,7 @@ def site_root() -> Path:
 
 def _page(place, radius_km, slug, phone_scene=None) -> None:
     circle, built, regions = place_extent(place, radius_km, slug)
+    models = place_models(place, built, slug)
     started = time.time()
     build_web_scene(
         regions,
@@ -67,10 +70,12 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
         site_root() / slug,
         title=TITLE,
         crop=circle,
-        elevation_recipe=ELEVATION_RECIPE,
+        elevation_recipe=place_elevation(place),
         phone_scene=phone_scene,
         downtown=downtown_of(place),
         place_title=place['title'],
+        model_files=models,
+        lots_file=place_lots_file(place, built),
         verbose=False,
     )
     print(
