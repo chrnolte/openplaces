@@ -51,6 +51,7 @@
 #   python -m openplaces.flow.submit --config recipe=... admin_ids=...
 
 import csv
+import os
 import re
 from pathlib import Path
 
@@ -58,12 +59,17 @@ from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
 from openplaces.flow.dag import parse_deliver_config, rule_name
 from openplaces.flow.sync import exclude_bookkeeping_from_sync
+from openplaces.path import heap_dir
 
 # A run writes tens of thousands of small bookkeeping files (job
 # metadata under .snakemake, benchmarks and stage timers under the
 # cache's _logs tree). Inside a synced folder every one is uploaded, so
 # mark those folders for the sync client to skip before the first job.
 exclude_bookkeeping_from_sync(Path.cwd(), cfg.get_dir('logs'))
+
+# Where the SCC profile's qsub_submit.sh writes job logs: beside the
+# stage timers, not in a path relative to wherever Snakemake started.
+os.environ.setdefault('OPENPLACES_SGE_LOG_DIR', str(Path(cfg.get_dir('logs')) / 'sge'))
 
 TARGET = config.get('recipe', 'US_footprint-cheer-2026')
 ADMIN_IDS = config.get('admin_ids', [])
@@ -128,9 +134,27 @@ MEM_LOOKUP = _load_mem_lookup()
 #
 # Serializing all ingest behind a single token also fixed it, but cost
 # every recipe's parallelism and projected to ~24 h for one region. A
-# token per recipe keeps unrelated ingests concurrent.
+# token per heap directory keeps unrelated ingests concurrent.
+#
+# The token is named after the directory, not the recipe: two recipes
+# reading layers of one archive share it. IGAC's urban and rural
+# recipes of a release both extract into
+# `_heap/CO/_all/parcel/igac/<release>/`; with a token per recipe they
+# ran at once and each rewrote the geodatabase under the other's reads
+# ("not recognized as being in a supported file format", measured
+# 2026-10-18 on co-andes). A recipe partitioned by `download_by` stages
+# into one directory per partition; naming the token after the
+# recipe-level directory is coarser than needed, never too fine.
 def _heap_token(recipe_id: str) -> str:
-    return 'heap_' + re.sub(r'[^0-9a-zA-Z]+', '_', recipe_id).strip('_').lower()
+    recipe = dag._recipe(recipe_id)
+    try:
+        directory = heap_dir(
+            recipe.get('admin_id'), recipe.get('entity'), recipe.get('dataset')
+        )
+        key = Path(directory).relative_to(cfg.heap_dir).as_posix()
+    except (TypeError, ValueError):
+        key = recipe_id
+    return 'heap_' + re.sub(r'[^0-9a-zA-Z]+', '_', key).strip('_').lower()
 
 
 def _staging_recipes() -> dict:
@@ -145,6 +169,15 @@ def _staging_recipes() -> dict:
 
 
 HEAP_TOKENS = _staging_recipes()
+
+# Each token admits one job at a time. Registered here rather than in a
+# profile's `resources:` so that every profile enforces it: an
+# undeclared resource is unlimited, and the SCC profile declared none,
+# so on the cluster the tokens limited nothing. A value given on the
+# command line or in a profile still wins.
+for _token in sorted(set(HEAP_TOKENS.values())):
+    if _token not in workflow.global_resources:
+        workflow.register_resource(_token, 1)
 
 STAGE_RUNTIME_MIN = {
     'ingest': 720,
@@ -219,10 +252,7 @@ for _recipe_id, _nodes in BATCHED_INGESTS.items():
             mem_mb=lambda wc, attempt, _r=_recipe_id: mem_mb('ingest', None, _r)
             * attempt,
             runtime=STAGE_RUNTIME_MIN['ingest'] * 4,
-            **{
-                token: int(_recipe_id == owner)
-                for owner, token in HEAP_TOKENS.items()
-            },
+            **{HEAP_TOKENS[_recipe_id]: 1},
         params:
             cmd=f'python -m openplaces.flow.run_stage ingest {_recipe_id} {_admins}',
         shell:
@@ -313,7 +343,8 @@ for node in dag.nodes():
                 mem_mb(_s, _a, _r) * attempt
             ),
             runtime=STAGE_RUNTIME_MIN.get(node.stage, 240),
-            # One token per shared-heap recipe, not one for all ingest.
+            # One token per shared heap directory (see HEAP_TOKENS), not
+            # one for all ingest.
             #
             # Only a recipe whose unzipped source is a single directory
             # shared by many admin units can race: two counties then have
@@ -326,10 +357,11 @@ for node in dag.nodes():
             # 45-county run to 2.0 min/job, about 24 hours for North
             # Carolina alone. Each of these recipes now serializes only
             # against itself, so unrelated ingests run in parallel again.
-            **{
-                token: int(node.recipe_id == owner)
-                for owner, token in HEAP_TOKENS.items()
-            },
+            **(
+                {HEAP_TOKENS[node.recipe_id]: 1}
+                if node.recipe_id in HEAP_TOKENS
+                else {}
+            ),
         params:
             cmd=_cmd,
         shell:

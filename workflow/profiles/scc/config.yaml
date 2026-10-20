@@ -6,9 +6,26 @@
 # (the submit wrapper enforces a dry-run inspection gate first)
 #
 # Notes:
+# - qsub_submit.sh charges each job to the SCC project whose space the
+#   checkout sits in (/project/<name>/ or /projectnb/<name>/), so a run
+#   from places is charged to places and one from openplaces to
+#   openplaces; OPENPLACES_SCC_PROJECT overrides it. It also passes the
+#   environment (-V), without which a compute node runs the system
+#   python on a bare PYTHONPATH.
+# - h_rt is 0:<minutes>:00. SGE rejects "<minutes>:00" (720:00 is "not
+#   a time value") and reads 0:720:00 as 12 hours.
+# - No cluster-generic-status-cmd. A status script that asks qacct
+#   about every finished job costs 11.6 s per job, one job at a time,
+#   against jobs of about 3 minutes (measured 2026-10-18): Snakemake
+#   then learns of finished jobs far behind the cluster and keeps 30 of
+#   its 200 slots busy. Without one it reads the jobfinished/jobfailed
+#   markers its own jobscript writes on the shared filesystem.
 # - latency-wait absorbs shared-filesystem visibility lag; critical
 #   before Snakemake declares an output missing.
 # - rerun-triggers mtime: recipe-YAML edits must not cascade re-runs.
+# - The heap-directory tokens that keep two jobs from extracting into
+#   one heap folder are registered by the Snakefile, so this profile
+#   needs no `resources:` entry for them.
 # - Compute nodes may lack internet on some queues: run download-heavy
 #   ingest rules in the submitting session (login/transfer node) by
 #   passing them to --local-cores/localrules, or pin them to
@@ -18,12 +35,11 @@
 
 executor: cluster-generic
 cluster-generic-submit-cmd: >-
-  qsub -terse -P cheer
-  -l h_rt={resources.runtime}:00
+  bash workflow/profiles/scc/qsub_submit.sh
+  -l h_rt=0:{resources.runtime}:00
   -l mem_per_core={resources.mem_mb}M
   -pe omp {threads}
-  -o data/cache/_logs/sge/ -j y
-cluster-generic-status-cmd: workflow/profiles/scc/qstat_status.sh
+  -j y
 jobs: 200
 latency-wait: 90
 retries: 1

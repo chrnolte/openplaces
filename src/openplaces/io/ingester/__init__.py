@@ -444,6 +444,8 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
         self._resolve_download_url()
         if self.verbose:
             print('Download URL:', self.download_partition['download_url'])
+        if self.download_partition.get('unavailable'):
+            return
 
         self._resolve_downloaded_and_data_paths()
         if self.verbose:

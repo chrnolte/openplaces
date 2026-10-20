@@ -1,0 +1,58 @@
+# Parcels (terrenos) of Fusagasugá, which runs its own cadastre as
+# gestor catastral (IGAC's register of gestores, queried 2026-10-19), so
+# it is in neither IGAC's releases nor the Agencia Catastral de
+# Cundinamarca's datasets.
+#
+# Source: IDER, the Cundinamarca spatial data infrastructure, hosted
+# layer "Terreno" (ArcGIS item 1427bf43be3047e8b9e386a3fc1057c0,
+# modified 2024-07-30), 45,283 features whose extent lies in
+# Fusagasugá; licence stated on IDER's items as CC BY 4.0. No bulk file
+# was found, so the layer is paged (`arcgis_rest_scraper`, 23 pages).
+#
+# Schema (layer metadata, 2026-10-19): codigo (número predial),
+# manzana_co, numero_sub, codigo_ant (previous número predial). No
+# owner, address or value field.
+
+description: >-
+  Cadastral land parcels of Fusagasugá from its own cadastre (IDER
+  layer, 2024).
+
+admin_id: CO-CU-FU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: fusagasuga
+    portal_url: "https://ider.cundinamarca.gov.co/"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC BY 4.0 (stated on IDER items)"
+    terms_url: "https://www.arcgis.com/home/item.html?id=1427bf43be3047e8b9e386a3fc1057c0"
+    redistribution_restricted: false
+  version: "2024"
+
+uncompressed_file_name: "fusagasuga_terreno.geojson"
+
+scraper_options:
+  layer_url: "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/Terreno/FeatureServer/0"
+  where: "1=1"
+  out_fields: "codigo,manzana_co,codigo_ant"
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  parcel_id_admin3: codigo
+  parcel_id_admin3_2: codigo_ant
+  manzana_code: manzana_co
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  admin_level: 3

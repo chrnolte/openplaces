@@ -5,17 +5,14 @@
 # columns as every untreated parcel.
 #
 # The step list is the parcel recipe's, verbatim, plus `raster_admin_id:
-# CO-AN` on the Hansen step: the transaction spine is national
-# (processed at admin level 1) while that raster is ingested for the
-# department, and a level-1 unit cannot be truncated to a level-2 one.
-# A test keeps the two recipes' step lists identical apart from that key.
+# CO-AN` on the (disabled) Hansen step, which is ingested for Antioquia
+# only. A test keeps the two recipes' step lists identical apart from
+# that key.
 #
-# D3 open: CO_landcover-arevalo-2025 is saved per municipality, which a
-# national transaction run cannot resolve. Whether treatment polygons are
-# enriched on their own geometry (and then per municipality) or reach the
-# outcomes through their parcels is decision D3 of
-# colombia-conservation-indicators-data-preparation.md; this recipe is
-# not run until it is settled.
+# Decision D3 (settled 2026-10-17, colombia-conservation-indicators-
+# data-preparation.md): a treatment polygon is enriched on its own
+# geometry. Like the transaction spine and CO_landcover-arevalo-2025,
+# this runs per municipality.
 
 description: >-
   Annual forest outcomes and vicinity deforestation on Colombia's land
@@ -36,7 +33,7 @@ dataset:
 spine_geom: true
 
 process_by:
-  admin_level: 1
+  admin_level: 3
 
 pipeline:
   - step: zonal_stats

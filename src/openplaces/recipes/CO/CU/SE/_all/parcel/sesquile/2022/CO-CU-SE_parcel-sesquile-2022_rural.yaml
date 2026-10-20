@@ -1,0 +1,48 @@
+# Rural parcels of Sesquilé from its own cadastre; see
+# CO-CU-SE_parcel-sesquile-2022_urban for the source, the (unstated)
+# licence and the schema. Layer 4 R_TERRENO of the municipality's
+# Geoportal_vista service: 3,378 features, all with DANE code 25736.
+
+description: >-
+  Rural cadastral parcels of Sesquilé from its own cadastre, paged from
+  the municipality's ArcGIS service (2022).
+
+admin_id: CO-CU-SE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: sesquile
+    portal_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer"
+    download_url_scraper: arcgis_rest_scraper
+    license: "unknown (the service states no licence or copyright holder)"
+    terms_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer?f=json"
+    redistribution_restricted: null
+  version: "2022"
+
+uncompressed_file_name: "sesquile_r_terreno.geojson"
+
+scraper_options:
+  layer_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer/4"
+  where: "1=1"
+  out_fields: "CODIGO,CODIGO_ANT"
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANT
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3

@@ -12,10 +12,13 @@ FFT-convolution algorithm windowed to one admin unit and padded by
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 import rasterio
+from shapely.geometry import box
 
 from openplaces.geo.raster import compute_vicinity_coverage
 from openplaces.io.enricher import EnrichState, _register
@@ -132,7 +135,21 @@ def vicinity_coverage(
 
     with rasterio.open(source_raster_path) as src:
         raster_crs = src.crs
-    bounds = tuple(spine.to_crs(raster_crs).total_bounds)
+        raster_extent = box(*src.bounds)
+    spine_r = spine.to_crs(raster_crs)
+    bounds = tuple(spine_r.total_bounds)
+
+    # Polygons wholly outside the source raster get an empty column, as
+    # in sample_raster: a unit whose rows all lie elsewhere (a record
+    # filed under one municipality's code with its polygon in another,
+    # beyond the raster's clip buffer) must not fail the whole unit.
+    if not spine_r.intersects(raster_extent).any():
+        warnings.warn(
+            f'{state.admin_id}: no polygon intersects {source_raster_path}; '
+            f'{column or raster_key} left empty.'
+        )
+        state.evidence[column or f'{raster_key}_{stat}'] = pd.NA
+        return state
 
     if reprocess or not out_path.exists() or not _covers(out_path, bounds):
         array, transform, crs = compute_vicinity_coverage(

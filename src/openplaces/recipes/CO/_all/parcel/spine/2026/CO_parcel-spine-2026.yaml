@@ -9,9 +9,13 @@
 #     groups. Listed explicitly (not auto-discovered): the recipes share
 #     the spine's own admin_id (CO), which resolve_spine's auto_discover
 #     only expands to child admin_ids.
-#   - CO-AN_parcel-catastro-2018:
-#     picked up automatically via auto_discover, since these are scoped to a
-#     child admin_id (e.g. CO-AN) of the spine's CO.
+#   - CO-AN_parcel-catastro-2018: the 2018 Antioquia departmental
+#     catastro.
+#   - The cadastres of the gestores catastrales other than IGAC whose
+#     parcels are published: Cundinamarca's agency (76 municipalities),
+#     the Valle del Cauca department (24), Bogotá (UAECD),
+#     Medellín, Fusagasugá, Zipaquirá (with Cajicá and Sopó) and
+#     Sesquilé.
 # IGAC and the departmental cadastres are geographically complementary
 # (a department that administers its own catastro falls outside IGAC's
 # public cadastre) rather than competing on precision for the same parcels,
@@ -22,7 +26,7 @@
 
 description: >-
   Harmonized Colombia parcel spine: IGAC national cadastre parcel geometry,
-  gap-filled by Antioquia catastro.
+  gap-filled by the Antioquia catastro and other gestores' cadastres.
 
 stage: harmonize
 admin_id: CO
@@ -58,6 +62,30 @@ pipeline:
         label: igac_202608_rural
       - recipe_id: CO-AN_parcel-catastro-2018
         label: catastro
+      # The cadastres IGAC's releases do not cover, from their own
+      # gestores catastrales (IGAC's register, queried 2026-10-19).
+      # Listed before the older IGAC releases: a municipality that has
+      # since moved from IGAC to a departmental gestor (Cundinamarca's
+      # 41 IGAC municipalities of 2021 are 32 in 2026) takes its
+      # current cadastre, not a 2021 IGAC release.
+      - recipe_id: CO-CU_parcel-acc-2026
+        label: acc
+      - recipe_id: CO-VA_parcel-valledelcauca-2026
+        label: valledelcauca
+      - recipe_id: CO-BD_parcel-uaecd-202609
+        label: uaecd
+      - recipe_id: CO-AN-ME_parcel-catastromedellin-2026
+        label: catastromedellin
+      - recipe_id: CO-CU-FU_parcel-fusagasuga-2024
+        label: fusagasuga
+      - recipe_id: CO-CU_parcel-zipaquira-2022_urban
+        label: zipaquira_urban
+      - recipe_id: CO-CU_parcel-zipaquira-2022_rural
+        label: zipaquira_rural
+      - recipe_id: CO-CU-SE_parcel-sesquile-2022_urban
+        label: sesquile_urban
+      - recipe_id: CO-CU-SE_parcel-sesquile-2022_rural
+        label: sesquile_rural
       # The March 2026 recipes (a shapefile export not on this machine)
       # and older IGAC releases, newest first, each used only for a
       # municipality no source above (or newer release) covers: a
@@ -102,6 +130,7 @@ pipeline:
       - manzana_code
       - vereda_code
       - m2
+      - land_use_group
       - object_id
       - property_id
       - use_group
