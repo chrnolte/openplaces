@@ -1,13 +1,26 @@
-# Recipe: Virginia statewide parcel layer, VGIN 2026 Q2 release.
+# Recipe: Virginia statewide parcel layer, VGIN 2026 Q3 release.
 #
 # SOURCE. VGIN (Virginia Geographic Information Network, Virginia
-# Department of Emergency Management) "Virginia Parcels", 2026 Q2
+# Department of Emergency Management) "Virginia Parcels", 2026 Q3
 # product: ArcGIS Online item 29627d7c051a47dc8ce71b4484531ab3, a
-# zipped file geodatabase (Virginia_Parcels.zip, 1,000,756,592 bytes)
-# holding one layer, VA_Parcels: 4,170,691 polygons in 136
-# localities, fields VGIN_QPID, FIPS, LOCALITY, PARCELID, PTM_ID,
-# LASTUPDATE. Downloaded and read 2026-09-13. The item URL is not
-# versioned: VGIN replaces the file each quarter.
+# zipped file geodatabase (Virginia_Parcels.zip, 991,292,611 bytes,
+# item modified 2026-09-25) holding one geodatabase,
+# Virginia_Parcel_Dataset_2026Q3.gdb, with one layer, VA_Parcels:
+# 4,174,364 polygons, fields VGIN_QPID, FIPS, LOCALITY, PARCELID,
+# PTM_ID, LASTUPDATE (read 2026-10-20 by range requests; the same
+# fields and types as the Q2 release, which had 4,170,691 polygons in
+# 136 localities and was downloaded and read 2026-09-13).
+#
+# QUARTER IN THE FILE NAME. The item URL is not versioned: VGIN
+# replaces the file each quarter, and only the geodatabase inside it
+# names the quarter. `uncompressed_file_name` names it on purpose. A
+# wildcard would never break, but would read whatever zip is already
+# on disk without telling: a stale Virginia_Parcels.zip in the
+# external directory is not re-downloaded, and its older geodatabase
+# would be read as the new one. With the quarter named, a new release
+# fails at the read, which is the moment to re-download, re-check the
+# fields and the VGIN_QPID measurements below, and update this name.
+# `version` stays the year, as on the 2025 recipe.
 #
 # WHY THE GEODATABASE. US-VA_parcel-vgin-2025 reads
 # VirginiaParcel.shp.zip from vginmaps.vdem.virginia.gov. In its 2025
@@ -22,7 +35,7 @@
 # separate 363 MB download, not layers of this geodatabase. The one
 # used so far is read by US-VA-CH_property-vgin-2026.
 #
-# VGIN_QPID. Unique in this release: 4,170,691 distinct values over
+# VGIN_QPID. Unique in the Q2 release: 4,170,691 distinct values over
 # 4,170,691 rows, no locality with a duplicate, every value integral
 # and at most 15 digits (exact in the float64 it is stored as). It
 # stays parcel_id_admin2, cast to the integer's digits so the id does
@@ -69,9 +82,9 @@
 # will be dropped with a warning. Rappahannock County (51157) has no
 # rows in this release.
 #
-# TERMS. The item licence (read 2026-09-13), the same text as the
-# shapefile metadata: "The Virginia Base Data layers are intended for
-# cartographic use and spatial analysis only, and not for use as a
+# TERMS. The item licence (read 2026-09-13, the same text on
+# 2026-10-20), as in the shapefile metadata: "The Virginia Base Data
+# layers are intended for cartographic use and spatial analysis only, and not for use as a
 # legal description. ... all warranties regarding the accuracy of the
 # map data and any representation or inferences derived there from
 # are hereby expressly disclaimed." A disclaimer: no redistribution,
@@ -79,7 +92,7 @@
 
 description: >-
   Virginia statewide parcel layer from the Virginia Geographic Information
-  Network (VGIN), 2026 Q2 release.
+  Network (VGIN), 2026 Q3 release.
 
 admin_id: US-VA
 
@@ -98,7 +111,7 @@ entity:
   version: 2026
 
 compressed_file_name: "Virginia_Parcels.zip"
-uncompressed_file_name: "Virginia_Parcel_Dataset_2026Q2.gdb"
+uncompressed_file_name: "Virginia_Parcel_Dataset_2026Q3.gdb"
 layer: VA_Parcels
 
 # Column that splits the data into chunks for processing

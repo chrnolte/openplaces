@@ -1,4 +1,33 @@
 # Recipe to import FEMA's USA Structures (2023)
+#
+# DOWNLOAD (2026-10-20). The index page FEMA used to serve at
+# disasters.geoplatform.gov/USA_Structures/ now redirects to a Hub
+# page (gis-fema.hub.arcgis.com/pages/usa-structures-data) whose HTML
+# is a JavaScript shell with no links in it. The page's table of
+# per-state downloads is in its layout, ArcGIS Online item
+# 8388995e228e4e30a882686ac3ab256e ("USA Structures Data", owner
+# FEMA_HUB), whose /data JSON this recipe scrapes. It lists one zip
+# per state or territory, 56 in all, on FEMA's own S3 bucket
+# (fema-femadata, Partners/ORNL/USA_Structures/<state name>/), each
+# holding <ST>_Structures.gdb with one layer, <ST>_Structures.
+#
+# TWO FILE NAMES. 24 states are still listed as their 2025 release,
+# Deliverable<YYYYMMDD><ST>.zip (MD 20250913, VA 20250606); 32 states
+# and territories as the 2026-09-13 release,
+# <ST>_Structures_20260913.zip (DC among them). The regex takes
+# either, and resolved to exactly one file for each of the 56 codes
+# (checked 2026-10-20). The `version` stays 2023 although
+# the files are newer: the recipe has always taken the page's current
+# file (NC, TX, FL and WI were ingested from 2025-06-06 files, MA and
+# PA from 2023 ones), and the per-state 2023 deliverables are still on
+# the bucket (Deliverable2023*<ST>.zip) but listed nowhere.
+#
+# SCHEMA. The 2026-09-13 release has the same 33 fields and types as
+# the 2025 one (compared on DC and RI, 2026-10-20), but fills HEIGHT
+# on far fewer footprints: DC 94.4% -> 32.1% (64,701 -> 65,993
+# footprints), RI 54.8% -> 12.1% (367,168 -> 397,288). PROP_CITY
+# drops in DC from 98.0% to 33.0%. A state re-downloaded from a
+# 2026-09-13 file therefore carries far fewer heights than a 2025 one.
 
 description: >-
   FEMA USA Structures building footprints for the United States.
@@ -22,17 +51,19 @@ entity:
     redistribution_restricted: false
     terms_url: null
     # Link to portal with metadata
-    portal_url: "https://disasters.geoplatform.gov/USA_Structures/"
-    # Link to website containing download URLs (e.g. if URLs change)
-    download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
+    portal_url: "https://gis-fema.hub.arcgis.com/pages/usa-structures-data"
+    # The Hub page's layout JSON, which holds its download table (see
+    # DOWNLOAD above); the page itself carries no links.
+    download_url_source: "https://www.arcgis.com/sharing/rest/content/items/8388995e228e4e30a882686ac3ab256e/data?f=json"
     # Regex to extract download URL from `download_url_source`
-    # Data partition placeholders {...} will be replaced before use.
-    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)'
-    verify_ssl: false
+    # Data partition placeholders {...} will be replaced before use,
+    # so the regex uses no {n} quantifiers.
+    download_url_source_regex: '(https://fema-femadata\.s3\.us-east-1\.amazonaws\.com/Partners/ORNL/USA_Structures/[^"\\<>\s]+/(?:Deliverable[0-9]+{admin2_id_leaf}|{admin2_id_leaf}_Structures_[0-9]+)\.zip)'
   version: 2023
 
-# Name of compressed file (set to skip re-downloading)
-compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
+# Name of compressed file (set to skip re-downloading); matches both
+# file names under DOWNLOAD, in the state's own directory.
+compressed_file_name: "*{admin2_id_leaf}*.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
