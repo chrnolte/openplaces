@@ -524,6 +524,23 @@ RESIDENTIAL_LAND_USE = frozenset(
 # The residential classes whose name says what each unit is, one home:
 # a lot of one of these needs no further evidence that it holds homes.
 SINGLE_HOME_LAND_USE = RESIDENTIAL_LAND_USE - {'Multi-Family'}
+# Words of a roll's use group (lowercased) naming a use that is not
+# homes, and words naming homes; a use group with the first and none
+# of the second keeps the class from confirming a lot
+# (`residential_lots`).
+NON_RESIDENTIAL_USE = (
+    r'commercial|industrial|open.?space|vacant|use value|agricultur|forest|exempt'
+)
+RESIDENTIAL_USE = (
+    r'resid|family|home|dwell|housing|condo|mobile|manufactured'
+    r'|\bmfg\b|\bmh\b|\bres\b|\bsfr\b'
+)
+# An improvement value at or below this is no building in the roll's
+# eyes (Massachusetts records $200 on exempt open land).
+NO_BUILDING_VALUE = 1_000.0
+# Lots smaller than this (ha) that the roll calls vacant keep their
+# class: a new home on a lot the roll still lists as vacant.
+NEW_HOME_MAX_HA = 0.5
 # The page's own class of a building (maintainer, 2026-10-16/17, handoff
 # item 1f): the roll's land use class of its lot (`land_use_class_parcel`:
 # Condominium, Townhome, Multiple Single-Family, Office, ...), which
@@ -1260,6 +1277,54 @@ def _count_dwellings_from_above(gdfs: dict, layers) -> None:
         # count from outlines alone does not (`ROLL_DWELLINGS`).
         below[ROLL_DWELLINGS] = own.where(own > 0)
         below['n_dwellings'] = own.where(own > 0, counted.where(counted > 0))
+
+
+# Lots smaller than this (m2) whose value per area tops the page's
+# `LAND_GHOST_QUANTILE` `LAND_GHOST_FACTOR` times over are drawn as
+# ghosts (`mark_land_ghosts`).
+LAND_GHOST_MAX_M2 = 100.0
+LAND_GHOST_QUANTILE = 0.999
+LAND_GHOST_FACTOR = 10.0
+
+
+def mark_land_ghosts(gdfs, layers) -> None:
+    """Flag tiny lots carrying a value their area cannot hold.
+
+    A display step, the land counterpart of the buildings' height check
+    (`GHOST_COLUMN`), for every layer whose recipe runs none. A lot's
+    height is its value per area, so a sliver or an air-rights outline
+    carrying a whole account's value rises as a needle: a 23 m2 sliver
+    in Port Arthur held the $14.1M of a 402-acre lot, and Charlotte's
+    16 m2 air-rights outlines came to $1-2 billion per acre. A lot under
+    `LAND_GHOST_MAX_M2` whose value per area is more than
+    `LAND_GHOST_FACTOR` times the page's own `LAND_GHOST_QUANTILE` of
+    lots with a value is written as a ghost; its value is unchanged.
+    The factor spares the costliest real land: Beacon Hill row-house
+    lots of about 70 m2 come to $64M per acre, at Boston's p99.9 and
+    far below the errors (20 to 3,000 times Charlotte's p99.9). Large
+    lots are never flagged: a high value over a large area is a real,
+    if rare, price.
+
+    Written to the layer's `GHOST_COLUMN`, in place.
+    """
+    for layer in layers:
+        gdf = gdfs[layer.name]
+        if (
+            gdf.empty
+            or layer.value_column not in gdf.columns
+            or ghost_rule(layer.recipe) is not None
+        ):
+            continue
+        area = gdf.geometry.to_crs(5070).area.to_numpy()
+        value = gdf[layer.value_column].to_numpy(dtype=float)
+        has = (value > 0) & (area > 0)
+        if not has.any():
+            continue
+        per_area = np.full(len(gdf), np.nan)
+        per_area[has] = value[has] / area[has]
+        cut = LAND_GHOST_FACTOR * np.quantile(per_area[has], LAND_GHOST_QUANTILE)
+        ghost = has & (area < LAND_GHOST_MAX_M2) & (per_area > cut)
+        gdf[GHOST_COLUMN] = pd.array(ghost, dtype='boolean')
 
 
 EXEMPT_CLASS = 'Exempt'
@@ -2587,6 +2652,7 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
     imputed = pd.read_parquet(twin, columns=read).reindex(part.index)
     part = part.copy()
     taken = 0
+    taken_rows = {}
     for column in wanted:
         source = f'{column}{SOURCE_SUFFIX}'
         filled = (
@@ -2603,7 +2669,78 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
         else:
             part[source] = imputed[source].astype('string').where(filled)
         taken += int(filled.sum())
+        taken_rows[column] = filled
+    part = flag_model_heights(part, recipe, taken_rows)
     return part, taken
+
+
+def ghost_rule(recipe) -> dict | None:
+    """The parameters of a recipe's `flag_unconfirmed_height` step, or
+    None where its pipeline has none (the parcel recipe)."""
+    from openplaces.recipe import get_recipe_by_id
+
+    spec = get_recipe_by_id(recipe) if isinstance(recipe, str) else recipe
+    step = next(
+        (
+            s
+            for s in (spec or {}).get('pipeline', [])
+            if s.get('step') == 'flag_unconfirmed_height'
+        ),
+        None,
+    )
+    return None if step is None else {k: v for k, v in step.items() if k != 'step'}
+
+
+def flag_model_heights(part, recipe, taken_rows) -> pd.DataFrame:
+    """Judge the model's values by the same height check as recorded ones.
+
+    Curate flags an outline whose value per area its floors do not
+    explain (`GHOST_COLUMN`, `io.curator.evidence.flag_unconfirmed_height`)
+    before the imputed twin exists, so a cell the model filled carries
+    no flag of its own: the page drew $15M to $456M on houses of 13 to
+    213 m2 at full height.
+    Measured 2026-10-19 on cheer-eastern-nc: 196 imputed values over $20M
+
+    The check reruns here with the recipe's own step and parameters,
+    over the whole part so that a lot's other outlines count, and only
+    the rows whose value came from the model take its answer.
+
+    Parameters
+    ----------
+    part : pandas.DataFrame
+        Rows of one bundle, the model's values already overlaid.
+    recipe : str or dict
+        The layer's curation recipe.
+    taken_rows : dict of str to pandas.Series of bool
+        Per column, the rows whose value came from the model.
+
+    Returns
+    -------
+    pandas.DataFrame
+        *part*, with `GHOST_COLUMN` rewritten on those rows.
+    """
+    from types import SimpleNamespace
+
+    from openplaces.io.curator.evidence import flag_unconfirmed_height
+
+    rule = ghost_rule(recipe)
+    if rule is None:
+        return part
+    rule = {**rule, 'output_column': GHOST_COLUMN}
+    value_column = rule.get('value_column', 'structure_value')
+    filled = taken_rows.get(value_column)
+    if filled is None or not filled.any():
+        return part
+    probe = SimpleNamespace(curated=part.copy(), verbose=False)
+    flag_unconfirmed_height(probe, **rule)
+    judged = probe.curated[GHOST_COLUMN].astype('boolean')
+    current = (
+        part[GHOST_COLUMN].astype('boolean')
+        if GHOST_COLUMN in part.columns
+        else pd.Series(pd.NA, index=part.index, dtype='boolean')
+    )
+    part[GHOST_COLUMN] = current.where(~filled, judged)
+    return part
 
 
 def imputed_twin_dir(bundle_file, region):
@@ -2776,11 +2913,30 @@ def residential_lots(lots) -> np.ndarray:
     house before the class could confirm itself (Brunswick County NC;
     maintainer, 2026-10-18).
 
+    The class alone confirms nothing where the roll's own record says
+    otherwise (2026-10-19), unless its use group also names a home
+    (`RESIDENTIAL_USE`): the use group names a non-residential use
+    (`NON_RESIDENTIAL_USE`: "Use Value | Forestry & Related", 51 acres
+    of New Hanover County land valued $19.4M), or the roll records no
+    building (an improvement value of at most `NO_BUILDING_VALUE`: a
+    109-acre reservoir in Boston with no use group, called
+    Single-Family by NSI alone and drawn at $52M per home). A lot under
+    `NEW_HOME_MAX_HA` the roll calls vacant keeps its class: a new home
+    the roll has not caught up with. A manufactured home's land record
+    often carries no building, the home being personal property; its
+    use group names it, so the test spares it, as it spares a park of
+    them that the roll files as commercial. A class drawn from building
+    models alone was tried as a third test and dropped: the Nantucket
+    bundle states neither use group nor improvement value for many
+    houses.
+    Measured 2026-10-19 on nantucket-ma: 150 houses lost to that test
+
     Parameters
     ----------
     lots : pandas.DataFrame
-        `n_dwellings`, and where present `land_use_class`, `use_group`
-        and the roll's own count (`ROLL_DWELLINGS`).
+        `n_dwellings`, and where present `land_use_class`, `use_group`,
+        `improvement_value`, `area_ha` and the roll's own count
+        (`ROLL_DWELLINGS`).
 
     Returns
     -------
@@ -2805,8 +2961,37 @@ def residential_lots(lots) -> np.ndarray:
         (use.str.startswith('res') | use.str.contains('mixed')).fillna(False).to_numpy()
     )
     exempt = use.str.startswith('exempt').fillna(False).to_numpy()
-    own_class = land_use.isin(SINGLE_HOME_LAND_USE).fillna(False).to_numpy()
-    confirmed = (roll_count > 0) | use_says_home | (own_class & ~exempt)
+    names_home = use.str.contains(RESIDENTIAL_USE).fillna(False).to_numpy()
+    small = (
+        (pd.to_numeric(lots['area_ha'], errors='coerce') < NEW_HOME_MAX_HA)
+        .fillna(False)
+        .to_numpy()
+        if 'area_ha' in lots
+        else np.zeros(len(lots), dtype=bool)
+    )
+    new_home = small & use.str.contains('vacant|open.?space').fillna(False).to_numpy()
+    # A park of manufactured homes is a business to many rolls.
+    park = land_use.eq('Manufactured Home').fillna(False).to_numpy() & (dwellings >= 2)
+    use_says_other = (
+        use.str.contains(NON_RESIDENTIAL_USE).fillna(False).to_numpy()
+        & ~names_home
+        & ~new_home
+        & ~park
+    )
+    no_building = (
+        (pd.to_numeric(lots['improvement_value'], errors='coerce') <= NO_BUILDING_VALUE)
+        .fillna(False)
+        .to_numpy()
+        & ~names_home
+        & ~new_home
+        & ~park
+        if 'improvement_value' in lots
+        else np.zeros(len(lots), dtype=bool)
+    )
+    own_class = land_use.isin(SINGLE_HOME_LAND_USE).fillna(False).to_numpy() & ~(
+        exempt | use_says_other | no_building
+    )
+    confirmed = (roll_count > 0) | use_says_home | own_class
     return (
         (dwellings > 0)
         & land_use.isin(RESIDENTIAL_LAND_USE).fillna(False).to_numpy()
@@ -3040,6 +3225,7 @@ def build_web_scene(
         gdfs[layer.name] = merge_identical_outlines(gdf, layer)
     _mark_exempt_ground(gdfs, layers)
     _count_dwellings_from_above(gdfs, layers)
+    mark_land_ghosts(gdfs, layers)
 
     for layer in layers:
         gdf = gdfs[layer.name]

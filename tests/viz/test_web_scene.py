@@ -437,6 +437,8 @@ def test_imputed_twin_supplies_only_the_models_cells(tmp_path, monkeypatch):
             'terms': regular_dir / notice,
         },
     )
+    # A fabricated recipe without the height check.
+    monkeypatch.setattr(web_scene, 'ghost_rule', lambda recipe: None)
     # The twin's notice names the model's code; the page reads it from
     # there (fabricated commit).
     (twin_dir / notice).write_text(
@@ -974,6 +976,105 @@ def test_residential_lots_take_a_single_home_class_as_its_own_evidence():
         True,
         False,
     ]
+
+
+def test_residential_lots_follow_the_roll_where_it_names_no_home():
+    # Fabricated lots, each classed as homes with a home counted on it:
+    rows = [
+        # forest land at use value, no building on the roll;
+        ('Single-Family', 'Use Value | Forestry', 0.0, 20.0, 1.0),
+        # industrial land with two outlines seen from above;
+        ('Multiple Single-Family', 'INDUSTRIAL', 5e5, 40.0, 2.0),
+        # open land with no use group and a token improvement;
+        ('Single-Family', None, 200.0, 40.0, 1.0),
+        # a house on commercially coded land;
+        ('Single-Family', 'COMMERCIAL | SINGLE FAMILY RESIDENTIAL', 0.0, 0.3, 1.0),
+        # a mobile home whose land record carries no building;
+        ('Manufactured Home', 'MOBILE HOME SUBDIVISION', 0.0, 0.2, 1.0),
+        # a park of mobile homes that the roll files as commercial;
+        ('Manufactured Home', 'COMMERCIAL', 0.0, 8.0, 30.0),
+        # a new house on a lot the roll still calls vacant;
+        ('Single-Family', 'open_space | vacant', 0.0, 0.1, 1.0),
+        # a house the roll states neither use group nor value for.
+        ('Single-Family', None, np.nan, 0.4, 1.0),
+    ]
+    lots = pd.DataFrame(
+        rows,
+        columns=[
+            'land_use_class',
+            'use_group',
+            'improvement_value',
+            'area_ha',
+            'n_dwellings',
+        ],
+    ).assign(**{web_scene.ROLL_DWELLINGS: np.nan})
+    assert list(web_scene.residential_lots(lots)) == [
+        False,
+        False,
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
+
+
+def test_the_page_reads_the_height_check_from_the_footprint_recipe():
+    rule = web_scene.ghost_rule('US_footprint-openplaces-2026')
+    assert rule['min_value_per_sqft'] > 0
+    assert rule['max_value_per_floor_sqft'] > 0
+    assert web_scene.ghost_rule('US_parcel-openplaces-2026') is None
+
+
+def test_the_models_values_get_the_height_check(monkeypatch):
+    # Fabricated outlines of 100 m2 on one floor. The first two carry
+    # recorded values and the curate's own flags, which stay as they
+    # are; the last two took the model's value, a needle and a house.
+    rule = {'min_value_per_sqft': 3_500, 'max_value_per_floor_sqft': 3_000}
+    monkeypatch.setattr(web_scene, 'ghost_rule', lambda recipe: rule)
+    part = pd.DataFrame(
+        {
+            'structure_value': [9e8, 3e5, 4e8, 3e5],
+            'area_m2': [100.0] * 4,
+            web_scene.GHOST_COLUMN: pd.array([False, False, pd.NA, pd.NA]),
+        }
+    )
+    filled = pd.Series([False, False, True, True])
+    out = web_scene.flag_model_heights(part, 'r', {'structure_value': filled})
+    assert list(out[web_scene.GHOST_COLUMN]) == [False, False, True, False]
+
+
+def test_tiny_lots_carrying_an_accounts_value_are_land_ghosts(monkeypatch):
+    # Fabricated: 2,000 lots of 1,000 m2 worth $1,000 to $2,000 each,
+    # then a 20 m2 sliver carrying $5M, a 20 m2 lot at a high but real
+    # price, and a large lot at the sliver's value per area.
+    monkeypatch.setattr(web_scene, 'ghost_rule', lambda recipe: None)
+    side = np.sqrt(1_000.0)
+    geoms = [box(i * 100, 0, i * 100 + side, side) for i in range(2_000)]
+    values = list(np.linspace(1_000, 2_000, 2_000))
+    sliver = np.sqrt(20.0)
+    geoms += [
+        box(0, 1_000, sliver, 1_000 + sliver),
+        box(100, 1_000, 100 + sliver, 1_000 + sliver),
+        box(0, 5_000, 1_000, 6_000),
+    ]
+    values += [5e6, 200.0, 5e6 / 20 * 1e6]
+    lots = gpd.GeoDataFrame({'land_value': values}, geometry=geoms, crs=5070)
+    layer = web_scene.SceneLayer(
+        name='parcels',
+        label='Land',
+        recipe='land',
+        value_column='land_value',
+        area_unit='ac',
+        vmin=1.0,
+        vmax=10.0,
+    )
+    gdfs = {'parcels': lots}
+    web_scene.mark_land_ghosts(gdfs, [layer])
+    ghosts = gdfs['parcels'][web_scene.GHOST_COLUMN].to_numpy()
+    assert ghosts[-3] and not ghosts[-2] and not ghosts[-1]
+    assert not ghosts[:-3].any()
 
 
 def test_downtown_stop_names_the_unit_holding_it():

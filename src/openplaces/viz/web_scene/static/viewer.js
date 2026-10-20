@@ -1161,10 +1161,18 @@ async function main() {
   // footnote under the switches in the same panel (maintainer,
   // 2026-10-16).
   const hasGhosts = scene.layers.some((l) => l.n_ghosts > 0);
+  // Lots can be ghosts too (`mark_land_ghosts`): slivers carrying a
+  // whole account's value. The switch then names what it holds.
+  const ghostKinds = scene.layers
+    .filter((l) => l.n_ghosts > 0)
+    .map((l) => (l.name === 'buildings' ? 'buildings' : 'lots'));
+  const ghostWhat = ghostKinds.includes('lots')
+    ? (ghostKinds.includes('buildings') ? 'values' : 'lots')
+    : 'buildings';
   if (hasGhosts) {
     // Off by default (maintainer, 2026-10-17); `?show=ghosts` opens them.
     shown.ghosts = (params.get('show') || '').split(',').includes('ghosts');
-    switches.push(['ghosts', 'Unexplained buildings?']);
+    switches.push(['ghosts', `Unexplained ${ghostWhat}?`]);
   }
   // Named landmarks (`scene.landmarks`), a switch of their own.
   const landmarks = scene.landmarks || [];
@@ -1206,10 +1214,18 @@ async function main() {
     note.target = '_blank';
     note.rel = 'noopener';
     note.textContent = '?';
-    note.title = 'Unexplained buildings: their value per square foot is higher than '
-      + 'their measured floors explain. Drawn see-through when switched on. '
-      + 'Click for how they are found.';
-    note.setAttribute('aria-label', 'What are unexplained buildings? (methods page)');
+    const why = {
+      buildings: 'Unexplained buildings: their value per square foot is higher than '
+        + 'their measured floors explain.',
+      lots: 'Unexplained lots: tiny outlines carrying far more value per acre than '
+        + 'any other land here.',
+    };
+    const kinds = [...new Set(ghostKinds)];
+    note.title = `${kinds.map((k) => why[k]).join(' ')} Drawn see-through when `
+      + 'switched on. Click for how they are found.';
+    note.setAttribute(
+      'aria-label', `What are unexplained ${ghostWhat}? (methods page)`,
+    );
     layerSwitch.querySelector('[data-layer="ghosts"]').after(note);
   }
   const markLayerSwitch = () => {
