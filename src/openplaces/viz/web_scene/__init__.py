@@ -555,6 +555,112 @@ NEW_HOME_MAX_HA = 0.5
 # for outbuildings ("Secondary"), since the lot's class describes its
 # main building, not a shed.
 BUILDING_CLASS = 'building_class'
+# The type view (maintainer, 2026-10-19): one list of types for lots
+# and buildings, so a house and its lot share a color. Lots take their
+# roll's land use class; buildings their `BUILDING_CLASS` (the lot's
+# class for a main building, CHEER's occupancy type otherwise). Colors
+# start from the QGIS footprint style (single-family cyan, manufactured
+# home orange, multi-family purple, outbuildings pale), the lots' own
+# QGIS style being a different scheme. Entry 0 is the unknown type.
+TYPE_CATEGORIES = (
+    {'key': 'unknown', 'label': 'Unknown', 'color': '#969696', 'values': ()},
+    {
+        'key': 'single_family',
+        'label': 'Single-family',
+        'color': '#30bfe2',
+        'values': ('Single-Family', 'Multiple Single-Family'),
+    },
+    {
+        'key': 'townhome',
+        'label': 'Townhome',
+        'color': '#4f6fd9',
+        'values': ('Townhome',),
+    },
+    {
+        'key': 'multi_family',
+        'label': 'Multi-family',
+        'color': '#8260d4',
+        'values': (
+            'Multi-Family',
+            'Low-Rise Multi-Family',
+            'Mid-Rise Multi-Family',
+            'High-Rise Multi-Family',
+        ),
+    },
+    {
+        'key': 'condominium',
+        'label': 'Condominium',
+        'color': '#cc60d4',
+        'values': ('Condominium',),
+    },
+    {
+        'key': 'manufactured_home',
+        'label': 'Manufactured home',
+        'color': '#fcab60',
+        'values': ('Manufactured Home', 'Manufactured Home Park', 'RV Park'),
+    },
+    {
+        'key': 'commercial',
+        'label': 'Commercial',
+        'color': '#e6cf3c',
+        'values': (
+            'Commercial',
+            'Retail',
+            'Office',
+            'Professional Technical Services',
+            'Medical Office',
+            'Personal & Repair Services',
+            'Hotel',
+            'Bank',
+            'Entertainment/Recreation',
+            'Theater',
+            'Garage',
+        ),
+    },
+    {
+        'key': 'industrial',
+        'label': 'Industrial',
+        'color': '#a0785a',
+        'values': (
+            'Industrial',
+            'Light Industrial',
+            'Heavy Industrial',
+            'Wholesale',
+            'Food/Drug/Chemical',
+            'Metals/Minerals processing',
+            'High Technology',
+            'Construction',
+        ),
+    },
+    {
+        'key': 'institutional',
+        'label': 'Institutional',
+        'color': '#3fa596',
+        'values': (
+            'Institutional',
+            'Church',
+            'Average School',
+            'College/University',
+            'Government Services',
+            'Hospital',
+            'Nursing Home',
+            'Emergency Response',
+            'Institutional Dormitory',
+        ),
+    },
+    {
+        'key': 'open_land',
+        'label': 'Open land',
+        'color': '#8fbf6a',
+        'values': ('Vacant', 'Mostly Vacant', 'Agricultural', 'Recreation'),
+    },
+    {
+        'key': 'outbuilding',
+        'label': 'Outbuilding',
+        'color': '#c4cdca',
+        'values': ('Secondary',),
+    },
+)
 
 
 def building_class(gdf) -> pd.Series:
@@ -2301,6 +2407,17 @@ def border_paths(lines, land) -> list:
     return paths
 
 
+def type_codes(classes) -> np.ndarray:
+    """Each feature's position in `TYPE_CATEGORIES` (0: unknown), from a
+    lot's land use class or a building's class (`BUILDING_CLASS`)."""
+    lookup = {
+        value: code
+        for code, category in enumerate(TYPE_CATEGORIES)
+        for value in category['values']
+    }
+    return classes.astype('string').map(lookup).fillna(0).astype(np.uint8).to_numpy()
+
+
 def lot_total_value(gdf, value_column) -> np.ndarray:
     """Each lot's whole value, land and buildings, for choosing tour
     stops: the roll's `total_value` where it has one, else land plus
@@ -3180,6 +3297,10 @@ def build_web_scene(
     source_docs = {}
     bounds = {}
     manifest_layers = []
+    # The types any layer draws, and lots per type: the legend lists
+    # the types drawn, those on most lots first.
+    type_drawn = np.zeros(len(TYPE_CATEGORIES), dtype=bool)
+    type_count = np.zeros(len(TYPE_CATEGORIES), dtype=np.int64)
     notices = {}
     gdfs = {}
     for layer in layers:
@@ -3342,6 +3463,23 @@ def build_web_scene(
                     'vmax': other_high,
                 },
             }
+        # The type view: one category per feature, from the same list
+        # for lots and buildings (`TYPE_CATEGORIES`).
+        type_column = (
+            BUILDING_CLASS if BUILDING_CLASS in out.columns else 'land_use_class'
+        )
+        if type_column in out.columns:
+            codes = type_codes(out[type_column])
+            extra['type_code'] = codes
+            n_types = len(TYPE_CATEGORIES)
+            type_drawn |= np.bincount(codes, minlength=n_types) > 0
+            if layer is layers[0]:
+                # Lots per type, for the legend's order: by building,
+                # outbuildings ranked second in Wilmington, and by
+                # area the order lost the most common homes
+                # (maintainer, 2026-10-19).
+                type_count += np.bincount(codes, minlength=n_types)
+            views['type'] = {'label': 'Type', 'unit': 'type', 'categorical': True}
         if layer.model_views and scene_audience(region) == 'team':
             homes = None
             if 'dwelling' in views:
@@ -3586,6 +3724,17 @@ def build_web_scene(
         # scene's own (local) ones in the palettes and views.
         'national_bounds': {unit: list(b) for unit, b in NATIONAL_BOUNDS.items()},
         'place_title': place_title,
+        # The type view's categories, indexed by each feature's
+        # type_code; the same list for lots and buildings.
+        'types': [
+            {
+                **{k: c[k] for k in ('key', 'label', 'color')},
+                'present': bool(type_drawn[code]),
+                # Lots of the type.
+                'count': int(type_count[code]),
+            }
+            for code, c in enumerate(TYPE_CATEGORIES)
+        ],
         # Team pages with models: the factors to today's dollars per
         # county, and the models' credits for the Sources panel.
         'model_dollars': model_dollars,
