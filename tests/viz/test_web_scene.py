@@ -995,8 +995,10 @@ def test_residential_lots_follow_the_roll_where_it_names_no_home():
         ('Manufactured Home', 'COMMERCIAL', 0.0, 8.0, 30.0),
         # a new house on a lot the roll still calls vacant;
         ('Single-Family', 'open_space | vacant', 0.0, 0.1, 1.0),
-        # a house the roll states neither use group nor value for.
+        # a house the roll states neither use group nor value for;
         ('Single-Family', None, np.nan, 0.4, 1.0),
+        # a farmhouse on farmland at use value, a building on the roll.
+        ('Single-Family', 'Use Value | Agricultural', 1.5e5, 40.0, 1.0),
     ]
     lots = pd.DataFrame(
         rows,
@@ -1012,6 +1014,7 @@ def test_residential_lots_follow_the_roll_where_it_names_no_home():
         False,
         False,
         False,
+        True,
         True,
         True,
         True,
