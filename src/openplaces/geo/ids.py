@@ -1007,6 +1007,11 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     else:
         regex = _pattern_regex(pattern)
 
+    if s.empty:
+        # A row-wise apply over no rows returns a frame, not a series, and
+        # the null mask below then fails: a statewide source with a county
+        # that filed nothing in a partition (Illinois MyDec, 2014) hit it.
+        return pd.Series(pd.NA, index=s.index, dtype='string')
     cols = s.str.extract(regex, expand=True)
     i_null = cols.isnull().sum(axis=1).eq(len(cols.columns))
     cols.columns = [str(c) for c in cols.columns]

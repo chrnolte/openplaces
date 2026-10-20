@@ -1,0 +1,130 @@
+# Recipe: Illinois real estate transfer declarations (PTAX-203, with
+# the 203-A and 203-B supplements), filed through the Illinois
+# Department of Revenue's MyDec system and published on the state's
+# Socrata portal (data.illinois.gov, dataset it54-y4c6). One row per
+# declaration; a declaration is filed with every recorded deed that
+# transfers real property.
+#
+# PRIVACY. The dataset also carries seller, buyer, agent and preparer
+# names and addresses, and the property's street address. The
+# download URL requests an allow-list of columns ($select), so none of
+# those fields is ever fetched or written to disk.
+#
+# COVERAGE. The portal holds declarations since 2013-01-01. MyDec use
+# grew over 2014-2017, so the early years are partial: measured
+# 2026-10-19 (SoQL counts by year recorded), 78,372 rows in 2014,
+# 88,572 in 2015, 122,738 in 2016, 171,298 in 2017, then 275,338 in
+# 2018 and 282,631 in 2019. All 102 counties appear across the
+# portal's years; Richland has no 2014-2019 declaration. `download_by`
+# covers 2014-2019, what the request needed; extend `last` for later
+# years.
+#
+# THE QUERY. Line 10 of the form is 18 checkboxes describing the sale's
+# conditions (10a installment contract, which the portal stores as a
+# number; 10b related parties; 10c under 100% interest; 10d court
+# ordered; 10e in lieu of foreclosure; 10f condemnation; 10g short
+# sale; 10h bank REO; 10i auction; 10j relocation company; 10k
+# financial institution or government agency; 10l REIT buyer; 10m
+# pension fund buyer; 10n adjacent owner; 10o option; 10p trade; 10q
+# sale-leaseback; 10r other). The query writes them as one source code,
+# `L10:` followed by the letters of the checked lines in form order
+# (`L10:` alone when none is checked, `L10:hk` for bank REO by a
+# financial institution), mapped to `sale_qualification_code`. Composed
+# in SoQL (case() and ||) so that no ingest operation is needed; the
+# curate patch (US-IL_transaction-openplaces-2026) grades it. Measured
+# 2026-10-19 on 2016: 104,068 of 122,738 rows have no box checked;
+# 10h alone 8,695, 10r alone 2,242, 10h with 10k 1,295.
+#
+# MAPPED. declaration_id is the source's id; document_number the
+# recorder's; date_recorded the recording date; line 1 primary PIN the
+# parcel; line 3 whether more PINs follow (in the companion dataset
+# ay2h-5hx3, not read here); line 5 the instrument type (Warranty Deed,
+# Trustee Deed, Quit Claim Deed, Judicial Sale, ...); line 8 current
+# use as the form's letter (A land or lot, B residence, C mobile home,
+# D apartments of 6 units or fewer, E more than 6, F office, G retail,
+# H commercial, I industrial, J farm, K other); line 13 the net
+# consideration (full consideration less personal property).
+# Line 5 and line 8 are blank on 23,367 and 21,525 of 2016's rows.
+#
+# KEPT AS RECEIVED, unregistered (`keep_unnamed_columns`): line 2
+# total parcels, line 6 principal residence, line 7 property
+# advertised, line 11 full consideration. The registry has no name for
+# them; `n_parcels_per_sale` is the spine's own count and is not
+# overwritten from the form.
+#
+# LICENCE. Socrata licenseId PUBLIC_DOMAIN (checked 2026-10-19),
+# attribution "Department of Revenue". No terms page or click-through.
+
+description: >-
+  Illinois PTAX-203 real estate transfer declarations (MyDec) from the
+  Department of Revenue: price, recording date, instrument, use and sale
+  conditions.
+
+admin_id: US-IL
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: ildor
+    portal_url: "https://data.illinois.gov/d/it54-y4c6"
+    download_url: "https://data.illinois.gov/resource/it54-y4c6.csv?%24select=declaration_id%2C%20document_number%2C%20date_recorded%2C%20line_1_county%2C%20line_1_primary_pin%2C%20line_2_total_parcels%2C%20line_3_additional_pins%2C%20line_5_instrument_type%2C%20line_6_principal_residence%2C%20line_7_property_advertised%2C%20line_8_current_use%2C%20line_11_full_consideration%2C%20line_13_net_consideration%2C%20%27L10%3A%27%20%7C%7C%20case%28line_10a_fulfillment_of%20%3E%200%2C%20%27a%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10b_sale_between_related%2C%20%27b%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10c_transfer_of_100%2C%20%27c%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10d_court_ordered_sale%2C%20%27d%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10e_sale_in_lieu_of%2C%20%27e%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10f_condemnation%2C%20%27f%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10g_short_sale%2C%20%27g%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10h_bank_reo%2C%20%27h%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10i_auction_sale%2C%20%27i%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10j_seller_buyer_is%2C%20%27j%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10k_seller_buyer_is%2C%20%27k%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10l_buyer_is_a_real%2C%20%27l%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10m_buyer_is_a_pension%2C%20%27m%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10n_buyer_is_an_adjacent%2C%20%27n%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10o_buyer_is_exercising%2C%20%27o%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10p_trade_of_property%2C%20%27p%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10q_sale_leaseback%2C%20%27q%27%2C%20true%2C%20%27%27%29%20%7C%7C%20case%28line_10r_other%2C%20%27r%27%2C%20true%2C%20%27%27%29%20as%20line_10_conditions&%24where=date_recorded%20between%20%27{year}-01-01T00%3A00%3A00%27%20and%20%27{year}-12-31T23%3A59%3A59%27&%24order=declaration_id&%24limit=1000000"
+    license: "Public Domain (data.illinois.gov dataset licence)"
+    terms_url: null
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+download_by:
+  partition: year
+  first: 2014
+  last: 2019
+
+uncompressed_file_name: "ptax203_{year}.csv"
+
+# PINs, document numbers and codes are text with leading zeros.
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: line_1_county
+  admin_id_crosswalk:
+    recipe_id: "US-IL_transaction-ildor-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  transaction_id_source: declaration_id
+  instrument_number: document_number
+  recorded_date: date_recorded
+  admin3_name: line_1_county
+  parcel_id_assessor: line_1_primary_pin
+  sale_multi_parcel: line_3_additional_pins
+  doc_type: line_5_instrument_type
+  use_group_code: line_8_current_use
+  price_raw: line_13_net_consideration
+  sale_qualification_code: line_10_conditions
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: price_raw
+    output: price
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+
+keep_unnamed_columns: true
+
+# The bundled per-county tax-PIN conversions (geo/parcel_id_links.csv)
+# hold a row for every Illinois county.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
+
+save_to:
+  data_dir: cache
+
+# Integrate the per-year files into one file per county, as the
+# Wisconsin and Indiana transfer recipes do.
+aggregate_by:
+  single_file: true
