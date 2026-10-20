@@ -109,14 +109,22 @@ def apportion_reference_values(
       references (unweighted).
     - ``land_value``, ``land_value_imputed``, ``total_value``
       (:data:`WHOLE_VALUE_COLUMNS`): the dominant (largest-overlap)
-      reference's value, kept only on principal entities —
-      ``priority == 'primary'`` when *priority* is given, else entities that
-      are the sole spine entity on their dominant reference — and suppressed
-      for entities affected by the dwelling-linked rule below. A reference
-      with one qualifying entity gives it the whole value; a reference with
-      several **divides** the value among them by overlap area (equally, if
-      none has a recorded area), because a parcel's assessed value is one
-      figure and must never be repeated per building. Unaffected by
+      reference's value, kept only on principal entities
+      (``priority == 'primary'`` when *priority* is given, else entities
+      that are the sole spine entity on their dominant reference) and
+      suppressed for entities affected by the dwelling-linked rule below.
+      A reference with one qualifying entity gives it the whole value; a
+      reference with several **divides** the value among them by overlap
+      area (equally, if none has a recorded area), because a parcel's
+      assessed value is one figure and must never be repeated per
+      building. When *priority* is given, a reference that no principal
+      entity draws from (it is no entity's dominant reference, or only
+      secondary or suppressed entities hold it as theirs) divides its
+      value the same way among its own linked entities that are neither
+      secondary nor suppressed on it, so an outline over a townhome row
+      takes every lot's land, not only its largest lot's. A reference
+      whose linked entities are all secondary keeps its value unallocated,
+      and so does every such reference without *priority*. Unaffected by
       *equal_area_ref_ids*.
     - ``address``: the dominant reference's value, unrestricted.
 
@@ -347,6 +355,7 @@ def apportion_reference_values(
         )
 
     dominant = None
+    whole_allocations: dict[str, pd.DataFrame] = {}
     whole_value_cols = [c for c in WHOLE_VALUE_COLUMNS if c in value_cols]
     if whole_value_cols or 'address' in value_cols:
         dominant = (
@@ -398,8 +407,39 @@ def apportion_reference_values(
             share = share.where(
                 weight_per_ref > 0, is_principal.astype(float) / n_principal
             )
+            principal_ref = dominant[ref_id_col].where(is_principal)
+            fallback = None
+            if priority is not None:
+                fallback = _fallback_shares(
+                    pairs,
+                    ref_ids=ref_ids,
+                    area_col=area_col,
+                    paid_refs=set(principal_ref.dropna()),
+                    excluded=is_secondary_pair | suppress.to_numpy(),
+                )
             for col in whole_value_cols:
-                out[col] = (dominant[col] * share).where(is_principal)
+                direct = (dominant[col] * share).where(is_principal)
+                allocations = [
+                    pd.DataFrame({ref_id_col: principal_ref, 'amount': direct}).dropna()
+                ]
+                if fallback is not None and len(fallback):
+                    amount = attrs.loc[fallback.index, col] * fallback
+                    indirect = amount.groupby(spine_ids[fallback.index]).sum(
+                        min_count=1
+                    )
+                    direct = pd.concat([direct, indirect], axis=1).sum(
+                        axis=1, min_count=1
+                    )
+                    allocations.append(
+                        pd.DataFrame(
+                            {
+                                ref_id_col: ref_ids[fallback.index],
+                                'amount': amount,
+                            }
+                        ).dropna()
+                    )
+                out[col] = direct
+                whole_allocations[col] = pd.concat(allocations, ignore_index=True)
 
     result = pd.DataFrame(out)
     result.index.name = spine_id_col
@@ -408,13 +448,60 @@ def apportion_reference_values(
         pairs=pairs,
         ref_values=ref_values,
         value_cols=value_cols,
-        spine_id_col=spine_id_col,
         ref_id_col=ref_id_col,
-        dominant_ref=(
-            dominant[ref_id_col] if whole_value_cols and dominant is not None else None
-        ),
+        whole_allocations=whole_allocations,
     )
     return result
+
+
+def _fallback_shares(
+    pairs: pd.DataFrame,
+    *,
+    ref_ids: pd.Series,
+    area_col: str,
+    paid_refs: set,
+    excluded: np.ndarray,
+) -> pd.Series:
+    """Shares of a whole value for references no principal entity drew.
+
+    A whole value goes to the principal entities of the reference they
+    overlap most. A reference that is no principal entity's largest
+    overlap therefore passed nothing at all: the lots of a townhome row
+    drawn as one outline, of which the outline names only the largest;
+    the unit lots under a condominium cluster. Their improvement value,
+    split over every link, did reach the outlines.
+
+    Measured 2026-10-18 on US-NC-DUR: 17,516 parcels, $7.0B total, passed none.
+
+    The fallback divides such a reference's value among its own linked
+    entities by overlap area, leaving out secondary entities and those
+    the dwelling-linked rule suppresses on it. It runs only for
+    references nothing else drew from, so a lot that already pays its
+    own house keeps paying it alone. Dropping dominance for every
+    reference instead would hand part of a lot's land to a neighbor's
+    outline reaching over the line.
+
+    Measured 2026-10-19 on US-MA-SOM: 5 lots would lose 10 to 35% of their land.
+
+    Returns
+    -------
+    pandas.Series
+        Share per eligible pair, indexed like *pairs*; shares sum to 1
+        per reference (equal division where no pair has a positive area).
+    """
+    eligible = ~ref_ids.isin(paid_refs).to_numpy() & ~excluded
+    if not eligible.any():
+        return pd.Series(dtype=float)
+    refs = ref_ids[eligible]
+    weight = (
+        pd.to_numeric(pairs.loc[eligible, area_col], errors='coerce')
+        .astype(float)
+        .fillna(0.0)
+        .clip(lower=0.0)
+    )
+    total = weight.groupby(refs).transform('sum')
+    count = weight.groupby(refs).transform('size')
+    return (weight / total.replace(0.0, np.nan)).where(total > 0, 1.0 / count)
 
 
 class ValueOverAllocationError(AssertionError):
@@ -446,9 +533,8 @@ def _assert_not_over_allocated(
     pairs: pd.DataFrame,
     ref_values: pd.DataFrame,
     value_cols: list[str],
-    spine_id_col: str,
     ref_id_col: str,
-    dominant_ref: pd.Series | None,
+    whole_allocations: dict[str, pd.DataFrame],
 ) -> None:
     """Fail if any reference's value was allocated more than once.
 
@@ -463,8 +549,11 @@ def _assert_not_over_allocated(
     stage apportion through, so the guarantee covers every recipe and every
     dataset rather than one pipeline's configuration.
 
-    Whole-value columns are checked per reference, which is exact: each
-    entity draws them from exactly one dominant reference. Proportional
+    Whole-value columns are checked per reference, which is exact: the
+    apportionment records every (reference, amount) it hands out in
+    *whole_allocations*, one row per principal entity's dominant
+    reference and one per fallback pair, and the amounts must add up to
+    the column in *result*. Proportional
     columns are checked on the total instead, because an entity sums shares
     from several references and no per-reference attribution survives into
     *result*; duplication still shows up there as a total above the sum of
@@ -498,14 +587,23 @@ def _assert_not_over_allocated(
                 'assumes non-negative references; treat it as unknown '
                 "upstream (curate step 'null_out_of_range')."
             )
-        if col in WHOLE_VALUE_COLUMNS and dominant_ref is not None:
-            per_ref = allocated.groupby(dominant_ref.reindex(allocated.index)).sum()
+        if col in WHOLE_VALUE_COLUMNS and col in whole_allocations:
+            pieces = whole_allocations[col]
+            recorded = pieces['amount'].sum()
+            if (
+                abs(allocated.sum() - recorded)
+                > 0.005 * len(pieces) + abs(recorded) * 1e-9
+            ):
+                raise ValueOverAllocationError(
+                    f"'{col}': the entities hold {allocated.sum():,.2f} but the "
+                    f'allocations recorded per reference sum to {recorded:,.2f}; '
+                    'a value reached an entity outside the recorded split.'
+                )
+            grouped = pieces.groupby(ref_id_col)['amount']
+            per_ref = grouped.sum()
             source_per_ref = source.reindex(per_ref.index)
             # Per-pair rounding can add at most half a cent per entity.
-            tolerance = (
-                0.005 * allocated.groupby(dominant_ref.reindex(allocated.index)).size()
-                + source_per_ref.abs() * 1e-9
-            )
+            tolerance = 0.005 * grouped.size() + source_per_ref.abs() * 1e-9
             excess = per_ref - source_per_ref - tolerance
             if (excess > 0).any():
                 worst = excess.idxmax()

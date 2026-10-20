@@ -268,9 +268,12 @@ or by floor area (outline times measured floors, `floor_weight`) where
 every outline on the lot has a height or is under `unmeasured_max_m2`;
 a secondary structure's share passes to the lot's other footprints. Land
 and total value go to the principal footprints, divided by overlap area.
-A parcel no footprint has its largest overlap on passes no land or total,
-so footprint sums fall short of parcel sums by design; read regional
-totals from curated parcels.
+A parcel that is no principal footprint's largest overlap (a lot of a
+townhome row drawn as one outline, a unit lot under a condominium
+cluster) divides its land and total among the footprints linked to it
+that are neither secondary nor dwelling-suppressed. Footprint sums still
+fall short of parcel sums, by the parcels with no footprint or only
+secondary ones; read regional totals from curated parcels.
 
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 
