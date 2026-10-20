@@ -527,10 +527,10 @@ SINGLE_HOME_LAND_USE = RESIDENTIAL_LAND_USE - {'Multi-Family'}
 # Words of a roll's use group (lowercased) naming a use that is not
 # homes, and words naming homes; a use group with the first and none
 # of the second keeps the class from confirming a lot
-# (`residential_lots`).
-NON_RESIDENTIAL_USE = (
-    r'commercial|industrial|open.?space|vacant|use value|agricultur|forest|exempt'
-)
+# (`residential_lots`). Farm and forest words are not among the first:
+# a farmhouse is a home (maintainer, 2026-10-19), and farmland with no
+# building on the roll fails the `NO_BUILDING_VALUE` test instead.
+NON_RESIDENTIAL_USE = r'commercial|industrial|open.?space|vacant|exempt'
 RESIDENTIAL_USE = (
     r'resid|family|home|dwell|housing|condo|mobile|manufactured'
     r'|\bmfg\b|\bmh\b|\bres\b|\bsfr\b'
@@ -2916,11 +2916,14 @@ def residential_lots(lots) -> np.ndarray:
     The class alone confirms nothing where the roll's own record says
     otherwise (2026-10-19), unless its use group also names a home
     (`RESIDENTIAL_USE`): the use group names a non-residential use
-    (`NON_RESIDENTIAL_USE`: "Use Value | Forestry & Related", 51 acres
-    of New Hanover County land valued $19.4M), or the roll records no
-    building (an improvement value of at most `NO_BUILDING_VALUE`: a
-    109-acre reservoir in Boston with no use group, called
-    Single-Family by NSI alone and drawn at $52M per home). A lot under
+    (`NON_RESIDENTIAL_USE`: industrial land with two outlines seen from
+    above), or the roll records no building (an improvement value of
+    at most `NO_BUILDING_VALUE`: "Use Value | Forestry & Related", 51
+    acres of New Hanover County land valued $19.4M; a 109-acre
+    reservoir in Boston with no use group, called Single-Family by NSI
+    alone and drawn at $52M per home). Farm and forest land whose roll
+    records a building keeps its home: a farmhouse is one, though its
+    lot's whole land value is then counted to it. A lot under
     `NEW_HOME_MAX_HA` the roll calls vacant keeps its class: a new home
     the roll has not caught up with. A manufactured home's land record
     often carries no building, the home being personal property; its
