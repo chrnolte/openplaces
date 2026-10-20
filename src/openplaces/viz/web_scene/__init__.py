@@ -531,6 +531,12 @@ SINGLE_HOME_LAND_USE = RESIDENTIAL_LAND_USE - {'Multi-Family'}
 # a farmhouse is a home (maintainer, 2026-10-19), and farmland with no
 # building on the roll fails the `NO_BUILDING_VALUE` test instead.
 NON_RESIDENTIAL_USE = r'commercial|industrial|open.?space|vacant|exempt'
+# Words of a farm or forest lot's use group. Such a lot's land is drawn
+# per acre, not per home, unless its use group also names a home (a
+# homesite): one farmhouse would otherwise carry the whole farm's land
+# (maintainer, 2026-10-19). The farmhouse stays a home on the building
+# layer, which classes buildings on their own.
+FARM_USE = r'use value|agricultur|forest|farm'
 RESIDENTIAL_USE = (
     r'resid|family|home|dwell|housing|condo|mobile|manufactured'
     r'|\bmfg\b|\bmh\b|\bres\b|\bsfr\b'
@@ -2921,9 +2927,13 @@ def residential_lots(lots) -> np.ndarray:
     at most `NO_BUILDING_VALUE`: "Use Value | Forestry & Related", 51
     acres of New Hanover County land valued $19.4M; a 109-acre
     reservoir in Boston with no use group, called Single-Family by NSI
-    alone and drawn at $52M per home). Farm and forest land whose roll
-    records a building keeps its home: a farmhouse is one, though its
-    lot's whole land value is then counted to it. A lot under
+    alone and drawn at $52M per home). A farm or forest lot
+    (`FARM_USE`) is never a home lot, even with a farmhouse on it: the
+    farmhouse is a home, but its lot's whole land value would be
+    counted to it, so the land is drawn per acre and the farmhouse
+    shows as a home on the building layer. A use group naming a
+    homesite keeps it a home lot. Codes a roll states in place of words
+    (Wisconsin's property classes) are not read. A lot under
     `NEW_HOME_MAX_HA` the roll calls vacant keeps its class: a new home
     the roll has not caught up with. A manufactured home's land record
     often carries no building, the home being personal property; its
@@ -2995,10 +3005,12 @@ def residential_lots(lots) -> np.ndarray:
         exempt | use_says_other | no_building
     )
     confirmed = (roll_count > 0) | use_says_home | own_class
+    farm = use.str.contains(FARM_USE).fillna(False).to_numpy() & ~names_home
     return (
         (dwellings > 0)
         & land_use.isin(RESIDENTIAL_LAND_USE).fillna(False).to_numpy()
         & confirmed
+        & ~farm
     )
 
 
