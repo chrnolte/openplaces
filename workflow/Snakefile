@@ -209,9 +209,16 @@ def mem_mb(stage, admin_id, recipe_id=None):
     return 8000
 
 
+# Inputs a built job lacks but another job produces (a new source for
+# units whose spines exist) are targets too: under mtime triggers
+# Snakemake would otherwise never schedule their producers, and the
+# consumers would never see the new source (RecipeDAG.stale_inputs).
 rule all:
     input:
-        [str(p) for p in dag.target_paths()]
+        list(dict.fromkeys(
+            [str(p) for p in dag.target_paths()]
+            + [str(p) for p in dag.stale_inputs()]
+        ))
 
 
 # One ingest job per staging recipe, covering every admin unit of the

@@ -1136,6 +1136,47 @@ class RecipeDAG:
                 paths.append(path)
         return paths
 
+    def stale_inputs(self) -> list[Path]:
+        """Inputs a built job lacks that another job of the graph produces.
+
+        Under mtime rerun triggers, Snakemake reruns a job whose output
+        exists only when an input is newer; an input that does not exist
+        yet is not looked at, so its producer is never scheduled. A new
+        source recipe for units whose spines are built therefore changed
+        nothing: adding Cundinamarca's cadastre to an Andes run of 768
+        municipalities planned none of its ingests until the 114 spines
+        were deleted by hand (measured 2026-10-19 on co-andes). Listing
+        these paths as targets beside `target_paths` schedules the
+        producers; their new outputs are then newer than the consumers'
+        outputs, so exactly those consumers rerun.
+
+        Inputs the data lifecycle consumed (absent, with a receipt) are
+        not returned: `input_paths` already drops them for a job whose
+        output exists.
+        """
+        produced: set[Path] = set()
+        jobs = []
+        for node in self._nodes:
+            if node.stage in ('deliver', 'validate'):
+                continue
+            job = (node.stage, node.recipe_id, node.admin_id, node.region)
+            try:
+                out = self.output_path(*job)
+            except Exception:  # noqa: BLE001 - unresolvable, not a producer
+                continue
+            produced.add(out)
+            jobs.append((job, out))
+        stale: list[Path] = []
+        seen: set[Path] = set()
+        for job, out in jobs:
+            if not out.exists():
+                continue
+            for path in self.input_paths(*job):
+                if path in produced and path not in seen and not path.exists():
+                    seen.add(path)
+                    stale.append(path)
+        return stale
+
     def plan(self) -> pd.DataFrame:
         """Preview which jobs would run and why (library-side, stat-only).
 
