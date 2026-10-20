@@ -210,12 +210,17 @@ share:
       - madison-wi
       # Nantucket MA, the whole island, for the value pages (2026-10-18).
       - nantucket-ma
+      # Washington DC and the counties within 15 km of the Wilson
+      # Building (2026-10-19).
+      - washington-dc
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),
     # which every other bundle withholds. Never publish a team bundle.
     team_regions:
       - cheer-eastern-nc
+      # Fairfax County values, cleared for the team (2026-10-20).
+      - washington-dc
     # An outline two units both curated is cut at the line between
     # them and each piece keeps its own unit's assessed values
     # (io/delivery/slicing.py; maintainer, 2026-10-17). Curated files

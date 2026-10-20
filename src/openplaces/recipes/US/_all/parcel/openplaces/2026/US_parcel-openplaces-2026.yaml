@@ -866,6 +866,9 @@ share:
       - nantucket-ma
       # Lake County FL, for the team model page (2026-10-19).
       - lake-county-fl
+      # Washington DC and the counties within 15 km of the Wilson
+      # Building (2026-10-19).
+      - washington-dc
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps the
     # placeslab land values cleared for team sharing only, which every
@@ -873,3 +876,5 @@ share:
     # value page (maintainer, 2026-10-18).
     team_regions:
       - nantucket-ma
+      # Fairfax County values, cleared for the team (2026-10-20).
+      - washington-dc
