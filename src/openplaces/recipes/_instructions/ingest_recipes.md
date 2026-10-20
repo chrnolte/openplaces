@@ -53,6 +53,15 @@ Three mutually exclusive routes, in order of preference:
 | `download_url_source` + `download_url_source_regex` | the real link must be scraped from a landing page (per-year files with unpredictable ids) |
 | `download_url_scraper: arcgis_rest_scraper` + `scraper_options.layer_url` | only when no bulk file exists |
 
+A source that publishes one current file per unit can replace a unit's
+file with a worse release while the older file stays on the server. To
+hold that unit to the older file, list it under
+`download_by.pinned_download_urls` (`{US-DC: <url>}`): the unit downloads
+that URL, skips the scrape, and reads the file under the URL's own name,
+so a newer file on disk that matches a wildcard `compressed_file_name`
+is not picked. Say in the header what was measured that makes the older
+release better.
+
 `compressed_file_name` / `uncompressed_file_name` name what lands on disk;
 when `uncompressed_file_name` is set, the download is saved under that name
 regardless of the URL's shape, so a query-string URL is fine.
