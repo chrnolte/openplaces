@@ -378,3 +378,61 @@ def test_manufactured_home_evidence_vetoes_a_multi_family_land_use(recipe):
     assert pd.isna(result.iloc[0])
     assert pd.isna(result.iloc[1])
     assert result.iloc[2] == 'Multi-Family'
+
+
+# Footprint evidence that reaches the Multiple Single-Family score on
+# its own: two primary outlines, none small and elongated, a FEMA
+# single-family reading, and any land share.
+_TWO_HOUSES_FROM_ABOVE = {
+    'n_footprints_per_parcel': 2,
+    'n_primary_footprints_per_parcel': 2,
+    'group_parcel': 'Single Family',
+    'group_footprint_fema': 'Single Family',
+}
+
+
+@pytest.mark.parametrize(
+    'label, expected',
+    [
+        ('open_space | vacant', 'Vacant'),
+        ('INDUSTRIAL', 'Industrial'),
+        ('COMMERCIAL | CONVENIENCE STORE', 'Retail'),
+        ('Commercial | Unused Land', 'Commercial'),
+    ],
+)
+def test_a_non_residential_land_use_vetoes_multiple_single_family(
+    recipe, label, expected
+):
+    # The roll records no building value and names a non-residential
+    # use; outlines seen from above must not make the lot a group of
+    # homes. It falls to the class its land use names.
+    result = _classify(
+        recipe,
+        [
+            {
+                **_TWO_HOUSES_FROM_ABOVE,
+                'use_group_combined': label,
+                'improvement_value': 0.0,
+            }
+        ],
+    )
+    assert result.iloc[0] == expected
+
+
+@pytest.mark.parametrize(
+    'label',
+    [
+        'COMMERCIAL | SINGLE FAMILY RESIDENTIAL',
+        'RES RU ACR | COMMERCIAL SERVICE SHOP',
+        'residential | single family',
+        None,
+    ],
+)
+def test_houses_on_a_lot_the_roll_also_calls_residential_stay_multiple(recipe, label):
+    # A commercial code beside a residential one is a house on
+    # commercially coded land; with no land use at all the footprints
+    # still decide.
+    result = _classify(
+        recipe, [{**_TWO_HOUSES_FROM_ABOVE, 'use_group_combined': label}]
+    )
+    assert result.iloc[0] == 'Multiple Single-Family'
