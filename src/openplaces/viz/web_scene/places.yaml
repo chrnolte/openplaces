@@ -114,3 +114,70 @@ places:
     downtown: [-70.09911, 41.28501]
     downtown_note: Town building lot, 16 Broad St
     team: true
+  # Team pages of land value models handed over as files (maintainer,
+  # 2026-10-19, for the BEA meeting): `model_files` is one parquet per
+  # unit under the data root, keyed by `parcel_id`, with its JSON
+  # sidecar; the page reads the public bundles and is a team page by
+  # its models (`local.place_models`). Whole counties.
+  - slug: madison-team
+    title: Dane County, Wisconsin (team)
+    extent_note: Dane County, for the research team
+    state: US-WI
+    admin_ids: [US-WI-DA]
+    downtown: [-89.3824, 43.07243]
+    downtown_note: City-County Building lot, 210 Martin Luther King Jr Blvd
+    team: true
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+  - slug: lake-county-fl-team
+    title: Lake County, Florida (team)
+    extent_note: Lake County, for the research team
+    state: US-FL
+    admin_ids: [US-FL-LA]
+    downtown: [-81.72972, 28.80171]
+    downtown_note: County administration building lot, 315 W Main St, Tavares
+    team: true
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+  - slug: pitt-nc-team
+    title: Pitt County, North Carolina (team)
+    extent_note: Pitt County, for the research team
+    state: US-NC
+    admin_ids: [US-NC-PIT]
+    downtown: [-77.37458, 35.61165]
+    downtown_note: City hall lot, 200 W Fifth St, Greenville
+    team: true
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+  # No openplaces bundle: the model file carries the lots (MD iMAP
+  # outlines, SDAT values) and the page is land alone, on flat ground
+  # (`lots_in_model_file`, `terrain: false`).
+  - slug: prince-georges-md-team
+    title: Prince George's County, Maryland (team)
+    extent_note: Prince George's County, for the research team
+    state: US-MD
+    admin_ids: [US-MD-PG]
+    # The tour opens on the Suitland Federal Center, BEA's campus, for
+    # the BEA meeting (maintainer, 2026-10-19), not at the county seat.
+    downtown: [-76.93473, 38.84994]
+    downtown_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
+    team: true
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+    lots_in_model_file: true
+    terrain: false
+  # Washington DC, a circle like every page (maintainer, 2026-10-19),
+  # reaching into every state of `states`; the tour starts at Suitland
+  # (BEA). Until the pipeline delivers region `washington-dc`, its lots
+  # come from model files (DC and Prince George's only); then
+  # `lots_in_model_file` goes, and the page reads the bundles, with
+  # models refit on their parcel ids.
+  - slug: washington-dc-pg-team
+    title: Washington DC area (team)
+    around: the John A. Wilson Building, for the research team
+    state: US-DC
+    states: [US-DC, US-MD, US-VA]
+    center: [-77.03133, 38.89503]
+    center_note: City hall lot (John A. Wilson Building), 1350 E St NW in DC's records
+    downtown: [-76.93473, 38.84994]
+    downtown_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
+    team: true
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+    lots_in_model_file: true
+    terrain: false

@@ -56,7 +56,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -431,6 +431,170 @@ def dollars_factors(counties, house, consumer, state_house=None) -> dict:
             'estimated': estimated,
         }
     return out
+
+
+@dataclass(frozen=True)
+class ModelFiles:
+    """Land value models handed over as files, for a team page.
+
+    The valuation work (openplaces-valuation) fits the models and hands
+    one parquet per county, keyed by the bundle's `parcel_id`, with a
+    JSON sidecar beside it (same stem, `.json`). The page joins the
+    columns onto the lots by that key, so no recipe or bundle changes
+    (maintainer, 2026-10-19, for the BEA meeting). Their predictions
+    are already in one year's dollars (`year`), so no price index is
+    applied to them: the "dollars" view is the prediction itself.
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Per lot, indexed by `parcel_id`: each view's log column and its
+        area of applicability column.
+    views : tuple of ModelView
+        In the order of their buttons.
+    year : int
+        The year of the predictions' dollars.
+    basis : str
+        The price basis in words, for the Sources panel.
+    credits : tuple of dict
+        `name` and `credit` entries for the Sources panel.
+    data_credits : tuple of dict
+        The sidecars' own `credits`: the data the files were made from
+        (a lots file's outlines and values), whatever their names.
+    """
+
+    table: pd.DataFrame
+    views: tuple
+    year: int
+    basis: str = ''
+    credits: tuple = ()
+    data_credits: tuple = ()
+
+
+def read_model_files(paths) -> ModelFiles | None:
+    """The models of `paths` (parquets with JSON sidecars), pooled.
+
+    The sidecar holds `year` or `predict_year` (the predictions'
+    dollars), `basis` or `price_basis`, `views` (each `key`, `label`,
+    `log_column` and optionally `aoa_column`, `credit` and
+    `n_training_sales`) and optionally `credits` (each `name`,
+    `credit`). Files that do not exist are skipped; None when none do.
+    """
+    tables, views, credits, data, years, bases = [], {}, [], [], set(), set()
+    for path in map(Path, paths):
+        if not path.exists():
+            continue
+        side = json.loads(path.with_suffix('.json').read_text(encoding='utf-8'))
+        table = pd.read_parquet(path)
+        if 'parcel_id' in table.columns:
+            table = table.set_index('parcel_id')
+        tables.append(table)
+        # The valuation work writes `predict_year` and `price_basis`.
+        years.add(int(side.get('year', side.get('predict_year'))))
+        basis = str(side.get('basis', side.get('price_basis', '')))
+        # The columns are logs; the page shows the values.
+        bases.add(basis.replace(' (natural log)', ''))
+        for view in side['views']:
+            if view['log_column'] not in table.columns:
+                continue
+            views.setdefault(
+                view['key'],
+                ModelView(
+                    view['key'],
+                    view['label'],
+                    view['log_column'],
+                    view.get('aoa_column'),
+                ),
+            )
+            if view.get('credit'):
+                credits.append({'name': view['label'], 'credit': view['credit']})
+            if view.get('n_training_sales'):
+                sales = int(view['n_training_sales'])
+                credits.append(
+                    {
+                        'name': f'{view["label"]}, {side.get("admin_id", path.stem)}',
+                        'credit': f'Trained on {sales:,} sales.',
+                    }
+                )
+        credits += list(side.get('credits') or [])
+        data += list(side.get('credits') or [])
+    if not tables:
+        return None
+    if len(years) > 1:
+        raise ValueError(f'Model files in different dollars: {sorted(years)}.')
+    table = pd.concat(tables)
+    unique = {(c['name'], c['credit']): c for c in credits}
+    data_unique = {(c['name'], c['credit']): c for c in data}
+    return ModelFiles(
+        table=table[~table.index.duplicated(keep='first')],
+        views=tuple(views.values()),
+        year=years.pop(),
+        basis='; '.join(sorted(b for b in bases if b)),
+        credits=tuple(unique.values()),
+        data_credits=tuple(data_unique.values()),
+    )
+
+
+def lots_from_model_file(path, layer) -> tuple[gpd.GeoDataFrame, SceneLayer]:
+    """Lots and their layer from a model file that carries the outlines.
+
+    For a county openplaces has no bundle of (Prince George's County
+    MD, maintainer 2026-10-19): the valuation work hands one GeoParquet
+    of lots with the source's land values and the models' columns. The
+    land value shown is the recorded one (nothing is filled), and
+    without `n_dwellings` the layer has no per-home view. A personal
+    column in the file is refused, whether or not the page would show
+    it.
+
+    Parameters
+    ----------
+    path : str or Path, or a list of them
+        The GeoParquet(s), one per unit, each with `parcel_id`,
+        `admin3_id` and `land_value` (Prince George's and Washington DC
+        on one page; maintainer, 2026-10-19).
+    layer : SceneLayer
+        The lots' layer of `VALUE_SCENE_LAYERS`.
+
+    Returns
+    -------
+    tuple of (geopandas.GeoDataFrame, SceneLayer)
+    """
+    gdf = _read_given_files(path, 'parcel_id')
+    if layer.value_column not in gdf.columns:
+        gdf[layer.value_column] = gdf['land_value']
+    return _fit_given_layer(gdf, layer)
+
+
+def _read_given_files(path, key) -> gpd.GeoDataFrame:
+    """Handed-over GeoParquets pooled in longitude and latitude, indexed
+    by `key`; refused when one carries a personal column."""
+    paths = [path] if isinstance(path, str | Path) else list(path)
+    parts = []
+    for one in paths:
+        part = gpd.read_parquet(one)
+        personal = [c for c in part.columns if is_personal_attribute(c)]
+        if personal:
+            raise PersonalColumnError(f'{one} carries personal columns: {personal}.')
+        parts.append(part.to_crs(4326))
+    gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=4326)
+    return gdf.set_index(key) if key in gdf.columns else gdf
+
+
+def _fit_given_layer(gdf, layer) -> tuple[gpd.GeoDataFrame, SceneLayer]:
+    """A handed-over frame and its layer, fitted to each other: no
+    per-home view without dwellings, and missing tooltip columns
+    present but empty."""
+    if 'n_dwellings' not in gdf.columns:
+        dropped = {'n_dwellings', f'{layer.value_column}_per_dwelling'}
+        layer = replace(
+            layer,
+            per_dwelling_label=None,
+            tooltip=tuple(t for t in layer.tooltip if t.column not in dropped),
+        )
+    for tip in layer.tooltip:
+        if tip.column not in gdf.columns and tip.column != 'n_records_on_outline':
+            gdf[tip.column] = pd.NA
+    return gdf, layer
 
 
 def lot_dollars_factors(gdf) -> tuple[np.ndarray, dict]:
@@ -1884,8 +2048,9 @@ MATTE = {'ambient': 0.35, 'diffuse': 0.6, 'shininess': 32, 'specularColor': [0, 
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
     """The page's color options (maintainer's choice, 2026-10-16).
 
-    Landscape (the default, first), Sunset, Neon and Pastel. The
-    first view stays warm and light at its dearest places: the
+    Pastel (the default, first; maintainer, 2026-10-20), then
+    Landscape (shown as "Earth"), Sunset and Neon. Landscape was the
+    first default; its view stays warm and light at its dearest places: the
     maintainer turned down every variant that bought building-to-land
     contrast with blue or dark grounds, or with a dark, stark top of
     the scale ("looks sad"). Contrast was scored on the color pairs
@@ -2121,7 +2286,16 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             },
         ),
     ]
-    return [p for p in palettes if set(p.layers) == names]
+    # The default (Pastel) first, on the chips too (maintainer,
+    # 2026-10-20); the others keep their order.
+    palettes.sort(key=lambda p: p.id != DEFAULT_PALETTE)
+    # A scene of fewer layers (lots alone, `lots_from_model_file`) keeps
+    # each palette's colors for the layers it has.
+    return [
+        replace(p, layers={k: v for k, v in p.layers.items() if k in names})
+        for p in palettes
+        if names <= set(p.layers)
+    ]
 
 
 def palette_manifest(palette: Palette, layers, bounds=None, stops: int = 256) -> dict:
@@ -3174,6 +3348,8 @@ def build_web_scene(
     phone_scene=None,
     downtown=None,
     place_title=None,
+    model_files=None,
+    lots_file=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -3246,6 +3422,17 @@ def build_web_scene(
     place_title : str, optional
         The place's name ("Boston area"), shown at the top of the page
         for a few seconds as it opens (maintainer, 2026-10-18).
+    model_files : ModelFiles, optional
+        Land value models handed over as files (`read_model_files`):
+        joined onto the lots by `parcel_id`, they replace the layer's
+        own `model_views`, and they make the page a team page
+        (`audience: team`), published only behind a password.
+    lots_file : str or Path, or a list of them, optional
+        Model files carrying the lots' outlines, one per unit, for
+        units with no bundle (`lots_from_model_file`): the scene is then
+        their lots
+        alone, read from that file, and `region` is not read. Needs
+        `model_files`; the sidecar's credits are the Sources.
     verbose : bool
 
     Returns
@@ -3257,7 +3444,18 @@ def build_web_scene(
     # terrain imports) belongs to the optional viz-fast extra.
     from openplaces.viz.terrain import show_value_terrain_layer
 
+    # Frames handed over as files, by layer name, instead of bundles.
+    given = {}
+    given_credits = {}
+    if lots_file is not None:
+        if model_files is None:
+            raise ValueError('A lots file comes with its model files.')
+        given['parcels'], lots_layer = lots_from_model_file(lots_file, layers[0])
+        given_credits['parcels'] = list(model_files.data_credits)
+        layers = (lots_layer,)
     refuse_personal_fields(layers)
+    # Model files make a team page whatever bundles it reads.
+    audience = 'team' if model_files is not None else scene_audience(region)
     palettes = list(palettes) if palettes else default_palettes(layers)
     admin_ids = list(admin_ids)
     output_dir = Path(output_dir)
@@ -3304,7 +3502,10 @@ def build_web_scene(
     notices = {}
     gdfs = {}
     for layer in layers:
-        if region is None:
+        if layer.name in given:
+            gdf = given[layer.name][given[layer.name]['admin3_id'].isin(admin_ids)]
+            notices[layer.recipe] = ''
+        elif region is None:
             from openplaces.io.readers import get_entities
 
             gdf = get_entities(layer.recipe, admin_id=admin_ids, geom=True)
@@ -3352,6 +3553,12 @@ def build_web_scene(
             notices[layer.recipe] = '\n\n'.join(
                 bundle_notice(layer.recipe, name) for name in used
             )
+        if model_files is not None and layer.model_views and layer.name not in given:
+            # Before outlines merge, while each row is still one lot.
+            gdf = gdf.join(model_files.table, how='left')
+            if verbose:
+                found = gdf[model_files.views[0].log_column].notna().sum()
+                print(f'{layer.name}: models for {found:,} of {len(gdf):,} lots')
         if crop is not None:
             gdf = crop_to_area(gdf, crop)
             if verbose:
@@ -3389,6 +3596,15 @@ def build_web_scene(
             if 'geometry_source' in gdf.columns and region is not None
             else notice_sources(notices.get(layer.recipe, ''))
         )
+        if layer.name in given:
+            # The files' own sources, as their sidecars credit them.
+            source_docs[layer.name] = {
+                'sources': [
+                    {'name': c['name'], 'share': 1.0, 'terms': c['credit'], 'url': None}
+                    for c in given_credits.get(layer.name, [])
+                ],
+                'share_alike': [],
+            }
         provenance = f'{layer.value_column}{SOURCE_SUFFIX}'
         if provenance in gdf.columns:
             source_docs[layer.name]['values'] = value_sources(gdf[provenance])
@@ -3480,7 +3696,7 @@ def build_web_scene(
                 # (maintainer, 2026-10-19).
                 type_count += np.bincount(codes, minlength=n_types)
             views['type'] = {'label': 'Type', 'unit': 'type', 'categorical': True}
-        if layer.model_views and scene_audience(region) == 'team':
+        if layer.model_views and audience == 'team':
             homes = None
             if 'dwelling' in views:
                 # The lots the per-home view counts as homes.
@@ -3491,10 +3707,23 @@ def build_web_scene(
                     out['n_dwellings'].to_numpy(dtype=float),
                     np.nan,
                 )
-            dollars, model_dollars = lot_dollars_factors(out)
+            if model_files is not None:
+                # Already in one year's dollars: no index applies.
+                dollars = np.ones(len(out))
+                model_dollars = {
+                    'models': {
+                        'factor': 1.0,
+                        'to_year': model_files.year,
+                        'estimated': False,
+                    }
+                }
+                shown_layer = replace(layer, model_views=model_files.views)
+            else:
+                dollars, model_dollars = lot_dollars_factors(out)
+                shown_layer = layer
             arrays, model_views = model_view_arrays(
                 out,
-                layer,
+                shown_layer,
                 homes=homes,
                 home_view=views.get('dwelling'),
                 dollars=dollars,
@@ -3703,9 +3932,9 @@ def build_web_scene(
         'sources': [
             {'layer': layer.label, **source_docs[layer.name]} for layer in layers
         ],
-        'preview': region is None,
+        'preview': region is None and not given,
         'local_only': bool(local_only),
-        'audience': scene_audience(region),
+        'audience': audience,
         'landmarks': marks,
         'phone_scene': phone_scene,
         'known_issues': known_issues(admin_ids),
@@ -3740,8 +3969,12 @@ def build_web_scene(
         'model_dollars': model_dollars,
         # Notes on values a model filled, for the Sources panel.
         'value_notes': [imputation_note(model_code)] if imputed_cells else [],
+        # The year the models describe: PLACES-FMV's 2010, or none for
+        # models handed over in today's dollars (`model_files`).
+        'model_year': None if model_files is not None else MODEL_REFERENCE[0],
+        'model_basis': model_files.basis if model_files is not None else '',
         'model_sources': (
-            list(MODEL_SOURCE_NOTES)
+            (list(model_files.credits) if model_files else list(MODEL_SOURCE_NOTES))
             if any(
                 v.get('model')
                 for layer in manifest_layers
@@ -3921,6 +4154,12 @@ def team_htaccess(passwd_path) -> str:
         'AuthName "openplaces team page"\n'
         f'AuthUserFile "{passwd_path}"\n'
         'Require valid-user\n'
+        # Apache's own 401 page: the host's error page (/401.shtml) does
+        # not exist, and the WordPress rules above the site hand the
+        # missing page to WordPress, which answers 404, so browsers
+        # never asked for the password (seen 2026-10-19 on every team
+        # page).
+        'ErrorDocument 401 default\n'
         '<IfModule mod_headers.c>\n'
         '  Header set X-Robots-Tag "noindex, nofollow"\n'
         '</IfModule>\n\n'

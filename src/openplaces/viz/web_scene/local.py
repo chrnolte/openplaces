@@ -31,7 +31,11 @@ import yaml
 from openplaces.config import cfg
 from openplaces.io.delivery import TEAM_SUFFIX
 from openplaces.io.readers import get_admin
-from openplaces.viz.web_scene import _region_members, build_web_scene
+from openplaces.viz.web_scene import (
+    _region_members,
+    build_web_scene,
+    read_model_files,
+)
 
 PLACES_FILE = files('openplaces.viz.web_scene') / 'places.yaml'
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
@@ -74,11 +78,9 @@ def units_and_regions(state, circle_metric=None, admin_ids=None):
     if admin_ids is not None:
         touched = list(admin_ids)
     else:
-        units = get_admin([state], level=3, geom=True)
-        if 'admin3_id' not in units.columns:
-            units = units.reset_index()
-        units = units.to_crs(5070)
-        touched = units.loc[units.intersects(circle_metric), 'admin3_id'].tolist()
+        # A circle may reach into several states (Washington DC).
+        states = [state] if isinstance(state, str) else list(state)
+        touched = units_touched(states, circle_metric)
     members = {}
     for recipe in (PARCEL_RECIPE, FOOTPRINT_RECIPE):
         for region in delivery_regions(recipe):
@@ -117,15 +119,41 @@ def has_circle(place) -> bool:
     return 'admin_ids' not in place
 
 
+def units_touched(states, circle_metric) -> list:
+    """Level-3 units of `states` that the circle (EPSG:5070) touches."""
+    touched = []
+    for state in states:
+        units = get_admin([state], level=3, geom=True)
+        if 'admin3_id' not in units.columns:
+            units = units.reset_index()
+        units = units.to_crs(5070)
+        touched += units.loc[units.intersects(circle_metric), 'admin3_id'].tolist()
+    return touched
+
+
 def place_extent(place, radius_km, slug):
     """Crop, units and regions of one page of a place.
 
     The crop is None for a place shown as whole units. Stops when no
     bundle covers the place; reports units without bundles.
     """
+    if place.get('lots_in_model_file'):
+        # Units with no bundle: their lots come from the model files.
+        # A circle reads every unit it touches, in each of `states`
+        # (Washington DC reaches into Maryland and Virginia).
+        if not has_circle(place):
+            return None, list(place['admin_ids']), None
+        circle, metric = circle_around(place['center'], radius_km)
+        return (
+            circle,
+            units_touched(place.get('states') or [place['state']], metric),
+            None,
+        )
     if has_circle(place):
         circle, metric = circle_around(place['center'], radius_km)
-        built, regions, missing = units_and_regions(place['state'], metric)
+        built, regions, missing = units_and_regions(
+            place.get('states') or place['state'], metric
+        )
     else:
         circle = None
         built, regions, missing = units_and_regions(
@@ -135,11 +163,50 @@ def place_extent(place, radius_km, slug):
         raise SystemExit(f'{slug}: no delivered bundles cover this place.')
     if missing:
         print(f'{slug}: no bundles for {", ".join(missing)}; left out.')
-    if place.get('team'):
+    if place.get('team') and not place.get('model_files'):
         # The team twin of each region; the scene is then marked a team
-        # page, published only behind a password.
+        # page, published only behind a password. A page of model files
+        # reads the public bundles and is a team page by its models.
         regions = [f'{r}{TEAM_SUFFIX}' for r in regions]
     return circle, built, regions
+
+
+def place_models(place, built, slug):
+    """A place's land value models handed over as files, or None.
+
+    `model_files` in `places.yaml` is one path per unit, under the data
+    root, naming it as `{admin_id}`. Stops when the place lists model
+    files and none exists, so a team model page never goes out
+    without its models.
+    """
+    template = place.get('model_files')
+    if not template:
+        return None
+    root = Path(cfg.data_root)
+    models = read_model_files([root / template.format(admin_id=a) for a in built])
+    if models is None:
+        raise SystemExit(f'{slug}: no model file found ({template}).')
+    return models
+
+
+def place_elevation(place):
+    """The DEM a place's page stands on; None with `terrain: false`
+    (flat ground, e.g. a county whose elevation was never fetched)."""
+    return None if place.get('terrain') is False else ELEVATION_RECIPE
+
+
+def place_lots_file(place, built):
+    """The model files that carry a place's lots (`lots_in_model_file`),
+    one per unit, or None. Stops when one is missing."""
+    if not place.get('lots_in_model_file'):
+        return None
+    paths = [
+        Path(cfg.data_root) / place['model_files'].format(admin_id=a) for a in built
+    ]
+    missing = [str(p) for p in paths if not p.exists()]
+    if missing:
+        raise SystemExit(f'{place["slug"]}: no lots file {", ".join(missing)}.')
+    return paths
 
 
 def downtown_of(place):
@@ -155,6 +222,7 @@ def extent_label(place, radius_km) -> str:
 def build_place(place, radius_km, slug, phone_scene=None) -> Path:
     """Build one local page of a place; returns its folder."""
     circle, built, regions = place_extent(place, radius_km, slug)
+    models = place_models(place, built, slug)
     output = local_root() / slug
     print(
         f'Building {slug} ({extent_label(place, radius_km)}, {len(built)} units) '
@@ -165,11 +233,13 @@ def build_place(place, radius_km, slug, phone_scene=None) -> Path:
         built,
         output,
         crop=circle,
-        elevation_recipe=ELEVATION_RECIPE,
+        elevation_recipe=place_elevation(place),
         local_only=True,
         phone_scene=phone_scene,
         downtown=downtown_of(place),
         place_title=place['title'],
+        model_files=models,
+        lots_file=place_lots_file(place, built),
         verbose=False,
     )
     return output

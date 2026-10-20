@@ -380,11 +380,13 @@ def test_deploy_settings_come_from_the_env_file(tmp_path, monkeypatch):
 
 def test_palettes_take_scene_bounds_and_color_stops():
     palettes = web_scene.default_palettes()
-    # The chips' order; the first visit shows DEFAULT_PALETTE (Pastel).
+    # The chips' order: the first visit's palette, DEFAULT_PALETTE
+    # (Pastel), comes first.
     assert web_scene.DEFAULT_PALETTE == 'pastel'
-    assert [p.id for p in palettes] == ['landscape', 'sunset', 'neon', 'pastel']
+    assert [p.id for p in palettes] == ['pastel', 'landscape', 'sunset', 'neon']
+    by_id = {p.id: p for p in palettes}
     manifest = web_scene.palette_manifest(
-        palettes[1],
+        by_id['sunset'],
         web_scene.VALUE_SCENE_LAYERS,
         {'parcels': (1_000.0, 100_000.0), 'buildings': (20.0, 500.0)},
     )
@@ -394,14 +396,16 @@ def test_palettes_take_scene_bounds_and_color_stops():
     # Opaque: translucent walls shade by draw order.
     assert manifest['layers']['buildings']['alpha'] == 255
     # Color stops: the ramp starts and ends on the first and last stop.
-    landscape = web_scene.palette_manifest(palettes[0], web_scene.VALUE_SCENE_LAYERS)
+    landscape = web_scene.palette_manifest(
+        by_id['landscape'], web_scene.VALUE_SCENE_LAYERS
+    )
     assert landscape['layers']['parcels']['lut'][0] == '#3f6e8c'
     assert landscape['layers']['parcels']['lut'][-1] == '#a8443f'
     assert landscape['layers']['parcels']['line'] is None
     assert landscape['blend'] == 'normal'
     # Neon: value-colored edges on dark, opaque, unshaded faces, blended
     # normally, so brightness does not follow how many faces overlap.
-    neon = web_scene.palette_manifest(palettes[2], web_scene.VALUE_SCENE_LAYERS)
+    neon = web_scene.palette_manifest(by_id['neon'], web_scene.VALUE_SCENE_LAYERS)
     buildings = neon['layers']['buildings']
     assert buildings['alpha'] == 255
     assert buildings['line_lut'][0] == '#0c4a1c'
@@ -410,7 +414,7 @@ def test_palettes_take_scene_bounds_and_color_stops():
     assert neon['material']['diffuse'] == 0.0
     assert neon['blend'] == 'normal'
     # The light page carries its own no-value and border colors.
-    pastel = web_scene.palette_manifest(palettes[3], web_scene.VALUE_SCENE_LAYERS)
+    pastel = web_scene.palette_manifest(by_id['pastel'], web_scene.VALUE_SCENE_LAYERS)
     assert '#ffffff' in pastel['background']
     assert pastel['no_value'][:3] == [212, 208, 201]
     # The land ramp starts at a faint tint, not white (no value is a
@@ -1137,6 +1141,88 @@ def test_a_layer_without_a_team_twin_reads_the_public_bundle(monkeypatch):
     assert web_scene.layer_region('footprints', 'nantucket-ma') == 'nantucket-ma'
 
 
+def test_model_files_pool_counties_and_keep_their_views(tmp_path):
+    # Fabricated: two counties' files with the same sidecar; one view's
+    # column is missing from the files and is left out; a third file
+    # does not exist.
+    side = {
+        'year': 2025,
+        'basis': 'nominal 2025 USD per ha',
+        'views': [
+            {
+                'key': 'm_a',
+                'label': 'A',
+                'log_column': 'log_a',
+                'aoa_column': 'aoa_a',
+                'credit': 'Model A, fabricated.',
+            },
+            {'key': 'm_b', 'label': 'B', 'log_column': 'log_b'},
+        ],
+    }
+    for county, ids in (('X-1', ['p1', 'p2']), ('X-2', ['p3'])):
+        pd.DataFrame(
+            {'parcel_id': ids, 'log_a': [9.0] * len(ids), 'aoa_a': [0.5] * len(ids)}
+        ).to_parquet(tmp_path / f'{county}.parquet')
+        (tmp_path / f'{county}.json').write_text(json.dumps(side), encoding='utf-8')
+    models = web_scene.read_model_files(
+        [tmp_path / 'X-1.parquet', tmp_path / 'X-2.parquet', tmp_path / 'X-3.parquet']
+    )
+    assert list(models.table.index) == ['p1', 'p2', 'p3']
+    assert [v.key for v in models.views] == ['m_a']
+    assert models.views[0].aoa_column == 'aoa_a'
+    assert models.year == 2025
+    assert models.credits == ({'name': 'A', 'credit': 'Model A, fabricated.'},)
+    assert models.data_credits == ()
+    assert web_scene.read_model_files([tmp_path / 'none.parquet']) is None
+
+
+def test_lots_from_a_model_file_refuse_personal_columns(tmp_path):
+    # Fabricated lots; with no dwelling count the layer loses its
+    # per-home view and the tooltip rows that need it.
+    lots = gpd.GeoDataFrame(
+        {
+            'parcel_id': ['p1', 'p2'],
+            'admin3_id': ['US-XX-A', 'US-XX-A'],
+            'land_value': [1000.0, 2000.0],
+        },
+        geometry=[box(0, 0, 0.001, 0.001), box(0.002, 0, 0.003, 0.001)],
+        crs='EPSG:4326',
+    )
+    lots.to_parquet(tmp_path / 'lots.parquet')
+    layer = web_scene.VALUE_SCENE_LAYERS[0]
+    gdf, shown = web_scene.lots_from_model_file(tmp_path / 'lots.parquet', layer)
+    assert list(gdf.index) == ['p1', 'p2']
+    assert list(gdf[layer.value_column]) == [1000.0, 2000.0]
+    assert shown.per_dwelling_label is None
+    assert 'n_dwellings' not in [t.column for t in shown.tooltip]
+    # Two units' files pool into one page.
+    other = lots.assign(parcel_id=['q1', 'q2'], admin3_id='US-XX-B')
+    other.to_parquet(tmp_path / 'other.parquet')
+    both, _ = web_scene.lots_from_model_file(
+        [tmp_path / 'lots.parquet', tmp_path / 'other.parquet'], layer
+    )
+    assert sorted(both['admin3_id'].unique()) == ['US-XX-A', 'US-XX-B']
+    lots.assign(owner_name=['A', 'B']).to_parquet(tmp_path / 'owners.parquet')
+    with pytest.raises(PersonalColumnError):
+        web_scene.lots_from_model_file(tmp_path / 'owners.parquet', layer)
+
+
+def test_palettes_of_a_land_only_scene_keep_the_land_colors():
+    lots_only = web_scene.VALUE_SCENE_LAYERS[:1]
+    palettes = web_scene.default_palettes(lots_only)
+    assert len(palettes) == len(web_scene.default_palettes())
+    assert all(set(p.layers) == {'parcels'} for p in palettes)
+
+
+def test_viewer_names_no_2010_for_models_in_todays_dollars():
+    script = (
+        resources.files('openplaces.viz.web_scene') / 'static' / 'viewer.js'
+    ).read_text(encoding='utf-8')
+    # The year comes from the manifest; 2010 is only its default.
+    assert 'scene.model_year' in script
+    assert 'Model, 2010' not in script
+
+
 def test_model_views_scale_to_the_assessment_and_carry_the_aoa():
     # Fabricated: four 1-ha lots whose recorded land is twice what the
     # model predicts, so the scale is 2; one lot lacks a prediction.
@@ -1246,6 +1332,9 @@ def test_team_page_goes_up_only_behind_a_password(tmp_path, monkeypatch):
     assert calls[0][0] == 'copyto' and calls[0][2].endswith('/nantucket-team/.htaccess')
     htaccess = (scene / '.htaccess').read_text(encoding='utf-8')
     assert f'AuthUserFile "{passwd}"' in htaccess and 'Require valid-user' in htaccess
+    # Apache's own 401 page, or the host's rewrite rules turn the
+    # password request into a 404 and browsers never ask.
+    assert 'ErrorDocument 401 default' in htaccess
 
 
 def test_team_password_path_is_checked_and_public_pages_carry_none(
