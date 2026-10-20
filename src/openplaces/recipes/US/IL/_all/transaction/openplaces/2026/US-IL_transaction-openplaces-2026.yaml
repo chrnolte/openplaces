@@ -1,0 +1,101 @@
+# Patch: Illinois transaction curation, grading the PTAX-203 sale
+# conditions (US-IL_transaction-ildor-2026).
+#
+# The national recipe grades each source's own qualification
+# vocabulary; Illinois states none. The declaration asks the parties
+# instead, on line 10, which of 18 conditions applied, and on line 5
+# which instrument conveyed the property. The ingest writes line 10 as
+# one code, `L10:` followed by the letters of the checked lines in form
+# order. A state's vocabulary, so a state patch.
+#
+# The grade is the lower of two, as Wisconsin's is: a transfer is at
+# arm's length only if no condition says otherwise *and* the
+# instrument is one that conveys at a price.
+#
+# Line 10: 1.0 when no box is checked. 0.7 when the one box checked
+# describes the buyer or the timing rather than the price: 10j a
+# relocation company, 10l a REIT buyer, 10m a pension fund buyer, 10n
+# an adjacent owner, 10o an option exercised. 0.0 for every other code,
+# alone or combined: related parties (10b), a partial interest (10c),
+# court-ordered (10d), in lieu of foreclosure (10e), condemnation
+# (10f), short sale (10g), bank REO (10h), auction (10i), a financial
+# institution or government agency (10k), a trade (10p), a
+# sale-leaseback (10q), other (10r), an installment contract fulfilled
+# at a price agreed years before (10a). Measured 2026-10-19 on 2016's
+# 122,738 declarations: 104,068 have no box checked.
+#
+# Instrument: 0.0 for the deeds that convey without a market price
+# (quit claim, judicial sale, sheriff's, tax deed, deed in lieu of
+# foreclosure); 1.0 for any other, a blank instrument included (blank
+# on 23,367 of 2016's rows, mostly Cook), so a missing line 5 does not
+# lower a grade line 10 already gives.
+#
+# Group: qualified when no box is checked; related_parties for 10b
+# alone; not_a_sale for the five instruments above; disqualified for
+# any other condition. The five 0.7 codes get no group, since none of
+# the registry's groups describes them; the confidence carries them.
+
+admin_id: US-IL
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: _line10_grade
+          type: value_map
+          column: sale_qualification_code
+          mapping:
+            "L10:": 1.0
+            "L10:j": 0.7
+            "L10:l": 0.7
+            "L10:m": 0.7
+            "L10:n": 0.7
+            "L10:o": 0.7
+          default: 0.0
+        - output: _instrument_grade
+          type: value_map
+          column: doc_type
+          mapping:
+            "Quit Claim Deed": 0.0
+            "Judicial Sale": 0.0
+            "Sheriff's Deed": 0.0
+            "Tax Deed": 0.0
+            "Deed in lieu of Foreclosure": 0.0
+          default: 1.0
+        - output: sale_arms_length_confidence
+          type: minimum
+          fill_only: true
+          columns: [_line10_grade, _instrument_grade]
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: doc_type
+          mapping:
+            "Quit Claim Deed": not_a_sale
+            "Judicial Sale": not_a_sale
+            "Sheriff's Deed": not_a_sale
+            "Tax Deed": not_a_sale
+            "Deed in lieu of Foreclosure": not_a_sale
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "L10:": qualified
+            "L10:b": related_parties
+            "L10:j": null
+            "L10:l": null
+            "L10:m": null
+            "L10:n": null
+            "L10:o": null
+          default: disqualified

@@ -25,6 +25,14 @@ def test_simple_keeps_alphanumeric_uppercase():
     assert pd.isna(out.iloc[2])
 
 
+def test_pattern_conversion_of_no_rows_is_an_empty_series():
+    # A county that filed nothing in a partition reaches the conversion
+    # with no rows; the row-wise join must still return a series.
+    out = convert_parcel_id(pd.Series([], dtype='string'), 'Dx', '')
+    assert isinstance(out, pd.Series)
+    assert out.empty
+
+
 def test_simple_pad_last_joins_a_lengthened_last_segment():
     # A county that lengthened its last segment by appending zeros: the
     # old 4-digit form and the new 6-digit form of one parcel meet, a
