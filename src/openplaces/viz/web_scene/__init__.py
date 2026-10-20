@@ -1871,8 +1871,9 @@ MATTE = {'ambient': 0.35, 'diffuse': 0.6, 'shininess': 32, 'specularColor': [0, 
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
     """The page's color options (maintainer's choice, 2026-10-16).
 
-    Landscape (the default, first), Sunset, Neon and Pastel. The
-    first view stays warm and light at its dearest places: the
+    Pastel (the default, first; maintainer, 2026-10-20), then
+    Landscape (shown as "Earth"), Sunset and Neon. Landscape was the
+    first default; its view stays warm and light at its dearest places: the
     maintainer turned down every variant that bought building-to-land
     contrast with blue or dark grounds, or with a dark, stark top of
     the scale ("looks sad"). Contrast was scored on the color pairs
@@ -2108,6 +2109,9 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             },
         ),
     ]
+    # The default (Pastel) first, on the chips too (maintainer,
+    # 2026-10-20); the others keep their order.
+    palettes.sort(key=lambda p: p.id != DEFAULT_PALETTE)
     # A scene of fewer layers (lots alone, `lots_from_model_file`) keeps
     # each palette's colors for the layers it has.
     return [
