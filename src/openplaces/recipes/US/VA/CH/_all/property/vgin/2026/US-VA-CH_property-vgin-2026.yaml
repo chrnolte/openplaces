@@ -1,15 +1,23 @@
 # Recipe: Chesterfield County, VA assessment table, as published in
-# VGIN's 2026 Q2 "Local Schema Tables".
+# VGIN's 2026 Q3 "Local Schema Tables".
 #
 # SOURCE. VGIN (Virginia Geographic Information Network, VDEM)
-# "Virginia Parcels: Local Schema Tables", 2026 Q2: ArcGIS Online item
+# "Virginia Parcels: Local Schema Tables", 2026 Q3: ArcGIS Online item
 # 523d89ebf23d4d84957f9fe5b9158bd9, a zipped file geodatabase
-# (Virginia_Parcels_LocalSchemas.zip, 362,956,101 bytes) with one
-# table per locality holding the attributes the locality submitted
-# with its parcels. This recipe reads TBL_Chesterfield_County: 149,347
-# rows, 83 fields, the county's CAMA (Assessment 2026 on 149,192
-# rows). source_id vgin: VGIN publishes the table, from the county's
-# data. Read 2026-09-13.
+# (Virginia_Parcels_LocalSchemas.zip, 373,316,934 bytes, item
+# modified 2026-09-25) with one table per locality holding the
+# attributes the locality submitted with its parcels. This recipe
+# reads TBL_Chesterfield_County: 150,107 rows, the same fields and
+# types as in Q2, Assessment 2026 on 149,956 rows and 0 on 151 (read
+# 2026-10-20 by range requests). source_id vgin: VGIN publishes the
+# table, from the county's data. The measurements below were made on
+# the Q2 table (149,347 rows, 83 fields, Assessment 2026 on 149,192),
+# read 2026-09-13.
+#
+# QUARTER IN THE FILE NAME. The item URL is not versioned; only the
+# geodatabase inside the zip names the quarter, and
+# `uncompressed_file_name` names it on purpose, as on
+# US-VA_parcel-vgin-2026 (whose header says why).
 #
 # ONE DOWNLOAD. The tables are not layers of the statewide parcel
 # geodatabase (US-VA_parcel-vgin-2026 has one layer, VA_Parcels), so
@@ -109,7 +117,8 @@
 # (1,896 codes); values 99.8 to 99.9%; area_deed_ac 15.0%;
 # last_sale_price 75.9%.
 #
-# TERMS. The item licence (read 2026-09-13), the same text as the
+# TERMS. The item licence (read 2026-09-13, the same on 2026-10-20),
+# the same text as the
 # parcel item's: "The Virginia Base Data layers are intended for
 # cartographic use and spatial analysis only, and not for use as a
 # legal description. ... all warranties ... are hereby expressly
@@ -118,7 +127,7 @@
 # could not be read (Cloudflare challenge).
 
 description: >-
-  Chesterfield County, VA assessment table from VGIN's 2026 Q2 local schema
+  Chesterfield County, VA assessment table from VGIN's 2026 Q3 local schema
   tables: rooms, baths, stories, year built, living area, materials,
   utilities and values.
 
@@ -139,7 +148,7 @@ entity:
   version: 2026
 
 compressed_file_name: "Virginia_Parcels_LocalSchemas.zip"
-uncompressed_file_name: "Virginia_Parcel_Dataset_LocalSchemas_2026Q2.gdb"
+uncompressed_file_name: "Virginia_Parcel_Dataset_LocalSchemas_2026Q3.gdb"
 layer: TBL_Chesterfield_County
 
 process_by:
