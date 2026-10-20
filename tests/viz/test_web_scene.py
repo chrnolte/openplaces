@@ -732,6 +732,29 @@ def test_local_command_never_uploads():
     assert all(p['slug'].endswith('-team') for p in team)
 
 
+def test_places_are_listed_by_parcel_count(tmp_path):
+    from openplaces.viz.web_scene import site
+
+    # Fabricated pages: one records its count; one, built earlier, has
+    # only its tooltip file (three lots).
+    new = tmp_path / 'new'
+    new.mkdir()
+    (new / 'scene.json').write_text(
+        json.dumps({'layers': [{'n_features': 5}]}), encoding='utf-8'
+    )
+    old = tmp_path / 'old'
+    (old / 'data').mkdir(parents=True)
+    (old / 'data' / 'tip.bin').write_bytes(
+        gzip.compress(json.dumps({'address': ['a', 'b', 'c']}).encode())
+    )
+    (old / 'scene.json').write_text(
+        json.dumps({'layers': [{'files': {'US-XX-A': {'tooltip': 'data/tip.bin'}}}]}),
+        encoding='utf-8',
+    )
+    assert site.parcel_count(new) == 5
+    assert site.parcel_count(old) == 3
+
+
 def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
     from openplaces.viz.web_scene import site
 

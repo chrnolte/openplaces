@@ -5,8 +5,9 @@
 # in the delivered parcel bundles), never derived from the data or from
 # the held land-market regions (register items 13 and LVR-1).
 #
-# Order: descending number of dwellings inside the circle (measured
-# 2026-10-17 on the delivered building outlines).
+# Order on the site: descending number of parcels each built page
+# draws (maintainer, 2026-10-20), counted at build time and sorted by
+# `site.landing`, so the order of this list does not matter.
 #
 # The tour's first stop is downtown (maintainer, 2026-10-18): the
 # place's `downtown`, else its `center` (a city hall lot). Downtown
@@ -69,8 +70,7 @@ places:
     state: US-NC
     center: [-77.9447, 34.2357]
     center_note: City hall
-  # Houston and Madison (maintainer, 2026-10-19), placed after the
-  # North Carolina places until their dwellings are counted.
+  # Houston and Madison (maintainer, 2026-10-19).
   - slug: houston
     title: Houston, Texas
     around: downtown Houston
@@ -94,8 +94,7 @@ places:
   # The island, not a circle (maintainer, 2026-10-18): a place listing
   # `admin_ids` shows those units whole, with no phone page, and
   # `extent_note` is its landing card's line. The town of Nantucket
-  # also holds Tuckernuck and Muskeget. Placed last until its dwellings
-  # can be counted on a delivered bundle.
+  # also holds Tuckernuck and Muskeget.
   - slug: nantucket
     title: Nantucket, Massachusetts
     extent_note: The island of Nantucket

@@ -27,6 +27,7 @@ The places, their order and their centers (or units) are `places.yaml`.
 """
 
 import argparse
+import gzip
 import json
 import sys
 import time
@@ -99,6 +100,24 @@ def build(places, config) -> None:
         _page(place, config['radius_km'], slug, phone_scene=f'../{slug}-phone/')
 
 
+def parcel_count(scene_dir) -> int:
+    """Lots a built page draws: its bottom layer's `n_features`, or for a
+    page built before the count was recorded, the rows of that layer's
+    tooltip files (one per lot)."""
+    scene_dir = Path(scene_dir)
+    manifest = json.loads((scene_dir / 'scene.json').read_text(encoding='utf-8'))
+    layers = manifest.get('layers') or [{}]
+    if layers[0].get('n_features') is not None:
+        return int(layers[0]['n_features'])
+    count = 0
+    for paths in (layers[0].get('files') or {}).values():
+        columns = json.loads(
+            gzip.decompress((scene_dir / paths['tooltip']).read_bytes())
+        )
+        count += len(next(iter(columns.values()), []))
+    return count
+
+
 def landing(config, thumbnails=True) -> None:
     """The landing page, card photos, places.json and the methods page."""
     from openplaces.viz.web_scene.landing import Place, build_landing
@@ -118,6 +137,10 @@ def landing(config, thumbnails=True) -> None:
         # with the password.
         if not p.get('team') and (root / p['slug'] / 'scene.json').exists()
     ]
+    # Most parcels first (maintainer, 2026-10-20), as each page's build
+    # counted them; the landing cards and every page's places menu
+    # follow this order, so it holds as places are added or rebuilt.
+    cards.sort(key=lambda c: -parcel_count(c.scene_dir))
     build_landing(cards, root, thumbnails=thumbnails)
     print('landing:', [c.slug for c in cards])
 
