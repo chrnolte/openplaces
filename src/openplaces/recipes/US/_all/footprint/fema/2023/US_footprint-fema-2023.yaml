@@ -28,6 +28,21 @@
 # footprints), RI 54.8% -> 12.1% (367,168 -> 397,288). PROP_CITY
 # drops in DC from 98.0% to 33.0%. A state re-downloaded from a
 # 2026-09-13 file therefore carries far fewer heights than a 2025 one.
+#
+# PINNED RELEASES (measured 2026-10-20, HEIGHT and SOURCE read for
+# every release since 2023 of FL, MA, NC, TX, WI, MD, VA, DC, PA, GA,
+# IL). HEIGHT is filled on exactly the outlines with SOURCE NGA
+# (LiDAR) and on no ORNL (imagery) outline. Every 2023, 2024 and 2025
+# release of a state carries the same NGA outlines, so the same count
+# of heights (TX 2,856,421 in all three); later ones only add ORNL
+# outlines. The 2026-09-13 release removes most NGA outlines: DC
+# 61,069 -> 21,176 heights, WI 478,709 -> 88,953. FEMA's values are
+# kept where possible (maintainer, 2026-10-20), so a state is
+# pinned to its newest release that keeps at least 90% of the most
+# heights any release has: DC and WI to Deliverable20250606. The other
+# nine states' listed files are 2025 releases and keep them all. The
+# bucket (fema-femadata, listable) also holds 2021-2022 releases,
+# not measured. Re-check a pin when FEMA posts a new release.
 
 description: >-
   FEMA USA Structures building footprints for the United States.
@@ -78,6 +93,12 @@ coverage: complete
 
 download_by:
   admin_level: 2
+  # States held to an older release (see PINNED RELEASES above). A
+  # pinned state downloads this file, under its own name, and skips
+  # the scrape; every other state takes the listed file.
+  pinned_download_urls:
+    US-DC: "https://fema-femadata.s3.us-east-1.amazonaws.com/Partners/ORNL/USA_Structures/District%20of%20Columbia/Deliverable20250606DC.zip"
+    US-WI: "https://fema-femadata.s3.us-east-1.amazonaws.com/Partners/ORNL/USA_Structures/Wisconsin/Deliverable20250606WI.zip"
 
 # Read and process data in chunks
 # (avoids reading very large geodatabases into memory)

@@ -40,7 +40,10 @@ record, "the best source available at build time" is not reproducible.
 - `download_by` - controls download partitioning: `admin_level`, or `partition:
   year|year_month|table|tile_id|latlon_tile`. `year_month` computes a YYYY-MM date range,
   `table` takes an explicit table-name list; unrecognized partition types raise
-  `NotImplementedError`.
+  `NotImplementedError`. `pinned_download_urls` maps a download unit's admin
+  id to a fixed URL that unit downloads instead of the scraped or templated
+  one, read under that URL's own file name (FEMA USA Structures pins states
+  whose newest release lost most heights).
 - `process_by` - controls chunking granularity during processing (`admin_level`, `admin_id_column`).
   For sources that ship one already-split file per admin unit inside a single shared
   download (rather than one file with an in-data admin column to filter rows by), use

@@ -9,6 +9,7 @@ import os
 import re
 import ssl
 import urllib
+import urllib.parse
 import warnings
 from pathlib import Path
 
@@ -47,12 +48,37 @@ class _DownloadMixin:
     State lives on the Ingester instance.
     """
 
+    def _pinned_download_url(self):
+        """The URL ``download_by.pinned_download_urls`` names for this unit.
+
+        A source that publishes one current file per unit (FEMA USA
+        Structures: one zip per state) can replace a unit's file with
+        a release that is worse for this project, while the older
+        file stays on the server. The map pins such a unit to that
+        file, keyed by the download unit's admin id, so the recipe
+        keeps scraping the current file for every other unit.
+
+        Returns
+        -------
+        str or None
+            The pinned URL, or None when the unit has no pin.
+        """
+        pins = (self.recipe.get('download_by') or {}).get('pinned_download_urls')
+        unit = (getattr(self, 'download_partition', None) or {}).get(
+            'admin_id_to_download'
+        )
+        if not pins or unit is None:
+            return None
+        return pins.get(str(unit))
+
     def _resolve_download_url(
         self,
     ):
         """Resolve the download URL of a recipe
 
-        Identifies placeholders of partitions and substitutes them
+        Identifies placeholders of partitions and substitutes them. A
+        unit listed under ``download_by.pinned_download_urls`` takes
+        its pinned URL instead, and no page is scraped for it.
 
         Example
         -------
@@ -63,6 +89,11 @@ class _DownloadMixin:
             https://[...]/nsi_2022/nsi_2022_37.gpkg.zip
 
         """
+        pinned = self._pinned_download_url()
+        if pinned is not None:
+            self.download_partition['download_url'] = pinned
+            return
+
         if 'entity' in self.recipe:
             source = self.recipe['entity'].source
         elif 'dataset' in self.recipe:
@@ -171,6 +202,14 @@ class _DownloadMixin:
             compressed_file_name = self.recipe['compressed_file_name']
             if 'download_by' in self.recipe:
                 compressed_file_name = self._resolve_placeholders(compressed_file_name)
+        # A pinned unit reads the pinned file by its own name. The
+        # recipe's name is often a wildcard that also matches the
+        # newer file, and the newest match on disk would win.
+        pinned = self._pinned_download_url()
+        if pinned is not None and compressed_file_name is not None:
+            re_match = re.search(REGEX_FILENAME_IN_URL, pinned)
+            if re_match:
+                compressed_file_name = urllib.parse.unquote(re_match.group(1))
         if self.verbose:
             print('Compressed file name:', compressed_file_name)
 
