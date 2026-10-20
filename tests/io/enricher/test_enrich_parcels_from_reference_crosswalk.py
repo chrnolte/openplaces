@@ -529,6 +529,35 @@ def test_delivered_crosswalk_for_other_parcels_is_refused(delivered_setup):
     assert '100.00%' in message  # crosswalk ids found in the spine
 
 
+def test_delivered_crosswalk_missing_newer_spine_parcels_warns(delivered_setup):
+    """Spine parcels newer than the reference (90 to 99 percent) warn."""
+    named = [f'new_{i}' for i in range(19)]
+    _write_delivered(
+        delivered_setup.tmp_path / 'ref_crosswalk.parquet',
+        _delivered_pairs(
+            parcel_id_new=named,
+            reference_parcel_id=['sha_a'] * 19,
+            area_ha=[0.1] * 19,
+            fraction_of_old=[1 / 19] * 19,
+            match_type=['overlay'] * 19,
+        ),
+    )
+    state = _make_state(_spine(*named, 'new_split'))
+
+    with pytest.warns(UserWarning) as record:
+        result = enrich_parcels_from_reference_crosswalk(
+            state, mean_columns=['slope'], delivered_crosswalk_table='crosswalk'
+        )
+
+    messages = [str(w.message) for w in record]
+    coverage = [m for m in messages if 'of spine parcel ids appear' in m]
+    assert len(coverage) == 1
+    assert '95.00%' in coverage[0]
+    assert 'bundle_file=fake-region_parcel.parquet' in coverage[0]
+    assert 'openplaces_commit=c0ffee0' in coverage[0]
+    assert result.evidence.loc['new_0', 'slope'] == pytest.approx(4.0)
+
+
 def test_delivered_crosswalk_naming_unknown_parcels_is_refused(delivered_setup):
     _write_delivered(
         delivered_setup.tmp_path / 'ref_crosswalk.parquet',
