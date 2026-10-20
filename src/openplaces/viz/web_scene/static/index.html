@@ -120,7 +120,7 @@
   #layer-switch, #view-switch, #scale-switch, #values-switch, #palette-switch, #range-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   #view-switch:empty, #scale-switch:empty, #values-switch:empty { display: none; }
   /* The models' scale, shown only under "Modeled". */
-  #scale-switch[hidden] { display: none; }
+  #scale-switch[hidden], #range-switch[hidden] { display: none; }
   .switch-label { font-size: 12px; color: var(--muted); align-self: center; }
   #layer-switch button, #view-switch button, #scale-switch button, #values-switch button, #palette-switch button, #range-switch button {
     font: inherit;
@@ -241,6 +241,10 @@
   .legend-source { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
   .legend-other-note span { width: 18px; height: 5px; border-radius: 1px; flex: none; }
   .legend.hidden .legend-other-note { opacity: 0.4; }
+  /* The type view: swatches in rows, as many per row as fit. */
+  .type-swatches { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 11px; margin-top: 4px; }
+  .type-swatches span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .type-swatches i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   /* "Sources" stays a chip in the bar; opened, its document pops up

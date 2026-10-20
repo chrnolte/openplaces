@@ -505,6 +505,30 @@ def test_lot_total_value_falls_back_to_land_and_improvement():
     assert list(total) == [500.0, 250.0, 300.0, 7.0]
 
 
+def test_type_codes_give_lots_and_buildings_one_list_of_types():
+    # A lot class and a building class of the same kind share a type;
+    # an unlisted class and a missing one are unknown (code 0).
+    classes = pd.Series(
+        ['Single-Family', 'Low-Rise Multi-Family', 'Multi-Family', 'Mystery', None]
+    )
+    codes = web_scene.type_codes(classes)
+    keys = [web_scene.TYPE_CATEGORIES[c]['key'] for c in codes]
+    assert codes.dtype == np.uint8
+    assert keys == [
+        'single_family',
+        'multi_family',
+        'multi_family',
+        'unknown',
+        'unknown',
+    ]
+
+
+def test_type_categories_name_each_class_once():
+    values = [v for c in web_scene.TYPE_CATEGORIES for v in c['values']]
+    assert len(values) == len(set(values))
+    assert web_scene.TYPE_CATEGORIES[0]['key'] == 'unknown'
+
+
 def test_scene_bounds_follow_the_mean_and_spread_and_round_outward():
     # Fabricated: 98 lots at $1,000 and two outliers, $1 and $1M. On a
     # log scale the mean is 3 and the standard deviation 0.42, so the

@@ -584,6 +584,65 @@ function drawLegend(container, legend) {
   container.appendChild(block);
 }
 
+// The type view's legend: one swatch per type the scene draws, the
+// same list for land and buildings (scene.json `types`), the most
+// common first: by count of lots, types on no lot (outbuildings)
+// after them, and "Unknown" last (maintainer, 2026-10-19).
+function drawTypeLegend(container, types) {
+  types = [...types].sort((a, b) => (a.key === 'unknown') - (b.key === 'unknown')
+    || (b.count || 0) - (a.count || 0));
+  const block = document.createElement('div');
+  block.className = 'legend type-legend';
+  const label = document.createElement('div');
+  label.className = 'legend-label';
+  label.textContent = 'Land and building type';
+  const source = document.createElement('span');
+  source.className = 'legend-source';
+  // Height is value per area, so a bar's volume is its value
+  // (`render_terrain`), on one scale for land and buildings.
+  source.textContent = 'volume: value';
+  label.appendChild(source);
+  const list = document.createElement('div');
+  list.className = 'type-swatches';
+  for (const type of types) {
+    if (!type.present) {
+      continue;
+    }
+    const item = document.createElement('span');
+    // The lot's tint inside, the building's color around it.
+    const swatch = document.createElement('i');
+    swatch.style.background = `rgb(${typeRgb(type.color, TYPE_LOT_TINT)})`;
+    swatch.style.border = `2px solid rgb(${typeRgb(type.color, 0, TYPE_BUILDING_SHADE)})`;
+    item.append(swatch, type.label);
+    list.appendChild(item);
+  }
+  block.append(label, list);
+  container.appendChild(block);
+}
+
+// A pastel type view (maintainer, 2026-10-19): lots in a light tint of
+// their type's color, buildings in the full color, a little darker, so
+// they stand out from their lot.
+const TYPE_LOT_TINT = 0.4;
+const TYPE_BUILDING_SHADE = 0.85;
+
+// One type color as drawn: mixed toward white by `tint`, then scaled
+// by `shade`.
+function typeRgb(hex, tint = 0, shade = 1) {
+  return hexToRgb(hex).map((c) => Math.round((c + (255 - c) * tint) * shade));
+}
+
+// Each feature's color in the type view, from its `type_code`.
+function typeColors(codes, types, alpha, tint = 0, shade = 1) {
+  const rgb = types.map((t) => typeRgb(t.color, tint, shade));
+  const out = new Uint8Array(codes.length * 4);
+  for (let i = 0; i < codes.length; i++) {
+    out.set(rgb[codes[i]] || rgb[0], 4 * i);
+    out[4 * i + 3] = alpha;
+  }
+  return out;
+}
+
 // The opening tour, a slow flyover: from a high, flat view of the
 // whole area it descends onto the first focus (the densest value, the
 // main downtown), circles it, glides to the next, circles that one,
@@ -670,8 +729,9 @@ const TOUR_DOWNTOWN_ACTIONS = [
   {
     at: 13,
     hint: {
-      text: 'Land shows the value of location: how *much* people benefit from ' +
-        'living or doing business there.',
+      // Maintainer's wording, 2026-10-19.
+      text: 'Land value per area gives you an idea of where humans most want to ' +
+        'secure land rights to govern, do commerce, and to live and sleep.',
       linger: 10,
     },
   },
@@ -706,27 +766,31 @@ const TOUR_TO_CONTRAST_ACTIONS = [
     hint: {text: 'This shows you where the rich and the poor tend to live.', linger: 10},
   },
 ];
-// At the contrast: back to per ground area, per home again, and back
-// (maintainer, 2026-10-18: switch back once or twice); the buildings
-// return last.
+// At the contrast: each view once (maintainer, 2026-10-19). After
+// value per home, the buildings come back, and the tour ends its
+// switching on the type view, which it keeps from there on.
 const TOUR_CONTRAST_ACTIONS = [
+  {at: 4, hint: {target: 'buildings', text: 'Buildings back', countdown: 5, linger: 7}},
+  {at: 9, buildings: true},
   {
-    at: 10,
-    hint: {target: 'area', text: 'Back to value per ground area', countdown: 5, linger: 8},
+    at: 14,
+    hint: {
+      target: 'type',
+      text: 'You can also color land and buildings by their *type*.',
+      tip: 'Single-family, multi-family, commercial, industrial, and more.',
+      countdown: 5,
+      countdownAfter: 1,
+      linger: 9,
+    },
   },
-  {at: 15, view: 'area'},
-  {at: 21, hint: {target: 'dwelling', text: 'Value per home again', countdown: 5, linger: 8}},
-  {at: 26, view: 'dwelling'},
+  {at: 20, view: 'type'},
   {
-    at: 32,
-    hint: {target: 'area', text: 'And back to value per ground area', countdown: 5, linger: 8},
+    at: 24,
+    hint: {text: 'Homes, shops, industry, and public land, each in its own color.', linger: 10},
   },
-  {at: 37, view: 'area'},
-  {at: 41, hint: {target: 'buildings', text: 'Buildings back', linger: 4}},
-  {at: 43, buildings: true},
 ];
-// Leaving the contrast: per ground area in any case.
-const TOUR_LEAVE_ACTIONS = [{at: 0, view: 'area'}];
+// Leaving the contrast: the view the tour last showed stays.
+const TOUR_LEAVE_ACTIONS = [];
 
 function ease(t) {
   return 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, t)));
@@ -953,8 +1017,10 @@ function startTour(
 // looked up (see the landing page's legal note in plans/). A link
 // carries the current view along: with the tour stopped, the zoom,
 // pitch and bearing (set at the next place's main center); and which
-// layers are off. The palette carries over by itself (stored per site).
-function buildPlaceNav(places, deckgl, isTouring, shown) {
+// layers are off; and the choices of what is drawn (`choices`: the
+// view, the values, the local or nationwide scale; maintainer,
+// 2026-10-19). The palette carries over by itself (stored per site).
+function buildPlaceNav(places, deckgl, isTouring, shown, choices = () => ({})) {
   if (!places.length) {
     return;
   }
@@ -1010,6 +1076,20 @@ function buildPlaceNav(places, deckgl, isTouring, shown) {
     }
     if (shown.ghosts) {
       query.set('show', 'ghosts');
+    }
+    // Only what differs from a page's opening, so a plain visit stays
+    // a plain link. `carry` lets the next page open on the type view,
+    // which a bare address never does.
+    const {view, values, range} = choices();
+    if (view && view !== 'area') {
+      query.set('view', view);
+      query.set('carry', '1');
+    }
+    if (values === 'assessed') {
+      query.set('values', 'assessed');
+    }
+    if (range === 'national') {
+      query.set('range', 'national');
     }
     const text = query.toString();
     return `../${slug}/${text ? `?${text}` : ''}`;
@@ -1258,7 +1338,18 @@ async function main() {
   for (const layer of scene.layers) {
     Object.keys(layer.views || {}).forEach((key) => viewKeys.add(key));
   }
-  let valueView = viewKeys.has(params.get('view')) ? params.get('view') : 'area';
+  // A page opens on a value view, value per ground area unless the
+  // address names another; on the type view only when the visitor
+  // carried it from another place (`carry`, the places menu;
+  // maintainer, 2026-10-19). A view this page lacks (another page's
+  // model) falls back to the same kind here.
+  const asked = params.get('view');
+  const carried = params.get('carry') === '1';
+  let valueView = viewKeys.has(asked) && (asked !== 'type' || carried)
+    ? asked
+    : asked && asked.endsWith('__home') && viewKeys.has('dwelling')
+      ? 'dwelling'
+      : 'area';
   let withEstimates = params.get('values') !== 'assessed';
   // Local color bounds (the scene's own) or nationwide ones
   // (`national_bounds`, per display unit).
@@ -1293,6 +1384,15 @@ async function main() {
   if (hasDwellingView) {
     // "Home", not "dwelling", for visitors (maintainer, 2026-10-17).
     choices.push(['view', 'dwelling', 'Value per home']);
+  }
+  // The type view (maintainer, 2026-10-19): land and buildings colored
+  // by one list of types; the heights still show the value.
+  const hasTypeView = scene.layers.some((l) => viewOf(l, 'type')) && scene.types;
+  if (hasTypeView) {
+    if (!choices.some(([, id]) => id === 'area')) {
+      choices.push(['view', 'area', 'Value per ground area']);
+    }
+    choices.push(['view', 'type', 'Type']);
   }
   if (scene.layers.some((l) => l.n_estimated > 0) || modelViews.length) {
     choices.push(['values', 'assessed', 'Tax assessor'], ['values', 'estimates', '+ imputed']);
@@ -1390,7 +1490,9 @@ async function main() {
           ? choice === modelKey
           : group === 'scale'
             ? (choice === 'dollars') === modelDollars
-            : choice === (isPerHome(valueView) ? 'dwelling' : 'area');
+            : choice === (valueView === 'type'
+              ? 'type'
+              : isPerHome(valueView) ? 'dwelling' : 'area');
       button.classList.toggle('active', on);
       button.setAttribute('aria-checked', String(on));
     }
@@ -1447,6 +1549,16 @@ async function main() {
     legends.replaceChildren();
     // Which values the bars show, named small behind each title.
     const valuesShown = withEstimates ? 'imputed' : 'assessed';
+    // The type view has no ramp, so no local or nationwide scale.
+    const rangeChoice = document.getElementById('range-switch');
+    if (rangeChoice) {
+      rangeChoice.hidden = valueView === 'type';
+    }
+    if (valueView === 'type' && hasTypeView) {
+      drawTypeLegend(legends, scene.types);
+      placeControls();
+      return;
+    }
     for (const layer of scene.layers) {
       const spec = layerScale(layer, palette.layers[layer.name]);
       // Per dwelling: the non-residential ramp, drawn as a strip under
@@ -1586,6 +1698,12 @@ async function main() {
   const modelRows = (layerId, feature) => {
     const entry = layers.find((e) => e.id === layerId || `${e.id}-ghosts` === layerId);
     const view = entry && viewOf(entry.spec);
+    // Under the type view, the type the feature's color stands for.
+    const codes = view && view.categorical && entry.decoded.arrays.type_code;
+    if (codes) {
+      const type = scene.types[codes[feature]] || scene.types[0];
+      return `<div><b>Type:</b> ${escapeHtml(type.label)}</div>`;
+    }
     const values = view && view.model && entry.decoded.arrays[`value_${valueView}`];
     if (!values) {
       return '';
@@ -1919,6 +2037,12 @@ async function main() {
   // over; the coloring the tour chose stays.
   let tourHidBuildings = false;
   const tourAction = (action) => {
+    // A page without the view a step names (no type view, no per-home
+    // view) skips that step and its hint.
+    const needs = action.view || (action.hint && action.hint.target);
+    if (needs && needs !== 'buildings' && !viewSwitch.querySelector(`[data-choice="${needs}"]`)) {
+      return;
+    }
     if (action.hint) {
       showHint(action.hint);
     }
@@ -2034,7 +2158,11 @@ async function main() {
     touring = true;
     watchForTakeover();
   });
-  buildPlaceNav(places, deckgl, () => touring, shown);
+  buildPlaceNav(places, deckgl, () => touring, shown, () => ({
+    view: valueView,
+    values: withEstimates ? 'imputed' : 'assessed',
+    range: colorRange,
+  }));
 
   // Tilt with two fingers moving up or down together (maintainer,
   // 2026-10-17). deck.gl has the gesture, but its pinch claims nearly
@@ -2279,6 +2407,21 @@ async function main() {
     // A palette may draw every edge (`line`) and blend its fills
     // additively (`blend`): light adds up, no depth is written, so the
     // result does not depend on draw order (see `Palette.blend`).
+    // The type view: every feature in its type's color, fills and
+    // value-colored edges alike, the same in every palette. Lots take
+    // a light tint and buildings the full color, darker: in the very
+    // same color a house vanished into its single-family lot
+    // (Wilmington, 2026-10-19).
+    const codes = entry.decoded.arrays.type_code;
+    if (valueView === 'type' && codes) {
+      const isLot = entry.spec.name === scene.layers[0].name;
+      const tint = isLot ? TYPE_LOT_TINT : 0;
+      const shade = isLot ? 1 : TYPE_BUILDING_SHADE;
+      colors.set(typeColors(codes, scene.types, spec.alpha, tint, shade));
+      if (spec.lineSpec && lineColors) {
+        lineColors = typeColors(codes, scene.types, spec.line_alpha, tint, shade);
+      }
+    }
     const additive = palette.blend === 'additive';
     // Ghosts (`ghost`): left out of the solid layer and drawn in a
     // layer of their own, their own color, mostly transparent, writing
@@ -2564,7 +2707,7 @@ async function main() {
       valueView = modelView(perHome);
       group = 'view';
     } else if (group === 'view') {
-      valueView = isModel(valueView) ? modelView(id === 'dwelling') : id;
+      valueView = isModel(valueView) && id !== 'type' ? modelView(id === 'dwelling') : id;
     } else {
       if (isModel(valueView)) {
         valueView = perHome ? 'dwelling' : 'area';
