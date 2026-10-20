@@ -91,6 +91,15 @@ def _split_date_range(date_from: str, date_to: str) -> list[tuple[str, str]]:
     return [(d0.isoformat(), mid.isoformat()), (mid1, d1.isoformat())]
 
 
+def _is_browser_error(exc: BaseException) -> bool:
+    """Whether exc is Playwright's (a timeout or a page that went away)."""
+    try:
+        from playwright.async_api import Error
+    except ImportError:
+        return False
+    return isinstance(exc, Error)
+
+
 class RegistryIngester:
     """Crawl registry transaction records and save as parquet.
 
@@ -337,11 +346,17 @@ class RegistryIngester:
         town: str,
         doc_type: str,
         page_count: int,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict] | None, int]:
         """Crawl one date range for one town + doc type.
 
         If the site returns the ">1000 records" dialog, the date range is
         split in half and each half is crawled recursively until results fit.
+        Returns None for the records when the browser fails on every
+        attempt (or on either half of a split range), so the caller skips
+        the partition and the next run retries it. Raising instead ended
+        the whole town's run. Measured 2026-10-20 on US-MA-CAM: one
+        search timed out three times after 7 months had been saved.
+        Errors that are not the browser's still raise.
         """
         for attempt in range(1, self.max_attempts + 1):
             try:
@@ -376,6 +391,8 @@ class RegistryIngester:
                             part, page_count = await self._crawl_partition(
                                 adapter, admin4_id, sf, st, town, doc_type, page_count
                             )
+                            if part is None:
+                                return None, page_count
                             sub.extend(part)
                         return sub, page_count
                     except TimeoutError:
@@ -403,7 +420,15 @@ class RegistryIngester:
 
             except Exception as exc:
                 if attempt == self.max_attempts:
-                    raise
+                    if not _is_browser_error(exc):
+                        raise
+                    warnings.warn(
+                        f'{date_from} - {date_to} {doc_type}: {attempt} attempts '
+                        f'failed ({exc}). Not saved; it will be retried on the '
+                        'next run.',
+                        stacklevel=2,
+                    )
+                    return None, page_count
                 wait = random.uniform(*self.backoff) * (2 ** (attempt - 1))
                 if self.verbose:
                     print(
