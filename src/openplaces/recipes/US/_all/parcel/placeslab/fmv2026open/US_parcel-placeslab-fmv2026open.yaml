@@ -94,11 +94,13 @@ download_by:
 # google_drive_scraper extracts the single-member zip itself.
 uncompressed_file_name: "{admin3_id_admin1}_parcel_{table}.parquet"
 
-# Keeps the raw index as the shared join key on all three tables
-# (see the restricted recipe for why boundaries needs a directive).
+# Indexes all three tables by geometry_sha3_224, whether it arrives
+# as the index or as a column (see the restricted recipe for why
+# boundaries needs a directive and why both layouts occur).
 create_index:
-  function: openplaces.io.transform.rename_index
+  function: openplaces.io.transform.index_by_key_column
   args:
+    column: geometry_sha3_224
     name: parcel_id_int
 
 join_partitions_by:

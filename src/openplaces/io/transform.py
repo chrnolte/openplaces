@@ -1360,6 +1360,44 @@ def index_by(df: pd.DataFrame, name: str) -> pd.DataFrame:
     raise ValueError(f'{name!r} is neither the current index nor a column of df.')
 
 
+def index_by_key_column(df: pd.DataFrame, column: str, name: str) -> pd.DataFrame:
+    """Index `df` by its key `column` if it has one, then name the index `name`.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.index_by_key_column`) for a multi-table
+    source whose shared key arrives sometimes as the index and sometimes
+    as an ordinary column beside a row-number index. The placeslab fmv
+    tables do both: some deliveries store `geometry_sha3_224` as the
+    pandas index, later ones as a column with a RangeIndex. Renaming the
+    index alone (`rename_index`) would name a row number in the second
+    case, and `io.aggregate.join_partitions_by_index` would then pair
+    rows by position rather than by parcel.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    column : str
+        Key column to promote to the index (and drop as a column) when
+        present. When absent, the existing index is kept as the key.
+    name : str
+        Name given to the resulting index.
+
+    Raises
+    ------
+    ValueError
+        If `column` is absent and `df` carries an unnamed RangeIndex,
+        which holds row numbers rather than a key.
+    """
+    if column in df.columns:
+        df = df.set_index(column)
+    elif isinstance(df.index, pd.RangeIndex) and df.index.name is None:
+        raise ValueError(
+            f'{column!r} is not a column and the index is an unnamed '
+            'RangeIndex; there is no key to index by.'
+        )
+    return df.rename_axis(name)
+
+
 def make_index_unique(
     df: pd.DataFrame,
     sort_by: str | None = None,
