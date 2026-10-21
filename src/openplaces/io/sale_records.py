@@ -97,6 +97,7 @@ def derive_document_id(
     separator: str = '/',
     scope_column: str | None = None,
     unscoped_value: str | None = None,
+    strip_leading_zeros: bool = False,
 ) -> pd.DataFrame:
     """Name the recorded document (deed) behind each sale row.
 
@@ -130,6 +131,14 @@ def derive_document_id(
     unscoped_value : str, optional
         The *scope_column* value left unprefixed (`deed`), so identifiers
         already published for it do not change.
+    strip_leading_zeros : bool, optional
+        Write an all-digit part without its leading zeros (default
+        False). A registry and an assessor can pad one book and page
+        differently, and then the deed and the roll row citing it name
+        two documents: Nantucket's crawled deeds read `646/141` where its
+        MassGIS rows read `00313/0278`. Off by default because it changes
+        the identifier a source's sales are published under.
+        Measured 2026-10-19 on US-MA-NTC: 4,225 of 5,815 last sales then name a deed.
     """
     document = pd.Series(pd.NA, index=frame.index, dtype='string')
     for group in candidates:
@@ -140,6 +149,9 @@ def derive_document_id(
         for c in columns:
             part = normalized_text(frame[c]).astype('string')
             placeholder = part.str.fullmatch('0*').fillna(True)
+            if strip_leading_zeros:
+                digits = part.str.fullmatch(r'\d+').fillna(False)
+                part = part.where(~digits, part.str.lstrip('0'))
             parts.append(part.where(frame[c].notna() & ~placeholder))
         complete = pd.concat(parts, axis=1).notna().all(axis=1)
         joined = parts[0]

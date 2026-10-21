@@ -46,6 +46,9 @@ from openplaces.recipe import get_recipe_id
 DEED_MEMBERS_KEY = 'deed_members'
 TRANSACTION_ID = 'transaction_id'
 PARCEL_KEY_METHOD = 'parcel_id_local'
+#: Link label of a sale that took the ids of the roll rows citing its
+#: document (`link_transactions`, *document_key*).
+CITED_DOCUMENT_METHOD = 'cited_document'
 
 
 @_register('derive_sale_period')
@@ -99,6 +102,7 @@ def derive_document_id(
     separator: str = '/',
     scope_column: str | None = None,
     unscoped_value: str | None = None,
+    strip_leading_zeros: bool = False,
 ) -> HarmonizeState:
     """Name the recorded document (deed) behind each sale row.
 
@@ -107,7 +111,13 @@ def derive_document_id(
     if state.spine is None:
         return state
     state.spine = sale_records.derive_document_id(
-        state.spine, candidates, output, separator, scope_column, unscoped_value
+        state.spine,
+        candidates,
+        output,
+        separator,
+        scope_column,
+        unscoped_value,
+        strip_leading_zeros=strip_leading_zeros,
     )
     if state.verbose:
         named = int(state.spine[output].notna().sum())
@@ -287,6 +297,34 @@ def _pass_links(rows, reference, row_key, ref_key, method, source_column):
     return links
 
 
+def _cited_document_rows(rows, document_key, kind_column, citing_kind, id_columns):
+    """Each sale row of another kind, once per citing row naming its document.
+
+    The returned rows keep the sale's id and source and carry the citing
+    row's *id_columns*, so a deed is linked to every parcel and property
+    whose roll row cites its book and page: a deed of three parcels is
+    cited three times. None where no row cites a document.
+    """
+    if document_key not in rows.columns or kind_column not in rows.columns:
+        return None
+    citing_mask = rows[kind_column].astype('string').eq(citing_kind).fillna(False)
+    present = [c for c in id_columns if c in rows.columns]
+    if not present:
+        return None
+    citing = rows.loc[citing_mask, [document_key, *present]]
+    citing = citing.dropna(subset=[document_key]).dropna(how='all', subset=present)
+    if citing.empty:
+        return None
+    carried = [c for c in ('source',) if c in rows.columns]
+    targets = rows.loc[
+        ~citing_mask & rows[document_key].notna(), [document_key, *carried]
+    ]
+    merged = targets.reset_index().merge(
+        citing.drop_duplicates().reset_index(drop=True), on=document_key, how='inner'
+    )
+    return merged.set_index(TRANSACTION_ID)
+
+
 @_register('link_transactions')
 def link_transactions(
     state: HarmonizeState,
@@ -296,6 +334,7 @@ def link_transactions(
     lot_column: str = 'lot_id_local',
     property_key: str = 'parcel_id_local',
     parcel_id_keys: tuple[str, ...] = (),
+    document_key: str | None = None,
     address_keys: tuple[str, ...] = ('address_id_local_city', 'address_id_local'),
     address_ranges: bool = True,
     kind_column: str = 'sale_record_kind',
@@ -326,6 +365,11 @@ def link_transactions(
        labeled with it: a Massachusetts last sale is a MassGIS assessor
        row with no `parcel_id_local` but its parcel's `parcel_id_admin2`,
        which the address passes below would only approximate;
+    1b. with *document_key*, the ids of the roll rows citing the sale's
+       document (`cited_document`): a registry deed names no parcel, but
+       the assessor's last-sale row citing its book and page does, so the
+       deed takes that row's *parcel_id_keys* (and, below, its
+       *property_key*), every citing row's where several cite one deed;
     2. the address keys, town-scoped then county-scoped
        (`address_id_local_city`, `address_id_local`), for a registry that
        carries no parcel number (Massachusetts);
@@ -354,6 +398,10 @@ def link_transactions(
         Spine columns holding another parcel id, tried in order after
         the parcel key and before the addresses, each present on the
         parcel spine under the same name (default none).
+    document_key : str, optional
+        Spine column naming each row's document the same way on every
+        record kind (a book and page without the kind's scope), for the
+        `cited_document` pass; default none, no such pass.
     address_keys : tuple of str
         Spine columns tried in order after the parcel key, each present
         on the parcel spine under the same name.
@@ -377,6 +425,7 @@ def link_transactions(
         lot_column,
         property_key,
         *parcel_id_keys,
+        *([document_key] if document_key else []),
         *address_keys,
         'address_street',
         'address_number',
@@ -386,6 +435,17 @@ def link_transactions(
     ]
     rows = _rows_to_link(state, columns)
     source_column = 'source' if 'source' in rows.columns else None
+    cited = (
+        _cited_document_rows(
+            rows,
+            document_key,
+            kind_column,
+            last_sale_kind,
+            [*parcel_id_keys, property_key],
+        )
+        if document_key
+        else None
+    )
 
     def _load(recipe_id):
         try:
@@ -439,6 +499,20 @@ def link_transactions(
         _tier(everything, parcel_key, 'parcel_id_local', PARCEL_KEY_METHOD)
         for key in parcel_id_keys:
             _tier(everything, key, key, key)
+        if cited is not None:
+            for key in parcel_id_keys:
+                pending = set(rows.index[~reached.to_numpy()])
+                tried = cited[cited.index.isin(pending)]
+                if tried.empty or key not in tried.columns or key not in parcels:
+                    continue
+                links = _pass_links(
+                    tried, parcels, key, key, CITED_DOCUMENT_METHOD, source_column
+                )
+                if links.empty:
+                    continue
+                found.append(links)
+                hit = rows.index.isin(set(links[TRANSACTION_ID].astype('string')))
+                reached = reached | pd.Series(hit, index=reached.index)
         for key, method in zip(address_keys, (ADDRESS_CITY_METHOD, ADDRESS_METHOD)):
             _tier(everything, key, key, method)
         if (
@@ -510,6 +584,7 @@ def link_transactions(
             'parcel_key': parcel_key,
             'address_keys': list(address_keys),
             'address_ranges': address_ranges,
+            'document_key': document_key,
         },
         # The spine's own output is saved after this step, so only the
         # other side is stamped (see write_entity_link).
@@ -541,6 +616,26 @@ def link_transactions(
                 property_key,
                 source_column=source_column,
             )
+            if cited is not None and property_key in cited.columns:
+                linked_ids = set(property_links[TRANSACTION_ID].astype('string'))
+                tried = cited[~cited.index.isin(linked_ids)]
+                if len(tried):
+                    property_links = pd.concat(
+                        [
+                            property_links,
+                            build_id_links(
+                                tried,
+                                properties,
+                                property_key,
+                                property_key,
+                                TRANSACTION_ID,
+                                'property_id',
+                                CITED_DOCUMENT_METHOD,
+                                source_column=source_column,
+                            ),
+                        ],
+                        ignore_index=True,
+                    )
             # A folded deed is linked through its member rows, and two
             # members naming one property (the roll's row and the parcel
             # layer's, say) would make the pair twice.
@@ -555,7 +650,7 @@ def link_transactions(
             finer_recipe_id=owner_id,
             coarser_recipe_id=property_recipe_id,
             admin_id=admin_id,
-            step_config={'property_key': property_key},
+            step_config={'property_key': property_key, 'document_key': document_key},
             stamped_recipe_ids=(property_recipe_id,),
         )
     else:
