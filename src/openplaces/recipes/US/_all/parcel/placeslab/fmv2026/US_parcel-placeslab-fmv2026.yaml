@@ -88,15 +88,19 @@ uncompressed_file_name: "{admin3_id_admin1}_parcel_{table}.parquet"
 # Opts this entity_type: parcel recipe out of TableIngester's automatic
 # geometry-hash geo_id indexing (table_ingester.py:651-659), which would
 # otherwise fire for `boundaries` (the one table with geometry) and
-# discard its real parcel_id_int index -- predictions/predictors don't
-# have geometry so were never at risk from that branch, but boundaries
-# needs an explicit directive (any directive; rename_index here is a
-# same-name no-op relabel, since parcel_id_int already arrives as the
-# index on all three raw tables) to keep join_partitions_by_index's
-# shared join key intact across the 3-table join.
+# discard its real key index, so boundaries needs an explicit
+# directive to keep join_partitions_by_index's shared join key intact
+# across the 3-table join. The key is the parcel's geometry_sha3_224,
+# which some deliveries store as the pandas index and others (MA,
+# 2026-10-19) as an ordinary column beside a RangeIndex.
+# index_by_key_column promotes the column when present and otherwise
+# keeps the index, so the join pairs rows by parcel in both layouts,
+# never by row position. The crosswalk's reference_parcel_id names
+# the same hashes.
 create_index:
-  function: openplaces.io.transform.rename_index
+  function: openplaces.io.transform.index_by_key_column
   args:
+    column: geometry_sha3_224
     name: parcel_id_int
 
 # Automatically left-joins the 3 table partitions above (column-wise, on
