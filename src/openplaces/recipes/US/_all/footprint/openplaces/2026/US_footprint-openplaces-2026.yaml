@@ -434,8 +434,16 @@ pipeline:
   # plainly does carry improvement value (Manufactured Home F1 -0.0112).
   # This split keeps the structure-level numerator that works and gives it
   # a consistent, parcel-level base.
+  #
+  # allow_missing: a unit whose parcels come from a geometry layer with
+  # no roll states no value at all (Virginia's VGIN parcels in
+  # Alexandria, Arlington and Falls Church), and apportionment above
+  # already skips a value the curated parcel lacks. The two names are
+  # fixed here, so the misspelling the strict default guards against
+  # cannot hide behind it.
   - step: link_curated_entity
     recipe_id: US_parcel-openplaces-2026
+    allow_missing: true
     columns:
       improvement_value: improvement_value_parcel_whole
       land_value: land_value_parcel_whole
