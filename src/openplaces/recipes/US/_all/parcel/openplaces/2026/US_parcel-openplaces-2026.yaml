@@ -125,6 +125,19 @@ pipeline:
       - n_residential_buildings
       - has_homestead_exemption
 
+  # The land-use labels the parcel spine's derive_use_classes builds
+  # from use_group / use_group_code. That step writes nothing where no
+  # source brought a use code to the spine: a unit covered only by a
+  # geometry layer, such as Virginia's VGIN parcels in Alexandria,
+  # Arlington and Falls Church (US-VA-AL, US-VA-AR, US-VA-FC). Declared
+  # so that the footprint recipe's link_curated_entity finds them there,
+  # all-null; the steps below that read them already treat a missing
+  # label as no evidence, so the vote is unchanged.
+  - step: declare_columns
+    columns:
+      - use_group_combined
+      - use_group_combined_labeled
+
   # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
   # physical predictors (area-weighted crosswalk from the legacy reference
   # parcel dataset). Canonical column names drop the `_fmv2026` product
