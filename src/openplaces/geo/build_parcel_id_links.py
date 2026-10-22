@@ -416,6 +416,7 @@ def _write_overrides(proposed: pd.DataFrame) -> None:
                     'conv',
                     'tolerance',
                     'source',
+                    'partitions',
                 ]
             )
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
@@ -124,6 +126,66 @@ def exclude_numeric_above(state: CurateState, column: str, max: float) -> Curate
             f'  exclude_numeric_above: dropped {int(mask.sum()):,} rows '
             f'where {column!r} > {max}'
         )
+    return state
+
+
+_RANGE_KEYS = {'column', 'min', 'max', 'inclusive', 'keep_null'}
+
+
+@_register('filter_by_range', phase='standardize')
+def filter_by_range(state: CurateState, filters: list[dict]) -> CurateState:
+    """Drop rows whose numeric value falls outside a declared range.
+
+    The curate-stage home for sample definitions that are numeric
+    cutoffs: a year window, a positive price, an area-ratio sanity band.
+    Unlike :func:`filter_numeric_at_least` and
+    :func:`exclude_numeric_above`, one step carries several cutoffs and
+    reports a count per filter, so a training table's row count can be
+    reconciled filter by filter against the analysis it reproduces.
+
+    Parameters
+    ----------
+    filters : list of dict
+        Each entry has ``column`` and at least one of ``min`` / ``max``.
+        ``inclusive`` (bool, default True) decides whether a value equal
+        to a bound is kept. ``keep_null`` (bool, default False) decides
+        whether a missing value survives the filter; the default drops
+        it, because a row whose year or price is unknown cannot be said
+        to be inside the window. A filter naming an absent column is
+        skipped with a warning rather than dropping every row.
+    """
+    curated = state.curated
+    for spec in filters:
+        unknown = set(spec) - _RANGE_KEYS
+        if unknown:
+            raise ValueError(
+                f'filter_by_range: unknown key(s) {sorted(unknown)} in {spec!r}.'
+            )
+        column = spec['column']
+        if 'min' not in spec and 'max' not in spec:
+            raise ValueError(f'filter_by_range: {column!r} needs min and/or max.')
+        if column not in curated.columns:
+            warnings.warn(f'filter_by_range: column {column!r} absent; skipped.')
+            continue
+        values = pd.to_numeric(curated[column], errors='coerce')
+        inclusive = spec.get('inclusive', True)
+        keep = pd.Series(True, index=curated.index)
+        if 'min' in spec:
+            keep &= values.ge(spec['min']) if inclusive else values.gt(spec['min'])
+        if 'max' in spec:
+            keep &= values.le(spec['max']) if inclusive else values.lt(spec['max'])
+        if spec.get('keep_null', False):
+            keep |= values.isna()
+        n_dropped = int((~keep).sum())
+        if n_dropped:
+            curated = curated.loc[keep].copy()
+        if state.verbose:
+            bounds = ', '.join(f'{k}={spec[k]}' for k in ('min', 'max') if k in spec)
+            print(
+                f'  filter_by_range: dropped {n_dropped:,} rows on {column!r} '
+                f'({bounds}); {len(curated):,} remain'
+            )
+    state.curated = curated
     return state
 
 

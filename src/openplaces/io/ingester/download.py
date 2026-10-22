@@ -31,6 +31,7 @@ from openplaces.io.ingester._helpers import (  # noqa: F401
     _transform_partition_key,
     _warn_registry_type_mismatches,
 )
+from openplaces.io.ingester.partitions import PartitionNotPublished
 from openplaces.io.usage_profile import require_usage_compatible
 from openplaces.path import (
     external_dir,
@@ -110,7 +111,20 @@ class _DownloadMixin:
             if 'download_by' in self.recipe:
                 self._catch_missing_partition_ids_error()
 
-                download_url = self._resolve_placeholders(download_url)
+                try:
+                    download_url = self._resolve_placeholders(download_url)
+                except PartitionNotPublished as err:
+                    # A soft skip, as for a scraper's unpublished period:
+                    # the unit gets an empty table, not a failed job.
+                    warnings.warn(f'Not published: {err}. Skipping.', stacklevel=2)
+                    self.download_partition['download_url'] = None
+                    self.download_partition['unavailable'] = True
+                    unit = self.download_partition.get('admin_id_to_download')
+                    if unit is not None:
+                        self.__dict__.setdefault('_unavailable_units', set()).add(
+                            str(unit)
+                        )
+                    return
             else:
                 # Catch error if the URL has placeholder
                 placeholders_in_url = self._get_placeholders(download_url)

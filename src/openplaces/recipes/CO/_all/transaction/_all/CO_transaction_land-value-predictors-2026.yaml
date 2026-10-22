@@ -1,0 +1,105 @@
+# Recipe: the static land-value predictors of
+# CO_parcel_land-value-predictors-2026, sampled on the transaction
+# spine's polygons (land acquisitions, PES contracts).
+#
+# The land value model trains on transactions and predicts on parcels,
+# so both must carry the same predictor columns from the same rasters;
+# this recipe is the parcel one's step list verbatim, on the other
+# entity, and a test asserts the two stay identical. The rasters are
+# national, so no raster_admin_id is needed; see the parcel recipe for
+# the raster layout to place under the raster root.
+
+description: >-
+  Static land-value predictors on Colombia's land acquisition and PES
+  polygons: terrain, travel time, built share, roads, lights, biomass, rent.
+
+stage: enrich
+admin_id: CO
+
+entity:
+  entity_type: transaction
+
+dataset:
+  theme: land-value-predictors
+  source:
+    source_id: openplaces
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 1
+
+pipeline:
+  - step: zonal_stats
+    raster_path: DEM/copernicus_30m/CO_DEM_copernicus_30m.tif
+    raster_key: elevation
+    column: elevation
+    stat: mean
+  - step: zonal_stats
+    raster_path: DEM/copernicus_30m/CO_slope_copernicus_30m.tif
+    raster_key: slope
+    column: slope
+    stat: mean
+  - step: zonal_stats
+    raster_path: access/nelson_2019_travel_time_50k.tif
+    raster_key: travel_time_nelson
+    column: travel_time_nelson
+    stat: mean
+  - step: zonal_stats
+    raster_path: access/weiss_2018_accessibility_to_cities.tif
+    raster_key: travel_time_weiss
+    column: travel_time_weiss
+    stat: mean
+  - step: zonal_stats
+    raster_path: built/sentinel_built_30_filled.tif
+    raster_key: built_share
+    column: built_share
+    stat: mean
+  - step: zonal_stats
+    raster_path: access/roads_osm_distance_150.tif
+    raster_key: road_distance_osm
+    column: road_distance_osm
+    stat: mean
+  - step: zonal_stats
+    raster_path: access/roads_groads_distance_150.tif
+    raster_key: road_distance_groads
+    column: road_distance_groads
+    stat: mean
+  - step: zonal_stats
+    raster_path: lights/dmsp_stable_lights_avg_2001_2013.tif
+    raster_key: lights_dmsp
+    column: lights_dmsp
+    stat: mean
+  - step: zonal_stats
+    raster_path: carbon/baccini_aboveground_biomass.tif
+    raster_key: biomass_aboveground
+    column: biomass_aboveground
+    stat: mean
+  - step: zonal_stats
+    raster_path: forest/hansen_treecover_2000.tif
+    raster_key: tree_cover_share
+    column: tree_cover_share
+    stat: mean
+  - step: zonal_stats
+    raster_path: rent/agricultural_rent_km2.tif
+    raster_key: agricultural_rent
+    column: agricultural_rent
+    stat: mean
+  - step: zonal_stats
+    raster_path: PAs/protection_strict_boolean.tif
+    raster_key: protected_strict_share
+    column: protected_strict_share
+    stat: mean
+  - step: link_admin_attribute
+    enabled: false
+    output: population_density
+    recipe_id: CO_population-dane-2018
+    attribute: population
+    per_km2: true
+  - step: link_admin_attribute
+    enabled: false
+    output: displaced_share
+    recipe_id: CO_population-renavi-2021
+    attribute: n_expelled
+    share_of: population

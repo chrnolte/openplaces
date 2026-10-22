@@ -1,0 +1,180 @@
+# Recipe: City of Alexandria, VA real estate accounts (AlexGIS), the
+# roll its values table supplements.
+#
+# SOURCE. ArcGIS Online item ab8f3a147ddc47deb6d82c5afda65708,
+# "Alexandria Parcels" (owner AlexGIS, the City's GIS division),
+# hosted FeatureServer layer 0: one row per real estate account with
+# its polygon. Read as the Hub CSV export, 47,414 rows, 11.1 MB
+# (Last-Modified 2026-07-27), on 2026-10-19. source_id alexgis: the
+# City publishes through AlexGIS.
+#
+# BULK vs REST (equivalence test, 2026-10-19). Rows 47,414 in the
+# export and on the live layer; LAND_SF > 0 on 26,137 in both;
+# LANDCODE filled on 47,347 in both; NEIGHBORHO filled on 41,763 in
+# both. The layer carries no values: they come from the values
+# supplement (the City's map service).
+#
+# WHAT ONE ROW IS. One account (ACCOUNTNO, eight digits, '99999999'
+# fabricated). Condominium units are accounts of their own, each with
+# its own PID and its own (stacked) polygon. 30 rows have no account
+# number and are dropped by `query`; 4 accounts appear on 2 rows each
+# and the first row is kept (`drop_duplicates`).
+# Measured 2026-10-19 on US-VA-AL: 47,380 rows kept, 47,380 distinct accounts.
+#
+# KEYS. VGIN's Alexandria rows are this layer's (47,414 polygons):
+# VGIN PARCELID equals PID_RE, the map-block-lot id ('999.99-99-99',
+# fabricated), on 100% of values both ways, and VGIN PTM_ID equals
+# ACCOUNTNO on 100% both ways. US-VA_parcel-vgin-2026 builds
+# Alexandria's key from PARCELID with no instruction, so PID_RE is
+# parcel_id_assessor here with no instruction either, and ACCOUNTNO
+# is property_id_assessor. The bundled US-VA-AL conversion fits
+# neither column (no key on 99.9% of rows), so compute_parcel_id_local
+# warns and falls back to 'pipe' on both sides alike.
+# Measured 2026-10-19 on US-VA-AL: 47,346 of 47,380 roll rows key to a VGIN parcel.
+# Measured 2026-10-19 on US-VA-AL: 47,306 of 47,306 roll keys are VGIN keys.
+# Measured 2026-10-19 on US-VA-AL: 47,306 of 47,306 VGIN keys meet a roll key.
+# (VGIN zip on the data root on 2026-10-19: the 2026 Q3 geodatabase.)
+# Exact string equality of the raw ids, distinct values, both ways:
+# Measured 2026-10-21 on US-VA-AL: PID_RE = PARCELID, 47,305 of 47,306 both ways.
+# Measured 2026-10-21 on US-VA-AL: ACCOUNTNO = PTM_ID, 47,380 of 47,380 both ways.
+# Measured 2026-10-21 on US-VA-AL: ACCOUNTNO meets no PARCELID, PID_RE no PTM_ID.
+# Either pair would join; PID_RE is used because it is the key VGIN
+# builds here. A Richmond-style `conv: simple` instruction for
+# US-VA-AL, declared in both this recipe and the VGIN one, would
+# state the fallback outright and silence the warning.
+#
+# PARCEL SPINE. The parcel geospine's property pass (link_by_id,
+# auto_discover, mode aggregate) joins this roll on parcel_id_local
+# and copies use_group_code ('first'), use_group (joined), address
+# and the other listed parcel-level columns onto the VGIN parcel. A
+# condominium unit's PID_RE is the key of its own VGIN polygon; where
+# the VGIN ingest's stacked-units split folds such polygons into one
+# lot, the split's unit-to-lot pairs carry the unit's roll row there
+# (not measured on an ingest here: VGIN cannot ingest until the admin
+# crosswalk noted in its recipe is rebuilt).
+# The values supplement carries supplements_key, so that pass
+# skips it: values reach parcels through the property spine and
+# curate's aggregate_from_entities.
+#
+# MAPPED.
+#   LANDCODE    use_group_code (76 three-digit codes)
+#   LANDDESC    use_group, in the source's wording (one description
+#               per code: DETACHED HOUSE, CONDO (GARDEN) ...)
+#   ZONING      zoning_code
+#   NEIGHBORHO  tax_neighborhood_code (88.1% filled)
+#   LAND_SF     land_area_sqft (0 on condominium units, nulled)
+#   ADDRESS_GIS address, cut before ' UNIT '; the unit after it is
+#               address_unit (36.4% of rows, the condominium units)
+# NOT MAPPED: PARCELTYPE and ST_DIR (empty), UNIT (7 rows), STATUS
+# (legal-status codes U, L, A and spelled-out variants, 54% filled),
+# MAP, BLOCK, LOT_GIS, LOT_RE (the parts of PID_RE), PLAT, LEGAL_LOT,
+# the street-part fields (ADDRESS_GIS has them), SHAPE__Area and
+# SHAPE__Length. PERSONAL and record columns, deliberately not mapped:
+# OWN_NAME, OWNERNAME2, OWN_ADD, OWN_ADD2, OWN_CITY, OWN_STAT, OWN_ZIP,
+# PRP_NAME (a property name, which can be a person's) and INSTRUMENT.
+# Year built and living area are in no public AlexGIS layer.
+#
+# SALES are not here: the Office of Real Estate Assessments publishes
+# them only as per-study-group web pages, which no recipe scrapes.
+#
+# RESIDENTIAL. LANDCODE 100 to 150 (house, semi-detached, townhouse,
+# condominium, cooperative).
+# Measured 2026-10-19 on US-VA-AL: 42,623 residential rows; 100.00% key to VGIN.
+#
+# TERMS: A PERSON MUST READ THEM BEFORE ANY RELEASE. The item's
+# licence field reads 'cc0' (read 2026-10-19), with no further text.
+# The City's website terms (terms_url) say: "You may freely reproduce
+# and distribute, for personal or nonprofit use, any original content
+# on a site produced by the City". Which of the two governs this
+# layer has not been decided by a person, so the source is recorded
+# conservatively, as its values supplement is: redistribution and
+# resale restricted, so delivery withholds what it supplies. No
+# usage requirement is set (none was determined from the terms). No
+# click-through or consent gate.
+
+description: >-
+  City of Alexandria, VA real estate accounts (AlexGIS parcel table, Hub
+  CSV): one row per account, with land use, zoning, land area and address.
+
+admin_id: US-VA-AL
+
+entity:
+  entity_type: property
+  source:
+    source_id: alexgis
+    # Restricted until a person decides which terms govern (see TERMS).
+    license: >-
+      Unsettled: the ArcGIS Online item's licence field reads 'cc0'; the
+      City of Alexandria website terms allow reproduction and distribution
+      "for personal or nonprofit use". Not yet read by a person.
+    terms_url: "https://www.alexandriava.gov/Legal"
+    redistribution_restricted: true
+    resale_restricted: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=ab8f3a147ddc47deb6d82c5afda65708"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/ab8f3a147ddc47deb6d82c5afda65708_0/downloads/data?format=csv&spatialRefId=4326"
+  version: 2026
+
+uncompressed_file_name: "alexandria_parcels.csv"
+encoding: utf-8-sig
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PID_RE
+  property_id_assessor: ACCOUNTNO
+  use_group_code: LANDCODE
+  use_group: LANDDESC
+  zoning_code: ZONING
+  tax_neighborhood_code: NEIGHBORHO
+  land_area_sqft: LAND_SF
+  address: ADDRESS_GIS
+
+# Rows without an account number are not accounts; see the header.
+query: "property_id_assessor == property_id_assessor"
+
+drop_duplicates: [property_id_assessor]
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: land_area_sqft
+    output: land_area_sqft
+  - type: expression
+    expression: "land_area_sqft.where(land_area_sqft > 0)"
+    inputs: [land_area_sqft]
+    output: land_area_sqft
+  # The unit is read before the address is cut down to the street.
+  - type: string
+    operation: extract_named
+    input: address
+    output: address_unit
+    args:
+      pattern: ' UNIT (?P<address_unit>.+)$'
+  - type: string
+    operation: split_take
+    input: address
+    output: address
+    args: {sep: " UNIT ", index: 0}
+  - type: string
+    operation: strip
+    input: address
+    output: address
+  - type: string
+    operation: strip
+    input: address_unit
+    output: address_unit
+
+columns_to_categorical:
+  - use_group_code
+  - use_group
+  - zoning_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

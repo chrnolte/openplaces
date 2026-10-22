@@ -12,14 +12,17 @@ FFT-convolution algorithm windowed to one admin unit and padded by
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 import rasterio
+from shapely.geometry import box
 
 from openplaces.geo.raster import compute_vicinity_coverage
 from openplaces.io.enricher import EnrichState, _register
-from openplaces.io.enricher.zonal import sample_raster
+from openplaces.io.enricher.zonal import resolve_raster_reference, sample_raster
 from openplaces.path import resolve_raster_path
 
 
@@ -50,19 +53,25 @@ def _admin_vicinity_raster_path(source_raster_path, admin_id, px_radius: int) ->
     *source_raster_path*."""
     source_raster_path = Path(source_raster_path)
     out_dir = source_raster_path.parent / 'vicinity_coverage' / str(admin_id)
-    return out_dir / f'{source_raster_path.stem}Vicinity{px_radius}px.tif'
+    # `Float`: the raster holds float32 percents since 2026-10-17; the new
+    # name keeps an older whole-percent uint8 cache from being reused.
+    return out_dir / f'{source_raster_path.stem}Vicinity{px_radius}pxFloat.tif'
 
 
 @_register('vicinity_coverage')
 def vicinity_coverage(
     state: EnrichState,
     raster_key: str,
-    source_raster_path: str,
+    source_raster_path: str | None = None,
     px_radius: int = 60,
     reprocess: bool = False,
     stat: str = 'max',
     column: str | None = None,
     method: str = 'exactextract',
+    source_raster_recipe_id: str | None = None,
+    layer: str | None = None,
+    year: int | str | None = None,
+    raster_admin_id=None,
 ) -> EnrichState:
     """Create and sample a vicinity-coverage raster over parcel polygons.
 
@@ -92,6 +101,15 @@ def vicinity_coverage(
         Zonal-statistics implementation used for the final sampling step
         (creating the vicinity raster itself is unaffected). See
         :func:`~openplaces.io.enricher.zonal.sample_raster`.
+    source_raster_recipe_id : str, optional
+        Raster dataset recipe (with *layer* and *year* for a derived
+        layer) to use instead of *source_raster_path*; see
+        :func:`~openplaces.io.enricher.zonal.resolve_raster_reference`.
+    layer, year : optional
+        Derived layer name and year under *source_raster_recipe_id*.
+    raster_admin_id : str, optional
+        Admin unit the source raster is saved for, when it cannot be
+        inferred from the unit being enriched.
     """
     spine = state.spine
     if not isinstance(spine, gpd.GeoDataFrame):
@@ -100,14 +118,38 @@ def vicinity_coverage(
             "true' on the enrich recipe."
         )
 
-    source_raster_path = resolve_raster_path(source_raster_path)
+    if source_raster_path is not None and source_raster_recipe_id is None:
+        source_raster_path = resolve_raster_path(source_raster_path)
+    else:
+        source_raster_path = resolve_raster_reference(
+            state,
+            source_raster_path,
+            source_raster_recipe_id,
+            layer,
+            year,
+            raster_admin_id,
+        )
     out_path = _admin_vicinity_raster_path(
         source_raster_path, state.admin_id, px_radius
     )
 
     with rasterio.open(source_raster_path) as src:
         raster_crs = src.crs
-    bounds = tuple(spine.to_crs(raster_crs).total_bounds)
+        raster_extent = box(*src.bounds)
+    spine_r = spine.to_crs(raster_crs)
+    bounds = tuple(spine_r.total_bounds)
+
+    # Polygons wholly outside the source raster get an empty column, as
+    # in sample_raster: a unit whose rows all lie elsewhere (a record
+    # filed under one municipality's code with its polygon in another,
+    # beyond the raster's clip buffer) must not fail the whole unit.
+    if not spine_r.intersects(raster_extent).any():
+        warnings.warn(
+            f'{state.admin_id}: no polygon intersects {source_raster_path}; '
+            f'{column or raster_key} left empty.'
+        )
+        state.evidence[column or f'{raster_key}_{stat}'] = pd.NA
+        return state
 
     if reprocess or not out_path.exists() or not _covers(out_path, bounds):
         array, transform, crs = compute_vicinity_coverage(
@@ -121,10 +163,10 @@ def vicinity_coverage(
             height=array.shape[0],
             width=array.shape[1],
             count=1,
-            dtype='uint8',
+            dtype='float32',
             crs=crs,
             transform=transform,
-            nodata=255,
+            nodata=float('nan'),
             compress='lzw',
         ) as dst:
             dst.write(array, 1)

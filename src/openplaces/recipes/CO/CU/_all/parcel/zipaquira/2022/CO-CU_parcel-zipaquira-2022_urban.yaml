@@ -1,0 +1,63 @@
+# Urban parcels of the cadastre Zipaquirá runs as its own gestor
+# catastral; see CO-CU_parcel-zipaquira-2022_rural for the source,
+# licence and why rows are assigned by número predial.
+#
+# Source: IDER layer "Predios urbanos. Municipio de Zipaquirá" (ArcGIS
+# item 3808b7b58bcc40928f0cccfb577ae045, modified 2022-11-17), 16,750
+# features, CC BY 4.0. Schema: codigo, manzana_id, tipo_avalu,
+# condicion_ (not mapped), Reporte.
+
+description: >-
+  Urban cadastral parcels from Zipaquirá's own cadastre (IDER layer,
+  2022), assigned to municipalities by número predial.
+
+admin_id: CO-CU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: zipaquira
+    portal_url: "https://ider.cundinamarca.gov.co/"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC BY 4.0 (stated on the IDER item)"
+    terms_url: "https://www.arcgis.com/home/item.html?id=3808b7b58bcc40928f0cccfb577ae045"
+    redistribution_restricted: false
+  version: "2022"
+
+uncompressed_file_name: "zipaquira_predios_urbanos.geojson"
+
+scraper_options:
+  layer_url: "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/Predios_UrbanosZipaquiura/FeatureServer/0"
+  where: "1=1"
+  out_fields: "codigo,manzana_id"
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo
+  admin_id_transformation:
+    - output: admin3_id_admin1
+      type: string
+      operation: substring
+      args:
+        start: 0
+        end: 5
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: codigo
+  manzana_code: manzana_id
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: urban
+  admin_level: 3

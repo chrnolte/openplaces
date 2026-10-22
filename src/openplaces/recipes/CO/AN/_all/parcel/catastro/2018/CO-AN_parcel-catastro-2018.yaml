@@ -62,6 +62,13 @@ keep_unnamed_columns: True
 # then prepend Antioquia's 2-digit DANE department prefix.
 # admin3_id_admin2_zfill is a disposable intermediate, dropped below.
 transformations:
+  # The parcel number (cédula catastral) a transaction record states
+  # joins on this key (`link_transactions`). A copy, not a second
+  # `columns` entry: two attributes mapped to one source column keep
+  # only one of them.
+  - output: parcel_id_local
+    type: expression
+    expression: "property_id"
   - input: admin3_id_admin2
     output: admin3_id_admin2_zfill
     type: string

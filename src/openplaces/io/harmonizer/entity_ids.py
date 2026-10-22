@@ -69,10 +69,46 @@ VINTAGE_COLUMN = 'tax_year'
 # stamps each record with its own roll year, so the units split off
 # it mix 2024 and 2025 across different properties, and keeping the
 # latest year dropped 99% of a county's units. A panel repeats its
-# accounts: earlier-year rows whose key is also in the latest year.
-# Measured 2026-10-18 on US-FL-LA: 0.963 of earlier-year rows repeat.
+# accounts from one roll to the next, so the test compares the two
+# latest years only: the rows of the year just before the latest
+# whose key is also in the latest year.
+#
+# Why the adjacent year and not all earlier rows: a county that
+# reformats its account numbers mid-panel repeats none of its
+# pre-change keys, and those rows outweighed the post-change ones
+# (Alachua went from 13 to 10 characters in 2015, Volusia to 12 in
+# 2018), so the all-years share fell under the bound and every roll
+# year entered the spine, summed per parcel by the geospine. Between
+# two consecutive rolls only the year's splits, merges and
+# retirements differ, a few percent; a reformat that falls between
+# exactly those two years is the one case the test cannot see. A
+# recipe-level `panel: true` was the alternative, rejected because
+# a source's rows already show it, and a declaration would have to
+# be kept in step with every county a statewide recipe splits into.
+# Measured 2026-10-22 on US-FL-AL: 0.999 of 2024 keys are in 2025.
+# Measured 2026-10-22 on US-FL-VO: 0.998 of 2024 keys are in 2025.
 # Measured 2026-10-18 on US-WI-MI: 0.000 of earlier-year rows repeat.
 PANEL_MIN_REPEAT_SHARE = 0.5
+
+
+def panel_repeat_share(
+    rows: pd.DataFrame, column: str = VINTAGE_COLUMN, key: str = 'parcel_id_local'
+) -> float | None:
+    """Share of the second-latest year's keys found in the latest year.
+
+    Returns None when *rows* hold fewer than two years or lack *key*.
+    """
+    if column not in rows.columns or key not in rows.columns:
+        return None
+    year = pd.to_numeric(rows[column], errors='coerce')
+    years = year.dropna().unique()
+    if len(years) < 2:
+        return None
+    latest, previous = sorted(years)[-1], sorted(years)[-2]
+    before = rows.loc[year.eq(previous), key].dropna()
+    if before.empty:
+        return 0.0
+    return float(before.isin(rows.loc[year.eq(latest), key].dropna()).mean())
 
 
 def select_latest_vintage(
@@ -83,11 +119,13 @@ def select_latest_vintage(
     """Keep the rows of the latest roll year, where a source is a panel.
 
     Returns the rows kept and the number dropped. A source with one
-    year, or none, passes through untouched, and so does one whose
-    earlier-year rows mostly name accounts the latest year lacks
-    (under PANEL_MIN_REPEAT_SHARE on *key*): those are different
+    year, or none, passes through untouched, and so does one where
+    the year before the latest mostly names accounts the latest year
+    lacks (under PANEL_MIN_REPEAT_SHARE on *key*): those are different
     properties stamped with different years, not one roll repeated.
-    Without a *key* column the source is taken for a panel.
+    Earlier years are not compared, so a panel whose key format
+    changed some years back is still a panel. Without a *key* column
+    the source is taken for a panel.
     """
     if column not in rows.columns:
         return rows, 0
@@ -95,13 +133,9 @@ def select_latest_vintage(
     if year.nunique(dropna=True) <= 1:
         return rows, 0
     keep = year.eq(year.max())
-    if key in rows.columns:
-        earlier = rows.loc[~keep, key].dropna()
-        repeat_share = (
-            earlier.isin(rows.loc[keep, key].dropna()).mean() if len(earlier) else 0.0
-        )
-        if repeat_share < PANEL_MIN_REPEAT_SHARE:
-            return rows, 0
+    repeat_share = panel_repeat_share(rows, column, key)
+    if repeat_share is not None and repeat_share < PANEL_MIN_REPEAT_SHARE:
+        return rows, 0
     return rows[keep], int((~keep).sum())
 
 

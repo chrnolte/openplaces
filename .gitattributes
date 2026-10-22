@@ -8,6 +8,9 @@
 *.txt text eol=lf
 *.yaml text eol=lf
 *.json text eol=lf
+# Shell scripts run on Linux (the SCC profile's qsub_submit.sh): a CRLF
+# checkout breaks them
+*.sh text eol=lf
 
 # The admin spine is written byte-exact (UTF-8, no BOM, LF) by both of
 # its writers, so a rebuild on any platform reproduces the committed file

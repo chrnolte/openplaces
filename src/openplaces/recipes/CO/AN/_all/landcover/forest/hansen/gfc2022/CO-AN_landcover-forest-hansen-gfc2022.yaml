@@ -1,0 +1,52 @@
+# Recipe: annual forest loss for eastern Antioquia from the Global
+# Forest Change year-of-loss layer (Hansen et al. 2013, v1.10, 2001-2022),
+# the robustness dataset of Reboredo Segovia et al. 2026.
+#
+# The import is the `lossyear` band of tile 10N_080W (value 0 = no loss,
+# v = loss in year 2000 + v), clipped to the department at ingest. Place
+# `Hansen_GFC-2022-v1.10_lossyear_10N_080W.tif` in this recipe's external
+# directory (the granule downloads from the portal below).
+#
+# Derived layers (notebook cells 385-388):
+#   deforestation           loss year equals y
+#   deforestation_prior_3y  loss in any of y-3 .. y-1
+# Annual cover (the notebook's FC_ series, tree cover 2000 minus
+# cumulative loss) needs the `treecover2000` granule thresholded to a
+# boolean as `cover_start`; add it as a second recipe partition when the
+# Hansen comparison is rerun. The paper's main outcome uses the Arevalo
+# product (CO-AN_landcover-forest-arevalo-2025).
+#
+# Known artefact (paper SI, Fig. S7): the loss series spikes around 2016
+# because of the algorithm change after 2011; the product is used for
+# comparison, not as the headline outcome.
+
+description: >-
+  Global Forest Change annual forest loss 2001-2022 for eastern Antioquia
+  (Hansen et al. 2013, v1.10) with derived prior-loss layers.
+
+admin_id: CO-AN
+
+dataset:
+  theme: landcover-forest
+  source:
+    source_id: hansen
+    portal_url: "https://glad.earthengine.app/view/global-forest-change"
+    download_url: null
+    # CC-BY-4.0: use freely with attribution to Hansen et al. 2013.
+    license: "CC-BY-4.0"
+    terms_url: "https://storage.googleapis.com/earthenginepartners-hansen/GFC-2022-v1.10/download.html"
+    redistribution_restricted: false
+    doi: "10.1126/science.1244693"
+  version: gfc2022
+  is_raster: True
+
+uncompressed_file_name: "Hansen_GFC-2022-v1.10_lossyear_10N_080W.tif"
+
+derived_layers:
+  - {layer: deforestation, op: lossyear_equals, years: [2001, 2022],
+     offset: 2000}
+  - {layer: deforestation_prior_3y, op: any_in_prior_years,
+     from: deforestation, n_years: 3, years: [2004, 2022]}
+
+save_to:
+  data_dir: cache

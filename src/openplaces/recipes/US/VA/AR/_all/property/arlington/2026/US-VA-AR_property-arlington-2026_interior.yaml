@@ -1,0 +1,133 @@
+# Recipe: Arlington County, VA residential dwelling interior table.
+# Supplement of US-VA-AR_property-arlington-2026; see that recipe for
+# the terms and the join key.
+#
+# SOURCE. The open-data catalog's "Residential Dwellings Interior"
+# bulk file, download.data.arlingtonva.us/RealEstate/
+# ImprovementInterior.txt: pipe-delimited, 141,304 rows, 8.4 MB, read
+# 2026-10-19 (the API's RealEstate/ImprovementInterior holds the same
+# 141,304 rows). No person fields.
+#
+# WHAT ONE ROW IS. One floor of a residential dwelling card: FloorNbr
+# 1.0, 1.5, 1.75, 2.0 ... 4.0, B (basement), A (attic), L (lower
+# level). 61,729 RPCs, 99.2% of them roll RPCs; counts and areas sum
+# per RPC. Commercial and apartment buildings have no cards here.
+#
+# MAPPED.
+#   BedroomCnt                 n_bedrooms (0 kept as published)
+#   TwoFixtureBathroomCnt      n_half_bathrooms
+#   Three-, Four- and FiveFixtureBathroomCnt   full baths;
+#                              n_bathrooms = full + 0.5 x half
+#   FinishedAreaSquareFeetQty  living_area_sqft, floors other than B.
+#                              Finished area on a B floor is above 0
+#                              on 0.2% of 32,711 B rows: a finished
+#                              basement is recorded instead as the
+#                              rec-room area of the dwelling table
+#                              (not ingested, see below)
+# NOT MAPPED: BaseAreaSquareFeetQty (the floor's footprint, finished
+# or not), FloorKey, DwellingKey, ExtensionNbr.
+# NOT INGESTED: ImprovementDwelling.txt (62,191 cards: dwelling type,
+# stories, heating, cooling, fireplaces, basement rec-room area, year
+# built per card), ImprovementExterior.txt, ImprovementPorch.txt and
+# Outbuilding.txt; each could be a further supplement.
+#
+# JOIN. On property_id_assessor (the RPC).
+# Measured 2026-10-19 on US-VA-AR: living_area_sqft on 98.44% of residential rows.
+# Measured 2026-10-19 on US-VA-AR: median living_area_sqft 1,292 on residential rows.
+# Measured 2026-10-19 on US-VA-AR: n_bedrooms > 0 on 91.30% of residential rows.
+# Measured 2026-10-19 on US-VA-AR: n_bathrooms > 0 on 92.62% of residential rows.
+
+description: >-
+  Arlington County, VA residential dwelling interiors (bulk file): bedrooms,
+  baths and finished living area per floor, summed per RPC.
+
+admin_id: US-VA-AR
+
+entity:
+  entity_type: property
+  source:
+    source_id: arlington
+    # Same terms as the roll; see its TERMS note. Restricted until a
+    # person reads the notice.
+    license: "unknown (Open Data Public Use Notice not yet read by a person)"
+    terms_url: "https://topics.arlingtonva.us/open-government-resources/terms/"
+    redistribution_restricted: true
+    portal_url: "https://data.arlingtonva.us/"
+    download_url: "https://download.data.arlingtonva.us/RealEstate/ImprovementInterior.txt"
+  version: 2026
+
+uncompressed_file_name: "ImprovementInterior.txt"
+delimiter: "|"
+encoding: utf-8-sig
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  property_id_assessor: RealEstatePropertyCode
+  n_bedrooms: BedroomCnt
+  n_half_bathrooms: TwoFixtureBathroomCnt
+  living_area_sqft: FinishedAreaSquareFeetQty
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: ThreeFixtureBathroomCnt
+    output: n_three_fixture
+  - type: unary
+    operation: to_numeric
+    input: FourFixtureBathroomCnt
+    output: n_four_fixture
+  - type: unary
+    operation: to_numeric
+    input: FiveFixtureBathroomCnt
+    output: n_five_fixture
+  # n_bathrooms = 3-, 4- and 5-fixture baths + 0.5 x 2-fixture baths.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_three_fixture, n_four_fixture, n_five_fixture,
+             half_bathroom_equivalent]
+    output: n_bathrooms
+  # Living area leaves out the basement floor (B); see the header.
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: expression
+    expression: "living_area_sqft.where(FloorNbr != 'B')"
+    inputs: [living_area_sqft, FloorNbr]
+    output: living_area_sqft
+
+drop_columns:
+  - n_three_fixture
+  - n_four_fixture
+  - n_five_fixture
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  living_area_sqft: sum
+
+supplements: US-VA-AR_property-arlington-2026
+# The roll's parcel_id_local names the lot (polygonId), which this
+# table does not carry, so it joins the roll on the account.
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: interior

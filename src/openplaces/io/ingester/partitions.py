@@ -26,6 +26,15 @@ from openplaces.recipe import (
 from openplaces.utils import format_list
 
 
+class PartitionNotPublished(LookupError):
+    """The source publishes no file for this download partition.
+
+    Raised by a `download_by.partition_key_lookup` whose table has no
+    row for the unit; the ingester treats it as the soft skip a
+    download scraper reports, and records an empty table for the unit.
+    """
+
+
 class _PartitionMixin:
     """Methods of :class:`~openplaces.io.ingester.Ingester` (partitions).
 
@@ -324,6 +333,43 @@ class _PartitionMixin:
 
         return partition_key
 
+    def _lookup_partition_key(self, placeholder, spec):
+        """Resolve a placeholder through a sidecar table keyed by an admin code.
+
+        For a publisher whose per-unit files are named by an id that no
+        admin column carries: datos.gov.co files each Cundinamarca
+        municipality's cadastre under its own dataset id
+        (`56yv-hh9f`-style), so the DANE code must be looked up.
+
+        Parameters
+        ----------
+        placeholder : str
+            Placeholder name in the URL or file name.
+        spec : dict
+            `from`: the admin placeholder whose value is looked up (as
+            in a URL, e.g. `admin3_id_admin1`); `lookup_table`: the
+            sidecar's recipe id; `key` and `value`: its columns.
+
+        Raises
+        ------
+        PartitionNotPublished
+            When the table has no row for the unit.
+        """
+        code = str(self._get_admin_partition_key(spec['from']))
+        table = get_recipe_by_id(spec['lookup_table'])
+        if not isinstance(table, pd.DataFrame):
+            raise ValueError(
+                f'partition_key_lookup.{placeholder}: {spec["lookup_table"]} is '
+                'not a table recipe.'
+            )
+        match = table[table[spec['key']].astype(str) == code]
+        if match.empty:
+            raise PartitionNotPublished(
+                f'{spec["lookup_table"]} has no {spec["key"]} {code} '
+                f'({self.download_partition.get("admin_id_to_download")})'
+            )
+        return str(match[spec['value']].iloc[0])
+
     def _get_placeholders(self, url):
         """Extract placeholders ('{placeholder}') from URL."""
         return list(dict.fromkeys(re.findall(r'\{([a-zA-Z0-9_-]+)\}', url)))
@@ -350,7 +396,14 @@ class _PartitionMixin:
                     placeholder
                 ]
             else:
-                if placeholder.startswith('admin'):
+                _lookups = (self.recipe.get('download_by') or {}).get(
+                    'partition_key_lookup'
+                ) or {}
+                if placeholder in _lookups:
+                    _partition_key = self._lookup_partition_key(
+                        placeholder, _lookups[placeholder]
+                    )
+                elif placeholder.startswith('admin'):
                     _partition_key = self._get_admin_partition_key(placeholder)
                 elif (
                     self.recipe.get('download_by')

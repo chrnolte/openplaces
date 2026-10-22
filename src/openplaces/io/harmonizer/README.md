@@ -705,9 +705,13 @@ recipe names in `entity_id`, else whichever of `property_id_assessor`,
 no row, its PIN on 19,519). Nothing raises: a source whose best column still
 repeats on most rows issues no account number and is named by content, with
 a warning. A source holding several `tax_year` values keeps only its latest
-roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
-county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
-properties), the unit's latest year and not the latest row per account,
+roll before ids are minted, where it is a panel: at least half of the keys
+of the year just before the latest recur in the latest
+(`select_latest_vintage`; adjacent years only, because a county that
+reformatted its numbers mid-panel repeats none of its older keys).
+Florida's DOR roll is 24 yearly rolls per county, kept at ingest as a
+panel (Lake County's 3,952,270 rows are 210,057 properties). The spine
+keeps the unit's latest year and not the latest row per account,
 which would revive every account retired since. An auto-discovered roll
 joined onto another spine by `link_by_id` keeps the same latest year, so
 the parcel geospine does not sum one account over its years. Case is folded and runs of separators become one hyphen, but their

@@ -95,3 +95,17 @@ def test_narrower_run_reuses_a_county_wide_raster(source_raster, computed):
     vicinity_coverage(_state(towns), 'k', str(source_raster))
 
     assert computed == [(100, 100, 900, 900)]
+
+
+def test_polygons_outside_the_raster_leave_the_column_empty(source_raster, computed):
+    # A record filed under one unit with its polygon in another, beyond
+    # the clip buffer of the unit's raster, must not fail the unit.
+    elsewhere = _spine((5000, 5000, 5100, 5100))
+
+    with pytest.warns(UserWarning, match='no polygon intersects'):
+        state = vicinity_coverage(
+            _state(elsewhere), 'k', str(source_raster), column='k_mean'
+        )
+
+    assert computed == []
+    assert state.evidence['k_mean'].isna().all()

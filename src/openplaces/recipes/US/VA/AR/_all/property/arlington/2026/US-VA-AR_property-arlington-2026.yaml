@@ -1,0 +1,232 @@
+# Recipe: Arlington County, VA real estate property roll (Department
+# of Real Estate Assessments), the roll its assessment and interior
+# tables supplement.
+#
+# SOURCE. The county's open-data API (datahub-v2.arlingtonva.us,
+# OData), table RealEstate/Property, read 2026-10-19: 70,989 rows.
+# The API serves at most 50,000 rows per request (measured), so two
+# pages ordered by propertyKey are concatenated by the json_endpoints
+# scraper; together they hold 100,000 rows. `$select` names only the
+# fields mapped below plus the keys and status, so the owner and
+# mailing columns of the table are never downloaded. source_id
+# arlington: the county publishes its own roll.
+#
+# WHY NOT THE BULK FILE. The open-data catalog lists the table as
+# download.data.arlingtonva.us/RealEstate/PropertyRedacted.txt
+# (pipe-delimited, 70,619 rows on 2026-10-19). Despite its name it
+# carries the owner name and mailing address columns, and it lacks 370
+# of the API's propertyKeys (277 of them active accounts). The API is
+# the more complete and the more private route.
+#
+# WHAT ONE ROW IS. One RPC (Real Estate Property Code, eight digits,
+# '99999999' fabricated), the county's account. Condominium units are
+# RPCs of their own. reasPropertyStatusCode is A on 67,145 rows, T on
+# 3,787 and F on 57. T accounts are retired (1.2% of them carry a 2026
+# assessment) and are dropped by `query`; F is not documented and is
+# kept (79% carry a 2026 assessment). Two RPCs appear twice, both T.
+# Measured 2026-10-19 on US-VA-AR: 67,202 rows kept, 67,202 distinct RPC.
+#
+# KEYS. polygonId names the REA lot polygon an account stands on, as
+# that lot's own RPC: it equals the account's RPC on 57.0% of kept
+# rows; condominium units (28,533) and accounts inside an economic
+# unit name their lot's RPC. VGIN's PARCELID for Arlington is that lot
+# RPC; VGIN's PTM_ID (7 digits) equals no RPC and no polygonId. So
+# polygonId is parcel_id_assessor and feeds parcel_id_local, and the
+# RPC is property_id_assessor. The RPC itself reaches a VGIN polygon
+# only for lot accounts (56.8% of active RPCs in the bulk file of the
+# same day). parcel_id_local takes the
+# bundled US-VA-AR conversion with no instruction, exactly as
+# US-VA_parcel-vgin-2026 does for Arlington, so both sides convert
+# alike. Measured against the VGIN zip on the data root, which on
+# 2026-10-19 held the 2026 Q3 geodatabase (VGIN replaces the file in
+# place; the VGIN recipe still names the Q2 one): 38,683 Arlington
+# polygons, 38,683 distinct keys.
+# Measured 2026-10-19 on US-VA-AR: 67,111 of 67,202 roll rows key to a VGIN parcel.
+# Measured 2026-10-19 on US-VA-AR: 38,655 of 38,733 roll lot keys are VGIN keys.
+# Measured 2026-10-19 on US-VA-AR: 38,655 of 38,683 VGIN keys meet a roll key.
+# 30 rows have no polygonId and no key. Exact string equality of the
+# raw ids, distinct values, both directions:
+# Measured 2026-10-21 on US-VA-AR: polygonId = PARCELID, 99.80% roll / 99.93% VGIN.
+# Measured 2026-10-21 on US-VA-AR: RPC = PARCELID, 56.96% roll / 98.96% VGIN.
+# Measured 2026-10-21 on US-VA-AR: PTM_ID meets no polygonId and no RPC (0.00%).
+#
+# PARCEL SPINE. The parcel geospine's property pass (link_by_id,
+# auto_discover, mode aggregate) joins this roll on parcel_id_local
+# and copies use_group_code ('first' per lot), use_group (joined),
+# n_dwellings, address and postal_code onto the VGIN lot; condominium
+# units reach their lot because their key is the lot's. The
+# supplements carry supplements_key, so that pass skips them: their
+# values and interior figures reach parcels only through the
+# property spine and curate's aggregate_from_entities.
+#
+# MAPPED.
+#   propertyClassTypeCode       use_group_code (58 codes kept)
+#   propertyClassTypeDsc        use_group, in the source's wording
+#                               ('999-Description', code first)
+#   propertyStreetNbrNameText   address; propertyUnitNbr address_unit;
+#                               propertyZipCode postal_code
+#   zoningDescListText          zoning_code
+#   neighborhoodNbr             tax_neighborhood_code
+#   lotSizeQty                  land_area_sqft (0 on condominium units,
+#                               nulled)
+#   propertyYearBuilt           year_built (outside 1700 to 2026
+#                               nulled; 154 placeholder values below
+#                               1700 in the table)
+#   effectiveAgeYearDate        effective_year_built (commercial)
+#   grossFloorAreaSquareFeetQty gross_floor_area_sqft (commercial)
+#   storyHeightCnt              n_stories (commercial; 0 nulled)
+#   numberOfUnitsCnt            n_dwellings on apartment classes (3xx)
+#                               only: on hotel classes (41x) it counts
+#                               rooms
+# Values come from the assessment supplement, rooms and living area
+# from the interior supplement.
+# NOT MAPPED: legalDsc, mapBookPageNbr, landRecordDocumentNbr (the
+# deed of the last transfer), economicUnitNbr, masterRealEstate-
+# PropertyCode (equals polygonId on 99.9% of rows), the condominium
+# detail fields (den count, patio and balcony areas, parking and
+# storage ids), taxExemptionTypeDsc, commercialPropertyTypeDsc,
+# coordinates, and the owner and mailing fields (not requested).
+#
+# RESIDENTIAL. Classes 511 to 515 and 611 to 616 (single-family,
+# townhouse, side by side, duplex, condominium, co-op).
+# Measured 2026-10-19 on US-VA-AR: 61,912 residential rows; 99.98% key to VGIN.
+# Measured 2026-10-19 on US-VA-AR: year_built on 98.37% of residential rows.
+#
+# TERMS: A PERSON MUST READ THEM BEFORE ANY RELEASE. The county's
+# open-data documentation (docs.data.arlingtonva.us) points to an
+# Open Data Public Use Notice at terms_url. No one has read it: on
+# 2026-10-19 the address answered HTTP 403 to the research client and
+# later redirected to the county's A-Z index. The Open Knowledge
+# Foundation's US City Open Data Census quotes it second-hand as "You
+# are free to share and adapt our data for any purpose", on condition
+# that a use display that County data was used and that the use is
+# not endorsed by the County. That quotation is not relied on. The
+# county's website Terms and Conditions
+# (arlingtonva.us/About-Arlington/Terms-Conditions) restrict reuse of
+# website content; whether they reach the API was not established.
+# Until a person has read the notice in a browser, the source is
+# recorded conservatively: license 'unknown' and
+# redistribution_restricted true, so delivery withholds its values.
+# No usage requirement is set (none was determined from the terms),
+# and no click-through or consent gate was seen.
+
+description: >-
+  Arlington County, VA real estate property roll (datahub API): one row per
+  RPC, with class, address, zoning, lot size and year built.
+
+admin_id: US-VA-AR
+
+entity:
+  entity_type: property
+  source:
+    source_id: arlington
+    download_url_scraper: "json_endpoints_scraper"
+    # Unread notice; restricted until a person reads it (see TERMS).
+    license: "unknown (Open Data Public Use Notice not yet read by a person)"
+    terms_url: "https://topics.arlingtonva.us/open-government-resources/terms/"
+    redistribution_restricted: true
+    portal_url: "https://data.arlingtonva.us/"
+  version: 2026
+
+scraper_options:
+  urls:
+    - "https://datahub-v2.arlingtonva.us/api/RealEstate/Property?$select=propertyKey,realEstatePropertyCode,reasPropertyStatusCode,propertyClassTypeCode,propertyClassTypeDsc,lotSizeQty,neighborhoodNbr,polygonId,propertyStreetNbrNameText,propertyUnitNbr,propertyZipCode,zoningDescListText,propertyYearBuilt,effectiveAgeYearDate,grossFloorAreaSquareFeetQty,numberOfUnitsCnt,storyHeightCnt&$orderby=propertyKey&$top=50000&$skip=0"
+    - "https://datahub-v2.arlingtonva.us/api/RealEstate/Property?$select=propertyKey,realEstatePropertyCode,reasPropertyStatusCode,propertyClassTypeCode,propertyClassTypeDsc,lotSizeQty,neighborhoodNbr,polygonId,propertyStreetNbrNameText,propertyUnitNbr,propertyZipCode,zoningDescListText,propertyYearBuilt,effectiveAgeYearDate,grossFloorAreaSquareFeetQty,numberOfUnitsCnt,storyHeightCnt&$orderby=propertyKey&$top=50000&$skip=50000"
+
+uncompressed_file_name: "arlington_property.csv"
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: polygonId
+  property_id_assessor: realEstatePropertyCode
+  use_group_code: propertyClassTypeCode
+  use_group: propertyClassTypeDsc
+  address: propertyStreetNbrNameText
+  address_unit: propertyUnitNbr
+  postal_code: propertyZipCode
+  zoning_code: zoningDescListText
+  tax_neighborhood_code: neighborhoodNbr
+  land_area_sqft: lotSizeQty
+  year_built: propertyYearBuilt
+  effective_year_built: effectiveAgeYearDate
+  gross_floor_area_sqft: grossFloorAreaSquareFeetQty
+  n_stories: storyHeightCnt
+  n_dwellings: numberOfUnitsCnt
+
+# Retired accounts; see the header's WHAT ONE ROW IS.
+query: 'reasPropertyStatusCode != "T"'
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: land_area_sqft
+    output: land_area_sqft
+  - type: expression
+    expression: "land_area_sqft.where(land_area_sqft > 0)"
+    inputs: [land_area_sqft]
+    output: land_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where((effective_year_built >= 1700)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
+  - type: expression
+    expression: "gross_floor_area_sqft.where(gross_floor_area_sqft > 0)"
+    inputs: [gross_floor_area_sqft]
+    output: gross_floor_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: expression
+    expression: "n_stories.where(n_stories > 0)"
+    inputs: [n_stories]
+    output: n_stories
+  # Units are dwellings on apartment classes (3xx) only; see MAPPED.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: expression
+    expression: >-
+      n_dwellings.where((n_dwellings > 0)
+      & use_group_code.str.startswith('3'))
+    inputs: [n_dwellings, use_group_code]
+    output: n_dwellings
+  - type: string
+    operation: strip
+    input: address
+    output: address
+
+columns_to_categorical:
+  - use_group_code
+  - use_group
+  - zoning_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

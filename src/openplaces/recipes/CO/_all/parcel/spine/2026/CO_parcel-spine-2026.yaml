@@ -3,13 +3,19 @@
 # Merges the parcel sources currently ingested for Colombia into one spine.
 #
 # Sources merged by resolve_spine:
-#   - CO_parcel-igac-2026_urban / CO_parcel-igac-2026_rural: IGAC's national
-#     public cadastre (Catastro Público). Listed explicitly (not auto-discovered),
-#     both recipes share the spine's own admin_id (CO), which
-#     resolve_spine's auto_discover only expands to child admin_ids.
-#   - CO-AN_parcel-catastro-2018:
-#     picked up automatically via auto_discover, since these are scoped to a
-#     child admin_id (e.g. CO-AN) of the spine's CO.
+#   - CO_parcel-igac-202608_urban / _rural: IGAC's national public
+#     cadastre (Catastro Público), August 2026 release; older releases
+#     (March 2026, 2022-02, 2021-09, 2021-06, 2020-04) follow as fill
+#     groups. Listed explicitly (not auto-discovered): the recipes share
+#     the spine's own admin_id (CO), which resolve_spine's auto_discover
+#     only expands to child admin_ids.
+#   - CO-AN_parcel-catastro-2018: the 2018 Antioquia departmental
+#     catastro.
+#   - The cadastres of the gestores catastrales other than IGAC whose
+#     parcels are published: Cundinamarca's agency (76 municipalities),
+#     the Valle del Cauca department (24), Bogotá (UAECD),
+#     Medellín, Fusagasugá, Zipaquirá (with Cajicá and Sopó) and
+#     Sesquilé.
 # IGAC and the departmental cadastres are geographically complementary
 # (a department that administers its own catastro falls outside IGAC's
 # public cadastre) rather than competing on precision for the same parcels,
@@ -20,7 +26,7 @@
 
 description: >-
   Harmonized Colombia parcel spine: IGAC national cadastre parcel geometry,
-  gap-filled by Antioquia catastro.
+  gap-filled by the Antioquia catastro and other gestores' cadastres.
 
 stage: harmonize
 admin_id: CO
@@ -50,21 +56,81 @@ save_to:
 pipeline:
   - step: resolve_spine
     sources:
-      - recipe_id: CO_parcel-igac-2026_urban
-        label: igac_urban
-      - recipe_id: CO_parcel-igac-2026_rural
-        label: igac_rural
+      - recipe_id: CO_parcel-igac-202608_urban
+        label: igac_202608_urban
+      - recipe_id: CO_parcel-igac-202608_rural
+        label: igac_202608_rural
       - recipe_id: CO-AN_parcel-catastro-2018
         label: catastro
+      # The cadastres IGAC's releases do not cover, from their own
+      # gestores catastrales (IGAC's register, queried 2026-10-19).
+      # Listed before the older IGAC releases: a municipality that has
+      # since moved from IGAC to a departmental gestor (Cundinamarca's
+      # 41 IGAC municipalities of 2021 are 32 in 2026) takes its
+      # current cadastre, not a 2021 IGAC release.
+      - recipe_id: CO-CU_parcel-acc-2026
+        label: acc
+      - recipe_id: CO-VA_parcel-valledelcauca-2026
+        label: valledelcauca
+      - recipe_id: CO-BD_parcel-uaecd-202609
+        label: uaecd
+      - recipe_id: CO-AN-ME_parcel-catastromedellin-2026
+        label: catastromedellin
+      - recipe_id: CO-CU-FU_parcel-fusagasuga-2024
+        label: fusagasuga
+      - recipe_id: CO-CU_parcel-zipaquira-2022_urban
+        label: zipaquira_urban
+      - recipe_id: CO-CU_parcel-zipaquira-2022_rural
+        label: zipaquira_rural
+      - recipe_id: CO-CU-SE_parcel-sesquile-2022_urban
+        label: sesquile_urban
+      - recipe_id: CO-CU-SE_parcel-sesquile-2022_rural
+        label: sesquile_rural
+      # The March 2026 recipes (a shapefile export not on this machine)
+      # and older IGAC releases, newest first, each used only for a
+      # municipality no source above (or newer release) covers: a
+      # release fills a municipality whole, its urban and rural layers
+      # together (`fill_group`), and is never merged parcel by parcel
+      # into a newer one, where parcels subdivided since would be added
+      # on top of their successors.
+      - recipe_id: CO_parcel-igac-2026_urban
+        label: igac_urban
+        fill_group: igac_202603
+      - recipe_id: CO_parcel-igac-2026_rural
+        label: igac_rural
+        fill_group: igac_202603
+      - recipe_id: CO_parcel-igac-202202_urban
+        label: igac_202202_urban
+        fill_group: igac_202202
+      - recipe_id: CO_parcel-igac-202202_rural
+        label: igac_202202_rural
+        fill_group: igac_202202
+      - recipe_id: CO_parcel-igac-202109_urban
+        label: igac_202109_urban
+        fill_group: igac_202109
+      - recipe_id: CO_parcel-igac-202109_rural
+        label: igac_202109_rural
+        fill_group: igac_202109
+      - recipe_id: CO_parcel-igac-202106_urban
+        label: igac_202106_urban
+        fill_group: igac_202106
+      - recipe_id: CO_parcel-igac-202106_rural
+        label: igac_202106_rural
+        fill_group: igac_202106
+      - recipe_id: CO_parcel-igac-202004_rural
+        label: igac_202004_rural
+        fill_group: igac_202004
       - auto_discover: true
         entity_type: parcel
     keep_columns:
+      - parcel_id_local
       - parcel_id_admin3
       - parcel_id_admin3_2
       - admin3_id_admin1
       - manzana_code
       - vereda_code
       - m2
+      - land_use_group
       - object_id
       - property_id
       - use_group
@@ -76,3 +142,18 @@ pipeline:
       - n_dwellings
       - street_number
       - n_buildings
+
+  # area_ha, lat, long from the parcel polygon, once, so every enrich
+  # recipe (and the transaction spine, which runs the same step) reads
+  # coordinates from one code path rather than re-deriving them in the
+  # spine CRS with derive_from_spine.
+  - step: derive_geometry_attributes
+
+  # Department and municipality of each parcel as columns, so the curate
+  # stage and region scoping can group without reading the filename.
+  - step: link_geographic_ids
+    links:
+      - output_column: admin2_id
+        admin_level: 2
+      - output_column: admin3_id
+        admin_level: 3

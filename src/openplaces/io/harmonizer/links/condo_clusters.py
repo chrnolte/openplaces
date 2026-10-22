@@ -7,11 +7,13 @@ from __future__ import annotations
 import warnings
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import pyproj
 import shapely
 
 from openplaces.geo.ids import (
-    add_openlocationcode_index,
+    get_openlocationcodes,
 )
 from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import (
@@ -37,6 +39,161 @@ from openplaces.recipe import (
     get_recipe_id,
     source_id_from_recipe_id,
 )
+
+# The helpers below replace per-cluster pandas calls whose cost grew
+# with the size of the whole unit (a crosswalk mask, an index
+# intersection, one reprojection per input). Each returns exactly what
+# the call it replaces returned, in the same order: a geometry union or
+# area can change in its last bits when its inputs come in a different
+# order, and the step's output must not move.
+
+
+def _crosswalk_rows_by_parcel(crosswalk: pd.DataFrame) -> dict:
+    """Row positions of each parcel's links, in crosswalk order.
+
+    Parameters
+    ----------
+    crosswalk : DataFrame
+        Indexed by (spine id, 'parcel_id').
+
+    Returns
+    -------
+    dict
+        Parcel id to an ascending array of row positions.
+    """
+    pids = crosswalk.index.get_level_values('parcel_id')
+    return pd.Series(np.arange(len(pids))).groupby(pids.to_numpy()).indices
+
+
+def _linked_spine_ids(
+    cluster_pids: list, crosswalk_rows: dict, crosswalk_spine_ids: pd.Index
+) -> pd.Index:
+    """Spine ids linked to any of *cluster_pids*, in crosswalk order.
+
+    Equal to masking the crosswalk with an `isin` on its parcel level
+    and taking the unique spine ids of the rows left.
+
+    Parameters
+    ----------
+    cluster_pids : list
+        Parcel ids of one cluster; a repeated id counts once.
+    crosswalk_rows : dict
+        From :func:`_crosswalk_rows_by_parcel`.
+    crosswalk_spine_ids : Index
+        The crosswalk's spine-id level.
+
+    Returns
+    -------
+    Index
+        Unique spine ids, in the order they first occur in the crosswalk.
+    """
+    rows = [crosswalk_rows[pid] for pid in cluster_pids if pid in crosswalk_rows]
+    positions = np.unique(np.concatenate(rows)) if rows else np.empty(0, np.intp)
+    return crosswalk_spine_ids[positions].unique()
+
+
+def _take_by_labels(series: pd.Series, labels) -> pd.Series:
+    """Rows of *series* whose label is in *labels*, in *series* order.
+
+    Equal to `series.loc[series.index.intersection(labels)]`, which
+    deduplicates the index on every call, a cost that grows with the
+    unit. This looks the labels up in the index's own hash table, built
+    once.
+
+    Parameters
+    ----------
+    series : Series
+        Any series; with a non-unique index the intersection is used.
+    labels : array-like
+        Labels to select; missing and repeated labels are ignored.
+
+    Returns
+    -------
+    Series
+        The selected rows.
+    """
+    if not series.index.is_unique:
+        return series.loc[series.index.intersection(labels)]
+    positions = series.index.get_indexer(pd.unique(np.asarray(labels, dtype=object)))
+    return series.iloc[np.sort(positions[positions >= 0])]
+
+
+def _fast_source_crs(crs):
+    """*crs*, or EPSG:4326 itself where *crs* is equivalent to it.
+
+    A CRS read from GeoParquet is PROJJSON, which pyproj parses again
+    for every transformation it builds from it, once per cluster. The
+    same CRS given by its EPSG code builds in a fraction of the time
+    and resolves to the same operation, so the coordinates come out
+    identical.
+
+    Measured 2026-10-22 on US-FL-BR: 109 s of 203 s evaluating clusters.
+
+    Parameters
+    ----------
+    crs : CRS or None
+        A geometry set's CRS.
+
+    Returns
+    -------
+    CRS or None
+        The CRS to reproject from.
+    """
+    wgs84 = pyproj.CRS.from_epsg(4326)
+    return wgs84 if crs is not None and pyproj.CRS(crs) == wgs84 else crs
+
+
+def _to_crs_together(crs_from, crs_to, *parts) -> list[gpd.GeoSeries]:
+    """Reproject several geometry sets in one call.
+
+    Reprojection is point by point, so concatenating the inputs gives
+    each geometry the coordinates its own call would, and resolves the
+    transformation once instead of once per input.
+
+    Parameters
+    ----------
+    crs_from, crs_to : CRS
+        Source and target CRS; every part must be in *crs_from*.
+    *parts : GeoSeries or array-like of geometries
+        The geometry sets.
+
+    Returns
+    -------
+    list of GeoSeries
+        One per input, each keeping a GeoSeries input's index.
+    """
+    values = [np.asarray(getattr(p, 'values', p), dtype=object) for p in parts]
+    joined = gpd.GeoSeries(np.concatenate(values), crs=crs_from).to_crs(crs_to)
+    out, start = [], 0
+    for part, value in zip(parts, values):
+        end = start + len(value)
+        index = part.index if isinstance(part, pd.Series) else None
+        out.append(gpd.GeoSeries(joined.values[start:end], index=index, crs=crs_to))
+        start = end
+    return out
+
+
+def _first_area_m2_by_label(gdf: gpd.GeoDataFrame, labels) -> dict:
+    """Area in square meters of the first row carrying each label.
+
+    Equal to `get_areas(gdf.loc[[label]], 'm2').iloc[0]` per label, in
+    one projection of all rows instead of one per label.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Polygons, indexed by label.
+    labels : iterable
+        Labels to measure; each must be in *gdf*'s index.
+
+    Returns
+    -------
+    dict
+        Label to area.
+    """
+    first = ~gdf.index.duplicated(keep='first')
+    selected = gdf.loc[first & gdf.index.isin(list(labels))]
+    return get_areas(selected, 'm2').to_dict()
 
 
 @_register('consolidate_condo_cluster_footprints', phase='geometry')
@@ -167,9 +324,13 @@ def consolidate_condo_cluster_footprints(
     if 'area_ha' not in ref_for_clustering.columns:
         ref_for_clustering['area_ha'] = get_areas(ref_for_clustering, 'ha')
 
+    if state.timer:
+        state.timer.mark('Condo clusters: prepare parcels')
     result = _cluster_condo_parcels(
         ref_for_clustering, verbose=state.verbose, **(cluster_thresholds or {})
     )
+    if state.timer:
+        state.timer.mark('Condo clusters: detect clusters')
     if result is None:
         return state
     component, hub_ids = result
@@ -177,6 +338,14 @@ def consolidate_condo_cluster_footprints(
     spine = state.spine
     _source_id = source_id_from_recipe_id(recipe_id)
     _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
+    # Built once: a per-cluster scan of the whole crosswalk cost time in
+    # proportion to clusters times links.
+    crosswalk_rows = _crosswalk_rows_by_parcel(crosswalk)
+    crosswalk_spine_ids = crosswalk.index.get_level_values(spine_id_col)
+    # Parcels reproject together with the footprints only when both are
+    # stored in one CRS.
+    same_crs = ref_polys.crs == spine.crs
+    from_crs = _fast_source_crs(spine.crs)
 
     def _evaluate_cluster(cluster_pids: list) -> dict:
         """Real-vs-parcel geometry choice for one cluster's parcel set.
@@ -188,15 +357,10 @@ def consolidate_condo_cluster_footprints(
         combined parcel set naturally re-collects every relevant spine id
         from the crosswalk.
         """
-        linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
-        linked_spine_ids = (
-            crosswalk[linked_mask].index.get_level_values(spine_id_col).unique()
+        linked_spine_ids = _linked_spine_ids(
+            cluster_pids, crosswalk_rows, crosswalk_spine_ids
         )
-        real_geoms = (
-            spine.loc[spine.index.intersection(linked_spine_ids), 'geometry']
-            .dropna()
-            .tolist()
-        )
+        real_geoms = _take_by_labels(spine.geometry, linked_spine_ids).dropna().tolist()
         # The parcel-geometry fallback covers units no real footprint
         # reaches -- it must never include a hub/common-area parcel's own
         # polygon (the surrounding lot, typically an order of magnitude
@@ -206,9 +370,7 @@ def consolidate_condo_cluster_footprints(
         # and it still keeps its crosswalk link below -- only this shape
         # fallback excludes it.
         unit_pids = [pid for pid in cluster_pids if pid not in hub_ids]
-        unit_polys = ref_polys.loc[
-            ref_polys.index.intersection(unit_pids or cluster_pids), 'geometry'
-        ]
+        unit_polys = _take_by_labels(ref_polys.geometry, unit_pids or cluster_pids)
         parcel_geom = unit_polys.union_all()
 
         # Never output a geometry that mixes a real footprint with parcel
@@ -230,11 +392,17 @@ def consolidate_condo_cluster_footprints(
         coverage_score = 0.0
         if real_union_raw is not None:
             crs_m = local_metric_crs(gpd.GeoSeries([parcel_geom], crs=spine.crs))
-            parcel_geom_m = (
-                gpd.GeoSeries([parcel_geom], crs=spine.crs).to_crs(crs_m).iloc[0]
-            )
             parts = shapely.get_parts(real_union_raw)
-            parts_m = gpd.GeoSeries(parts, crs=spine.crs).to_crs(crs_m)
+            if same_crs:
+                parcel_geom_m, parts_m, unit_polys_m = _to_crs_together(
+                    from_crs, crs_m, [parcel_geom], parts, unit_polys
+                )
+            else:
+                parcel_geom_m, parts_m = _to_crs_together(
+                    from_crs, crs_m, [parcel_geom], parts
+                )
+                unit_polys_m = unit_polys.to_crs(crs_m)
+            parcel_geom_m = parcel_geom_m.iloc[0]
             touch_zone_m = parcel_geom_m.buffer(_REAL_FOOTPRINT_TOUCH_TOLERANCE_M)
             keep = parts_m.intersects(touch_zone_m).to_numpy()
             if keep.any():
@@ -246,7 +414,6 @@ def consolidate_condo_cluster_footprints(
                 # of every unit parcel's own coverage fraction (see the
                 # coverage_power docstring for why this replaces a hard
                 # group-coverage-and-per-parcel-minimum pair of cutoffs).
-                unit_polys_m = unit_polys.to_crs(crs_m)
                 if parcel_geom_m.area > 0:
                     areas_m = unit_polys_m.area
                     weights = areas_m / areas_m.sum()
@@ -296,6 +463,10 @@ def consolidate_condo_cluster_footprints(
         list(pids) for pids in component.groupby(component).groups.values()
     ]
     evaluations = [_evaluate_cluster(pids) for pids in cluster_pid_lists]
+    if state.timer:
+        state.timer.mark(
+            'Condo clusters: evaluate clusters', n_clusters=len(cluster_pid_lists)
+        )
 
     # Merge clusters that each independently qualify for the same real
     # footprint -- confirmed on real data: an ~18-unit building's parcels
@@ -342,37 +513,45 @@ def consolidate_condo_cluster_footprints(
     superseded_spine_ids: set = set()
     consolidated_pids: set = set()
 
+    group_pids = []
     for idxs in merge_groups.values():
         cluster_pids = sum((cluster_pid_lists[i] for i in idxs), [])
         ev = _evaluate_cluster(cluster_pids) if len(idxs) > 1 else evaluations[idxs[0]]
-        consolidated = ev['real_union'] if ev['passes'] else ev['parcel_geom']
-
-        new_row = add_openlocationcode_index(
-            gpd.GeoDataFrame({'geometry': [consolidated]}, crs=spine.crs),
-            name=spine_id_col,
-        )
-        new_row['geometry_source'] = f'condo_cluster.{_et}.{_source_id}'
-        new_rows.append(new_row)
-        new_id = new_row.index[0]
-
-        for pid in cluster_pids:
-            area_m2 = get_areas(ref_polys.loc[[pid]], 'm2').iloc[0]
-            crosswalk_additions.append(
-                {
-                    spine_id_col: new_id,
-                    'parcel_id': pid,
-                    'link': 'condo cluster',
-                    'area_intersection_m2': area_m2,
-                }
-            )
+        new_rows.append(ev['real_union'] if ev['passes'] else ev['parcel_geom'])
+        group_pids.append(cluster_pids)
         superseded_spine_ids.update(ev['linked_spine_ids'])
         consolidated_pids.update(cluster_pids)
 
     if not new_rows:
         return state
 
+    # One id and one area pass over every new row, not one per cluster
+    # and per parcel: both are computed row by row, so the batch gives
+    # each row the value it would get alone. Ids come without the
+    # duplicate suffix, which a lone row never gets either; a collision
+    # with another row is resolved below, exactly as before.
+    new_spine = gpd.GeoDataFrame({'geometry': new_rows}, crs=spine.crs)
+    new_spine.index = pd.Index(
+        get_openlocationcodes(new_spine, handle_duplicates=False), name=spine_id_col
+    )
+    new_spine['geometry_source'] = f'condo_cluster.{_et}.{_source_id}'
+    pid_area_m2 = _first_area_m2_by_label(ref_polys, consolidated_pids)
+    for new_id, cluster_pids in zip(new_spine.index, group_pids):
+        for pid in cluster_pids:
+            crosswalk_additions.append(
+                {
+                    spine_id_col: new_id,
+                    'parcel_id': pid,
+                    'link': 'condo cluster',
+                    'area_intersection_m2': pid_area_m2[pid],
+                }
+            )
+
+    if state.timer:
+        state.timer.mark('Condo clusters: build consolidated rows')
+
     state.spine = pd.concat(
-        [spine.drop(index=spine.index.intersection(superseded_spine_ids)), *new_rows]
+        [spine.drop(index=spine.index.intersection(superseded_spine_ids)), new_spine]
     ).sort_index()
     if state.spine.index.duplicated().any():
         state.spine = make_index_unique(state.spine, sort_duplicates_by_area=True)
@@ -471,5 +650,5 @@ def consolidate_condo_cluster_footprints(
             f'replaced{merge_note}).'
         )
     if state.timer:
-        state.timer.mark('Consolidate condo clusters')
+        state.timer.mark('Condo clusters: rewrite spine, crosswalk and sidecar')
     return state

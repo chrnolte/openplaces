@@ -146,7 +146,27 @@ def _derive_ratio(state: CurateState, spec: dict) -> pd.Series | None:
         total = sum(pd.to_numeric(curated[c], errors='coerce') for c in columns)
     # Guard a zero or negative total the same way the value_share
     # indicators do, so the ratio is missing rather than infinite.
-    return value.where(total > 0) / total.where(total > 0)
+    ratio = value.where(total > 0) / total.where(total > 0)
+    transform = spec.get('transform')
+    if transform is None:
+        return ratio
+    if transform not in _RATIO_TRANSFORMS:
+        raise ValueError(
+            f'ratio indicator: unknown transform {transform!r}; expected one of '
+            f'{sorted(_RATIO_TRANSFORMS)}.'
+        )
+    # A log of a non-positive ratio is undefined; leave it missing rather
+    # than -inf, which would poison every downstream mean.
+    if transform == 'log':
+        ratio = ratio.where(ratio > 0)
+    return _RATIO_TRANSFORMS[transform](ratio)
+
+
+_RATIO_TRANSFORMS = {
+    'log': np.log,
+    'log1p': np.log1p,
+    'asinh': np.arcsinh,
+}
 
 
 def _derive_shape_metric(state: CurateState, spec: dict) -> pd.Series | None:
@@ -497,7 +517,9 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       optional ``tiebreaker`` column.
     - ``ratio``: ``numerator`` over the sum of ``denominator`` columns, or over
       the entity's own area when ``denominator`` is ``own_area``. A
-      non-positive total yields a missing ratio.
+      non-positive total yields a missing ratio. An optional ``transform``
+      (``log``, ``log1p`` or ``asinh``) is applied to the ratio; ``log``
+      leaves a non-positive ratio missing.
     - ``shape_metric``: a minimum-bounding-rectangle ``metric`` of each
       geometry -- ``aspect_ratio`` (default), ``length``, ``width``, or
       ``orientation``. Measured on a locally-projected metric copy.

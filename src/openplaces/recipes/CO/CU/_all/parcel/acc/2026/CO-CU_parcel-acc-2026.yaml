@@ -1,0 +1,84 @@
+# Parcels (terrenos) of the 76 Cundinamarca municipalities whose
+# gestor catastral is the Departamento de Cundinamarca, through its
+# Agencia Catastral de Cundinamarca (ACC). IGAC's public cadastre
+# covers only IGAC's own jurisdiction, so these municipalities are in
+# none of the CO_parcel-igac-* releases (IGAC's register of gestores,
+# mapas.igac.gov.co/.../GestoresCatastrales/FeatureServer/0, queried
+# 2026-10-19: 76 under the department, 32 under IGAC, 6 municipal).
+#
+# Source: datos.gov.co publishes one dataset per municipality, "Base
+# catastral Municipio <name>", attribution "Agencia Catastral de
+# Cundinamarca", CC BY-SA 4.0, all updated 2026-05-18. The dataset ids
+# are not derivable from the DANE code, so the sidecar
+# CO-CU_parcel-acc-2026_datasets.csv maps one to the other
+# (`partition_key_lookup`); a municipality not in it is reported as not
+# published and gets an empty table. The ACC's own geoportal
+# (acc.gov.co) has no download; IDER's ArcGIS layers
+# (ider.cundinamarca.gov.co, "Terreno. Municipio de X") cover 72 of the
+# 76, carry only Codigo and Area, and are REST only.
+#
+# Schema (identical across the 76, checked 2026-10-19): the_geom,
+# num_pred (the 30-digit número predial, as IGAC's CODIGO; 25,430
+# distinct of 25,449 rows in Facatativá), divipola (DANE code; a few
+# datasets carry one or two rows of a neighbor's code, dropped here by
+# the crosswalk), sector (URBANO, RURAL, CORREGIM; no registry home,
+# not mapped: the número predial encodes the zone), area_geom (m2) and
+# dest_econo (the cadastre's economic use, e.g. Habitacional,
+# Agropecuario, Lote_Urbanizado_No_Construido; kept as the source's
+# vocabulary). No owner, address or value field.
+
+description: >-
+  Cadastral land parcels of the Cundinamarca municipalities whose
+  cadastre the department runs (Agencia Catastral de Cundinamarca).
+
+admin_id: CO-CU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: acc
+    portal_url: "https://www.datos.gov.co/browse?q=Base%20catastral%20Municipio"
+    download_url: "https://www.datos.gov.co/resource/{dataset_id}.geojson?$limit=10000000"
+    license: "CC BY-SA 4.0 (datos.gov.co; attribution: Agencia Catastral de Cundinamarca)"
+    terms_url: "https://www.datos.gov.co/d/56yv-hh9f"
+    redistribution_restricted: false
+  version: "2026"
+
+# The resource endpoint returns GeoJSON directly; naming the file lets
+# the ingester skip a download already on disk.
+compressed_file_name: "{dataset_id}.geojson"
+
+download_by:
+  admin_level: 3
+  partition_key_lookup:
+    dataset_id:
+      from: admin3_id_admin1
+      lookup_table: CO-CU_parcel-acc-2026_datasets
+      key: divipola
+      value: dataset_id
+
+process_by:
+  admin_level: 3
+  admin_id_column: divipola
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: num_pred
+  admin3_id_admin1: divipola
+  land_use_group: dest_econo
+  m2: area_geom
+
+# Copied to `parcel_id_local`, as in the IGAC recipes.
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  admin_level: 3

@@ -1,0 +1,51 @@
+# Rural parcels (R_TERRENO) of IGAC's public cadastre, September 2021
+# release; see CO_parcel-igac-202202_rural for the vintages and how the
+# parcel spine uses them (823 municipalities here, 29 in no newer
+# release, 2026-10-17).
+
+description: >-
+  Rural land parcels (R_TERRENO) from Colombia's IGAC public cadastre,
+  September 2021 release, per municipality.
+
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+    license: "CC BY-SA 4.0 for current IGAC releases; terms at this release's date not checked"
+    terms_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+  version: "202109"
+
+compressed_file_name: "CATASTRO_PUBLICO_09_2021.gdb.zip"
+uncompressed_file_name: "CATASTRO_PUBLICO_09_2021.gdb"
+layer: R_TERRENO
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_municipio
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANTERIOR
+  admin3_id_admin1: codigo_municipio
+  vereda_code: VEREDA_CODIGO
+  m2: SHAPE_Area
+
+# Copied to `parcel_id_local`, as in CO_parcel-igac-202202_rural.
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3

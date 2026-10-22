@@ -1,0 +1,64 @@
+# Urban parcels of Sesquilé, which runs its own cadastre as gestor
+# catastral (IGAC's register of gestores, queried 2026-10-19), so it is
+# in neither IGAC's releases nor the Agencia Catastral de
+# Cundinamarca's datasets; 9 land acquisitions of the PLA layer are
+# filed under it.
+#
+# Source: the municipality's ArcGIS Online account (catastro_sesquile),
+# feature service Geoportal_vista, layer 2 U_TERRENO (1,036 features,
+# all with DANE code 25736 at the head of CODIGO; modified 2022-12-19).
+# No bulk file was found, so the layer is paged (`arcgis_rest_scraper`).
+# The rural layer is CO-CU-SE_parcel-sesquile-2022_rural.
+#
+# Licence: the service and its layers state neither a licence nor a
+# copyright holder (checked 2026-10-19). Recorded as unknown per the
+# recipe guide, as for Medellín's service.
+#
+# Schema (layer metadata, 2026-10-19): CODIGO (número predial),
+# CODIGO_ANT (previous número predial), NUPRE, DESTINO, VALOR_TOTA,
+# AREA_TOTAL, AREA_TOT_1, DIRECCION, VIGENCIA. Only the codes are
+# requested: the address and value fields are not read.
+
+description: >-
+  Urban cadastral parcels of Sesquilé from its own cadastre, paged from
+  the municipality's ArcGIS service (2022).
+
+admin_id: CO-CU-SE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: sesquile
+    portal_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer"
+    download_url_scraper: arcgis_rest_scraper
+    license: "unknown (the service states no licence or copyright holder)"
+    terms_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer?f=json"
+    redistribution_restricted: null
+  version: "2022"
+
+uncompressed_file_name: "sesquile_u_terreno.geojson"
+
+scraper_options:
+  layer_url: "https://services6.arcgis.com/G77IlHUvVSoRKM6V/arcgis/rest/services/Geoportal_vista/FeatureServer/2"
+  where: "1=1"
+  out_fields: "CODIGO,CODIGO_ANT"
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANT
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: urban
+  admin_level: 3
