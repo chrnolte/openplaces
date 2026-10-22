@@ -1,0 +1,174 @@
+# Recipe: Cumberland County, NJ parcels from NJOGIS's statewide
+# "Parcels and MOD-IV Composite of New Jersey" (Cad_parcel_mod4): the
+# county's tax-lot polygons joined by NJOGIS to the Division of
+# Taxation's MOD-IV tax list (assessed values, property class, year
+# built, the assessor's last deed).
+#
+# THE ROUTE. NJOGIS publishes the composite as bulk files on
+# geoapps.nj.gov (statewide `parcels_MOD4_Statewide.gdb.zip`, and per
+# county `parcels_gdb_Cumberland.zip` and
+# `parcels_shp_dbf_Cumberland.zip`,
+# ArcGIS items b336916089424f089424d59b73ccdcf7 and
+# 9fc4c50a65304d1c837f85719854f3f9). On 2026-10-21 that host answered
+# every scripted request with an Incapsula JavaScript challenge (HTTP
+# 403), which no ingest can pass and this project does not drive a
+# browser for. The same composite is served by the State's
+# MapServer, read here with `arcgis_rest_scraper`: 1,000 rows a page,
+# about 71 pages for the county. Switch to the county gdb if the bulk
+# host opens to scripts again.
+#
+# THE FILTER. The layer's COUNTY field is filled only where a polygon
+# found its MOD-IV record: measured 2026-10-21, 63,411 rows have
+# COUNTY = 'CUMBERLAND' and 70,576 have a Cumberland municipality code
+# (PCL_MUN '0601' to '0614'), the other 7,165 having no tax record. The
+# query filters on PCL_MUN so that the unmatched polygons come too.
+#
+# PRIVACY. OWNER_NAME, ST_ADDRESS, CITY_STATE, ZIP_CODE, ZIP5 and
+# ZIP_PLUS4 (the owner's name and mailing address) are not requested:
+# `out_fields` lists what is read. PROP_LOC is the lot's own location,
+# mapped to `address`.
+#
+# THE KEY. PAMS_PIN is the parcel's MOD-IV key,
+# `MMMM_BLOCK[.SFX]_LOT[.SFX][_QUAL]` (municipality code, block and
+# lot without zero padding, suffixes after a '.', a qualifier such as
+# a condominium unit's `C0001`). It is compared as written
+# (instruction `no_conv`): the bundled US-NJ-CU conversion
+# (geo/parcel_id_links.csv) drops the municipality code, and the SR1A
+# sales (US-NJ_transaction-njtaxation-2026) write their lots in this
+# same form. PAMS_PIN is not unique: NJOGIS's own notes say duplicate
+# PAMS_PINs exist (PIN_NODUP de-duplicates them with a suffix); stacked
+# rows on one polygon are split into the property layer at ingest as
+# usual. Measured overlap with the sales: see RECONCILIATION.
+#
+# MAPPED. PROP_CLASS (MOD-IV property class: 1 vacant, 2 residential,
+# 3A farm, 3B farmland, 4A commercial, 4B industrial, 4C apartment,
+# 15A-F exempt), LAND_VAL, IMPRVT_VAL, NET_VALUE, YR_CONSTR (0 when not
+# recorded), DWELL (dwellings), CALC_ACRE (the assessor's acreage),
+# PROP_LOC, MUN_NAME, and the assessor's last deed: SALE_PRICE,
+# DEED_DATE (YYMMDD text; the century is resolved with pivot 26, so
+# '26' is 2026 and '27' is 1927), DEED_BOOK and DEED_PAGE, SALES_CODE.
+#
+# LEFT UNMAPPED. BLDG_DESC (a coded description, stories, construction
+# and garage, e.g. '2S-F-1G'), LAND_DESC (lot dimensions or acreage as
+# text), BLDG_CLASS, PROP_USE, LAST_YR_TX (last year's tax: billed
+# gross or net is not stated), COMM_DWELL (empty), PCLLASTUPD (empty),
+# GIS_PIN, OLD_PROPID (the MOD-IV fixed-width key) and PCL_GUID.
+#
+# LICENCE. Item licence text (2026-10-21): not survey data; NJOGIS
+# asks to be acknowledged in derived products; provided as is; the
+# State does not commit to maintain it; distribution subject to the
+# State of New Jersey website Conditions of Use, which say "anyone may
+# view, copy or distribute State information found here without
+# obligation to the State". No redistribution restriction stated.
+#
+# RECONCILIATION (US-NJ-CU, ingested 2026-10-22). 70,576 rows, equal
+# to the server's count for the filter. Against the server's own
+# counts, exactly: LAND_VAL > 0 63,081; SALE_PRICE > 0 51,931;
+# YR_CONSTR > 0 44,705. The 63,411 rows with a tax record carry all
+# three values; NET_VALUE equals LAND_VAL + IMPRVT_VAL on 63,349 of
+# them. Last deed date on 57,337 rows (1927 to 2026).
+# `parcel_id_local` filled and distinct on all 70,576 rows; no stacked
+# polygons were found (0 stacks). The SR1A sales of 2019-07 to 2026-06
+# find their lot here on 95.9% of rows (see that recipe).
+
+description: >-
+  Cumberland County, NJ parcels with MOD-IV tax-list attributes (values,
+  class, year built, last deed) from NJOGIS's statewide parcel composite.
+
+admin_id: US-NJ-CU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: njogis
+    portal_url: "https://www.arcgis.com/home/item.html?id=852937c223e94fcf8e167a23b500935d"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      NJOGIS item terms: acknowledgment of NJOGIS requested, as is, no warranty;
+      State of New Jersey website Conditions of Use: 'anyone may view, copy or
+      distribute State information found here without obligation to the State'
+    terms_url: "https://www.nj.gov/nj/legal.shtml"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "nj_parcels_mod4_cumberland.geojson"
+
+scraper_options:
+  layer_url: "https://maps.nj.gov/arcgis/rest/services/Framework/Cadastral/MapServer/0"
+  where: "PCL_MUN LIKE '06%'"
+  out_fields: "PAMS_PIN,PCL_MUN,PROP_CLASS,PROP_LOC,MUN_NAME,LAND_VAL,IMPRVT_VAL,\
+    NET_VALUE,YR_CONSTR,DWELL,CALC_ACRE,SALE_PRICE,DEED_DATE,DEED_BOOK,DEED_PAGE,\
+    SALES_CODE"
+
+columns:
+  parcel_id_assessor: PAMS_PIN
+  use_group_code: PROP_CLASS
+  address: PROP_LOC
+  city: MUN_NAME
+  land_value: LAND_VAL
+  improvement_value: IMPRVT_VAL
+  total_value: NET_VALUE
+  year_built: YR_CONSTR
+  n_dwellings: DWELL
+  land_area_ac: CALC_ACRE
+  last_sale_price: SALE_PRICE
+  last_sale_date: DEED_DATE
+  last_sale_qualification_code: SALES_CODE
+
+columns_to_categorical:
+  - use_group_code
+  - city
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEED_BOOK, DEED_PAGE]
+    args: {sep: "-"}
+    output: last_sale_book_page
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_book_page
+    args: {value: "-"}
+    output: last_sale_book_page
+
+  # DEED_DATE is YYMMDD text; '000000' is no date.
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_date
+    args: {value: "000000"}
+    output: last_sale_date
+  - type: string
+    operation: substring
+    input: last_sale_date
+    args: {start: 0, end: 2}
+    output: _deed_yy
+  - type: unary
+    operation: resolve_century
+    input: _deed_yy
+    args: {pivot: 26}
+    output: _deed_yyyy
+  - type: string
+    operation: substring
+    input: last_sale_date
+    args: {start: 2, end: 6}
+    output: _deed_mmdd
+  - type: string
+    operation: concat
+    inputs: [_deed_yyyy, _deed_mmdd]
+    output: last_sale_date
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+drop_columns: [_deed_yy, _deed_yyyy, _deed_mmdd, DEED_BOOK, DEED_PAGE, PCL_MUN]
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  instruction:
+    US-NJ: {conv: no_conv}
+
+save_to:
+  data_dir: core

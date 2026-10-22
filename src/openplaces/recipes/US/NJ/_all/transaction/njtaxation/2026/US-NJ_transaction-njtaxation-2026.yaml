@@ -1,0 +1,359 @@
+# Recipe: New Jersey SR1A sales file from the Division of Taxation
+# (Local Property), statewide. One row per deed: the county recording
+# officer files an SR-1A form with every recorded deed, and the
+# Division keeps the sales the assessors use for the sales-ratio study
+# (Director's Table of Equalized Valuations). Fixed width, 663
+# characters per row; layout in the Division's SR1A file layout PDF,
+# https://www.nj.gov/treasury/taxation/pdf/lpt/SR1Afilelayout.pdf
+#
+# PRIVACY. The file carries grantor and grantee names, street, city
+# and ZIP, the property's street location and the initials of the
+# operator who keyed the form. The file cannot be requested without
+# them, so the `fixed_width` layout names each of those fields
+# `filler`: the reader drops every filler column right after reading,
+# and none is selected, mapped or written to disk.
+#
+# COVERAGE. One file per sampling year, July 1 to June 30, named after
+# the year it ends in: `Sales2020` holds deeds recorded 2019-07-01 to
+# 2020-06-30. The page lists Sales2020 to Sales2026 (Sales2019 is
+# 404); earlier years are by OPRA request. `YTDSR1A2026` (2026-08-12)
+# is an earlier snapshot of the same sampling year as `Sales2026`
+# (2026-09-24): the same 3,510 Cumberland deeds, with 114 fewer
+# marked usable in the later file, so it is not read.
+# Measured 2026-10-21, statewide rows per file: 2020 204,689; 2021
+# 244,019; 2022 246,261; 2023 194,389; 2024 167,598; 2025 171,949;
+# 2026 170,664 (1,399,569 in all); SERIAL-NUMBER is unique across all
+# of them.
+#
+# THE QUALIFICATION. Each deed is marked U (usable in the ratio study)
+# or N (nonusable) in U-N-TYPE, and a nonusable deed carries the
+# category number of N.J.A.C. 18:12-1.1 in SR-NU-CODE ('01' to '36';
+# categories 34 to 36 were added on 2025-05-19, 1 to 33 kept their
+# numbers). The two fields are written as one source code into
+# `sale_qualification_code`, as received: `U`, or `N` followed by the
+# category (`N25`). The prefix keeps the codes apart from Florida's
+# two-digit codes, which the national curate recipe already maps. A U
+# row has no category and an N row always has one (measured on
+# Cumberland's 27,305 rows). The assessor's own proposal,
+# ASSESSOR-NU-CODE, is kept unmapped. The curate patch
+# US-NJ_transaction-openplaces-2026
+# grades the code.
+#
+# THE PARCEL. The main lot is BLOCK (5, zero-padded), BLOCK-SUFFIX,
+# LOT (5, zero-padded), LOT-SUFFIX and the qualifier in
+# QUALIFICATION-CODES (a condominium unit `C0001`, a farm `QFARM`),
+# in the municipality COUNTY-CODE + DISTRICT-CODE. The transformations
+# write it in the statewide parcel layer's PAMS_PIN form,
+# `MMMM_BLOCK[.SFX]_LOT[.SFX][_QUAL]` with the leading zeros of block
+# and lot dropped and, in Cumberland, a one-digit lot suffix
+# zero-filled (SR1A writes '1' where PAMS_PIN has '.01': 332 rows, 5%
+# found as written), so `parcel_id_local` is the same string on both
+# sides (instruction `no_conv`, US-NJ-CU_parcel-njogis-2026). Up to
+# five additional lots of a multi-lot deed are kept unmapped
+# (ADDL_BLOCK_n, ADDL_LOT_n, ADDL_QUALIFIER_n), since the registry has
+# no column for a second parcel of a sale.
+#
+# MAPPED. SERIAL-NUMBER as the source's id; DEED-BOOK and DEED-PAGE;
+# DATE-RECORDED (YYMMDD; every value of the seven files falls in its
+# sampling year, so the century is 20); REPORTED-SALES-PRICE (the
+# verified price differs on 3 of Cumberland's 27,305 rows and is kept
+# unmapped); PROPERTY-CLASS (1 vacant, 2 residential, 3A farm, 3B
+# farmland, 4A commercial, 4B industrial, 4C apartment, 15A-F
+# exempt); the main lot's assessed land, building and total values,
+# year built (0 when not recorded) and living space (0 when not
+# recorded, nulled here) as the assessor's record at the time of the
+# sale. The values describe the main lot only, never the additional
+# lots of a multi-lot deed.
+#
+# KEPT AS RECEIVED, unregistered (`keep_unnamed_columns`): the
+# additional lots, VERIFIED-SALES-PRICE, DEED-DATE, ASSESS-YEAR,
+# CLASS-4-TYPE, RTF-EXEMPT-CODE and ASSESSOR-NU-CODE. Left out as
+# filler: the sales ratio and the realty transfer fee (both computed
+# from the price), the additional lots' values, and the Division's
+# bookkeeping fields.
+#
+# LICENCE. No terms on the page or in the file. The State's website
+# Conditions of Use (nj.gov/nj/legal.shtml, section F): "anyone may
+# view, copy or distribute State information found here without
+# obligation to the State", unless a restriction is stated on the
+# material; none is. Checked 2026-10-21.
+#
+# RECONCILIATION (US-NJ-CU, ingested 2026-10-22). 27,305 rows, equal
+# to the county's rows in the seven files (county code '06'): 3,853,
+# 4,261, 4,562, 3,956, 3,637, 3,526 and 3,510 for Sales2020 to
+# Sales2026. By year recorded: 2019 2,115 (July to December); 2020
+# 3,849; 2021 4,456; 2022 4,377; 2023 3,719; 2024 3,556; 2025 3,504;
+# 2026 1,729 (January to June). Price filled on every row, above 0 on
+# 27,057. `parcel_id_local` filled on every row, 19,255 distinct.
+# 26,172 of 27,305 rows (95.9%) find their lot in
+# US-NJ-CU_parcel-njogis-2026 (by year 94.6% to 97.4%). Before the
+# one-digit lot suffix was zero-filled the overlap was 94.8%. Of the
+# 1,133 that miss, about 400 find the block and lot under another
+# qualifier or none; the rest are lots the current layer no longer
+# draws (renumbered, merged or split since the sale). No looser match
+# is attempted (exact keys only). Codes: U 8,821; N 18,484 over 33
+# categories, the largest N25 2,917, N10 2,264, N07 2,108, N26 1,680,
+# N14 1,483, N04 1,078, N31 1,022.
+
+description: >-
+  New Jersey SR1A deed sales (Division of Taxation), statewide by
+  sampling year: price, recording date, book and page, property class and
+  usable or nonusable category.
+
+admin_id: US-NJ
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: njtaxation
+    portal_url: "https://www.nj.gov/treasury/taxation/lpt/statdata.shtml"
+    download_url: "https://www.nj.gov/treasury/taxation/lpt/statdata/Sales{year}.zip"
+    license: >-
+      no dataset terms; State of New Jersey website Conditions of Use: 'anyone may
+      view, copy or distribute State information found here without obligation to
+      the State'
+    terms_url: "https://www.nj.gov/nj/legal.shtml"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+download_by:
+  partition: year
+  first: 2020
+  last: 2026
+
+compressed_file_name: "Sales{year}.zip"
+uncompressed_file_name: "Sales{year}.txt"
+
+encoding: latin-1
+csv_dtype: str
+
+# SR1A file layout (one row, 663 characters). Every personal field is
+# `filler` and dropped by the reader; see PRIVACY above.
+fixed_width:
+  - [COUNTY_CODE, 2]
+  - [DISTRICT_CODE, 2]
+  - [filler, 12]              # TOTAL ASSESSMENT
+  - [filler, 3]               # OPERATOR-INITIALS
+  - [filler, 6]               # LAST-UPDATE-DATE
+  - [filler, 8]               # FILLER 1
+  - [U_N_TYPE, 1]
+  - [SR_NU_CODE, 3]
+  - [REPORTED_SALES_PRICE, 9]
+  - [VERIFIED_SALES_PRICE, 9]
+  - [ASSESSED_VALUE_LAND, 9]
+  - [ASSESSED_VALUE_BLDG, 9]
+  - [ASSESSED_VALUE_TOTAL, 9]
+  - [filler, 5]               # SALES-RATIO
+  - [filler, 9]               # REALTY-TRANSFER-FEE
+  - [filler, 1]               # RTF-ERROR-FLAG
+  - [RTF_EXEMPT_CODE, 1]
+  - [SERIAL_NUMBER, 7]
+  - [filler, 4]               # FILLER 2
+  - [filler, 35]              # GRANTOR-NAME
+  - [filler, 25]              # GRANTOR-STREET
+  - [filler, 25]              # GRANTOR-CITY-STATE
+  - [filler, 9]               # GRANTOR-ZIP
+  - [filler, 35]              # GRANTEE-NAME
+  - [filler, 25]              # GRANTEE-STREET
+  - [filler, 25]              # GRANTEE-CITY-STATE
+  - [filler, 9]               # GRANTEE-ZIP
+  - [filler, 25]              # PROPERTY-LOCATION
+  - [filler, 6]               # AGING-DATE
+  - [DEED_BOOK, 5]
+  - [DEED_PAGE, 5]
+  - [DEED_DATE, 6]
+  - [DATE_RECORDED, 6]
+  - [BLOCK, 5]
+  - [BLOCK_SUFFIX, 4]
+  - [LOT, 5]
+  - [LOT_SUFFIX, 4]
+  - [filler, 1]               # ETC
+  - [ADDL_BLOCK_1, 9]
+  - [ADDL_LOT_1, 9]
+  - [ADDL_QUALIFIER_1, 5]
+  - [filler, 27]              # ADDL-VALUE-LAND/BLDG/TOTAL(1)
+  - [ADDL_BLOCK_2, 9]
+  - [ADDL_LOT_2, 9]
+  - [ADDL_QUALIFIER_2, 5]
+  - [filler, 27]
+  - [ADDL_BLOCK_3, 9]
+  - [ADDL_LOT_3, 9]
+  - [ADDL_QUALIFIER_3, 5]
+  - [filler, 27]
+  - [ADDL_BLOCK_4, 9]
+  - [ADDL_LOT_4, 9]
+  - [ADDL_QUALIFIER_4, 5]
+  - [filler, 27]
+  - [ADDL_BLOCK_5, 9]
+  - [ADDL_LOT_5, 9]
+  - [ADDL_QUALIFIER_5, 5]
+  - [filler, 27]
+  - [QUALIFICATION_CODES, 5]
+  - [ASSESS_YEAR, 2]
+  - [PROPERTY_CLASS, 3]
+  - [CLASS_4_TYPE, 3]
+  - [filler, 6]               # FILLER 3
+  - [ASSESSOR_NU_CODE, 3]
+  - [filler, 1]               # FIELD-STATUS-CODE
+  - [filler, 6]               # FIELD-DATE
+  - [filler, 1]               # CRITICAL-ERROR-FLAG
+  - [filler, 3]               # FILLER 4
+  - [YEAR_BUILT, 4]
+  - [LIVING_SPACE, 7]
+
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_CODE
+  admin_id_crosswalk:
+    recipe_id: "US-NJ_transaction-njtaxation-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  transaction_id_source: SERIAL_NUMBER
+  book: DEED_BOOK
+  page: DEED_PAGE
+  recorded_date: DATE_RECORDED
+  use_group_code: PROPERTY_CLASS
+  price_raw: REPORTED_SALES_PRICE
+  land_value: ASSESSED_VALUE_LAND
+  improvement_value: ASSESSED_VALUE_BLDG
+  total_value: ASSESSED_VALUE_TOTAL
+  year_built: YEAR_BUILT
+  living_area_sqft: LIVING_SPACE
+
+transformations:
+  # The qualification as one code: `U`, or `N` and the category.
+  - type: string
+    operation: concat
+    inputs: [U_N_TYPE, SR_NU_CODE]
+    output: sale_qualification_code
+
+  # The main lot in PAMS_PIN form; see THE PARCEL above. Block and
+  # lot lose their zero padding; a suffix joins with '.', the
+  # qualifier with '_'. A missing suffix or qualifier leaves a
+  # dangling separator, which the '#' end marker lets three plain
+  # replacements remove.
+  - type: string
+    operation: lstrip
+    input: BLOCK
+    args: {chars: "0"}
+    output: _block
+  - type: string
+    operation: lstrip
+    input: LOT
+    args: {chars: "0"}
+    output: _lot
+  - type: string
+    operation: concat
+    inputs: [_block, BLOCK_SUFFIX]
+    args: {sep: "."}
+    output: _block
+  # A one-digit lot suffix ('1') is written '.01' in PAMS_PIN. Scoped to
+  # the county where that was measured: other counties' suffixes
+  # include letters ('A', 'A1'), which zero-filling would change.
+  - type: string
+    operation: strip
+    input: LOT_SUFFIX
+    output: _lot_suffix
+  - type: string
+    operation: zfill
+    input: _lot_suffix
+    args: {width: 2}
+    output: _lot_suffix
+    admin_ids: [US-NJ-CU]
+  - type: string
+    operation: concat
+    inputs: [_lot, _lot_suffix]
+    args: {sep: "."}
+    output: _lot
+  - type: string
+    operation: concat
+    inputs: [COUNTY_CODE, DISTRICT_CODE]
+    output: _municipality
+  - type: string
+    operation: concat
+    inputs: [_municipality, _block, _lot, QUALIFICATION_CODES]
+    args: {sep: "_"}
+    output: parcel_id_assessor
+  - type: string
+    operation: add_suffix
+    input: parcel_id_assessor
+    args: {suffix: "#"}
+    output: parcel_id_assessor
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "._", new: "_"}
+    output: parcel_id_assessor
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "_#", new: ""}
+    output: parcel_id_assessor
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "#", new: ""}
+    output: parcel_id_assessor
+
+  # YYMMDD, all in 2019-2026: see MAPPED above.
+  - type: string
+    operation: add_prefix
+    input: recorded_date
+    args: {prefix: "20"}
+    output: recorded_date
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+
+  - type: unary
+    operation: to_numeric
+    input: price_raw
+    output: price
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: "0000000"}
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+
+drop_columns: [_block, _lot, _lot_suffix, _municipality, U_N_TYPE, SR_NU_CODE]
+
+keep_unnamed_columns: true
+
+# The PAMS_PIN-form key is compared as written, on both sides. The
+# bundled US-NJ-CU conversion (geo/parcel_id_links.csv) drops the
+# municipality code and would join lots of different towns.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
+  instruction:
+    US-NJ: {conv: no_conv}
+
+save_to:
+  data_dir: cache
+
+# One file per county across the seven sampling years.
+aggregate_by:
+  single_file: true
