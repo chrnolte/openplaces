@@ -1,0 +1,154 @@
+# Recipe: Douglas County, IL tax parcels with the assessor's values,
+# from the county's own ArcGIS Online organization (dcil.maps.arcgis
+# .com), hosted layer "Parcels" (item 7a1ca00ff4774a618fbda3d1c4476291,
+# layer 0), pulled as the Hub's cached GeoJSON export instead of about
+# 16 REST pages of 1,000. The layer joins the parcel polygons to the
+# assessor's CAMA fields, one row per polygon.
+#
+# KEY. PIN is the 10-digit parcel number without the 2-digit township
+# prefix ('9999999999'); parcel_num and AltPIN carry the 12-digit form
+# with it ('99-99-99-999-999'). PIN is used: it is filled on every row
+# but one (parcel_num is blank on the 245 polygons with no CAMA
+# record), and the bundled Douglas parcel conversion (2-2-3-3 digit
+# groups) fits it, producing the same key as the bundled tax conversion
+# applied to MyDec's 12-digit PIN (the township prefix dropped on both
+# sides). No override row is needed. Measured 2026-10-21 on the export
+# (15,448 rows): parcel_id_local filled 99.99%, 15,233 distinct.
+#
+# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026). Measured
+# 2026-10-21: 84.4% of the 1,029 ingested Douglas declarations (all of
+# them 2018-2019; MyDec has no earlier Douglas filing in the
+# recipe's years) find their parcel. The misses are retired PINs, not a
+# format mismatch: 97.5% of them share their 9-digit block with a
+# current parcel, they concentrate in farm (line 8 J: 54% matched) and
+# land (A: 66%) declarations, residences (B) match 93%, and the
+# portal's later Douglas declarations match 82-90% for 2020-2024 and
+# 98.8% for 2025 and 2026 (PIN column only, read from the portal).
+#
+# VALUES (assessed, the 2025 assessment year on every row; Illinois
+# assesses non-farm property at one third of market value and farmland
+# at its use value). non_farm_l and farm_land are both assessed land:
+# land_value is their sum and land_value_preferential the farmland
+# part. improvement_value sums non_farm_b and farm_build; total_value
+# all four. Coverage above zero: non_farm_l 63.0%, non_farm_b 55.3%,
+# farm_land 37.5%, farm_build 7.6%. Median on class 0040 (residential):
+# land 6,152, building 36,578.
+#
+# MAPPED. use_group_code from class (the Illinois property class, kept
+# as published: 0040 residential 6,898 rows, 0021 farmland 4,447, 0011
+# farm with buildings 1,297, 0030 residential vacant 900, 0060
+# commercial 713, 0090 exempt 493, and 16 rarer codes); blank on the
+# 245 rows without a CAMA record. tax_district from tax_code (75
+# codes). land_area_ac from gross_acre (above zero on 55.4%; zeros
+# emptied). address from site_addre (57.5%), postal_code from the last
+# word of site_csz.
+#
+# NOT MAPPED. The taxpayer, second-owner and mail-to name and address
+# columns, owner ids and the deed document numbers: never read.
+# date_of_sa, a sale date with no price, filled on 20.7% and ending in
+# 2009, so it is not a last sale. lot_dimens, legal, the exemption
+# flags (hel, hes, xmpt ...), tax_billed, township and the layer's own
+# edit fields. No year built or living area field exists.
+#
+# RECONCILIATION (ingested 2026-10-22). 15,448 rows in, 15,448 parcels
+# out (no stacked units: the 411 rows sharing a PIN are separate
+# polygons). The live layer answers 15,498 (returnCountOnly), so the
+# Hub cache lags the layer by 50 rows; the layer was last edited
+# 2026-08-17. Server against parquet: non_farm_b or farm_build above
+# zero 9,075 / improvement_value 9,060; non_farm_l or farm_land 14,733
+# / land_value 14,698; farm_land 5,825 / land_value_preferential
+# 5,791; class filled 15,242 / use_group_code 15,203.
+#
+# LICENCE. Checked 2026-10-21: the item, the county's public web map
+# and its web app carry no licence or terms text, and the county site
+# links the map without terms. Recorded as unknown.
+
+description: >-
+  Douglas County, IL tax parcels with assessed land and building values,
+  property class and tax code from the county's ArcGIS Online layer.
+
+admin_id: US-IL-DO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: douglascounty
+    license: "unknown: no licence or terms text on the item, the public web map or the county site (checked 2026-10-21)"
+    terms_url: null
+    redistribution_restricted: null
+    portal_url: "https://dcil.maps.arcgis.com/home/item.html?id=7a1ca00ff4774a618fbda3d1c4476291"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/7a1ca00ff4774a618fbda3d1c4476291_0/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+  version: 2026
+
+uncompressed_file_name: "douglas_parcels.geojson"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PIN
+  use_group_code: class
+  tax_district: tax_code
+  land_area_ac: gross_acre
+  address: site_addre
+  postal_code: site_csz
+  land_value: non_farm_l
+  improvement_value: non_farm_b
+  land_value_preferential: farm_land
+
+transformations:
+  # Blank strings stand for "no CAMA record" on 245 polygons.
+  - type: unary
+    operation: null_if_equal
+    input: use_group_code
+    args: {value: " "}
+    output: use_group_code
+  - type: unary
+    operation: null_if_equal
+    input: tax_district
+    args: {value: " "}
+    output: tax_district
+  - type: unary
+    operation: null_if_equal
+    input: address
+    args: {value: " "}
+    output: address
+  - type: string
+    operation: split_take
+    input: postal_code
+    args: {sep: " ", index: -1}
+    output: postal_code
+  - type: unary
+    operation: null_if_equal
+    input: postal_code
+    args: {value: ""}
+    output: postal_code
+  - type: unary
+    operation: null_if_equal
+    input: land_area_ac
+    args: {value: 0}
+    output: land_area_ac
+  # Totals before the land and building sums overwrite their inputs.
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, improvement_value, land_value_preferential, farm_build]
+    output: total_value
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, land_value_preferential]
+    output: land_value
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value, farm_build]
+    output: improvement_value
+
+columns_to_categorical:
+  - use_group_code
+  - tax_district
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
