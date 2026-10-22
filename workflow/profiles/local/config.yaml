@@ -39,10 +39,14 @@
 
 # 20 cores are present but memory is the real limit, and this box is
 # shared with other sessions (measured 26 GB free of 63 GB). The
-# Snakefile already tags each rule with `mem_mb` from
-# profiles/scc/mem_lookup.csv (default 8000), so capping the mem_mb
-# resource is what actually bounds concurrency: many small jobs run
-# together, heavy geospine jobs queue. Raise both on an idle machine.
+# Snakefile tags each job with `mem_mb` from its measured peak (this
+# machine's table under the logs directory, then profiles/mem_seed.csv;
+# see openplaces.flow.memory), falling back to
+# profiles/scc/mem_lookup.csv for a family never measured, so
+# capping the mem_mb resource is what actually bounds concurrency:
+# many small jobs run together, heavy geospine jobs queue. A job
+# reserving more than the cap runs alone. Raise both on an idle
+# machine (e.g. --cores 20 --resources mem_mb=48000).
 cores: 6
 resources:
   - mem_mb=20000

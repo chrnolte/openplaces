@@ -71,6 +71,42 @@ one after the other, so the pair is close to, not exactly, atomic. A
 script that calls `snakemake` directly, without a profile, should pass
 `--keep-incomplete --rerun-incomplete` too.
 
+**A job's memory reservation is its own measured peak**
+(`flow/memory.py`), not a flat value per stage. `mem_mb` comes from the
+first that applies, times 1.2 plus 512 MB:
+
+1. the peak this machine measured for the job, scaled up if its inputs
+   have grown since;
+2. this machine's envelope for its family (same stage and recipe, at
+   least 5 measured units): a line of peak against input bytes (`_geo`
+   sidecars counted) that covers every measured unit;
+3. the seed envelope for the family in `workflow/profiles/mem_seed.csv`,
+   in git, fitted on the maintainer's Windows machine (US-FL waves of
+   2026-10-19/20);
+4. the flat `profiles/scc/mem_lookup.csv` value (a recipe or unit row
+   there is a floor under any of the above).
+
+Under 2 and 3, a job whose input is larger than any unit the envelope
+was fitted on gets the whole `--resources mem_mb` cap, so it runs alone.
+Snakemake evaluates the callable when the job is ready, so its inputs
+are on disk, and lowers a request above the cap to the cap.
+
+**Peaks are platform-specific, so the measured table is per machine.**
+On Windows the benchmark's `max_vms` is committed memory (what the
+low-memory kill counts, about 10% above the resident set); on Linux
+`max_rss` is the resident set and `max_vms` an address space that can
+be far larger. The table lives outside git at
+`<logs>/mem/mem_measured.csv` (`--config mem_table=<csv>` points a run
+elsewhere), and each machine refreshes its own after a wave with
+`python -m openplaces.flow.memory refresh`; a row only grows, so delete
+it to forget a peak. The input size it pairs with a peak is the
+`<rule>.input_mb` file the Snakefile writes beside the benchmark, also
+in a dry run (it is used only when the benchmark is newer). `python -m
+openplaces.flow.memory seed --scope <admin id>` refits the seed from a
+local table. The cluster starts from the seed and passes the value as
+`mem_per_core`; with no cap there, a job above its family's range keeps
+the envelope and is retried with twice the memory if it fails.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs

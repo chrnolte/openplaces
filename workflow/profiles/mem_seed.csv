@@ -1,0 +1,12 @@
+stage,recipe_id,n_measured,floor_mb,slope_mb_per_input_mb,max_peak_mb,max_input_mb
+curate,US_transaction-openplaces-2026,67,269,11.0699,30461,3309.5
+harmonize,US_building-geospine-2026,67,261,6.1364,1277,253.4
+harmonize,US_building-spine-2026,67,574,5.6366,4514,983.1
+harmonize,US_footprint-geospine-2026,67,593,1.9579,8161,4426.9
+harmonize,US_footprint-spine-2026,67,551,20.8247,6359,341.7
+harmonize,US_parcel-geospine-2026,67,330,5.6066,31780,5609.5
+harmonize,US_parcel-spine-2026,67,360,15.5887,24516,2552.2
+harmonize,US_property-spine-2026,67,224,235.2085,40447,573.8
+harmonize,US_transaction-spine-2026,67,301,60.3469,32831,2274.7
+harmonize,admin-openplaces-2026_admin4,67,2884,0.0000,2884,0.0
+ingest,dwelling-overture-2025,67,345,1088.2353,4045,3.4
