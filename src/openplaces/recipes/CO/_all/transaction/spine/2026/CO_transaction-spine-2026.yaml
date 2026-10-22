@@ -1,0 +1,100 @@
+# Recipe: harmonized Colombia transaction spine.
+#
+# Unions every transaction source scoped to Colombia (today the compiled
+# public land acquisitions, CO_transaction-reboredo-2021; the PES
+# contract layer joins the same spine when its recipe lands), keeps the
+# polygons, assigns admin units and derives geometry attributes, and
+# re-expresses nominal prices in 2020 COP with the World Bank consumer
+# price index in the sidecar CSV beside this recipe.
+#
+# `union_spine_sources` rather than `resolve_spine`: the sources are one
+# polygon per purchase or contract and never describe the same physical
+# unit twice, so a plain union is right and the IoU overlap dedup is not
+# wanted. `geom: true` keeps the polygons, which the enrich stage samples
+# rasters over.
+#
+# Processed per municipality (admin level 3), the level the sources and
+# the parcel spine save at, so each record links to the parcels of the
+# municipality it names. A polygon that reaches into a neighbour links
+# only to the parcels of its own municipality.
+#
+# A treatment polygon stays the transaction's own geometry (decision D3,
+# 2026-10-17), and what it conveyed is the transaction-to-parcel link
+# table: first the parcel number the record states (`link_transactions`,
+# exact key), then, independently, every parcel lying more than 80%
+# inside the polygon (`link_transactions_by_overlap`). A pair both find
+# is one row labeled `parcel_id_local+polygon_overlap`.
+#
+# The CPI sidecar `CO_transaction-spine-2026_cpi-worldbank.csv` is the
+# World Bank indicator FP.CPI.TOTL.ZG ("Inflation, consumer prices
+# (annual %)") for Colombia, 1985-2024, fetched 2026-08-27 from
+# api.worldbank.org (CC-BY-4.0), in long form (country, year,
+# inflation_pct).
+
+description: >-
+  Harmonized Colombia transaction spine: land acquisitions and use-rights
+  contracts with polygons, admin units, and prices deflated to 2020 COP.
+
+stage: harmonize
+admin_id: CO
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: spine
+    # Not an external source: this is an openplaces pipeline product, so
+    # it carries whatever its inputs carry and nothing of its own. The
+    # applicable terms are derived per output by io.bundle_terms, which
+    # walks the dependency graph rather than reading a licence here.
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  - step: union_spine_sources
+    geom: true
+    # Listed by id: it is scoped to CO, the spine's own unit, which
+    # auto-discovery does not expand to (it finds child-scoped sources).
+    sources:
+      - recipe_id: CO_transaction-reboredo-2021
+      - auto_discover: true
+        entity_type: transaction
+
+  # area_ha, lat, long from the polygon itself.
+  - step: derive_geometry_attributes
+
+
+  # Nominal COP of the transaction year -> 2020 COP. A year outside the
+  # index leaves price_real missing; it is never the nominal value.
+  - step: deflate_values
+    columns: [price]
+    year_column: sale_year
+    index: CO_transaction-spine-2026_cpi-worldbank.csv
+    base_year: 2020
+    country: COL
+    output_suffix: _real
+
+  # Ids from the compiler's record id, scoped by the municipality
+  # (`CO-AN-CV_<ID>`).
+  - step: assign_transaction_ids
+    document_column: transaction_id_source
+    label: acquisition
+
+  - step: link_transactions
+    parcel_recipe_id: CO_parcel-spine-2026
+    property_recipe_id: null
+    parcel_key: parcel_id_local
+    address_keys: []
+    address_ranges: false
+
+  - step: link_transactions_by_overlap
+    parcel_recipe_id: CO_parcel-spine-2026
+    min_parcel_share: 0.8

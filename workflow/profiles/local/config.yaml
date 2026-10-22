@@ -46,29 +46,9 @@
 cores: 6
 resources:
   - mem_mb=20000
-  # One token per staging recipe (see HEAP_TOKENS in the Snakefile):
-  # each serializes against itself only, so unrelated ingests still
-  # run in parallel. Generated from the recipes that stage into a
-  # heap directory; regenerate if that set changes.
-  - heap_us_nc_footprint_ncdps_2023=1
-  - heap_us_nc_parcel_nconemap_2025=1
-  - heap_us_admin_census_2025_admin2=1
-  - heap_us_admin_census_2025_admin3=1
-  - heap_us_admin_census_2025_admin4=1
-  - heap_us_building_nsi_2026=1
-  - heap_us_footprint_fema_2023=1
-  - heap_us_footprint_microsoft_v2=1
-  - heap_us_parcel_placeslab_fmv2026=1
-  - heap_us_property_shovels_2026=1
-  - heap_us_tile_census_2025_block=1
-  - heap_us_tile_census_2025_blockgroup=1
-  - heap_us_tile_census_2025_tract=1
-  - heap_us_tile_census_2025_zcta5=1
-  - heap_admin_gadm_4_1_admin1=1
-  - heap_admin_gadm_4_1_admin2=1
-  - heap_admin_gadm_4_1_admin3=1
-  - heap_footprint_obm_2025=1
-  - heap_tile_obm_2025=1
+  # The heap-directory tokens (HEAP_TOKENS in the Snakefile) are
+  # registered by the Snakefile itself, one job each, so they need no
+  # entry here.
 latency-wait: 120
 retries: 1
 rerun-triggers: mtime

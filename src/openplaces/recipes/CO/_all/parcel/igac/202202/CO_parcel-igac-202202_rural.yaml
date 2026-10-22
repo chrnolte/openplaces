@@ -1,0 +1,63 @@
+# Rural parcels (R_TERRENO) of IGAC's public cadastre, February 2022
+# release (`colombia_publica_02_2022.gdb`). One of four vintages kept so
+# that older releases fill the municipalities newer ones lack: coverage
+# shrinks as municipalities move to other cadastral managers (rural
+# layers, municipalities, 2026-10-17: 798 here, 823 in 2021-09, 828 in
+# 2021-06, 222 in the rural-only 2020-04; 839 together). Antioquia is in
+# none of them (it keeps its departmental catastro). The parcel spine
+# takes a vintage only for a municipality no newer source covers
+# (`fill_group` in CO_parcel-spine-2026).
+#
+# No person columns in this layer. Place the zip in this recipe's
+# external directory as downloaded.
+
+description: >-
+  Rural land parcels (R_TERRENO) from Colombia's IGAC public cadastre,
+  February 2022 release, per municipality.
+
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+    # IGAC publishes its current releases under CC BY-SA 4.0 (checked
+    # 2026-10-17); the terms in force at this release's date were not.
+    license: "CC BY-SA 4.0 for current IGAC releases; terms at this release's date not checked"
+    terms_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+  version: "202202"
+
+compressed_file_name: "colombia_publica_02_2022.gdb.zip"
+uncompressed_file_name: "colombia_publica_02_2022.gdb"
+layer: R_TERRENO
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_municipio
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANTERIOR
+  admin3_id_admin1: codigo_municipio
+  vereda_code: VEREDA_CODIGO
+  m2: SHAPE_Area
+
+# The parcel number a transaction record states joins on
+# `parcel_id_local`. A copy, not a second `columns` entry: two
+# attributes mapped to one source column keep only one of them.
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3

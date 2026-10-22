@@ -1,0 +1,74 @@
+# Rural parcels of the cadastre Zipaquirá runs as its own gestor
+# catastral (IGAC's register of gestores, queried 2026-10-19; Zipaquirá
+# is also contracted for Cajicá and Sopó, so rows are assigned by the
+# DANE code at the head of each número predial, not to Zipaquirá
+# wholesale). Neither IGAC's releases nor the Agencia Catastral de
+# Cundinamarca (CO-CU_parcel-acc-2026) cover these municipalities.
+#
+# Source: IDER, the Cundinamarca spatial data infrastructure, hosted
+# layer "Predios rurales. Municipio de Zipaquirá" (ArcGIS item
+# 18829b0824d64aa2b4c48e806a4ed353, modified 2022-11-17), 9,645
+# features, maxRecordCount 2,000; licence stated on the item as CC BY
+# 4.0 (attribution, copying, derivatives and commercial use allowed).
+# No bulk file was found, so the layer is paged (`arcgis_rest_scraper`,
+# 5 pages). The urban layer is CO-CU_parcel-zipaquira-2022_urban.
+#
+# Schema (layer metadata, 2026-10-19): codigo (número predial),
+# vereda_id, tipo_avalu and condicion_ (no registry home, not mapped),
+# AREA_M2, AREA_HAS, Reporte. No owner, address or value field.
+
+description: >-
+  Rural cadastral parcels from Zipaquirá's own cadastre (IDER layer,
+  2022), assigned to municipalities by número predial.
+
+admin_id: CO-CU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: zipaquira
+    portal_url: "https://ider.cundinamarca.gov.co/"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC BY 4.0 (stated on the IDER item)"
+    terms_url: "https://www.arcgis.com/home/item.html?id=18829b0824d64aa2b4c48e806a4ed353"
+    redistribution_restricted: false
+  version: "2022"
+
+uncompressed_file_name: "zipaquira_predios_rurales.geojson"
+
+scraper_options:
+  layer_url: "https://services7.arcgis.com/lsxbLWF2l19Rmhqj/arcgis/rest/services/Predios_RuralesZipaquira/FeatureServer/0"
+  where: "1=1"
+  out_fields: "codigo,vereda_id,AREA_M2"
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo
+  admin_id_transformation:
+    - output: admin3_id_admin1
+      type: string
+      operation: substring
+      args:
+        start: 0
+        end: 5
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: codigo
+  vereda_code: vereda_id
+  m2: AREA_M2
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3

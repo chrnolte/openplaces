@@ -1,0 +1,9 @@
+{
+  "accuracy_m": 1.0,
+  "grid_files": [],
+  "operation_definition": "proj=pipeline step inv proj=tmerc lat_0=4.59620041666667 lon_0=-74.0775079166667 k=1 x_0=1000000 y_0=1000000 ellps=GRS80 step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "axis order change (2D) + Inverse of Colombia MAGNA Bogota zone + MAGNA-SIRGAS to WGS 84 (1) + axis order change (2D)",
+  "registered": "2026-10-17",
+  "source_crs": "EPSG:3116",
+  "target_crs": "EPSG:4326"
+}

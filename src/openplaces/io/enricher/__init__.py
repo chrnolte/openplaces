@@ -115,6 +115,34 @@ def _resolve_entity_recipe(
     return get_recipe_by_id(recipe_id)
 
 
+def expand_year_steps(pipeline: list[dict]) -> list[dict]:
+    """Unroll pipeline steps that declare ``years: [first, last]``.
+
+    An annual product wants the same step once per year, and a recipe
+    that spells out 28 years of three layers is 300 lines nobody reads.
+    A step carrying ``years`` is repeated for every year in the inclusive
+    range, with the literal ``{year}`` substituted in every string value
+    (``raster_key``, ``column``, ``layer``, ...) and the ``year`` key set
+    to the integer. A step without ``years`` passes through unchanged, and
+    the order of the pipeline is preserved.
+    """
+    expanded: list[dict] = []
+    for step_cfg in pipeline:
+        if 'years' not in step_cfg:
+            expanded.append(step_cfg)
+            continue
+        first, last = step_cfg['years']
+        template = {k: v for k, v in step_cfg.items() if k != 'years'}
+        for year in range(int(first), int(last) + 1):
+            unrolled = {
+                k: v.replace('{year}', str(year)) if isinstance(v, str) else v
+                for k, v in template.items()
+            }
+            unrolled['year'] = year
+            expanded.append(unrolled)
+    return expanded
+
+
 class Enricher:
     """Run an enrichment recipe for one or more admin units."""
 
@@ -364,12 +392,19 @@ class Enricher:
             reprocess=reprocess,
         )
 
-        for step_cfg in pipeline:
+        for step_cfg in expand_year_steps(pipeline):
             step_name = step_cfg.get('step')
             if not step_name:
                 raise ValueError(
                     f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
                 )
+            # `enabled` is a control key, never a step argument: the same
+            # convention the Curator applies, so a recipe can document a
+            # step whose inputs are not ingested yet without running it.
+            if step_cfg.get('enabled', True) is False:
+                if self.verbose:
+                    print(f'  [skip] {step_name}')
+                continue
             fn = _STEP_REGISTRY.get(step_name)
             if fn is None:
                 _load_steps()
@@ -379,7 +414,7 @@ class Enricher:
                     f"Unknown enrich step: '{step_name}'. "
                     f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
                 )
-            params = {k: v for k, v in step_cfg.items() if k != 'step'}
+            params = {k: v for k, v in step_cfg.items() if k not in ('step', 'enabled')}
             state = fn(state, **params)
 
         out_path = get_output_path(

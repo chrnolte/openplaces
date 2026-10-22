@@ -40,6 +40,19 @@ cell), writes executed copies to the cache `_logs/validate/` tree, runs
 `{recipe}_validation-run.json` manifest as its output. It follows `deliver`'s
 scope; `--config validate=false|true` overrides it.
 
+**A new source reaches built spines only through `stale_inputs`.** The
+profiles rerun on mtime only, and Snakemake then reruns a job whose output
+exists only when an input is newer; an input that does not exist yet is not
+looked at, so its producer is never scheduled. Adding a source recipe for
+units whose spines were built planned none of its ingests until the spines
+were deleted by hand (2026-10-19, Cundinamarca's cadastre over the Andes).
+`rule all` therefore lists `dag.stale_inputs()` beside `dag.target_paths()`:
+every input of a built job that another job produces and that is not on disk.
+The producers run, their outputs are newer than the consumers', and exactly
+those consumers rerun. A consumed intermediate (absent, with a cleanup
+receipt) is not returned, since `input_paths` already drops it for a job
+whose output exists.
+
 **A staging recipe's ingest is one job for all its units**
 (`ingest_<recipe>_batch` in the Snakefile, for recipes that stage a
 shared archive), and **the profiles keep a failed job's outputs**

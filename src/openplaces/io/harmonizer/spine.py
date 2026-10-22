@@ -604,7 +604,14 @@ def resolve_spine(
         ``{'recipe_id': str, 'label': str}`` or ``{'auto_discover': True}``.
         The auto-discover entry may carry ``exclude_sources``, a list of
         source ids whose recipes are never discovered as spine sources
-        (they stay available to every other step).
+        (they stay available to every other step). An entry with
+        ``fill_group: <name>`` is used only when every row loaded so far
+        for the admin unit came from entries of the same group: older
+        vintages of one cadastre (each a group, its urban and rural
+        layers together) fill the municipalities newer sources lack,
+        whole, instead of being merged geometry by geometry, where a
+        parcel subdivided since would overlap each of its successors too
+        little to count as a duplicate and be added on top of them.
     thresholds : dict, optional
         ``overlap_iou_max`` (float, default 0.02) — maximum IoU to treat two
         footprints as overlapping duplicates.
@@ -686,15 +693,23 @@ def resolve_spine(
     # would let the second silently alias the first in `source_gdfs`.
     source_gdfs: dict[str, gpd.GeoDataFrame] = {}
     loaded: list[dict] = []
+    groups_with_rows: set = set()
     for src in resolved:
         recipe_id = src['recipe_id']
         label = src.get('label', recipe_id)
+        group = src.get('fill_group')
+        if group is not None and groups_with_rows - {group}:
+            if state.verbose:
+                print(f'  Skip {label}: fill_group {group}, unit already filled')
+            continue
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
             if not _is_spine_product(recipe_id):
                 gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
             source_gdfs[recipe_id] = gdf
             loaded.append(src)
+            if len(gdf):
+                groups_with_rows.add(group)
             if state.verbose:
                 print(f'  Load {label}: {len(gdf):,d} footprints')
         except Exception as exc:
@@ -1091,6 +1106,7 @@ def _most_specific_units(unit_parts: list, state) -> list:
 def union_spine_sources(
     state: HarmonizeState,
     sources: list[dict] | None = None,
+    geom: bool = False,
 ) -> HarmonizeState:
     """Build a non-spatial primary entity spine by concatenating sources.
 
@@ -1119,6 +1135,12 @@ def union_spine_sources(
         Ordered source entries, each either ``{'recipe_id': str, 'label':
         str}`` or the ``{'auto_discover': True, 'entity_type': str}``
         sentinel (see :func:`resolve_spine`).
+    geom : bool, optional
+        Load each source with its geometry and concatenate as a
+        GeoDataFrame. For sources whose rows carry polygons that never
+        describe the same physical unit twice (a compiled layer of land
+        acquisitions, one polygon per purchase), so the plain union is
+        still right and ``resolve_spine``'s overlap dedup is not wanted.
     """
     if not sources:
         warnings.warn(
@@ -1146,7 +1168,9 @@ def union_spine_sources(
             # failing the whole admin unit. layer selects a bundled
             # additional_layers table (e.g. 'property') on a recipe whose
             # own primary entity is a different type.
-            df = get_entities(recipe_id, state.admin_id, layer=layer, missing='ignore')
+            df = get_entities(
+                recipe_id, state.admin_id, layer=layer, missing='ignore', geom=geom
+            )
         except Exception as exc:
             warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
             continue
@@ -1186,6 +1210,9 @@ def union_spine_sources(
         state.timer.mark('Load')
 
     spine = pd.concat(parts, ignore_index=True, sort=False)
+    if geom:
+        crs = next((p.crs for p in parts if getattr(p, 'crs', None)), None)
+        spine = gpd.GeoDataFrame(spine, geometry='geometry', crs=crs)
     state.metadata['spine_source_recipe_ids'] = loaded_recipe_ids
     state.spine = spine
     if state.timer:

@@ -1,0 +1,76 @@
+# Cadastral lots of Medellín, from its own gestor catastral (Catastro de
+# Medellín, Subsecretaría de Catastro). Medellín is in neither the
+# IGAC releases nor the 2018 Antioquia catastro (IGAC's register of
+# gestores, queried 2026-10-19), and 98 land acquisitions of the PLA
+# layer are filed under it.
+#
+# Source: the city's ArcGIS map service VC_Catastro, layer 1 "Lote"
+# (Feature Layer, Query capability, maxRecordCount 5,000; 313,392
+# features on 2026-10-19). No bulk file was found: MEData publishes the
+# lot attributes as CSV without geometry (informacion_lotes.csv), and
+# GeoMedellín's Hub search refused anonymous access, so this pages the
+# REST layer (`arcgis_rest_scraper`, about 63 pages), with openplaces'
+# identifying headers.
+#
+# Licence: the service states none; its copyrightText names the
+# Secretaría de Gestión y Control Territorial, Subsecretaría de
+# Catastro. Recorded as unknown per the recipe guide. The sibling
+# service ServiciosCatastro/Base_Catastral describes share-and-adapt use
+# with attribution to the Alcaldía de Medellín and share-alike (not
+# verified here).
+#
+# Schema (layer metadata, 2026-10-19): numero_predial_nacional (the
+# 30-digit national número predial, as IGAC's CODIGO), cbml (Medellín's
+# own lot code: comuna, barrio, manzana, lote), area_lote (m2), tipo_lote
+# and subtipo_lote, numero_predio and numero_edificacion (counts),
+# juridica_predio, condicion_predio, mz_igac, coordinates. Unmapped:
+# the type and condition codes (no registry home), the counts, and the
+# coordinate fields (the geometry is kept). No owner, address or value
+# field.
+
+description: >-
+  Cadastral lots of Medellín from its own cadastre (Catastro de
+  Medellín), paged from the city's ArcGIS service.
+
+admin_id: CO-AN-ME
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: catastromedellin
+    portal_url: "https://www.medellin.gov.co/servidormapas/rest/services/mapas_nacionales/VC_Catastro/MapServer"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      unknown (the service states no licence; copyright: Secretaría de
+      Gestión y Control Territorial, Subsecretaría de Catastro, Alcaldía
+      de Medellín)
+    terms_url: "https://www.medellin.gov.co/servidormapas/rest/services/mapas_nacionales/VC_Catastro/MapServer?f=json"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "medellin_lotes.geojson"
+
+scraper_options:
+  layer_url: "https://www.medellin.gov.co/servidormapas/rest/services/mapas_nacionales/VC_Catastro/MapServer/1"
+  where: "1=1"
+  out_fields: "numero_predial_nacional,cbml,area_lote"
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  parcel_id_admin3: numero_predial_nacional
+  parcel_id_admin3_2: cbml
+  m2: area_lote
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  admin_level: 3

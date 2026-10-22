@@ -236,6 +236,12 @@ def get_recipe_dependencies(
         if isinstance(node, dict):
             step_name = node.get('step')
             if isinstance(step_name, str):
+                # A step switched off (`enabled: false`, which the
+                # enricher skips) reads nothing, so it adds no edge: a
+                # disabled Hansen step would otherwise schedule an ingest
+                # of a raster that is not placed.
+                if node.get('enabled') is False:
+                    return
                 context = step_name
             for key, value in node.items():
                 if (

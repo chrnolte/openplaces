@@ -1,0 +1,89 @@
+# Parcels (terrenos) of the municipalities whose gestor catastral is the
+# Departamento del Valle del Cauca (its Unidad Administrativa Especial
+# de Catastro, UAEC; habilitated by resolutions 1546 of 2019 and 609 of
+# 2020). IGAC's public cadastre covers only IGAC's own jurisdiction, so
+# these municipalities are in none of the CO_parcel-igac-* releases
+# (IGAC's register of gestores, queried 2026-10-19: 24 Valle
+# municipalities under the department, 16 under IGAC; Cali and Jamundí
+# run their own).
+#
+# Source: datosabiertos.valledelcauca.gov.co, package "Información
+# cartográfica catastral a nivel terreno, gestor catastral Departamento
+# del Valle del Cauca", CC BY-SA, released twice a year. This is the
+# 2026-I shapefile zip (lc_terreno_uaec_enero_2026.zip, 62,298,998
+# bytes, modified 2026-04-20): 363,369 parcels in the department's 24
+# municipalities plus Malambo (Atlántico, 24,549 parcels), which the
+# department also runs. Rejected: the 2026-I CSV export (183,250 rows,
+# 11 municipalities: truncated); the 2025-II zip (353,760 parcels, same
+# municipalities, older).
+#
+# Scoped to Valle del Cauca, so Malambo's rows (CO-AT-MA) are not
+# ingested. A national scope would make this file an input of every
+# Colombian municipality's spine; Malambo is outside the Andes regions
+# this was built for. Widen the scope (admin_id: CO) to take it in.
+#
+# Schema (checked 2026-10-19): codigo (30-digit número predial, as
+# IGAC's CODIGO; 362,966 distinct of 363,369, three 29-digit), codigo_man
+# (manzana), shape_Area (m2, MAGNA-SIRGAS 2018 / Origen-Nacional),
+# urba_rural (URBANO, RURAL; no registry home, not mapped: the número
+# predial encodes the zone) and cod_Muni, the DANE code written without
+# a leading zero (Malambo, 08433, appears as 8433), padded to five
+# digits before the crosswalk. No owner, address or value field.
+
+description: >-
+  Cadastral land parcels of the municipalities whose cadastre the
+  Departamento del Valle del Cauca runs, first-half 2026 release.
+
+admin_id: CO-VA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: valledelcauca
+    portal_url: "https://datosabiertos.valledelcauca.gov.co/dataset/informacion-cartografica-catastral-a-nivel-terreno-gestor-catastral-departamento-del-valle-del-cauca"
+    download_url: "https://datosabiertos.valledelcauca.gov.co/dataset/126f67cd-56c0-4671-b833-c702f6999a38/resource/8976e4b9-f9a5-450c-88a9-b59fe125795b/download/lc_terreno_uaec_enero_2026.zip"
+    license: "CC BY-SA (Gobernación del Valle del Cauca open data)"
+    terms_url: "https://datosabiertos.valledelcauca.gov.co/dataset/informacion-cartografica-catastral-a-nivel-terreno-gestor-catastral-departamento-del-valle-del-cauca"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "lc_terreno_uaec_enero_2026.zip"
+uncompressed_file_name: "lc_terreno_UAEC_ENERO_2026.shp"
+
+process_by:
+  admin_level: 3
+  admin_id_column: cod_Muni
+  admin_id_transformation:
+    - output: admin3_id_admin1
+      type: string
+      operation: zfill
+      args:
+        width: 5
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: codigo
+  admin3_id_admin1: cod_Muni
+  manzana_code: codigo_man
+  m2: shape_Area
+
+transformations:
+  - input: admin3_id_admin1
+    output: admin3_id_admin1
+    type: string
+    operation: zfill
+    args:
+      width: 5
+  # Copied to `parcel_id_local`, as in the IGAC recipes.
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  admin_level: 3

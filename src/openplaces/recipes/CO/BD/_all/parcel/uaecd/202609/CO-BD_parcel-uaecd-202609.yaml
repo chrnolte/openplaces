@@ -1,0 +1,61 @@
+# Cadastral lots (lotes) of Bogotá, D.C., from its own gestor catastral,
+# the Unidad Administrativa Especial de Catastro Distrital (UAECD).
+# IGAC's public cadastre does not cover Bogotá (IGAC's register of
+# gestores, queried 2026-10-19).
+#
+# Source: datosabiertos.bogota.gov.co, dataset "Lote. Bogotá D.C."
+# (package f615a894-...), CC BY 4.0, released monthly; this is the 09.26
+# GeoPackage (lote.gpkg.09.26.zip, 231,234,883 bytes, modified
+# 2026-10-15), one layer LOTE, 934,099 polygons, EPSG:4326. Monthly
+# shapefiles back to 12.20 are in the same package.
+#
+# Schema (checked 2026-10-19): LOTCODIGO (12-character lot code;
+# 934,068 distinct, 17 null), MANZCODIGO (9-character block code),
+# LOTUPREDIA (number of predial units on the lot; no registry home, not
+# mapped), LOTDISPERS and LOTILDISPE (dispersed-lot flags), LOTDISTRIT
+# (two values), SHAPE_AREA and SHAPE_LEN. A row is a lot, not a predio:
+# the condominium units on one lot share it, so a transaction's
+# cadastral number does not match LOTCODIGO, and land acquisitions
+# reach these lots through the overlap link only. No owner, address or
+# value field.
+
+description: >-
+  Cadastral lots of Bogotá, D.C. from its cadastre (UAECD), September
+  2026 release.
+
+admin_id: CO-BD
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: uaecd
+    portal_url: "https://datosabiertos.bogota.gov.co/dataset/lote"
+    download_url: "https://datosabiertos.bogota.gov.co/dataset/f615a894-3460-4a86-ae9e-fa6e6bf35e77/resource/3c3ca2b9-f23e-4932-bf40-db11b8c260df/download/lote.gpkg.09.26.zip"
+    license: "CC BY 4.0 (Datos Abiertos Bogotá; UAECD)"
+    terms_url: "https://datosabiertos.bogota.gov.co/dataset/lote"
+    redistribution_restricted: false
+  version: "202609"
+
+compressed_file_name: "lote.gpkg.09.26.zip"
+uncompressed_file_name: "LOTE.gpkg"
+layer: LOTE
+
+# One unit: Bogotá is department CO-BD and municipality CO-BD-BD.
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  parcel_id_admin3: LOTCODIGO
+  manzana_code: MANZCODIGO
+
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  admin_level: 3

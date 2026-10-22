@@ -1,0 +1,53 @@
+# Urban parcels (U_TERRENO) of IGAC's public cadastre, August 2026
+# release; see CO_parcel-igac-202608_rural for the source, licence and
+# how the parcel spine uses it (812 urban municipalities here, 848
+# across the 2021-2022 releases).
+
+description: >-
+  Urban land parcels (U_TERRENO) from Colombia's IGAC public cadastre,
+  August 2026 release, per municipality.
+
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/datos-abiertos/datos-abiertos-geoespaciales"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/e9b8fa55ab094fa68b61698c080d3493/data"
+    license: "CC BY-SA 4.0 (IGAC open data); IGAC copyright under Ley 23 de 1982"
+    terms_url: "https://www.arcgis.com/sharing/rest/content/items/e9b8fa55ab094fa68b61698c080d3493?f=json"
+    redistribution_restricted: false
+  version: "202608"
+
+compressed_file_name: "CatastroPublicoAgosto2026.gdb.zip"
+uncompressed_file_name: "CatastroPublicoAgosto2026.gdb"
+layer: U_TERRENO
+
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_municipio
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANTERIOR
+  admin3_id_admin1: codigo_municipio
+  manzana_code: MANZANA_CODIGO
+  m2: SHAPE_Area
+
+# Copied to `parcel_id_local`, as in CO_parcel-igac-202202_rural.
+transformations:
+  - output: parcel_id_local
+    type: expression
+    expression: "parcel_id_admin3"
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: urban
+  admin_level: 3
