@@ -1,0 +1,103 @@
+# Recipe: Kittitas County, WA tax parcels from the county's own
+# open-data parcel layer.
+#
+# SOURCE. ArcGIS item "Tax Parcels" (bda6b56b35cd461b8b600b4f98f564c7,
+# owner KitCoGIS), the county's OpenData/Parcels MapServer layer 1
+# ("parcel fabric parcels sublayer queried to display current tax
+# parcels"), joined there to the assessor's roll (t2_* fields). Read
+# as the Hub GeoJSON export, one request. The same layer is also
+# served as OpenData/Tax_Parcel_OpenData FeatureServer 0 with the
+# same fields and counts.
+#
+# WHY NOT THE STATEWIDE LAYER. US-WA_parcel-wageoservices-2026 covers
+# Kittitas, but its terms are "informational purposes only" and
+# "some of the counties restrict the use of parcels", so it is marked
+# redistribution-restricted; the county's own item states its terms
+# (below). Reading Kittitas from it would also mean reading the
+# 3.3-million-row statewide geodatabase.
+#
+# BULK VS LIVE. The Hub export is a cached copy, dated 2026-08-03 when
+# read on 2026-10-22, and lags the live layer by that much:
+#   rows: export 40,261, live 40,165
+#   t2_ValueLand > 0: export 39,194, live 39,068
+#   t2_ValueImp > 0: export 25,674, live 25,640
+# The sales recipe's parcel overlap is the same against either
+# (92.2%), so the lag costs no join.
+#
+# KEY. t2_parcelNumber (the assessor's parcel number, 5 or 6 digits
+# with leading zeros kept, '099999') -> parcel_id_assessor; it is the
+# number the sales table calls ParcelNumber
+# (US-WA-KA_transaction-kittitascounty-2026). Missing on 407 export
+# rows (fabric polygons with no roll record). The bundled US-WA-KA
+# conversion is simple, which keeps zeros. PARCELID, the map number
+# ('99-99-99999-9999'), -> parcel_id_map.
+# Measured 2026-10-22 on US-WA-KA: 38,153 lots, parcel_id_local on 99.3%.
+# The stacked-unit split moved 2,896 rows (988 stacks of rows on one
+# outline) to the property layer and dropped 198 exact duplicates.
+#
+# FIELDS. t2_StateCode -> use_group: the state DOR land-use code with
+# its label ('11 - Residential - Single Family'), 59 values, missing
+# on 407 rows. Values: t2_ValueLand -> land_value, t2_ValueImp ->
+# improvement_value, t2_ValueMrkt -> total_value (equal to land plus
+# improvement on 99.5% of rows; t2_MarketCropValue is 0 everywhere).
+# t2_Situs -> address, on 90.2% of rows. Not mapped: t2_SitusCity and
+# t2_SitusZip (empty), t2_Neighborhood (a number published as a
+# float), t2_AssembledLegal, t2_District, t2_IsExempt and the fabric
+# fields (RECORDEDAREA, unit and building designators). Owner and
+# mailing-address fields (t2_Owner, t2_OwnerID, t2_Address1/2,
+# t2_City, t2_State, t2_Zip) are personal and not mapped.
+#
+# TERMS. The item's licenseInfo is the county GIS disclaimer: data
+# "for illustrative purposes only", no warranty, users hold the
+# county harmless, and "no commercial use may be made of any Data
+# comprising lists of individuals" (Ch. 42.56 RCW). That restricts a
+# commercial use of owner lists, which this recipe does not read, and
+# says nothing against redistribution. The county website's Terms of
+# Use reserve "all website content" to official County use; they are
+# not stated on the item and are read here as covering the website,
+# a reading a person should confirm.
+
+description: >-
+  Kittitas County, WA tax parcels (tax parcel number, map number, situs,
+  DOR land-use code, land and improvement values) from the county's
+  open-data parcel layer.
+
+admin_id: US-WA-KA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: kittitascounty
+    license: >-
+      county GIS disclaimer: "for illustrative purposes only", no warranty;
+      "no commercial use may be made of any Data comprising lists of
+      individuals" (Ch. 42.56 RCW)
+    terms_url: "https://www.arcgis.com/home/item.html?id=bda6b56b35cd461b8b600b4f98f564c7"
+    redistribution_restricted: false
+    portal_url: "https://data-kitcogis.opendata.arcgis.com/"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/bda6b56b35cd461b8b600b4f98f564c7_1/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+  version: "2026"
+
+uncompressed_file_name: "kittitas_parcels.geojson"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: t2_parcelNumber
+  parcel_id_map: PARCELID
+  address: t2_Situs
+  use_group: t2_StateCode
+  land_value: t2_ValueLand
+  improvement_value: t2_ValueImp
+  total_value: t2_ValueMrkt
+
+columns_to_categorical:
+  - use_group
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

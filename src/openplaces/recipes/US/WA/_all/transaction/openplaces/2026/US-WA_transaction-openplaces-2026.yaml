@@ -1,0 +1,119 @@
+# Patch: Washington transaction curation, grading the assessor's
+# state qualification code (US-WA-KA_transaction-kittitascounty-2026).
+#
+# Washington assessors code each sale with one of the state's ratio
+# study reason codes (WAC 458-53-080): 00 for a qualifying sale, 01
+# to 27 for a reason to exclude it. Kittitas County's assessor table
+# (StateQual) writes the code and its label as one string,
+# '00 Qualifying Sale'; the keys below are that spelling, received as
+# is. A state's vocabulary, so a state patch; a county whose system
+# spells the labels differently gets no grade until its spelling is
+# added here.
+#
+# Graded values, never a filter. An unknown code, and a sale with no
+# code (81 of Kittitas's 129,548 rows), stay missing: every code is
+# listed and no `default` is set.
+#
+# Confidence:
+#   1.0  00 qualifying sale.
+#   0.7  the code says the sale is a poor guide to the parcel's value,
+#        not that the price is not a market price: 18 improved after
+#        sale, 25 change of use and 26 current-year segregation (the
+#        parcel changed), 19 timber or forest land and 24 current use
+#        (preferential assessment), 20 bare lots with under 20% sold,
+#        21 plottage (an assemblage), 08 an assessment-to-sale ratio
+#        outside 25% to 175% (the assessor's own finding; openplaces
+#        computes no ratio for this grade).
+#   0.0  every other code: related parties (01, 02), estates,
+#        trustees, sheriffs and tax deeds (03 to 06), tax-exempt
+#        property (07), quitclaim, gift, correction and fulfillment
+#        deeds (09, 10, 12, 17), assignments (11), trades (13), partial
+#        interests (14), forced sales (15), easements (16), sales at
+#        1,000 USD or less (22), leases (23) and other (27).
+# Measured 2026-10-22 on US-WA-KA: 47,299 of 129,548 sales coded 00.
+# Measured 2026-10-22 on US-WA-KA: 18,640 sales graded 0.7, 63,528 graded 0.0.
+#
+# Group: qualified for 00; qualified_parcel_changed for 18, 25, 26;
+# related_parties for 01 and 02; not_a_sale for the instruments that
+# convey without a market price (06, 09, 10, 12, 23), as Illinois
+# does; disqualified for the other 0.0 codes. The other 0.7 codes get
+# no group, since none of the registry's groups describes them; the
+# confidence carries them.
+
+admin_id: US-WA
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "00 Qualifying Sale": 1.0
+            "01 Family Sale": 0.0
+            "02 Transfer within Corporation": 0.0
+            "03 Administrator of Estate": 0.0
+            "04 Receiver or Trustee": 0.0
+            "05 Sheriff or Bailee": 0.0
+            "06 Tax Deed": 0.0
+            "07 Tax Exempt Property": 0.0
+            "08 A/S Ratio <25% or >175%": 0.7
+            "09 Quitclaim Deed": 0.0
+            "10 Gift or Love and Affection Deed": 0.0
+            "11 Seller's or Purchaser's Assignment": 0.0
+            "12 Correction Deed": 0.0
+            "13 Trade of Property": 0.0
+            "14 Partial Interest Sale": 0.0
+            "15 Forced Sale": 0.0
+            "16 Easement or Right-of-Way": 0.0
+            "17 Fulfillment Deed": 0.0
+            "18 Improved After Sale": 0.7
+            "19 Timber or Forest Land": 0.7
+            "20 Bare Lots w/ <20% Sold": 0.7
+            "21 Plottage": 0.7
+            "22 $1,000 Sale or Under": 0.0
+            "23 Lease": 0.0
+            "24 Current Use (84.34)": 0.7
+            "25 Change of Use": 0.7
+            "26 Current Year Segregation": 0.7
+            "27 Other (Identify)": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "00 Qualifying Sale": qualified
+            "01 Family Sale": related_parties
+            "02 Transfer within Corporation": related_parties
+            "03 Administrator of Estate": disqualified
+            "04 Receiver or Trustee": disqualified
+            "05 Sheriff or Bailee": disqualified
+            "06 Tax Deed": not_a_sale
+            "07 Tax Exempt Property": disqualified
+            "09 Quitclaim Deed": not_a_sale
+            "10 Gift or Love and Affection Deed": not_a_sale
+            "11 Seller's or Purchaser's Assignment": disqualified
+            "12 Correction Deed": not_a_sale
+            "13 Trade of Property": disqualified
+            "14 Partial Interest Sale": disqualified
+            "15 Forced Sale": disqualified
+            "16 Easement or Right-of-Way": disqualified
+            "17 Fulfillment Deed": disqualified
+            "18 Improved After Sale": qualified_parcel_changed
+            "22 $1,000 Sale or Under": disqualified
+            "23 Lease": not_a_sale
+            "25 Change of Use": qualified_parcel_changed
+            "26 Current Year Segregation": qualified_parcel_changed
+            "27 Other (Identify)": disqualified

@@ -1,0 +1,161 @@
+# Recipe: Kittitas County, WA sales history from the assessor's
+# appraiser table.
+#
+# SOURCE. Table amSalesInfo (layer 6) of the county's appraiser_mobile
+# service on its own ArcGIS Server, the table behind the assessor's
+# field app. It holds the sales history for every parcel number, with
+# the state's ratio-study reason code. Read with the REST scraper from
+# the FeatureServer, attributes only, 2,000 rows a request (83
+# requests). The MapServer copy of the same table answers f=geojson
+# with "output spatial reference is not supported", and the scraper
+# then pages without end instead of failing, so the FeatureServer is
+# the one to read.
+#
+# REJECTED: Sales.zip, the assessor's nightly CSV in the county's
+# "Download Property Data" open-data group
+# (https://gis.co.kittitas.wa.us/data/Sales.zip), is a bulk file but
+# a recent window only: 18,600 rows on 2026-10-21, 18,526 of them
+# dated 2020 or later, and no qualification code. It also carries
+# Grantor and Grantee. The statewide WA parcel layer has no sales.
+#
+# PRIVACY. Grantor, Grantee and SaleNote (free text) are never
+# requested: out_fields lists the columns read.
+#
+# WHAT ONE ROW IS. The table repeats a sale once per internal
+# ParcelID record (141,453 distinct ParcelID for 36,920 parcel
+# numbers), so its rows are not sales. drop_duplicates keeps one row
+# per parcel number, excise affidavit, date, price, code and land-only
+# flag; RollYear and LocalQual never differ inside that key except on
+# 2 groups. 18 sales keep two rows because the table states two codes
+# or two land-only flags for them.
+# Measured 2026-10-22 on US-WA-KA: 164,814 table rows reduce to 129,548 sales.
+#
+# Rows per sale decade, table rows and sales kept:
+#   1920s 1 / 1, 1930s 2 / 2, 1940s 4 / 4, 1950s 7 / 5, 1960s 10 / 10,
+#   1970s 49 / 48, 1980s 5,517 / 5,399, 1990s 32,258 / 30,962,
+#   2000s 38,072 / 37,625, 2010s 49,653 / 33,246,
+#   2020s (to 2026-10-21) 39,241 / 22,246.
+# Kept per year since 2016: 3,384, 3,847, 3,672, 3,437, 3,812, 4,606,
+# 3,212, 2,718, 2,771, 2,872 and 2,255 (2026 to date). The history is
+# thin before 1988, the first RollYear with more than 14 rows.
+#
+# FIELDS.
+#   ParcelNumber -> parcel_id_assessor, filled on every row, 5 or 6
+#     digits with leading zeros kept ('099999'); the same number the
+#     parcel layer calls t2_parcelNumber
+#     (US-WA-KA_parcel-kittitascounty-2026).
+#     The bundled US-WA-KA conversion is simple, which keeps zeros.
+#   SaleDate -> recorded_date, filled on every row. Esri dates arrive
+#     as epoch milliseconds (all at UTC midnight), converted by
+#     epoch_ms_to_datetime. FilingDate is empty on 164,811 rows and
+#     is not mapped.
+#   OriginalSaleprice -> price.
+# Measured 2026-10-22 on US-WA-KA: price > 0 on 78,245 of 129,548 sales.
+#     35,539 sales carry 0 and 15,764 none; coded 00, every sale has
+#     a price.
+#   StateQual -> sale_qualification_code, as received: the state's
+#     ratio-study reason code with its label ('00 Qualifying Sale',
+#     '09 Quitclaim Deed'), 28 codes, missing on 81 sales. Graded in
+#     US-WA_transaction-openplaces-2026.
+#   LandOnlySale -> conveyance_type, 'Yes' (24,983 sales) or 'No'
+#     (104,565): whether the sale conveyed land only, as Pitt NC's
+#     SALE_TYPE does.
+#   ExciseNumber -> instrument_number: the real estate excise tax
+#     affidavit number, one per conveyance, which names every parcel
+#     the conveyance covered. Mapped so that the transaction spine
+#     folds a multi-parcel affidavit into one sale. 91,865 distinct,
+#     missing on 1 row; 13,289 affidavits name more than one parcel; 7
+#     state more than one price and 30 more than one date. Its
+#     spelling changes over time ('9999', '99-9-99999-9', '9999-9999').
+#   Not mapped: LocalQual ('Yes'/'No', the assessor's own use-in-study
+#     flag, blank on 900 table rows; one qualification column exists
+#     and StateQual says why), RollYear, ParcelID (an internal record
+#     id), OBJECTID.
+#
+# JOIN. Measured 2026-10-22 on US-WA-KA: 92.2% of sales name a parcel number on the parcel layer.
+# By sale date: 94.3% since 2010, 94.8% since 2016, 95.1% since 2020,
+# 96.3% since 2025. The same share against the live layer (92.16%),
+# so it is not the layer's export lag: 3,328 parcel numbers in the
+# history are no longer on the roll (segregated or combined parcels;
+# the assessor notes that the sales list is incomplete for such
+# parcels). 25 of them would match after stripping leading zeros,
+# which is not done.
+#
+# TERMS. The service and its table state no licence or terms. The
+# county's open-data items for the same assessor data carry the
+# county GIS disclaimer: data "for illustrative purposes only",
+# no warranty, and "no commercial use may be made of any Data
+# comprising lists of individuals" (Ch. 42.56 RCW). The county
+# website's Terms of Use (terms_url) say "All website content ... may
+# not be used, reproduced, or altered in any way for any purpose other
+# than official use by the County"; whether that governs the GIS
+# server is undetermined, so redistribution_restricted stays null
+# until a person has read both.
+
+description: >-
+  Kittitas County, WA assessor sales history (sale date, price, state
+  qualification code, land-only flag, excise affidavit number), 1927 to
+  present.
+
+admin_id: US-WA-KA
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: kittitascounty
+    license: >-
+      none stated on the service; county GIS disclaimer ("illustrative
+      purposes only"; no commercial use of lists of individuals, Ch. 42.56
+      RCW); website terms reserve content to official County use (scope
+      undetermined, see header)
+    terms_url: "https://www.co.kittitas.wa.us/terms.aspx"
+    redistribution_restricted: null
+    portal_url: "https://gis.co.kittitas.wa.us/kcgis/rest/services/appraiser_mobile/FeatureServer/6"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "kittitas_sales.geojson"
+
+scraper_options:
+  layer_url: "https://gis.co.kittitas.wa.us/kcgis/rest/services/appraiser_mobile/FeatureServer/6"
+  where: "1=1"
+  out_fields: "OBJECTID,ParcelNumber,ParcelID,RollYear,SaleDate,FilingDate,OriginalSaleprice,StateQual,LocalQual,LandOnlySale,ExciseNumber"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  recorded_date: SaleDate
+  price: OriginalSaleprice
+  sale_qualification_code: StateQual
+  conveyance_type: LandOnlySale
+  instrument_number: ExciseNumber
+
+transformations:
+  - type: unary
+    operation: epoch_ms_to_datetime
+    input: recorded_date
+    output: recorded_date
+
+# One row per sale; see the header.
+drop_duplicates:
+  - parcel_id_assessor
+  - instrument_number
+  - recorded_date
+  - price
+  - sale_qualification_code
+  - conveyance_type
+
+columns_to_categorical:
+  - sale_qualification_code
+  - conveyance_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
+
+save_to:
+  data_dir: cache
