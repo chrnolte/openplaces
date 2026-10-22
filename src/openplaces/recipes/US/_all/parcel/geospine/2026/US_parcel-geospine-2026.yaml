@@ -93,11 +93,19 @@ pipeline:
     # Which ingest source (its own geometry row, or a later null-aware
     # fallback join) supplied each of these key fields -- see the
     # resolve_spine/link_by_id docs for track_provenance.
+    #
+    # n_dwellings is tracked here and on every link_by_id pass below
+    # (since 2026-10-22). It stays on the parcel spine rather than
+    # reaching curate from the property spine only, because
+    # estimate_property_counts (US_parcel-spine-2026) reads it during
+    # harmonize; without a `_source` the curated, delivered count
+    # named no source, and a sum over a panel's years went unnoticed.
     track_provenance:
       - use_group
       - improvement_value
       - land_value
       - year_built
+      - n_dwellings
 
   # Compute this entity's own centroid lat/long and area (ha) once, right
   # after spine geometry is finalized (including synthetic fallback rows),
@@ -156,6 +164,7 @@ pipeline:
       - land_value
       - total_value
       - year_built
+      - n_dwellings
 
   # Second pass over the same discovered assessor tables, on the
   # punctuation-free key, for the rows the standardized one could not
@@ -191,6 +200,7 @@ pipeline:
       - land_value
       - total_value
       - year_built
+      - n_dwellings
 
   # Third and last pass, for the sources whose own `parcel_id_assessor` is
   # not a punctuation variant of the county PIN but a different id system
@@ -211,6 +221,7 @@ pipeline:
       - land_value
       - total_value
       - year_built
+      - n_dwellings
 
   # Attach every auto-discovered standalone `property`-entity source (e.g. a
   # county tax roll keyed by parcel_id_local, genuinely 1:n against parcels
@@ -262,6 +273,7 @@ pipeline:
       - land_value
       - improvement_value
       - total_value
+      - n_dwellings
     roll_values:
       values: [land_value, improvement_value, total_value]
       year: tax_year

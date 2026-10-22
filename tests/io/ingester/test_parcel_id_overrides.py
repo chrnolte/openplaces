@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from openplaces.core.schema import AdminId, Entity
+from openplaces.io.ingester.table_ids import partition_in_range
 from openplaces.io.ingester.table_ingester import TableIngester
 
 
@@ -158,3 +159,53 @@ def test_orange_county_sales_ids_drop_the_default_switch():
         conv_code=overrides['US-FL-OR']['conv'],
     )
     assert parcel_side.iloc[0] == sales_side.iloc[0] == '27|20|1|5'
+
+
+def test_partition_ranges():
+    assert partition_in_range('2010', '')
+    assert partition_in_range(None, '')
+    assert not partition_in_range(None, '2024-')
+    assert partition_in_range('2024', '2024-') and partition_in_range(2031, '2024-')
+    assert not partition_in_range('2023', '2024-')
+    assert partition_in_range('2023', '-2023') and not partition_in_range(2024, '-2023')
+    assert partition_in_range('2020', '2019-2021')
+    assert partition_in_range('2025', '2025') and not partition_in_range('2026', '2025')
+    assert not partition_in_range('tile-a', '2024-')
+
+
+def test_orange_county_roll_years_from_2024_take_the_parcel_layers_order():
+    """Orange's DOR files switched to section-first ids with the 2024 roll.
+
+    Through 2023 the roll and sales files write range-first and need
+    the split without the switch; from 2024 they write the id as the
+    parcel layer does and need the switch. Measured 2026-10-22 on
+    US-FL-OR: 0.890 of the 2025 roll's ids are floridagio's as written,
+    0.031 of the 2023 roll's. Each roll year then reaches the same key.
+    Measured 2026-10-22 on US-FL-OR: 2025 keys reach 0.986 of floridagio's, was 0.033.
+    """
+    raw = {'2023': '272001000000005', '2025': '012027000000005'}
+    keys = {}
+    for entity in (
+        Entity('property', 'fldor', '2026'),
+        Entity('transaction', 'fldor', '2026'),
+    ):
+        for year, parcel_id in raw.items():
+            ti = TableIngester(
+                {
+                    'admin_id': AdminId('US-FL'),
+                    'entity': entity,
+                    'parcel_id_local': {
+                        'source': 'parcel_id_assessor',
+                        'kind': 'parcel',
+                    },
+                },
+                {'partition_id_to_download': year},
+                {'admin_id_to_process': 'US-FL-OR'},
+                Path('.'),
+                None,
+            )
+            frame = pd.DataFrame({'parcel_id_assessor': [parcel_id]})
+            keys[(str(entity.entity_type), year)] = ti._add_parcel_id_local(frame)[
+                'parcel_id_local'
+            ].iloc[0]
+    assert set(keys.values()) == {'27|20|1|5'}

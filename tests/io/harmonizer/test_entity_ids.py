@@ -126,6 +126,59 @@ def test_rows_stamped_with_different_years_are_not_a_panel():
     assert kept['parcel_id_local'].tolist() == ['U1'] and n_dropped == 3
 
 
+def _yearly_rolls(keys_by_year):
+    return pd.DataFrame(
+        [
+            {'parcel_id_local': key, 'tax_year': year}
+            for year, keys in keys_by_year.items()
+            for key in keys
+        ]
+    )
+
+
+def test_a_panel_whose_key_format_changed_mid_panel_is_still_a_panel():
+    # Ten old-format years of 40 accounts, then three years in a new
+    # format: 400 earlier rows repeat no key of the latest roll, the
+    # 2024 roll repeats 38 of its 40.
+    old = [f'{i:013d}' for i in range(40)]
+    new = [f'N{i:09d}' for i in range(40)]
+    rows = _yearly_rolls(
+        {
+            **{year: old for year in range(2012, 2022)},
+            2022: new,
+            2023: new,
+            2024: new,
+            2025: new[2:] + ['N900000001', 'N900000002'],
+        }
+    )
+    kept, n_dropped = select_latest_vintage(rows)
+    assert (kept['tax_year'] == 2025).all() and len(kept) == 40
+    assert n_dropped == len(rows) - 40
+
+
+def test_a_multi_year_table_of_different_properties_is_not_a_panel():
+    # Each property stamped with the year its record was last
+    # touched: two years, no account in both.
+    rows = _yearly_rolls(
+        {
+            2023: [f'A{i}' for i in range(30)],
+            2024: [f'B{i}' for i in range(50)],
+            2025: [f'C{i}' for i in range(5)] + ['A1'],
+        }
+    )
+    kept, n_dropped = select_latest_vintage(rows)
+    assert len(kept) == len(rows) and n_dropped == 0
+
+
+def test_a_single_year_roll_passes_through():
+    rows = _yearly_rolls({2025: [f'A{i}' for i in range(10)]})
+    kept, n_dropped = select_latest_vintage(rows)
+    assert len(kept) == 10 and n_dropped == 0
+    with_gap = rows.assign(tax_year=rows['tax_year'].where(rows.index > 2))
+    kept, n_dropped = select_latest_vintage(with_gap)
+    assert len(kept) == 10 and n_dropped == 0
+
+
 def test_split_units_keep_the_numbers_that_do_name_one_unit():
     # A parcel layer that repeats the lot's number on every unit of one
     # stack, and gives the units of another their own.
