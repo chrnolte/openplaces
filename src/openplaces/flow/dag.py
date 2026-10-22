@@ -357,13 +357,22 @@ class RecipeDAG:
                 )
             except Exception:  # noqa: BLE001 - an unresolvable edge adds nothing
                 continue
-            for edge in edges:
-                upstream_id = edge.upstream_recipe_id
+            # A spine reconciling buildings across unit lines also reads
+            # its touching units' inputs (io/harmonizer/neighbors.py), so
+            # their jobs join the graph exactly as the run reads them.
+            requests = [(edge.upstream_recipe_id, consumer_admin) for edge in edges]
+            requests += [
+                (upstream_id, AdminId(neighbor))
+                for upstream_id, neighbor in self._neighbor_pairs(
+                    consumer.recipe_id, consumer_admin
+                )
+            ]
+            for upstream_id, request_admin in requests:
                 if not upstream_id or upstream_id in self.exclude_recipe_ids:
                     continue
                 try:
                     upstream = self._recipe(upstream_id)
-                    upstream_admins = self._node_admins(upstream_id, consumer_admin)
+                    upstream_admins = self._node_admins(upstream_id, request_admin)
                 except Exception:  # noqa: BLE001
                     continue
                 if writes_nothing(upstream):
@@ -726,6 +735,43 @@ class RecipeDAG:
                 )
                 if key in node_keys:
                     yield key
+        for upstream_id, neighbor in self._neighbor_pairs(node.recipe_id, node_admin):
+            try:
+                upstream_admins = self._node_admins(upstream_id, AdminId(neighbor))
+            except Exception:
+                continue
+            for upstream_admin in upstream_admins:
+                key = (
+                    upstream_id,
+                    str(upstream_admin) if upstream_admin is not None else None,
+                    None,
+                )
+                if key in node_keys:
+                    yield key
+
+    def _neighbor_pairs(self, recipe_id: str, admin_id) -> list[tuple[str, str]]:
+        """(ingest recipe, neighbor unit) inputs read across unit lines.
+
+        The same answer the run reads and the link sidecars fingerprint
+        (`io.harmonizer.neighbors.neighbor_inputs`), less the run's
+        excluded recipes. Empty for every recipe that does not reconcile
+        buildings across unit lines.
+        """
+        from openplaces.io.harmonizer.neighbors import (
+            neighbor_inputs,
+            recipe_reads_neighbors,
+        )
+
+        if admin_id is None:
+            return []
+        recipe = self._recipe(recipe_id)
+        if not recipe_reads_neighbors(recipe):
+            return []
+        return [
+            (upstream_id, neighbor)
+            for upstream_id, neighbor in neighbor_inputs(recipe, admin_id)
+            if upstream_id not in self.exclude_recipe_ids
+        ]
 
     def nodes(self) -> list[StageNode]:
         """Every job in the DAG (target included), deduplicated."""
@@ -1049,6 +1095,10 @@ class RecipeDAG:
                         )
             except Exception:
                 continue
+        for upstream_id, neighbor in self._neighbor_pairs(recipe_id, node_admin):
+            upstream = self._recipe(upstream_id)
+            for upstream_admin in self._node_admins(upstream_id, AdminId(neighbor)):
+                paths.append(primary_output_path(upstream, admin_id=upstream_admin))
         return self._without_consumed_intermediates(
             paths, stage, recipe_id, admin_id, region
         )

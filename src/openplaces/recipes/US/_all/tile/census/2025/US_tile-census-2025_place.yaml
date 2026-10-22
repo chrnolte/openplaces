@@ -1,0 +1,92 @@
+# Recipe to import census places for the United States (2025)
+#
+# TIGER/Line 2025 PLACE: incorporated places (cities, towns, villages,
+# boroughs) and census-designated places (CDPs), one zip per state.
+#
+# Why a `tile`, not an `admin` level: a place is not a unit of the
+# admin spine. Places nest within states but not within counties (a
+# city can span several counties, and a county holds many places), and
+# they leave most of a state uncovered, so they cannot be a level 4
+# under admin3 the way county subdivisions are. Like tracts and ZCTAs,
+# they are a Census geography a point or polygon is linked to
+# (link_geographic_ids), which is what the `tile` theme holds.
+#
+# Saved per state (admin_level: 2), as the block recipe is: places nest
+# within states, STATEFP gives the state directly, and no county
+# crosswalk exists for a unit that crosses county lines. A consumer
+# needing one state reads one file.
+#
+# Unmapped, deliberately: PLACEFP and PLACENS (contained in GEOID and
+# ANSI codes with no consumer yet), PCICBSA (principal-city flag),
+# MTFCC (G4110 for every incorporated place, G4210 for every CDP, so
+# redundant with CLASSFP), ALAND/AWATER/INTPTLAT/INTPTLON (derivable
+# from the geometry).
+
+description: >-
+  U.S. census places (incorporated places and census-designated places)
+  from Census TIGER/Line 2025, ingested as tiles.
+
+admin_id: US
+
+# Entity: tiles from the 2025 US census
+entity:
+  entity_type: tile
+  source:
+    source_id: census
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-20: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/PLACE/tl_2025_{admin2_id_admin1}_place.zip"
+  version: 2025
+
+# Download is partitioned by state
+download_by:
+  admin_level: 2
+  admin_recipe_id: "US_admin-census-2025_admin2"
+
+# Compressed file name to read
+compressed_file_name: "tl_2025_{admin2_id_admin1}_place.zip"
+
+# Column mapping from TIGER PLACE shapefiles. census_geo_id (GEOIDFQ)
+# is globally unique across geography levels and used as the index;
+# census_place_geoid (GEOID) is the bare 7-digit place code (2-digit
+# state FIPS + 5-digit place FIPS) that linkage steps read as the
+# output value. The class columns keep the source codes, named as in
+# US_admin-census-2025_admin4 (which reads the same TIGER fields):
+# - type_source (CLASSFP): C1-C9 incorporated places, U1/U2 CDPs,
+#   M2 military CDPs.
+# - stats_area_id_legal (LSAD): legal/statistical area description,
+#   e.g. 25 city, 43 town, 47 village, 57 CDP.
+# - functional_status (FUNCSTAT): A active government, S statistical
+#   entity (CDPs), others for inactive or fictitious entities.
+columns:
+  census_geo_id: GEOIDFQ
+  census_place_geoid: GEOID
+  name: NAME
+  name_long: NAMELSAD
+  type_source: CLASSFP
+  stats_area_id_legal: LSAD
+  functional_status: FUNCSTAT
+  admin2_id_admin1: STATEFP
+
+# Translate state FIPS code to `admin2_id`; save_to.admin_level: 2
+# below needs admin2_id specifically.
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "US_admin-census-2025_admin2"
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+# Save one file per state (see the header for why not one national
+# file aggregated through a county crosswalk).
+save_to:
+  data_dir: cache
+  filename: place
+  admin_level: 2

@@ -73,7 +73,9 @@ source recording `redistribution_restricted: true` or a `usage_requirement`
 may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
 walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
-walk never saw Edgecombe's parcels feeding the NC bundle).
+walk never saw Edgecombe's parcels feeding the NC bundle), and read with the
+unit's patch recipes applied, so a source a patch merges by named columns is
+withheld by those columns.
 `io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
@@ -86,7 +88,11 @@ written, never because a source merely feeds the recipe, so one county's
 terms cannot hold the rest of a bundle hostage. The rules over-withhold where
 a layer's sidecar cannot say which source filled it; that costs values, not
 a leak. A no-resale clause withholds nothing; the notice reports it.
-**Team bundles are the one exception, and never published.** A region listed
+**Team bundles are the one exception, published only behind a password.** A
+team bundle is shared within the research team, and reaches a web page only
+as a team value page (`viz.web_scene`, `team: true` in its `places.yaml`),
+which `deploy_web_scene` uploads behind a password file on the host and
+refuses to upload without one (maintainer, 2026-10-18). A region listed
 under `share: delivery: team_regions:` also ships as `<region>.team`, in a
 `team/` subdirectory beside the region's own bundle (whose path does not
 move). A team bundle keeps the values of sources a person has cleared with
@@ -100,7 +106,19 @@ Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
 then evidence) so the wide evidence columns are never in memory alongside the
 polygons. It deduplicates the index: an entity on a county line is curated by
 both neighbors and the two copies share an Open Location Code, so the
-better-covered copy wins, ties broken on admin id. And it leaves its four
+better-covered copy wins, ties broken on admin id. **A recipe declaring
+`share: delivery: slice_at_unit_lines: true` cuts such outlines first**
+(`slicing.py`, the footprint recipe; maintainer's rule, 2026-10-17): where two
+units delivered one building, as the same outline or two outlines overlapping
+by half the smaller, one outline is kept (its representative point in its own
+unit, else the larger), cut along the unit line, and each piece takes its
+unit's copy's row and values under a new id (the piece centroid's Open
+Location Code, lengthened on a collision) with `sliced_from` naming the kept
+outline. A piece under 10 m2 or 5% of the outline is not cut: the majority
+copy stays and the other copy's value stays on its parcel. An outline only
+one unit delivered stays whole. Curated files are untouched. Measured
+2026-10-17 on boston-inner-core: 150 outline pairs drawn in two towns became 87
+cut outlines (174 pieces) and 63 kept whole, none lost. And it leaves its four
 outputs read-only, unlocking them itself on the next run -- deliberately not
 Snakemake's `protected()`, which additionally refuses to ever regenerate a file
 and would abort the workflow on every reship.

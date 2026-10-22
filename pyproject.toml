@@ -187,6 +187,7 @@ openplaces = [
     "geo/*.csv",
     "viz/qgis_map/*.csv",
     "viz/web_scene/static/*",
+    "viz/web_scene/*.yaml",  # known_issues, places
 ]
 
 [tool.ruff]

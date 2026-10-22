@@ -17,6 +17,9 @@ land_value_taxable,Assessed land value actually subject to taxation,USD,float,su
 land_value_preferential,"Land value under a preferential-use assessment program (e.g. Pennsylvania Act 319 ""Clean and Green"" agricultural/forest land)",USD,float,sum,20.3,parcel,ingest
 improvement_value_exempt,Assessed improvement value excluded from taxation (e.g. a tax-exempt owner),USD,float,sum,21.1,parcel,ingest
 improvement_value_taxable,Assessed improvement value actually subject to taxation,USD,float,sum,21.2,parcel,ingest
+land_value_prior_year,"The roll's own land value for the tax year before its tax_year (e.g. HCAD prior_land_val); read by link_by_id's roll_values rule to fill a parcel the current year has not yet valued; not copied onto parcels",USD,float,sum,,property,ingest
+improvement_value_prior_year,"The roll's own improvement value for the tax year before its tax_year (e.g. HCAD prior_bld_val); see land_value_prior_year",USD,float,sum,,property,ingest
+total_value_prior_year,"The roll's own total value for the tax year before its tax_year (e.g. HCAD prior_tot_mkt_val); see land_value_prior_year",USD,float,sum,,property,ingest
 structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,ingest
 year_built,Year building was built,,float,mean,30,,ingest,0
 address,Street address,,string,join_nonnull,40,,ingest
@@ -58,6 +61,10 @@ n_residential_buildings,"Number of residential buildings (main-area improvements
 has_homestead_exemption,Whether the property carries a residence homestead exemption as the appraisal roll records it (Texas: the owner's principal residence),,bool,max,52.6,,ingest
 land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
+n_buildings_per_parcel,Number of buildings on the building's parcel; the building spine's name for n_footprints_per_parcel,,float,first,,building,harmonize
+n_parcels_per_footprint,Number of parcels the footprint overlaps,,float,first,,footprint,harmonize
+envelope_id,"Open Location Code of the envelope a footprint piece was cut from, where a building crossing a unit line was reconciled to one envelope and cut at the line; the pieces of one building share it",,string,first,,footprint,harmonize
+n_parcels_per_building,Number of parcels the building overlaps; the building spine's name for n_parcels_per_footprint,,float,first,,building,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
@@ -177,6 +184,7 @@ n_buildings,Number of buildings on the parcel,,float,sum,,parcel,ingest
 n_land_units,Number of land units,,float,sum,,parcel,ingest
 has_structure,Whether the parcel has a structure,,bool,first,,parcel,ingest
 geometry_source,Dataset the footprint or parcel geometry came from,,categorical,first,,,harmonize
+polygon_type,"The cadastre's own polygon type (MassGIS POLY_TYPE: FEE, TAX, ROW, PRIV_ROW, RAIL_ROW, WATER); a right-of-way or water type marks a polygon that is not a tax lot",,categorical,first,,parcel,ingest
 spine_resolution,"Why resolve_spine took this outline from a later source over the earlier ones it overlaps (fragment replaced); missing where the source ranking decided",,categorical,first,,,harmonize
 geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,harmonize
 source_date,Source last-update date,,datetime,first,,,ingest
@@ -225,6 +233,13 @@ wetland_share,Share of area covered by wetland polygons,fraction (0-1),float,mea
 public_land_acquisition_share,Share of area overlapping a public land acquisition,fraction (0-1),float,mean,,,enrich
 conservation_easement_share,Share of area under a conservation easement,fraction (0-1),float,mean,,,enrich
 protected_land_share,"Share of area under fee/easement protection, given year and radius",fraction (0-1),float,mean,,,enrich
+protected_open_space_share,"Share of the parcel's area inside protected or recreational open space polygons (MassGIS OpenSpace in Massachusetts), whatever their level of protection",fraction (0-1),float,mean,,parcel,enrich
+protected_open_space_id,"Source id of a protected or recreational open space polygon (MassGIS OS_ID: town id and polygon id); on a parcel, the polygon covering most of it",,string,first,,,ingest
+protected_open_space_site,"Site name of a protected or recreational open space polygon (MassGIS SITE_NAME); a site a town line splits keeps one name in each town",,string,first,,,ingest
+protected_open_space_level,"Level of protection of an open space polygon, in the source's codes (MassGIS LEV_PROT: P in perpetuity, T term limited, L limited, N none, X unknown)",,categorical,first,,,ingest
+protected_open_space_owner_type,"Kind of owner of an open space polygon, in the source's codes (MassGIS OWNER_TYPE: F federal, S state, C county, M municipal, N private nonprofit, P private for profit, B public nonprofit, L land trust, G conservation organization, O other, X unknown, I inholding)",,categorical,first,,,ingest
+protected_open_space_purpose,"Primary purpose for which open space was protected, in the source's codes (MassGIS PRIM_PURP: R recreation, C conservation, B both, H historical or cultural, A agriculture, W water supply, S scenic, F flood control, U underwater, O other, X unknown)",,categorical,first,,,ingest
+protected_open_space_public_access,"Legal public access to an open space polygon, in the source's codes (MassGIS PUB_ACCESS: Y yes, N no, L limited to members, X unknown)",,categorical,first,,,ingest
 soil_farmland_local_share,Share classified as locally-important farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_prime_share,Share classified as prime farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_statewide_share,Share classified as statewide-important farmland soil,fraction (0-1),float,mean,,,enrich
@@ -255,15 +270,42 @@ population_native_american_share,Population share: American Indian/Alaska Native
 population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
 population_gravity_index,Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster,,float,mean,,,enrich
 census_tract_id,Census tract identifier,,string,first,,,harmonize
-county_fips,"County FIPS code (5-digit state+county), read as the `county` segment of the unit's own national code rather than stored anywhere: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
+county_fips,"County FIPS code (5-digit state+county). On an entity table it is read as the `county` segment of the unit's own national code rather than stored: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A county-level federal reference table (the FHFA house price index) carries it as its key, since New England counties have no admin id. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
+year,"Calendar year a published statistic refers to: the period key of a reference table (a price index), not an event on an entity",,float,first,,,ingest
+house_price_index_base_2000,"Published house price index with the year 2000 as base (2000 = 100); a ratio of two years gives the published price change between them",index (2000 = 100),float,mean,,,ingest
+house_price_index,"Published house price index as its publisher bases it, which can differ by series (FHFA's county index is 100 in each county's own first year); only a ratio of two years within one series is meaningful",index,float,mean,,,ingest
+house_price_index_annual_change,Published percent change of a house price index from the previous year,percent,float,mean,,,ingest
+series_id_bls,"Bureau of Labor Statistics time-series identifier (CUUR0000SA0: CPI-U, US city average, all items, not seasonally adjusted)",,string,first,,,ingest
+period_bls,"Bureau of Labor Statistics period code: M01 to M12 a month, M13 the annual average",,string,first,,,ingest
+consumer_price_index,"Published consumer price index level (CPI-U, 1982-84 = 100); a ratio of two periods gives the published change in consumer prices between them",index (1982-84 = 100),float,mean,,,ingest
 census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
 census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
+census_place_id,"Census place identifier (7-digit state+place FIPS) of the incorporated place or census-designated place holding the entity; null outside every place",,string,first,,,harmonize
+census_place_geoid,"Census place code (7-digit state+place FIPS, TIGER GEOID) on a place tile row of US_tile-census-2025_place; the value link steps copy into census_place_id",,string,first,,,ingest
 zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical approximation of ZIP code service areas, not the authoritative ZIP code (see postal_zip5)",,string,first,,,harmonize
 postal_code_conflict,ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree,,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
 land_value_per_ha_log_region_nb2,Same; 'region-nb2' model (alternate neighborhood-region spec),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_county,Same; 'county' model (sales from the parcel's county),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_county_nb,Same; 'county-nb' model (sales from the county and counties within 10 km),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region,Same; 'region' model (sales from the parcel's core-based region),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_bare,"Same; 'region-nb' model on the Fathom-free 'bare' predictor set (location, date, size, building footprints)",ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_people,Same; 'region-nb_bare' predictors plus population gravity,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_buildings,Same; 'region-nb_bare' predictors plus building footprint shares (500 m and 5000 m),ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_wealth,Same; 'region-nb_bare' predictors plus block-group median household income,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_peoplewealth,Same; 'region-nb_bare' predictors plus population gravity and median household income,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_peoplebuildings,Same; 'region-nb_bare' predictors plus population gravity and building footprint shares,ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb_popbldwealth,"Same; 'region-nb_bare' predictors plus population gravity, building footprint shares and median household income",ln(USD/ha),float,mean,,parcel,enrich
+dissimilarity_index,"Dissimilarity of an observation to a model's training sales in importance-weighted predictor space (Meyer & Pebesma 2021), before division by the area-of-applicability threshold",unitless,float,mean,,,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich
+area_of_applicability_region_nb_bare,"Area of applicability of land_value_per_ha_log_region_nb_bare: the parcel's dissimilarity index divided by the threshold from cross-validation folds blocked by census block group; at most 1 is inside the area of applicability, above 1 the prediction extrapolates",unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_people,Same; for land_value_per_ha_log_region_nb_people,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_buildings,Same; for land_value_per_ha_log_region_nb_buildings,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_wealth,Same; for land_value_per_ha_log_region_nb_wealth,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_peoplewealth,Same; for land_value_per_ha_log_region_nb_peoplewealth,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_peoplebuildings,Same; for land_value_per_ha_log_region_nb_peoplebuildings,unitless,float,mean,,parcel,enrich
+area_of_applicability_region_nb_popbldwealth,Same; for land_value_per_ha_log_region_nb_popbldwealth,unitless,float,mean,,parcel,enrich
 effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,ingest,0
 renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,ingest,0
 n_rooms,Number of rooms in the building,,float,mean,54,,ingest,
@@ -273,6 +315,7 @@ n_half_bathrooms,"Number of half bathrooms (a toilet and sink, no bath or shower
 heating_type,Heating system type as described by the source,,categorical,first,59,,ingest,
 has_basement,Whether the building has a basement,,bool,max,67,,ingest,
 building_style,"Architectural or construction style of the building as described by the source (e.g. ranch, conventional, double-wide). A structure descriptor, not a land use: do not map it to use_group",,categorical,join_nonnull,68,,ingest,
+building_type_code,"The source's code for what the building is used as (e.g. a code meaning garden apartments, low-rise office or distribution warehouse), kept as the source writes it; curate translates it. Unlike building_style it names a use, and unlike use_group_code it describes the building, not the account's tax class",,categorical,first,68.1,,ingest,
 conveyance_type,"What a recorded sale conveyed (e.g. land only vs land plus improvements). Distinct from doc_type, which is the instrument; the transaction-side counterpart of the parcel attribute last_sale_vacant",,categorical,first,,transaction,ingest,
 living_area_sqft,"Finished, heated living area of the building as the assessor reports it (living, heated or finished area). Excludes garages, unfinished basements, porches and decks. Distinct from gross_floor_area_sqft (all enclosed floor area) and from area_sqft (the row's own 2D area seen from above, not a floor area)",sqft,float,sum,49,,ingest,
 gross_floor_area_sqft,"Gross floor area: all enclosed floor area on all floors, including unfinished and non-living space (garage, unfinished basement), as the source reports it",sqft,float,sum,49.5,,ingest,

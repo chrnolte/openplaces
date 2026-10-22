@@ -72,7 +72,7 @@
 # DAUPHIN COUNTY DELIBERATELY EXCLUDED from the crosswalk despite
 # appearing in PASDA's own 39-county list. Dauphin already has its own,
 # far richer, dedicated recipe set in this repo
-# (`US-PA-DA_parcel-dauphinco-2026` + `...-2026pc` +
+# (`US-PA-DA_parcel-dauphinco-2026` + `...-2026_characteristics` +
 # `US-PA-DA_property-dauphinco-2026`), sourced directly from the
 # county's own ArcGIS Server with full parcel characteristics and tax
 # roll data. PASDA's entry for Dauphin carries strictly less

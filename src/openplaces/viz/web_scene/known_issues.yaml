@@ -1,0 +1,30 @@
+# Known issues, shown in the Sources panel of every value page whose
+# units they concern (maintainer, 2026-10-17: the pages show that we
+# look for our own mistakes). Add an entry whenever a page is built
+# with a problem we know of; remove it once the fix is live.
+#
+# Each entry: admin_ids (level-3 ids, or "all"), found (date), and one
+# or two plain sentences for a visitor. No owner names, ever.
+
+issues:
+  - admin_ids: [US-MA-SOM]
+    found: 2026-10-17
+    text: >-
+      Somerville: land values with our fills add up to about 15% more
+      than the land values the assessor recorded ($9.5 billion against
+      $8.2 billion). We suspect how land is filled in for condominiums
+      and are measuring it.
+  - admin_ids: [US-MA-MED, US-MA-MEL, US-MA-STM, US-MA-WIN]
+    found: 2026-10-17
+    text: >-
+      Middlesex Fells and nearby: a few large polygons that have no
+      assessor record take the class of a house reaching into them (for
+      example "Multi-Family" and "Single-Family" in Stoneham). Parts of
+      one reservation also look different on either side of a town line.
+  - admin_ids: all
+    found: 2026-10-16
+    text: >-
+      Some buildings carry more building value per square foot than
+      their measured floors explain ("unexplained buildings"; see the
+      methods page). They are hidden unless switched on, and drawn
+      see-through.

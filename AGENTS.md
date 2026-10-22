@@ -4,6 +4,9 @@ This file provides guidance to AI coding agents working with code in the `openpl
 repository.
 
 ## Maintaining this file
+- This file holds rules and traps an agent would get wrong without being
+  told. Architecture reference lives in the module READMEs (see "Module
+  READMEs"); put new reference material there, not here.
 - Give each entry depth proportional to its surprise-factor (how far actual behavior
   departs from what the name implies), not to how recently or thoroughly it was just
   implemented.
@@ -16,37 +19,28 @@ repository.
 - Never commit real personal information into any tracked file: source code, recipe
   YAML, tests, fixtures, notebooks (including cell outputs), or docs. This means no
   real names, addresses tied to a named individual, phone numbers, personal emails,
-  government ID numbers, or similar identifiers of identifiable individuals — for any
-  dataset, in any jurisdiction, ever. This applies even to a single illustrative value
+  government ID numbers, or similar identifiers of identifiable individuals, for any
+  dataset, in any jurisdiction, ever, even a single illustrative value
   copied from a real record for a docstring, test, or commit message.
-- Recipes describe a source's *schema* (column names, field codes) — never its
-  *records*. Example values in docstrings, tests, or notebook markdown must be
-  fabricated, not sourced from real data.
+- Recipes describe a source's *schema* (column names, field codes), never its
+  *records*. Example values must be fabricated.
+  `docs/5_contribute/no-personal-data.rst` explains what counts as a record and how
+  to fabricate a fixture that still tests something.
 - Notebooks are committed with outputs stripped (`nbstripout`, wired via
-  `.gitattributes`/`dev.py`) specifically because raw pipeline output can carry
-  personal fields from upstream sources (e.g. an owner name column) — never disable
-  or bypass this for a notebook that touches entity data.
+  `.gitattributes`/`dev.py`) because raw pipeline output can carry personal fields
+  from upstream sources. Never disable or bypass this.
 - If you find real personal data already committed, stop, do not build on top of it,
-  and flag it to the user immediately. Do not "fix forward" quietly — purging it from
-  git history is a decision for a human, not an agent.
-- `docs/5_contribute/no-personal-data.rst` is the contributor-facing version of
-  this section: what counts as a record, how to fabricate a fixture that still
-  tests something, and the failure modes a history rewrite hits.
+  and flag it to the user immediately. Purging it from git history is a decision for
+  a human, not an agent.
 - **Personal columns in data (not in git) are a per-user choice, and never
   leave in a delivery.** Owner, grantor and grantee attributes
   (`core.attribute_registry.is_personal_attribute`, the one definition) are
-  ingested, because sources carry them. A curate recipe's
-  `keep_registered_columns` step drops them from curated tables unless the
-  person running it set `python -m openplaces.config --keep-personal-columns
-  true` in their own config (a research use: telling a sale within a family
-  from one at arm's length where the source states no relationship). No
-  recipe key can switch that on, for the reason a recipe cannot accept terms.
-  `export_delivery` withholds these columns from every file whatever the
-  setting and raises `PersonalColumnError` on a recipe that lists one under
-  `share`. The same step is an allow-list against *unregistered* source
-  headers, which are dropped either way: Wisconsin's RETR is ingested with
-  78 raw columns, among them agent, preparer and tax-bill names that no
-  deny-list would have named.
+  ingested. A curate recipe's `keep_registered_columns` step drops them unless
+  the person running it set `python -m openplaces.config --keep-personal-columns
+  true` in their own config; no recipe key can switch that on.
+  `export_delivery` withholds them from every file whatever the setting and
+  raises `PersonalColumnError` on a recipe that lists one under `share`. The
+  same step drops *unregistered* source headers either way, as an allow-list.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
 ## Intellectual property: one notice, in one place
@@ -78,79 +72,46 @@ repository.
 ## Restricted-licence sources: the terms decide what may be committed
 
 - **A connector is not a secret.** That a research group holds a licence
-  to a private dataset, and that this project can read it, is ordinary
-  and may be said in public. A recipe naming such a source, and a
-  pipeline step that links to it, are acceptable in git on the same
-  footing as any other recipe, subject to the rule below.
+  to a private dataset, and that this project can read it, may be said in
+  public. A recipe naming such a source is acceptable in git, subject to
+  the rule below.
 - **What may not be committed is anything the source's terms do not
   permit, or that evidences a use they do not permit.** Before committing
   a recipe for a source whose licence restricts redistribution,
-  derivative works, or disclosure, read the terms and check each of the
-  following against them:
-  - **Schema disclosure.** A recipe reproduces column names, field codes,
-    and value vocabularies. Some licences treat data documentation, or
-    "any portion" of the data, as confidential or as non-redistributable.
-    If the terms can be read that way, keep the recipe (and any sidecar
-    crosswalk that reproduces the source's codes) out of git until the
-    licensor, or Boston University's review, has cleared it.
-  - **Derivative products.** A licence that forbids "derivative works"
-    or "data products based on the Data" forbids publishing anything
-    derived from it, and a recipe or pipeline step written so that such a
-    product would be published is evidence of intent to do so. Restricted
-    evidence may inform an internal check; it must never reach a shipped
-    output. Pin that with a test, as
+  derivative works, or disclosure, read the terms and check:
+  - **Schema disclosure.** If the terms can be read to treat data
+    documentation or "any portion" of the data as confidential, keep the
+    recipe (and any sidecar that reproduces the source's codes) out of git
+    until the licensor or Boston University's review has cleared it.
+  - **Derivative products.** Restricted evidence may inform an internal
+    check; it must never reach a shipped output. Pin that with a test, as
     `test_restricted_shovels_columns_are_never_published` does.
-  - **Scope of use.** Internal validation against a licensed dataset is
-    a different use from training, redistribution, or commercial
-    delivery. Describe the actual use accurately in the recipe's notes,
-    and do not describe or configure a use the terms do not cover.
+  - **Scope of use.** Describe the actual use accurately in the recipe's
+    notes, and do not describe or configure a use the terms do not cover.
 - **Record the restriction on the `Source`** (`license`, `terms_url`,
-  `redistribution_restricted: true`) so `bundle_terms` reports it and the
-  usage-profile gate (below) can act on it. A recipe that reads as though
-  the source were open is the failure mode; a recipe that says plainly
-  what the terms are is not. A no-resale clause ("not to be resold",
-  common on county assessor downloads) is a different fact: it forbids
-  selling, not sharing. Record it as `resale_restricted: true`, which
-  the notice reports in its own section, and leave
+  `redistribution_restricted: true`) so `bundle_terms` reports it. A
+  no-resale clause ("not to be resold") forbids selling, not sharing:
+  record it as `resale_restricted: true` and leave
   `redistribution_restricted` to describe sharing.
-- **When in doubt, hold the file, do not delete it.** The question is
-  institutional, the answer is not an agent's to assume, and the cost of
-  waiting is a file that sits uncommitted for a while. Say so in the
-  handoff; never commit to "fix it later."
-- **Shovels (`US-NC_property-shovels-2026`) is the worked example.** Its
-  terms forbid derivative works "based on or trained on the Data". The
-  project uses it only to validate an occupancy classification, and none
-  of its data or any column derived from it is published (the test above
-  pins that). The recipe was committed on 2026-08-15 and removed from
-  the tracked tree on 2026-08-22 (`4bf1588`, git-ignored so it stays
-  local) as a precaution while Boston University reviews whether
-  publishing its schema description is within the terms. Of the held
-  files only the occupancy-type value crosswalk reproduces any part of
-  the Data (a field's value vocabulary); it was removed from git history
-  on 2026-08-27 (see `plans/shovels-terms-and-the-withheld-connector.md`).
-  The recipe YAML and the county-name remaps, which carry no Data, stay
-  in history and out of the tree. The `link_by_id` steps that name the
-  recipe in the spine recipes are unaffected by that hold. Any further
-  history change is a decision for a human, exactly like the
-  personal-data rule above: flag it, do not quietly rewrite, and do not
-  re-add the files until the review has answered.
+- **When in doubt, hold the file, do not delete it**, and say so in the
+  handoff. The question is institutional, not an agent's to answer.
+- **Shovels (`US-NC_property-shovels-2026`) is held**: its recipe is
+  git-ignored while Boston University reviews its terms. Do not re-add
+  its files or change git history about it; the state is in
+  `plans/shovels-terms-and-the-withheld-connector.md`.
 
 ## Third-party code: attribute it, check its license
 - Porting or adapting code from another project (a GitHub repo, a paper's
   reference implementation): name the source (repo/paper URL), its original
-  author(s), and its license **in that file's own header** — not only in a
-  README or a sibling file in the same directory. A reader of one file
-  shouldn't have to find a different file to learn where its code came from.
+  author(s), and its license **in that file's own header**, not only in a
+  README or a sibling file in the same directory.
 - Before merging a port, confirm the upstream license is compatible with this
-  repo's Apache-2.0 (permissive licenses — MIT, BSD, Apache-2.0 — are fine;
-  copyleft licenses — LGPL, GPL — are not automatically compatible and need a
-  NOTICE-file carve-out, not silence). A vendored copyleft subtree with no
-  license text or notice marking it as different from the rest of the repo
-  is a real gap, not a hypothetical one — check for this rather than
-  assuming every ported file already got it right.
-- This applies to source code specifically; adapting a data *source* into a
-  recipe is a separate, parallel concern — check the source's license and
-  redistribution terms the same way before writing the recipe.
+  repo's Apache-2.0 (MIT, BSD, Apache-2.0 are fine; LGPL and GPL are not
+  automatically compatible and need a NOTICE-file carve-out, not silence).
+  A vendored copyleft subtree with no license text marking it is a real gap;
+  check for it rather than assuming every ported file got it right.
+- Adapting a data *source* into a recipe is a parallel concern: check the
+  source's license and redistribution terms the same way.
 
 ## Design limits
 - Some techniques are kept out of this repository by decision of the
@@ -169,71 +130,59 @@ repository.
   (why this approach, not a more obvious alternative).
 
 ## Code style
-- Line length:
-  - 88 characters maximum for code. Use ``ruff format`` to enforce.
-  - 72 characters maximum for comments.
-- Use the `|` union syntax for `isinstance` checks, never a tuple:
-  `isinstance(x, Foo | Bar)` ✓
-  `isinstance(x, (Foo, Bar))` ✗
-- Do not use sequences of lines (`─`, `-`, `=`) in comments
-- Do not use em-dashes (literal `—` or text-based `---`) in documentation, docstrings, or code comments. Use commas, colons, parentheses, or spaced hyphens (` - `) instead.
+- 88 characters maximum for code (`ruff format` enforces it); 72 for comments.
+- `isinstance(x, Foo | Bar)`, never a tuple.
+- No sequences of line characters (`─`, `-`, `=`) in comments.
+- No em-dashes (literal `—` or text-based `---`) in documentation, docstrings, or
+  code comments. Use commas, colons, parentheses, or spaced hyphens (` - `).
 
 ## Docstrings
-- Use NumPy-style docstrings exclusively throughout the codebase (no Google-style docstrings).
-- Avoid double backticks.
-- Only add Sphinx cross-references when they are genuinely useful for navigation, e.g:
-  - Important public functions or classes in this package
-  - Key workflow entry points
-  - Custom data structures or configuration objects
-- Do not include the .py filepath in the top-level docstring of scripts
-- Provide detailed individual docstrings for each class constructor detailing their specific parameters and validation rules in NumPy style (no placeholder or duplicate constructor docstrings).
-- Keep docstrings strictly accurate and formatted to the function, resolving copy-paste typos.
-- Standardize on American English spelling ('meter', 'center', 'reproject') throughout all comments and docstrings.
-- Retain deep technical/algorithmic rationale and historical context in comments and docstrings to help developers understand why decisions were made.
-- Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
+- NumPy style only. Avoid double backticks. American English ('meter', 'center').
+- Sphinx cross-references only where they help navigation (important public
+  functions or classes, workflow entry points, configuration objects).
+- No .py filepath in a script's top-level docstring.
+- Each class constructor gets its own docstring with its parameters and
+  validation rules (no placeholders or duplicates).
+- Docstrings describe the user-facing contract, accurately; keep the deep
+  rationale and history of a decision, and put implementation notes (RAM
+  heuristics and the like) in inline comments.
 - **Quote a statistic that can move; do not avoid it** (maintainer's
-  rule, 2026-09-22). A number is the evidence for a method, so a
-  docstring states it in one form, on one line, so that it can be found,
-  dated and flagged when the data it was measured on is rebuilt:
-  `Measured <YYYY-MM-DD> on <scope>: <claim>`, where the scope is an
-  admin id, a region id or another single token (`US`, `CO`,
+  rule, 2026-09-22). A docstring states a measured number in one form, on
+  one line: `Measured <YYYY-MM-DD> on <scope>: <claim>`, where the scope is
+  an admin id, a region id or another single token (`US`, `CO`,
   `cheer-coastal-tx`, `admin-gadm-4.1`). `python -m
-  openplaces.flow.measured_claims` lists every claim in the tree and
-  reports `stale` where the scope's curated output or delivered bundle
-  is newer than the claim's date, `current` where it is not, and
-  `no build` where the scope resolves to nothing on this machine. A
-  stale number is documentation debt to re-measure, never a reason to
-  delete the number.
+  openplaces.flow.measured_claims` lists every claim and reports `stale`
+  where the scope's curated output or delivered bundle is newer than the
+  claim's date. A stale number is documentation debt to re-measure, never
+  a reason to delete the number.
 
 ## Directory structure
 Write all plans to ``<repository_root>/plans/``. Never write a plan outside the
-repository -- not to a home directory, and not to whatever scratch, notes, or
-plan directory your agent tool manages for itself: plans there are invisible to
-everyone else, are not covered by this repository's conventions, and have to be
-audited and migrated by hand later. Consult your own tool-specific instruction
-file for the directory this rule names in your case.
+repository, not to a home directory and not to whatever scratch, notes, or plan
+directory your agent tool manages for itself: plans there are invisible to
+everyone else. Consult your own tool-specific instruction file for the directory
+this rule names in your case.
 
-Name a plan file after what it does, in kebab-case, e.g.
-``geospine-split-skip-geometry-reprocessing.md`` or
-``town-level-processing-for-harmonizer-and-curator.md``. Never accept an
-auto-generated name built from random words (``abundant-gliding-whale``,
-``soft-purring-torvalds``) or from the prompt that started the session
-(``we-were-just-working-...``, ``help-me-with-some-...``) -- rename it before
-writing. A reader scanning ``plans/`` should be able to tell what each file
-covers from its name alone.
+Name a plan file after what it does, in kebab-case
+(``geospine-split-skip-geometry-reprocessing.md``). Never accept an
+auto-generated name built from random words or from the prompt that started the
+session; rename it before writing.
 
 Move a plan to ``plans/implemented/`` once its work has landed, prefixed with
 the date it landed: ``YYYY-MM-DD_<same-descriptive-name>.md``. ``plans/README.md``
-ranks the open plans; update it when adding or finishing one.
+ranks the open plans; update it when adding or finishing one. It is an index:
+keep it under 150 lines, one line per row, and put measurements, build logs and
+history in the plan they describe, never in the index. Overwrite its state
+block rather than appending to it.
 
 Implement all complex plans (plans affecting the functionality of multiple src/ files or notebooks) on a new git worktree in ``<repository_root>/_<worktree_branch_name>/``. If the plan is simple (variable renaming, comments, single file), ask the user whether implementing the plan directly on 'main' is acceptable.
 
 ## Module READMEs
 Before editing files in a folder that has a `README.md`, read it. The
 detailed architecture reference lives there, beside the code:
-`io/ingester`, `io/harmonizer`, `io/enricher`, `io/curator`,
-`io/delivery` and `flow` (all under `src/openplaces/`), as well as
-`recipes` and `notebooks`.
+`recipe`, `config`, `io/ingester`, `io/harmonizer`, `io/enricher`,
+`io/curator`, `io/delivery` and `flow` (all under `src/openplaces/`), as
+well as `recipes` and `notebooks`.
 
 ## Jupyter notebooks
 When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
@@ -284,7 +233,7 @@ Layer 2  recipe
 Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester, access), io/scrapers/* (the Avenu adapter among them), io/aggregate, io/admin/* (ids, names, generate, spine, context, wikidata, units), io/admin_migration, io/delivery/* (the bundle writer, terms, redaction), io/transform, io/sale_records (the frame operations that put recorded sales into the transaction entity's terms and mint their ids; the harmonize and curate steps of the same names both call them), io/cleanup/* (receipts, consumption, lock, walk, compaction; the package file re-exports every name, private ones included, because dag, the harmonizer and the tests import them)
+Layer 6  io/ingester/*, io/scrapers/*, io/aggregate, io/admin/*, io/admin_migration, io/delivery/*, io/transform, io/sale_records, io/cleanup/*
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -298,49 +247,35 @@ documented exception: the `show_random_entity` convenience method on
 inside the method body, so the module-level graph stays acyclic and a
 run without matplotlib never pays for it. Do not add a second one.
 
-Four placements are worth knowing. `table` holds the registry-driven row
-helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
-functions) and `summarize_conflicts`, the per-row disagreement summary
-both the harmonize and curate stages write into `{col}_conflict`
-columns; they sit below `geo/` because `geo/crosswalk` and `geo/ids`
-call them, and keeping them in `io/aggregate`/`io/transform` created a
-module-level import cycle. `io/aggregate` and `io/transform` re-export
-them, so the older import paths still work. `geo/address` is listed
-separately because it depends on nothing above `recipe`, which is what
-lets `table` use `strip_unit_suffix` without reintroducing that cycle.
-`io/steps` holds the step-registry decorator and the lazy loader that
-harmonize, enrich and curate each carried a copy of until 2026-09-22; it
-imports nothing from openplaces, so it sits below all three, and each
-stage keeps its own `_STEP_REGISTRY` dict (tests monkeypatch those by
-name). `io/__init__` is a facade: everything it exports is defined in
-one of the six modules beside it, and the facade only re-exports, so a
-helper that several stages share lives in one of those modules, never in
-a stage folder, because the layer-3 facade cannot import from layer 6.
-**A module in `io/` must not share a name with a facade export**:
-`from openplaces.io import download` yields the *function*, which is
-why the module that defines it is `io/fetch`. A test that binds a
-module object and patches a name on it patches the module the function
-under test lives in, not the facade or a package file; a patch on those
-never reaches a function looking names up in its own globals.
+`table`, `geo/address` and `io/steps` sit low on purpose; their module
+docstrings say why. `io/__init__` is a facade that only re-exports from
+the six modules beside it, so a helper several stages share lives in one
+of those modules, never in a stage folder. **A module in `io/` must not
+share a name with a facade export**: `from openplaces.io import download`
+yields the *function*, which is why the module that defines it is
+`io/fetch`. A test patches the module the function under test lives in,
+not the facade or a package file; a patch on those never reaches a
+function looking names up in its own globals.
 
 ## Architecture overview
 
-`openplaces` integrates property and geospatial data (parcels, buildings, transactions, environmental datasets) for reproducible research. All data access and processing is driven by **recipes** (YAML files).
+`openplaces` integrates property and geospatial data (parcels, buildings,
+transactions, environmental datasets) for reproducible research. All data access
+and processing is driven by **recipes** (YAML files, `src/openplaces/recipes/`;
+loader reference in `src/openplaces/recipe/README.md`).
 
-### Core schema (`core/schema.py`)
-
-Four key identifiers form the naming system used throughout the codebase:
-
-- **`AdminId`** — hierarchical geographic identifier, e.g. `AdminId('US', 'NC', 'CUR')`. Level 0 = global, 1 = country, 2 = state/region, 3 = county/district (a town in New England, where the county is skipped: Somerville is `US-MA-SOM`), 4 = municipality/town. String form uses `-` separator: `'US-NC-CUR'`.
-- **`Entity`** — a data entity defined by `entity_type` + `source` + `version`, e.g. `Entity('parcel', 'massgis', '2025')`. String form: `'parcel-massgis-2025'`. Valid entity types are in `ENTITY_TYPES` (parcel, building, footprint, property, transaction, admin, ...).
-- **`DataSet`** — a non-entity dataset defined by `Theme` + `source` + `version`, e.g. `DataSet('land-elevation', 'usgs', '3dep')`. Themes are hierarchical, separated by `-`, with the top level constrained to `TOP_LEVEL_THEMES` (land, landcover, water, built, people, risk, ...).
-- **`Source`** — a data source with download URL(s), portal URL, DOI, etc.
+Identifiers (`core/schema.py`): `AdminId('US', 'NC', 'CUR')` -> `'US-NC-CUR'`
+(level 1 country, 2 state, 3 county, 4 municipality; in New England level 3 is
+the town and the county is skipped: `US-MA-SOM`); `Entity('parcel', 'massgis',
+'2025')` -> `'parcel-massgis-2025'`; `DataSet('land-elevation', 'usgs', '3dep')`
+for non-entity data; `Source` for a download. A recipe id is
+`{admin_id}_{entity_or_theme}-{source}-{version}[_{filename}]`, e.g.
+`US-MA_parcel-massgis-2025`.
 
 ### Entity model and stage roles (`core/schema.ENTITY_DEFINITIONS`)
 
 **One row of each entity type means one thing, and these are easy to
-confound.** `ENTITY_DEFINITIONS` holds the authoritative text (a test pins
-that every type has one); in short:
+confound.** `ENTITY_DEFINITIONS` holds the authoritative text; in short:
 
 | entity | one row is | worked cases |
 |---|---|---|
@@ -354,333 +289,85 @@ that every type has one); in short:
 A recipe's rows must be the entity its `entity_type` names. **A tax roll's
 rows are properties**, condo rows included: a roll or CAMA table is one
 `property` recipe, never split by a condo flag, and a table whose rows are
-*details* of those properties (one row per building component) declares
-`supplements: <roll id>` so that it adds columns to them, never rows. The
-roll may sit at a containing scope (a county appraiser's building table
-detailing the state DOR roll; a city table detailing MassGIS's statewide
-layer), and `supplements_layer: <entity type>` names an `additional_layers`
-entry of the host when the roll has no recipe id of its own
-(`recipe.get_supplemented_table` validates both). A supplement joins its
-roll on `parcel_id_local` unless `supplements_key: <column>` names a column
-both tables carry, for a roll whose `parcel_id_local` is built from an id
-the detail table lacks (Travis County TX links parcels on `geo_id` while
-its detail tables carry `prop_id`); keyed supplements are skipped by every
-other auto-discovered join, the parcel geospine's included.
+*details* of those properties declares `supplements: <roll id>` so that it
+adds columns, never rows (`src/openplaces/recipe/README.md`).
 
 The stages divide the work, and **harmonize keeps redundancy minimal**:
 
 - **Harmonize** builds each entity's core table (its spine) and the keys
   that relate entities. An attribute lands once, on the entity it
-  describes. Do not copy heavy or wide columns onto another entity here:
-  a property's bedrooms belong on the property spine, not also on every
-  parcel. Harmonize *may* derive a small number of preliminary columns
-  or filters, but only as far as an enrich step needs them to choose
-  what to run on: a preliminary `occupancy_type` so an imagery step
-  runs on residential footprints only, not a reconciled value that
-  curate will decide. No enrich step selects rows by attribute today
-  (they subset by admin unit only), so this is an open path, not a
-  used one; when one is added, the column it selects on is the
-  justification for deriving it here, and it stays labeled preliminary.
+  describes: a property's bedrooms belong on the property spine, not also
+  on every parcel. Harmonize may derive a preliminary column only where an
+  enrich step needs it to choose what to run on, and labels it
+  preliminary.
 - **Enrich** adds evidence from external sources to any entity, keyed by
-  that entity (imagery predictions, raster statistics, reference
-  inventories).
-- **Curate** assembles one dataset per entity type (parcels, footprints,
-  buildings, dwellings, properties, transactions), aggregating or
+  that entity.
+- **Curate** assembles one dataset per entity type, aggregating or
   translating from the others where needed: a footprint's bedrooms come
   from summing its properties' in a curate recipe, not from a
   harmonize-time copy.
 
-The parcel geospine's
-`link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
-copies an explicit list of parcel-level columns (values, use codes,
-`building_style`, `n_dwellings`, address) and nothing else since
-2026-09-12; property-level attributes reach curated parcels through
-`aggregate_from_entities` (curate, `aggregation.py`). A county whose
-geospine predates that still carries the old wider copy until its next
-geometry rerun, which is why the curate step fills only what is empty.
-
-**Build order, and why it is fixed.** A source that holds parcels and
-properties together is separated at ingest (an `additional_layers` entry
-writes its own property table), so by harmonize every property table exists
-independently of any parcel spine. Per admin unit the order is: every
-ingest; `US_property-spine-2026`; the footprint geospine; the building
-geospine (one building per outline) and the building spine, which runs
-the evidence, address and permit steps against the footprint geospine's
-links re-keyed to building ids; the footprint spine, a projection of the
-building spine onto the outlines (`adopt_entity_attributes`, so its
-consumers read unchanged values until they read the building spine); the
-parcel geospine, which reads the ingest-level property tables for
-parcel-level values and the property spine for a count; the parcel spine;
-enrichment; parcel curation; footprint curation. `RecipeDAG` derives this
-from the recipes and a test pins it
-(`test_property_parcel_link_is_written_after_both_of_its_sides`); a script
-that calls stages by hand has to follow it, and **a parcel geospine built
-before one of its county's rolls was ingested silently lacks that roll's
-values until it is rerun**.
+**The build order is fixed** (full order in
+`src/openplaces/io/harmonizer/README.md`; `RecipeDAG` derives it and a test
+pins it). A script that calls stages by hand has to follow it, and **a parcel
+geospine built before one of its county's rolls was ingested silently lacks
+that roll's values until it is rerun**.
 
 **A property's id is the account number its assessor issued**, scoped by
-its admin unit (`assign_entity_ids`), and rows sharing an id merge into
-one. **Relationships between entities are link tables**, one row per
-pair (`link_entities_by_id` for property to parcel, `link_transactions`
-for transaction to parcel and to property); `link_method` is a fixed
-label, never a score, and no link is removed once written. **A
-transaction carries what its document states and nothing it
-conveyed**: a deed of several parcels is one spine row and several link
-rows with area shares, and the curate gathers property and parcel data
-through the links (`aggregate_from_entities` with `key: null`). Both are
-described in full in `src/openplaces/io/harmonizer/README.md`.
+its admin unit, and rows sharing an id merge into one. **Relationships
+between entities are link tables**, one row per pair; `link_method` is a
+fixed label, never a score, and no link is removed once written. **A
+transaction carries what its document states and nothing it conveyed**:
+a deed of several parcels is one spine row and several link rows. Both
+are described in full in the harmonizer README.
 
-### Recipes (`recipe/`, `src/openplaces/recipes/`)
+**A county's rule goes into a patch recipe** at the county's scope, never
+into a branch on a place in the national recipe or in `src/`
+(`src/openplaces/recipes/README.md`).
 
-Recipes are YAML files that define how to ingest, harmonize, enrich, or curate
-a dataset. They are stored in a path-encoded directory structure:
+### Pipeline: ingest, harmonize, enrich, curate
 
-```
-src/openplaces/recipes/{admin_id_path}/{entity_type_or_theme_path}/{source}/{version}/{recipe_id}.yaml
-```
+Each stage's reference is the README beside its code (`io/ingester`,
+`io/harmonizer`, `io/enricher`, `io/curator`). Three invariants hold
+everywhere:
 
-A recipe ID encodes its parts: `{admin_id}_{entity_type_or_theme}-{source}-{version}[_{filename}]`, e.g. `US-MA_parcel-massgis-2025`.
+- **Every parcel table is split into lots and properties at ingest**: a
+  row stacked on a shared lot polygon is a property, not a parcel.
+- **Imagery is fetched in memory per run and never cached**, because
+  Google's terms prohibit storing it.
+- **A cell openplaces itself filled must say so** in curate, through the
+  `imputed` marker in its `{col}_source` (`provenance.mark_imputed`).
 
-**Recipe roots.** The bundled tree is one root; an installed package can
-contribute another through the `openplaces.recipes` entry-point group
-(`path.recipe_roots()`, bundled first, bundled wins on a name collision).
-Recipe lookup, the recipe index, source discovery and the suffix vocabulary
-read every root, so a recipe in a package is found exactly like a bundled
-one. Because auto-discovery then picks the most specific recipe *whatever
-roots are installed*, every attribute table `to_parquet` writes records the
-roots it was built from in its footer (`openplaces:recipe_roots`: bundled
-version or checkout commit, plus each package's distribution and version),
-and a delivery's terms notice lists them under "Recipes". Without that
-record, "the best source available at build time" is not reproducible.
+`export_delivery` pools a curated region into a bundle and **withholds what
+restricted sources supplied**; a team bundle (`<region>.team`) is
+published only on a password-protected team value page, never openly
+(`io/delivery/README.md`). A narrow debug run of the DAG stops at
+curate, so a one-county rebuild cannot overwrite a shipped regional file
+(`flow/README.md`).
 
-Key recipe fields:
-- `admin_id` — geographic scope
-- `entity` or `dataset` — what is being ingested
-- `description` — short human-readable summary; kept to 25 words or less, with any
-  implementation detail in `notes` instead
-- `stage` — `'ingest'`, `'harmonize'`, `'enrich'`, `'curate'`
-- `columns` — mapping from openplaces attribute names → source column names
-- `download_by` — controls download partitioning: `admin_level`, or `partition:
-  year|year_month|table|tile_id|latlon_tile`. `year_month` computes a YYYY-MM date range,
-  `table` takes an explicit table-name list; unrecognized partition types raise
-  `NotImplementedError`.
-- `process_by` — controls chunking granularity during processing (`admin_level`, `admin_id_column`).
-  For sources that ship one already-split file per admin unit inside a single shared
-  download (rather than one file with an in-data admin column to filter rows by), use
-  `file_pattern` instead of `admin_id_column`: a filename pattern relative to the recipe's
-  heap directory, with `{partition_id}` and the crosswalk's raw-code column name (e.g.
-  `{admin3_id_admin2}`) as placeholders, resolved per admin unit
-  (`TableIngester._resolve_file_pattern_path`).
-- `save_to` — output location (`data_dir` from `STANDARD_DIRS`, `admin_level`, optional
-  `retention` class). When `save_to.admin_level` is coarser than `process_by.admin_level`,
-  the Ingester aggregates intermediate files to that level.
-- `join_partitions_by` — for `download_by: {partition: table}` recipes, left-joins the
-  per-table outputs into one entity file per admin unit after ingest (`join_key_name`,
-  optional `keep_original`). See `io.aggregate.join_partitions_by_index`.
-- `additional_layers` — list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
-- `entity_recipe` — predecessor entity recipe used by enrichment or curation
-- `pipeline` — ordered named steps for harmonization, enrichment, or curation
-- `patches` / `pipeline_patch` — a patch recipe: a file at a county's or
-  state's scope that names a national harmonize or curate recipe and
-  lists operations on its pipeline (`set`, `extend`, `insert_before`,
-  `insert_after`, `replace`, `remove`, each addressing a step by name,
-  `occurrence` when the name repeats). `recipe.apply_recipe_patches`
-  applies the patches whose scope covers the unit, coarse to fine, once
-  per unit inside the harmonizer and the curator; the output footer
-  records them (`openplaces:recipe_patches`). Auto-discovery never picks
-  a patch recipe as an entity's recipe and the DAG keeps one recipe id
-  per job. A county's rule goes there, never into a branch on a place
-  in the national recipe or in `src/` (`recipes/README.md`).
+### Column naming (`core/attribute_registry.csv`)
 
-Key recipe functions (the `recipe/` package, one module per concern
-since 2026-09-30: `loading`, `tables`, `naming`, `discovery`, `patches`,
-`dependencies`, `output`; every name is re-exported by the package, and
-a test that patches `openplaces.recipe.<name>` reaches a caller that
-imports it from the package at call time):
-- `get_recipe(admin_id, entity, ...)` / `get_recipe_by_id(recipe_id)` — load a recipe dict
-- `find_entity_recipe_id(...)` — select by stage rank
-  `ingest < harmonize < enrich < curate`; pass `stage=` when a caller needs
-  a specific predecessor rather than the latest pipeline product
-- `get_output_path(recipe, admin_id, partition_id, geo, layer)` — resolve the parquet path where output is written
-- `get_save_admin_level(recipe)` / `get_process_admin_level(recipe)` — determine output/processing granularity
-- `get_layers(recipe)` — list secondary layers in `additional_layers`
-- `build_table_recipe(primary, layer_spec)` — merge primary recipe with an additional_layers spec
-
-### Data pipeline: ingest → harmonize → enrich → curate
-
-Each stage's full reference lives in a README beside its code; read it
-before editing that package.
-
-**Stage 1 - Ingest** (`io/ingester/`, reference in
-`src/openplaces/io/ingester/README.md`): downloads, unzips and maps one
-recipe's source into per-admin parquet (`Ingester`, `TableIngester`).
-**Every parcel table is split into lots and properties at ingest**
-(`io/stacked_units.py`): a row stacked on a shared lot polygon is a
-property, not a parcel, and units keep their own keys and name their
-lot in `lot_id_local`.
-Public entrypoint:
-`ingest(recipe, admin_ids, partition_ids, reprocess, redownload, verbose)`.
-
-**Stage 2 - Harmonize** (`io/harmonizer/`, reference in
-`src/openplaces/io/harmonizer/README.md`): runs a recipe's registered
-steps over a shared `HarmonizeState`. Each expensive spine is two
-recipes: a geospine (geometry phase, persisted link sidecars that fail
-closed when stale) and an attribute recipe that loads it and runs no
-spatial computation.
-Public entrypoint: `harmonize(recipe, admin_ids, reprocess, verbose)`.
-
-**Stage 3 - Enrich** (`io/enricher/`, reference in
-`src/openplaces/io/enricher/README.md`): writes entity-keyed evidence
-(imagery predictions, raster statistics, reference inventories) without
-selecting canonical values. Imagery is fetched in memory per run and
-never cached, because Google's terms prohibit storing it.
-Public entrypoint:
-`enrich(recipe, admin_ids, entity_recipe_id, reprocess, verbose)`.
-
-**Stage 4 - Curate** (`io/curator/`, reference in
-`src/openplaces/io/curator/README.md`): builds one canonical dataset
-per entity type from harmonized evidence and enrichment, through
-registered steps over `CurateState`. One invariant binds every step
-that writes a value: **a cell openplaces itself filled must say so**,
-through the `imputed` marker in its `{col}_source`
-(`provenance.mark_imputed` writes it, `is_imputed` reads it).
-Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
-
-### Data access (public API, `api.py`)
-
-```python
-import openplaces as op
-
-op.get_admin(admin_id, level, geom, recipe)        # load admin unit table/geodataframe
-op.get_admin_ids(admin_level, admin_id)            # list admin ID strings
-op.get_entities(recipe, admin_id, geom, layer)     # load entity parquet
-op.get_dataset(recipe, admin_id, partition_id)     # load dataset parquet (or path for rasters)
-op.ingest(recipe, admin_ids, ...)
-op.harmonize(recipe, admin_ids, ...)
-op.enrich(recipe, admin_ids, ...)
-op.curate(recipe, admin_ids, ...)
-op.aggregate(recipe, admin_level, ...)
-op.export_delivery(recipe, admin_id, ...)     # split a curated region into a shareable bundle
-```
-
-### Named regions and delivery bundles (`io/delivery/`)
-
-A **region** is a named group of admin units the hierarchy cannot
-express, listed in `_all/admin/regions/2026/admin-regions-2026.csv`
-(`op.get_regions()`, `op.get_region_admin_ids()`). `export_delivery`
-pools a curation recipe's per-unit files into a region-wide bundle
-(canonical table, centroid points, polygons, evidence supplement).
-**It withholds what restricted sources supplied, and ships the rest**;
-team bundles (`<region>.team`) are the one exception and are never
-published. Full reference: `src/openplaces/io/delivery/README.md`.
-
-### Orchestration (`flow/dag.py`, `workflow/Snakefile`)
-
-`RecipeDAG` derives one job per (stage, recipe, admin unit), plus a
-`deliver` and a `validate` job per shipped region. A narrow debug run
-stops at curate, so a one-county rebuild cannot overwrite a shipped
-regional file. Full reference: `src/openplaces/flow/README.md`.
-
-### File layout on disk
-
-Output files are parquet, stored under the configured `cfg.data_root`:
-```
-{data_dir}/{admin_id_path}/{entity_or_dataset_path}/{admin_id}_{entity}_[suffix].parquet
-```
-
-Geometry sidecar: as above, but with a `'_geo'` suffix added to the filename
-
-`path()` in `path.py` generates these paths from:
-
-  `(admin_id, entity, dataset, filename, root)`
-
-`external_path()` / `heap_path()` generate paths for downloaded and unzipped source
-files, respectively.
-
-### Attribute registry (`core/attribute_registry.csv`, `core/attribute_registry.py`)
-
-Maps well-known column names to their expected data type, units, default aggregation
-function, and a `sort` rank. Used by the harmonizer and ingester to validate dtypes and
-drive groupby aggregations without hardcoded column lists, and by the curate
-`order_columns` step to order output columns deterministically. Loaded once and cached
-via `@cache`.
-
-**Column naming convention.** Evidence columns carry a provenance suffix with exactly
-the disambiguating components: point/building-level refs use entity-level + source
-(`_building_nsi`, `_dwelling_overture`, because footprint/building/dwelling are easily
-conflated); parcel refs use entity-level only (`_parcel`, since parcel layers are
-interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
-(`n_parcels_per_footprint`). Final output order is computed from the suffix + registry
-`sort` rank, so no explicit per-recipe column list is needed.
-
-### Configuration (`config/`)
-
-A package since 2026-09-30: `identity` (User-Agent, identity prompt),
-`user_config` (the user's own file, the prompts that fill it, agent
-detection), `settings` (`OpenPlacesConfig`), and the package file, which
-keeps `cfg`, `_cfg`, `get_config`, `reload_config` and every setter that
-reads or rebinds them (consent, personal columns, identity, usage
-profile), because the tests patch those names on `openplaces.config` and
-the callers look them up there. `python -m openplaces.config` still runs
-the command line (`__main__.py`).
-
-`cfg` (singleton `OpenPlacesConfig`) holds directory paths (`data_root`, `dir_core`,
-`dir_external`, `dir_heap`, etc.), CRS, and the installation's `identity`.
+The registry gives each well-known column its dtype, units, aggregation and
+`sort` rank. Evidence columns carry a provenance suffix with exactly the
+disambiguating components: point/building-level refs use entity-level + source
+(`_building_nsi`, `_dwelling_overture`, because footprint/building/dwelling are
+easily conflated); parcel refs use entity-level only (`_parcel`). Relational
+counts use `n_{counted}s_per_{grouping}` (`n_parcels_per_footprint`). Output
+column order comes from the suffix and the registry, never a per-recipe list.
 
 ### Talking to other people's servers
 
-Two rules govern every outbound request, both of them about openplaces not
-speaking for its user.
+Full reference: `src/openplaces/config/README.md`.
 
-**Identify yourself.** `cfg.user_agent` builds
-`openplaces/{version} (+https://openplaces.io; {nickname}@{place})` from the
-per-user `identity` block, appending `; agent: claude-code` when
-`detect_agent()` finds an AI agent driving the run. Unset reports
-`unidentified`. `io.request_headers()` is the single accessor; use it rather
-than passing headers by hand, and **never** send a browser User-Agent -- a
-test (`tests/core/test_request_identity.py`) fails the build on any
-`Mozilla/` string in `src/`. The identity is asked for at first use
-(`_interactive_setup`) and during `dev.py setup`, which cannot import the
-package it is installing and so shells out to
-`python -m openplaces.config --set-identity`. That is also why the first-use
-prompt triggers on a missing `directories` key rather than a missing file.
-
-**Never agree to terms on the user's behalf.** A source behind a
-click-through gate goes through `io.consent.require_terms_consent`, which
-asks the operator and raises `TermsNotAcceptedError` when it cannot ask.
-A person accepts or nothing is accepted: **`accept_terms: true` in a recipe
-raises `ConsentNotDelegableError`**, because a committed public recipe would
-bind everyone who runs it to terms they never read -- refused outright, not
-downgraded to a prompt, so a recipe that reads as though consent were handled
-cannot ship. `accept_terms: false` *is* honored -- declining only costs a
-download, so a recipe author may do it.
-A standing "always accept this source" exists but only as an answer given
-at the prompt (`[a]`), stored per user in `consent.terms` in their own
-config (`config.get_terms_consent` / `set_terms_consent`). An answer is also
-remembered per source for the process, so a year-partitioned recipe asks
-once. Apply the same asymmetry to any future decision with legal
-consequences: a recipe may refuse for a user, never consent for them.
-
-**Respect who a source says it is for.** A source whose terms condition
-access on the user (non-commercial only, a restricted environment, a
-jurisdictional interest) records that as `usage_requirement` on its
-`Source` -- set only when a person determined it from the terms, never
-inferred from the free-text `license` field. At download time,
-`io.usage_profile.require_usage_compatible` checks it against the user's
-self-declared profile (`python -m openplaces.config
---set-usage-profile`): a match proceeds silently, a mismatch prompts the
-operator (with a rememberable `[a]`, mirroring the consent prompt), and
-an unattended unresolved mismatch raises `UsageProfileMismatchError`. A
-resolved decline soft-skips the partition like a missing download URL.
-Unlike consent there is no forbidden recipe-side lever, because
-recording a requirement states a fact about the source rather than
-deciding anything for the user. Restrictions on the redistribution/fee
-axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
-`redistribution_restricted`, `resale_restricted` and
-`io/delivery/terms.py` cover those -- and
-a blanket ban on automated access is expressed by having no
-`download_url` at all, not by a requirement.
-
-`arcgis_rest_scraper` additionally paces itself (`DEFAULT_REQUEST_INTERVAL_S`,
-module-level so the whole paging loop is bounded), because backing off only
-after a failure means the load that caused it was already applied.
+- **Identify yourself.** Use `io.request_headers()` for every request;
+  **never** send a browser User-Agent (a test fails the build on any
+  `Mozilla/` string in `src/`).
+- **Never agree to terms on the user's behalf.** Click-through sources go
+  through `io.consent.require_terms_consent`; `accept_terms: true` in a
+  recipe raises `ConsentNotDelegableError`. A recipe may refuse for a user,
+  never consent for them; apply that asymmetry to any future decision with
+  legal consequences.
+- **Respect who a source says it is for.** A `usage_requirement` on a
+  `Source` is set only when a person determined it from the terms, never
+  inferred from the `license` text; `io.usage_profile` checks it against
+  the user's declared profile at download time.

@@ -142,6 +142,8 @@ def test_every_attribute_table_records_the_recipe_roots(external_root, tmp_path)
     meta = pq.read_metadata(plain).metadata
     recorded = json.loads(meta[RECIPE_ROOTS_METADATA_KEY.encode()].decode())
     assert [r['provider'] for r in recorded] == ['bundled', 'spoketest']
+    # No folder: a footer travels with every delivered file.
+    assert not any('root' in r for r in recorded)
 
     # A caller's own footer entries ride alongside, not instead.
     stamped = tmp_path / 'stamped.parquet'

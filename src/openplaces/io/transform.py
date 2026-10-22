@@ -10,6 +10,7 @@ YAML recipe specifications. It supports:
 - Conditional transformations
 - Date/time extractions
 - Complex expressions
+- Group operations over the rows that share a key (weighted mode)
 - Pattern-based transformations
 """
 
@@ -659,6 +660,9 @@ def apply_transformation(
                 df[config['input']], config['conditions'], config.get('default')
             )
 
+        elif transform_type == 'group':
+            df[output_col] = _apply_group(df, config)
+
         else:
             raise ValueError(f'Unknown transformation type: {transform_type}')
 
@@ -1110,6 +1114,63 @@ def _apply_remap_file(
     return _map_through_crosswalk(series, mapping)
 
 
+def _weighted_mode(values: pd.Series, weights: pd.Series, by: pd.Series) -> pd.Series:
+    """Per group of *by*, the value carrying the largest summed weight.
+
+    A missing or non-numeric weight counts as 0. A group whose weights
+    sum to 0 counts each row once, so it gets its most frequent value.
+    Ties go to the value that appears first in the table. Every row of a
+    group gets the group's value, a row with no value of its own
+    included; a row with no key gets none.
+    """
+    w = pd.to_numeric(weights, errors='coerce').fillna(0).clip(lower=0)
+    frame = pd.DataFrame(
+        {'by': by.to_numpy(), 'value': values.to_numpy(), 'w': w.to_numpy()}
+    )
+    frame['order'] = np.arange(len(frame))
+    stated = frame.dropna(subset=['by', 'value'])
+    unweighted = stated.groupby('by')['w'].transform('sum').eq(0)
+    stated = stated.assign(w=stated['w'].mask(unweighted, 1.0))
+    totals = stated.groupby(['by', 'value'], sort=False).agg(
+        w=('w', 'sum'), order=('order', 'min')
+    )
+    totals = totals.reset_index().sort_values(
+        ['by', 'w', 'order'], ascending=[True, False, True]
+    )
+    winner = totals.drop_duplicates('by').set_index('by')['value']
+    result = frame['by'].map(winner)
+    result.index = values.index
+    return result
+
+
+def _apply_group(
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
+) -> pd.Series:
+    """Apply an operation across the rows that share a key.
+
+    The other transformation types work row by row. This one reads the
+    rows of a group together, for a detail table with several rows per
+    entity (one row per building of an account) where a single value
+    has to be chosen before the table is reduced to one row per key.
+    Groups are formed within the partition being transformed, so the
+    key's rows must not span partitions.
+
+    Operations
+    ----------
+    weighted_mode
+        ``inputs: [value, weight]`` and ``args: {by: <key column>}``:
+        every row of a group gets the value with the largest summed
+        weight (see `_weighted_mode`). An account's building type
+        weighted by building value is the case it was added for.
+    """
+    operation = config['operation']
+    if operation != 'weighted_mode':
+        raise ValueError(f'Unknown group operation: {operation}')
+    value_col, weight_col = config['inputs']
+    by = config['args']['by']
+    return _weighted_mode(df[value_col], df[weight_col], df[by])
+
+
 def _apply_remap_conditional(
     series: pd.Series, conditions: list[dict], default: Any = None
 ) -> pd.Series:
@@ -1297,6 +1358,44 @@ def index_by(df: pd.DataFrame, name: str) -> pd.DataFrame:
     if name in df.columns:
         return df.set_index(name)
     raise ValueError(f'{name!r} is neither the current index nor a column of df.')
+
+
+def index_by_key_column(df: pd.DataFrame, column: str, name: str) -> pd.DataFrame:
+    """Index `df` by its key `column` if it has one, then name the index `name`.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.index_by_key_column`) for a multi-table
+    source whose shared key arrives sometimes as the index and sometimes
+    as an ordinary column beside a row-number index. The placeslab fmv
+    tables do both: some deliveries store `geometry_sha3_224` as the
+    pandas index, later ones as a column with a RangeIndex. Renaming the
+    index alone (`rename_index`) would name a row number in the second
+    case, and `io.aggregate.join_partitions_by_index` would then pair
+    rows by position rather than by parcel.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    column : str
+        Key column to promote to the index (and drop as a column) when
+        present. When absent, the existing index is kept as the key.
+    name : str
+        Name given to the resulting index.
+
+    Raises
+    ------
+    ValueError
+        If `column` is absent and `df` carries an unnamed RangeIndex,
+        which holds row numbers rather than a key.
+    """
+    if column in df.columns:
+        df = df.set_index(column)
+    elif isinstance(df.index, pd.RangeIndex) and df.index.name is None:
+        raise ValueError(
+            f'{column!r} is not a column and the index is an unnamed '
+            'RangeIndex; there is no key to index by.'
+        )
+    return df.rename_axis(name)
 
 
 def make_index_unique(

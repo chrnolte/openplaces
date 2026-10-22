@@ -154,6 +154,13 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
         return bool(self.recipe.get('join_partitions_by'))
 
     @property
+    def _sidecar_tables(self) -> list[str]:
+        """Table partitions kept as received, never joined
+        (`join_partitions_by.sidecar_tables`)."""
+        join_cfg = self.recipe.get('join_partitions_by') or {}
+        return [str(t) for t in join_cfg.get('sidecar_tables') or []]
+
+    @property
     def _process_level(self):
         """Max admin level across download_by and process_by.
 
@@ -251,6 +258,14 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
                 raise ValueError(
                     "'join_partitions_by' requires "
                     'download_by: {partition: table, table_names: [...]}.'
+                )
+            table_names = [str(t) for t in download_by['table_names']]
+            unknown = sorted(set(self._sidecar_tables) - set(table_names))
+            if unknown or set(table_names) <= set(self._sidecar_tables):
+                raise ValueError(
+                    'join_partitions_by.sidecar_tables must name entries of '
+                    f'download_by.table_names {table_names} and leave one to '
+                    f'join; got {self._sidecar_tables}.'
                 )
 
     def ingest(
@@ -564,6 +579,11 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
             and admin_id_to_process is not None
             and AdminId(admin_id_to_download).is_parent_of(AdminId(admin_id_to_process))
         )
+
+        if partition_id is not None and str(partition_id) in self._sidecar_tables:
+            self._save_sidecar_table(admin_id_to_process, process_in_chunks)
+            self.timer.mark(f'Save sidecar{suffix}')
+            return
 
         if process_in_chunks and 'process_by' not in self.recipe:
             raise ValueError(

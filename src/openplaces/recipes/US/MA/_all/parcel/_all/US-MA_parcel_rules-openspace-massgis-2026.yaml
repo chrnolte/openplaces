@@ -1,0 +1,83 @@
+# Recipe: protected open space evidence for Massachusetts parcels
+#
+# Overlays each parcel of the parcel spine with the MassGIS Protected
+# and Recreational OpenSpace layer (US-MA_rules-openspace-massgis-2026)
+# and writes, per parcel: the share of its area inside open space
+# polygons, and the id, site name, level of protection, owner type,
+# primary purpose and public access of the polygon covering most of
+# it. The maintainer approved it on 2026-10-17 so that the value
+# viewer can draw the lots of one protected area alike where a town
+# line splits it (Middlesex Fells, between Medford, Melrose, Malden,
+# Stoneham and Winchester; see
+# plans/middlesex-fells-lot-values-findings.md).
+#
+# The share is summed overlap over parcel area, which is the covered
+# area because the layer's polygons do not overlap (none by more than
+# 100 m2, measured 2026-10-17 on the 2026-07-28 release).
+#
+# Site names on privately owned for-profit polygons (OWNER_TYPE P,
+# 10,952 of 61,486, 10,779 of them named) are withheld: a
+# conservation restriction on private land can be named after the
+# person who granted it. Their share, level and the other codes are
+# still written. The names were not read (to keep owners' names out
+# of the session), so whether a person is named is unmeasured; the
+# withholding is a precaution.
+#
+# Massachusetts only: the curate step that reads this evidence is the
+# US-MA patch US-MA_parcel-openplaces-2026.
+#
+# Design limits checked (plans/design-limits/DESIGN_LIMITS.md): L2,
+# L27 (no lots are grouped or merged; each parcel keeps its own row
+# and only states which polygon covers most of it), L3 (no lookup or
+# display keyed by an identifier), L6 and L22 (merge_enrichments
+# fills empty cells; no source is weighted or overwritten), L24 (the
+# share is measured on the parcel itself, not on features within a
+# distance; it is not a model covariate here). None crossed.
+
+description: >-
+  Parcel share inside MassGIS protected and recreational open space,
+  and the level of protection, owner type and site of the polygon
+  covering most of it.
+
+stage: enrich
+admin_id: US-MA
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: rules-openspace
+  source:
+    source_id: massgis
+    license: >-
+      Public domain (MassGIS FAQ). Credit requested: "MassGIS (Bureau
+      of Geographic Information), Commonwealth of Massachusetts EOTSS"
+      and EOEEA.
+    terms_url: "https://www.mass.gov/info-details/massgis-frequently-asked-questions"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: 2026
+
+entity_recipe: US_parcel-spine-2026
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: overlay_reference_polygons
+    reference_recipe_id: US-MA_rules-openspace-massgis-2026
+    share_column: protected_open_space_share
+    id_column: protected_open_space_id
+    columns:
+      protected_open_space_site: protected_open_space_site
+      protected_open_space_level: protected_open_space_level
+      protected_open_space_owner_type: protected_open_space_owner_type
+      protected_open_space_purpose: protected_open_space_purpose
+      protected_open_space_public_access: protected_open_space_public_access
+    suffix: _massgis
+    withhold:
+      column: protected_open_space_owner_type
+      values: [P]
+      columns: [protected_open_space_site]
+    max_vertices: 256

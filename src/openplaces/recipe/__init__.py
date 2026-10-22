@@ -9,8 +9,8 @@ output paths. One package since 2026-09-30 (until then a single
 - tables: retention, additional-layer table recipes, output
   columns, the supplements key
 - naming: recipe ids, versions, sources, provenance suffixes
-- discovery: find_entity_recipe_id, find_additional_layer_recipes,
-  layers and supplemented tables
+- discovery: find_entity_recipe_id, find_reference_recipe_id,
+  find_additional_layer_recipes, layers and supplemented tables
 - patches: patch recipes and their pipeline operations
 - dependencies: DepEdge and get_recipe_dependencies
 - output: output paths, admin levels, partitions
@@ -44,6 +44,7 @@ from openplaces.recipe.discovery import (  # noqa: F401
     _recipe_yaml,
     find_additional_layer_recipes,
     find_entity_recipe_id,
+    find_reference_recipe_id,
     get_layers,
     get_supplemented_table,
     get_supplements_key,

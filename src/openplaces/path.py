@@ -167,8 +167,18 @@ def recipe_roots() -> tuple[Path, ...]:
 
 
 def recipe_roots_footer() -> str:
-    """The recipe-root record as the JSON string a parquet footer carries."""
-    return json.dumps(list(recipe_root_records()))
+    """The recipe-root record as the JSON string a parquet footer carries.
+
+    Each root is named by provider, distribution, version and commit.
+    Its folder is left out: it is a path on the builder's machine, user
+    name included, and a footer travels with every delivered file.
+    """
+    return json.dumps(
+        [
+            {key: value for key, value in record.items() if key != 'root'}
+            for record in recipe_root_records()
+        ]
+    )
 
 
 RECIPE_EXTENSIONS = ('.yaml', '.csv', '.xlsx', '.xls')

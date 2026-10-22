@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from openplaces.io import save_parquet
 from openplaces.io.aggregate import (
@@ -88,6 +89,15 @@ def _split_date_range(date_from: str, date_to: str) -> list[tuple[str, str]]:
         return [(date_from, date_to)]
     mid1 = (mid + timedelta(days=1)).isoformat()
     return [(d0.isoformat(), mid.isoformat()), (mid1, d1.isoformat())]
+
+
+def _is_browser_error(exc: BaseException) -> bool:
+    """Whether exc is Playwright's (a timeout or a page that went away)."""
+    try:
+        from playwright.async_api import Error
+    except ImportError:
+        return False
+    return isinstance(exc, Error)
 
 
 class RegistryIngester:
@@ -268,10 +278,44 @@ class RegistryIngester:
                             page_count=page_count,
                         )
                         records = self._drop_mismatched_records(
-                            records, town_name, date_from, date_to, ck
+                            records, town_name, date_from, date_to, ck, doc_type
                         )
+                        if not records:
+                            # A session whose searches stop applying
+                            # their criteria stays that way, and the
+                            # refresh below ran only after a saved
+                            # month, so every later month was lost. A
+                            # failed search can also come back empty,
+                            # which looks like a month without deeds.
+                            # Measured 2026-10-19 on US-MA-NTC: a fresh
+                            # session found 50 deeds in a rejected month.
+                            await context.close()
+                            context = await browser.new_context()
+                            adapter = adapter_class(base_url, context)
+                            await adapter.start_session()
+                            records, page_count = await self._crawl_partition(
+                                adapter,
+                                admin4_id,
+                                date_from,
+                                date_to,
+                                town=town_name.upper(),
+                                doc_type=doc_type,
+                                page_count=0,
+                            )
+                            records = self._drop_mismatched_records(
+                                records, town_name, date_from, date_to, ck, doc_type
+                            )
                         if records is None:
-                            continue  # criteria failed; retry next run
+                            continue  # criteria failed twice; retry next run
+                        if not records and self._partition_rows(admin4_id, ck):
+                            # Never replace a month's rows with none.
+                            warnings.warn(
+                                f'{ck}: two searches found no rows where the '
+                                'saved partition has some; kept the saved '
+                                'partition.',
+                                stacklevel=2,
+                            )
+                            continue
                         self._save(records, admin4_id, partition_id=ck)
                         self.timer.mark(f'{admin4_id} {ck}')
 
@@ -302,11 +346,17 @@ class RegistryIngester:
         town: str,
         doc_type: str,
         page_count: int,
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[dict] | None, int]:
         """Crawl one date range for one town + doc type.
 
         If the site returns the ">1000 records" dialog, the date range is
         split in half and each half is crawled recursively until results fit.
+        Returns None for the records when the browser fails on every
+        attempt (or on either half of a split range), so the caller skips
+        the partition and the next run retries it. Raising instead ended
+        the whole town's run. Measured 2026-10-20 on US-MA-CAM: one
+        search timed out three times after 7 months had been saved.
+        Errors that are not the browser's still raise.
         """
         for attempt in range(1, self.max_attempts + 1):
             try:
@@ -341,6 +391,8 @@ class RegistryIngester:
                             part, page_count = await self._crawl_partition(
                                 adapter, admin4_id, sf, st, town, doc_type, page_count
                             )
+                            if part is None:
+                                return None, page_count
                             sub.extend(part)
                         return sub, page_count
                     except TimeoutError:
@@ -368,7 +420,15 @@ class RegistryIngester:
 
             except Exception as exc:
                 if attempt == self.max_attempts:
-                    raise
+                    if not _is_browser_error(exc):
+                        raise
+                    warnings.warn(
+                        f'{date_from} - {date_to} {doc_type}: {attempt} attempts '
+                        f'failed ({exc}). Not saved; it will be retried on the '
+                        'next run.',
+                        stacklevel=2,
+                    )
+                    return None, page_count
                 wait = random.uniform(*self.backoff) * (2 ** (attempt - 1))
                 if self.verbose:
                     print(
@@ -385,15 +445,20 @@ class RegistryIngester:
         date_from: str,
         date_to: str,
         partition_id: str,
+        doc_type: str | None = None,
     ) -> list[dict] | None:
-        """Drop crawled rows that do not match the queried town and dates.
+        """Drop crawled rows that do not match the queried town, dates and type.
 
         When the registry search silently fails to apply its criteria, the
         result grid shows the portal's default listing (registry-wide,
         current date). Saving that would poison the per-town partition and
-        produce duplicates across partitions. Returns the matching records,
-        or None when every record mismatches (the partition is then not
-        saved and not checkpointed, so the next run retries it).
+        produce duplicates across partitions. The document type is checked
+        as well: a search whose type filter did not apply returns every
+        instrument of the town and dates, mortgages and liens among them,
+        and its deeds then appear in two partitions. Returns the matching
+        records, or None when every record mismatches (the partition is
+        then not saved and not checkpointed, so the next run retries it).
+        Measured 2026-10-19 on US-MA-NTC: one such search gave 21 types.
         """
         if not records:
             return records
@@ -401,6 +466,7 @@ class RegistryIngester:
         col_map = self.recipe.get('columns', {})
         town_key = col_map.get('town', 'town')
         date_key = col_map.get('recorded_date', 'recorded_date')
+        type_key = col_map.get('doc_type', 'doc_type')
         lo, hi = pd.Timestamp(date_from), pd.Timestamp(date_to)
 
         kept = []
@@ -408,6 +474,17 @@ class RegistryIngester:
         for rec in records:
             rec_town = rec.get(town_key)
             if rec_town is not None and str(rec_town).upper() != town.upper():
+                n_dropped += 1
+                continue
+            rec_type = rec.get(type_key)
+            # Compared without spaces: a dropdown label ('UNITDEED') and
+            # the type a record shows need not space it the same way.
+            if (
+                doc_type is not None
+                and rec_type is not None
+                and str(rec_type).replace(' ', '').upper()
+                != doc_type.replace(' ', '').upper()
+            ):
                 n_dropped += 1
                 continue
             rec_date = pd.to_datetime(rec.get(date_key), errors='coerce')
@@ -419,16 +496,17 @@ class RegistryIngester:
         if n_dropped and not kept:
             warnings.warn(
                 f'{partition_id}: all {n_dropped} crawled row(s) are for other '
-                'towns or dates - the search criteria did not apply (default '
-                'registry listing?). Partition not saved; it will be retried '
-                'on the next run.',
+                'towns, dates or document types - the search criteria did not '
+                'apply (default registry listing?). Partition not saved; it '
+                'will be retried on the next run.',
                 stacklevel=2,
             )
             return None
         if n_dropped:
             warnings.warn(
                 f'{partition_id}: dropped {n_dropped} crawled row(s) for other '
-                f'towns or dates; saving the {len(kept)} matching row(s).',
+                f'towns, dates or document types; saving the {len(kept)} '
+                'matching row(s).',
                 stacklevel=2,
             )
         return kept
@@ -556,6 +634,13 @@ class RegistryIngester:
 
     def _town_name_for(self, admin4_id: str) -> str:
         return self._crosswalk[admin4_id]['town_name']
+
+    def _partition_rows(self, admin4_id: str, checkpoint_key: str) -> int:
+        """Rows in the saved partition file, or 0 when there is none."""
+        path = get_output_path(self.recipe, admin4_id, partition_id=checkpoint_key)
+        if not path.exists():
+            return 0
+        return pq.ParquetFile(path).metadata.num_rows
 
     def _is_done(self, admin4_id: str, checkpoint_key: str) -> bool:
         """Whether a town × month × doc-type partition is completely scraped.

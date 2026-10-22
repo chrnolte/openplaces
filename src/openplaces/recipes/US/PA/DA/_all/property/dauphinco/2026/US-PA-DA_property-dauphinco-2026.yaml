@@ -6,7 +6,7 @@
 # property_id -- ~1.5 rows/parcel, most likely multiple owner/relationship
 # rows per parcel), so this is a `property` entity per the project's
 # 1:1-vs-1:n distinction (contrast with the 1:1 Parcel Characteristics table,
-# US-PA-DA_parcel-dauphinco-2026pc).
+# US-PA-DA_parcel-dauphinco-2026_characteristics).
 
 description: >-
   Dauphin County, PA tax roll: assessed land and building values, use code,

@@ -124,6 +124,15 @@ Build the spine from prioritized sources via IoU deduplication.
 #### `link_to_reference` (links/spatial.py, points.py, sidecars.py)
 Load a reference dataset and build a spine ↔ reference crosswalk.
 
+A step naming an `entity_type` instead of a `recipe_id` resolves its
+reference with `recipe.find_reference_recipe_id`: the covering ingest
+recipe with the most specific admin scope, then the newest version, then
+the alphabetically first id, skipping supplements, patches, and recipes
+declared without geometry (a flat source file, `save_to: geometry:
+false`). The choice reads recipes only, never the outputs on disk: the
+DAG makes it while planning, before the run's ingests exist, to declare
+the sidecar the job will write.
+
 **join modes**:
 
 **`spatial_overlay`** (polygon-on-polygon):
@@ -438,6 +447,51 @@ building spine, footprint spine, parcel geospine. Slice b3 (townhome splits,
 condo-tower merges, NSI points with no outline as rows) is where a building
 stops being one footprint; the re-keying and the projection both refuse rows
 that share a source id, so that slice has to decide the fan-out explicitly.
+A merge is not caught that way: a building made of several outlines names
+one `footprint_id`, so the others' links would stay unattributed, and b3
+needs the footprint-to-building link table as its key. Both steps also
+refuse a spine built from another version of its source (the building
+spine's `footprint_id`s must be the footprint geospine's ids, and the
+projection refuses building rows naming a footprint it lacks), and the
+building spine's checkpoint is stamped with the footprint geospine's
+output as well as its own geospine's.
+
+<!-- The next two paragraphs moved verbatim from AGENTS.md on
+2026-10-17; AGENTS.md keeps the build-order trap. -->
+
+**Build order, and why it is fixed.** A source that holds parcels and
+properties together is separated at ingest (an `additional_layers` entry
+writes its own property table), so by harmonize every property table exists
+independently of any parcel spine. Per admin unit the order is: every
+ingest; `US_property-spine-2026`; the footprint geospine; the building
+geospine (one building per outline) and the building spine, which runs
+the evidence, address and permit steps against the footprint geospine's
+links re-keyed to building ids; the footprint spine, a projection of the
+building spine onto the outlines (`adopt_entity_attributes`, so its
+consumers read unchanged values until they read the building spine); the
+parcel geospine, which reads the ingest-level property tables for
+parcel-level values and the property spine for a count; the parcel spine;
+enrichment; parcel curation; footprint curation. That is one order the
+DAG allows: `RecipeDAG` derives the edges the recipes declare, so the
+property spine and the footprint chain are not ordered against each other,
+and footprint enrichments wait for the footprint spine only. Tests pin the
+property-to-parcel edge
+(`test_property_parcel_link_is_written_after_both_of_its_sides`) and the
+building chain
+(`test_the_building_spine_sits_between_the_footprint_geospine_and_spine`),
+on one North Carolina county, through the jobs' input paths; a script
+that calls stages by hand has to follow it, and **a parcel geospine built
+before one of its county's rolls was ingested silently lacks that roll's
+values until it is rerun**.
+
+The parcel geospine's
+`link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
+copies an explicit list of parcel-level columns (values, use codes,
+`building_style`, `n_dwellings`, address) and nothing else since
+2026-09-12; property-level attributes reach curated parcels through
+`aggregate_from_entities` (curate, `aggregation.py`). A county whose
+geospine predates that still carries the old wider copy until its next
+geometry rerun, which is why the curate step fills only what is empty.
 
 The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
@@ -450,13 +504,40 @@ The step sub-modules:
   (e.g. a parcel spine inheriting from its footprint spine, which runs
   first) wherever every row in the group agrees, so the direct spatial join
   only runs on the residual.
+  A lower-ranked outline enters only where it overlaps accepted outlines by
+  at most a tenth of its own area (`overlap_share_max`, which catches the
+  slivers IoU misses beside a large building, without a keep-out distance
+  that also removed separate buildings nearby), and a Microsoft outline
+  clear of every accepted one is left out where most of Microsoft's other
+  outlines within 50 m match none (`stale_check_labels`: its imagery
+  predates a rebuilt block). Measured 2026-10-18 on US-NC-NHA: 1,172 of
+  the 1,246 separate outlines the old keep-out distance removed came back;
+  plans/footprint-keep-out-zone.md.
+  **A building crossing a unit line is reconciled across both units**
+  (`resolve_spine(neighbor_reads: true)`, set by the footprint geospine;
+  maintainer, 2026-10-18). The unit also reads the outlines its touching
+  units' footprint ingests carry into it (`neighbors.py`: neighbors from
+  the admin polygons, inputs from the recipes, one answer for the run, the
+  link-sidecar fingerprint and the DAG), so the merge chooses one envelope
+  per building on both sides of the line, and the unit keeps its piece:
+  the envelope less the neighbors' polygons. Under 10 m2 or 5% nothing is
+  cut, the building staying whole on the side holding most of it. A piece
+  takes its centroid's code as its id (`geo.ids.distinct_centroid_codes`)
+  and `envelope_id` names the envelope, which both units compute alike.
+  Each unit's parcels then value their own piece in curate, as any
+  outline. Measured 2026-10-18 on boston-inner-core: outline pairs drawn
+  in two towns 48 to 0, outlines crossing into a neighbor 178 to 0, 232
+  pieces (CAM, SOM, BEL, ARL, in memory). `OPENPLACES_NEIGHBOR_READS=0`
+  turns the reads off for a debug run, in the DAG and the jobs alike.
 - `links/` — join to reference datasets, one module per concern since
   2026-09-29 (until then one 4,259-line `links.py`): `spatial.py`
   (`link_to_reference`, the overlay crosswalk), `points.py` (the point
   join), `sidecars.py` (fingerprints and sidecar files), `by_id.py`
   (`link_by_id`), `discovery.py` (auto-discovered sources and remap
   sidecars), `combine.py` (prioritized writes onto the spine),
-  `address_ranges.py`, `additions.py` (`infer_spine_additions`),
+  `roll_values.py` (an assessment roll's values, tax year and label kept
+  together; prior-year fill; a coarser source's values emptied where a
+  covering roll omits the account), `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones
   included, and is a plain package: a test patches the submodule a step
@@ -627,7 +708,9 @@ a warning. A source holding several `tax_year` values keeps only its latest
 roll before ids are minted (Florida's DOR roll is 24 yearly rolls per
 county, kept at ingest as a panel; Lake County's 3,952,270 rows are 210,057
 properties), the unit's latest year and not the latest row per account,
-which would revive every account retired since. Case is folded and runs of separators become one hyphen, but their
+which would revive every account retired since. An auto-discovered roll
+joined onto another spine by `link_by_id` keeps the same latest year, so
+the parcel geospine does not sum one account over its years. Case is folded and runs of separators become one hyphen, but their
 positions are kept, because in a map-block-lot number they carry meaning
 (dropping them made 426 Somerville MA accounts collide). Two sources
 publishing the same accounts therefore mint the same ids, and **rows sharing
@@ -642,7 +725,10 @@ geometry; this is the equivalent for an entity that has none.
 `io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
 entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The
 spatial joins write theirs from an overlay; `link_entities_by_id` writes the
-property-to-parcel table from an exact match on `parcel_id_local`, with
+property-to-parcel table from an exact match on the first key of
+`[parcel_id_local, parcel_id_admin2]` both tables carry (the list the parcel
+curate's key join uses; a roll bundled with MassGIS's layer has only the
+state id), with
 columns `property_id`, `parcel_id`, `link_method`, `link_source` and `share`
 (a test pins that a link table holds nothing else, so it can never carry a
 person). It runs in `US_parcel-spine-2026` because that is the first recipe

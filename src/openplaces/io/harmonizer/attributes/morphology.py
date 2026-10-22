@@ -136,10 +136,12 @@ def summarize_footprint_morphology(
         footprint entity.
     span_column : str, optional
         Footprint-entity column holding how many parcels that footprint spans
-        (default ``n_parcels_per_footprint``, written by
-        :func:`_attribute_polygon_reference` when the footprint spine attributes
-        the parcel reference). Ignored (``max_parcels_per_footprint`` not set) if
-        absent from the footprint entity.
+        (default ``n_parcels_per_footprint``: the building spine's
+        ``n_parcels_per_building``, written by
+        :func:`_attribute_polygon_reference`, renamed when the footprint
+        spine projects the building spine). Ignored
+        (``max_parcels_per_footprint`` not set) if absent from the footprint
+        entity.
     """
     import geopandas as gpd
 

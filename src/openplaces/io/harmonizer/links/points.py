@@ -410,6 +410,28 @@ def _link_spatial_point(
         # spine carries the same columns as its neighbors'.
         if entity_type:
             state.reference_types[recipe_id] = entity_type
+        if save_link:
+            # The link file is a declared output of the step, so it is
+            # written empty rather than left out: a missing file reads
+            # to the workflow as a failed job, and to a reader as a link
+            # never computed. Measured 2026-10-19 on US-WI: 9 of 72
+            # counties have no Overture point, and each geospine failed.
+            sidecar_path = get_entity_link_path(
+                get_recipe_id(state.recipe), recipe_id, state.admin_id
+            )
+            fingerprint = _link_fingerprint(
+                state,
+                recipe_id,
+                _point_step_config(
+                    thresholds,
+                    remap_id,
+                    state.source_geometry_types.get(recipe_id),
+                ),
+            )
+            empty = pd.DataFrame(columns=[state.spine.index.name or 'index'])
+            _write_point_link_sidecar(
+                sidecar_path, empty, fingerprint, verbose=state.verbose
+            )
         if state.verbose:
             print(
                 f'  Link ({entity_type or "point"}): no {recipe_id} for '

@@ -31,6 +31,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from openplaces.core.constants import ENVELOPE_ID_COLUMN
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import (
@@ -40,10 +41,12 @@ from openplaces.io import (
     to_parquet,
 )
 from openplaces.io.delivery.redaction import find_restricted, merge_counts, withhold
+from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
 from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
     restricted_inputs,
+    value_source_cells,
 )
 from openplaces.io.readers import get_admin
 from openplaces.recipe import (
@@ -920,6 +923,10 @@ def export_delivery(
         available = parquet_columns(path)
         wanted = [column for column in declared if column in available]
         wanted += _source_columns(canonical_columns, available)
+        # Pieces the footprint geospine already cut carry their
+        # envelope's id; the slicing below leaves them alone.
+        if ENVELOPE_ID_COLUMN in available and ENVELOPE_ID_COLUMN not in wanted:
+            wanted.append(ENVELOPE_ID_COLUMN)
         # A split (non-combined) curated output keeps its geometry in a
         # `_geo` sidecar joined on `_join_id`, or failing that `geo_id`.
         # Requesting only the declared columns dropped that key, and the
@@ -967,6 +974,27 @@ def export_delivery(
             'unit. Give the curated output an entity id first '
             '(io.harmonizer.entity_ids.mint_ids).'
         )
+
+    # An outline two units both delivered is cut at the line between
+    # them, each piece keeping its unit's values (io/delivery/slicing),
+    # before the copies sharing one id could be resolved to one below.
+    slice_provenance = None
+    delivery_block = (recipe.get('share') or {}).get('delivery') or {}
+    if spatial and delivery_block.get('slice_at_unit_lines'):
+        units = get_admin(
+            sorted(pooled[admin_id_column].dropna().unique()),
+            level=process_level,
+            geom=True,
+        )
+        pooled, slice_provenance = slice_at_unit_lines(pooled, admin_id_column, units)
+        if SLICED_FROM not in pooled.columns:
+            pooled[SLICED_FROM] = pd.NA
+        canonical_columns = [*canonical_columns, SLICED_FROM]
+        if verbose:
+            print(
+                f'Cut {len(slice_provenance):,} pieces from outlines two '
+                f'{admin_id_column} units delivered.'
+            )
 
     coverage_columns = [c for c in canonical_columns if c != admin_id_column]
     pooled, n_dropped = _deduplicate(pooled, coverage_columns, admin_id_column)
@@ -1041,7 +1069,21 @@ def export_delivery(
         # cost almost nothing, and either file reads on its own.
         wanted += _source_columns(canonical_columns, available)
         part = read_parquet(path, geom=False, columns=wanted)
-        evidence_frames.append(part[kept.reindex(part.index).eq(process_id)])
+        rows = part[kept.reindex(part.index).eq(process_id)]
+        if slice_provenance is not None and len(slice_provenance):
+            # A piece's evidence is its unit's copy's row, under the
+            # piece's id.
+            mine = slice_provenance[slice_provenance[admin_id_column] == process_id]
+            if len(mine):
+                extra = part.loc[mine['source_id'].to_numpy()].copy()
+                extra.index = pd.Index(
+                    mine['piece_id'].to_numpy(), name=part.index.name
+                )
+                # A piece can get back the id its source row already
+                # had (its centroid fell in the same cell), and that id
+                # then also selected the source row above: keep it once.
+                rows = pd.concat([rows.drop(index=extra.index, errors='ignore'), extra])
+        evidence_frames.append(rows)
 
     evidence = pd.concat(evidence_frames).sort_index()
     evidence_frames.clear()
@@ -1066,7 +1108,15 @@ def export_delivery(
     evidence = coerce_mixed_object_columns(evidence)
     to_parquet(evidence, staged['evidence'])
 
-    terms = bundle_terms(recipe, geometry_source)
+    # Counted on the evidence after withholding: it carries every
+    # shipped '_source' column, the canonical table's included, so a
+    # source is named for exactly the cells that leave the build.
+    terms = bundle_terms(
+        recipe,
+        geometry_source,
+        [process_id for process_id, _ in inputs],
+        value_cells=value_source_cells(evidence),
+    )
     withheld = merge_counts(withheld_first, withheld_second)
     by_source = {entry['source_id']: entry for entry in restricted}
     terms['withheld'] = [

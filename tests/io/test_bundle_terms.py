@@ -256,7 +256,9 @@ def _fabricated_source_terms(monkeypatch, **overrides):
         **overrides,
     }
     monkeypatch.setattr(
-        module, '_source_terms', lambda recipe: {module._terms_key(entry): entry}
+        module,
+        '_source_terms',
+        lambda recipe, admin_ids=None: {module._terms_key(entry): entry},
     )
     monkeypatch.setattr(module, '_catalog_terms', lambda: {})
     return bundle_terms(RECIPE, None)
@@ -304,7 +306,8 @@ def test_the_notice_names_the_recipe_roots(terms):
     text = format_notice(RECIPE, terms)
     assert 'Recipes' in text
     assert 'openplaces' in text
-    assert str(BUNDLED_RECIPES_DIR) in text
+    # The folder is a path on the builder's machine; it never ships.
+    assert str(BUNDLED_RECIPES_DIR) not in text
 
 
 # How far a restricted source's data can reach.

@@ -125,6 +125,19 @@ pipeline:
       - n_residential_buildings
       - has_homestead_exemption
 
+  # The land-use labels the parcel spine's derive_use_classes builds
+  # from use_group / use_group_code. That step writes nothing where no
+  # source brought a use code to the spine: a unit covered only by a
+  # geometry layer, such as Virginia's VGIN parcels in Alexandria,
+  # Arlington and Falls Church (US-VA-AL, US-VA-AR, US-VA-FC). Declared
+  # so that the footprint recipe's link_curated_entity finds them there,
+  # all-null; the steps below that read them already treat a missing
+  # label as no evidence, so the vote is unchanged.
+  - step: declare_columns
+    columns:
+      - use_group_combined
+      - use_group_combined_labeled
+
   # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
   # physical predictors (area-weighted crosswalk from the legacy reference
   # parcel dataset). Canonical column names drop the `_fmv2026` product
@@ -214,6 +227,22 @@ pipeline:
   - step: exclude_by_value
     column: parcel_id_assessor
     values: [WATER, ROW]
+
+  # A parcel polygon under 1 m2 (core.constants.GEO_MIN_AREA_M2) is a
+  # sliver from the source's geometry, not a lot. Its value per area is
+  # meaningless and, measured 2026-10-17 on US-NC-BUN: one 0.012 m2
+  # polygon carries a $77,100 land value, about $26B per acre. Measured
+  # 2026-10-17 on US: 1,691 NC, 2,848 TX and 21 MA curated parcels fall
+  # below 1 m2 (median 0.1 m2). The step also drops a parcel with no
+  # area_ha, since a missing value is never at least the minimum.
+  # Measured 2026-10-17 on US: 0 of 12,181,742 curated parcels lack an
+  # area_ha, so today it drops only slivers. Design limits checked: L20
+  # (one step closer, approved by the maintainer 2026-10-17; centroids are not
+  # moved and nothing is served for search, so two elements stay
+  # absent).
+  - step: filter_numeric_at_least
+    column: area_ha
+    min: 0.0001
 
   # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
@@ -348,8 +377,19 @@ pipeline:
           # Dominant FEMA building group on the parcel.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
+      # RV evidence (the keyword or style) is required. The recreation
+      # group and a footprint count alone also describe clubhouses,
+      # golf courses, bowling alleys and stadiums, and scored 2 on
+      # their own. Measured 2026-10-18 on US: 910 of 943 curated RV
+      # Park parcels had no RV keyword or style, among them country
+      # club houses in Wake County, NC and Fenway Park in Boston.
       - class: RV Park
         min_score: 2
+        require:
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: RV Park}
+              - {type: equals, column: style_class, value: RV Park}
         indicators:
           - type: any_of
             indicators:
@@ -371,8 +411,39 @@ pipeline:
 
       # Multiple Single-Family homes on a single parcel.
       # Requires min_score 4 to ensure genuine multiplicity evidence is present.
+      #
+      # Footprints alone reach that score (two primary outlines, none
+      # small and elongated, a FEMA single-family reading, any land
+      # share), so the roll gets a veto: a land use naming a
+      # non-residential class, with no residential word beside it,
+      # keeps the lot out. The lot then falls to that class's own
+      # decision below. Vacant and commercial land with a few sheds
+      # or service buildings had drawn as homes on the value pages.
+      # Measured 2026-10-19 on US-TX-HAR: 954 of 10,655 MSF lots vetoed
+      # Measured 2026-10-19 on US-NC-MEC: 74 of 941 MSF lots vetoed
+      # Measured 2026-10-19 on US-NC-BRU: 13 of 538 MSF lots vetoed
+      # In Harris 579 read open_space | vacant and 561 of the 954 have
+      # no improvement value; in Mecklenburg most are convenience
+      # stores and industrial land. A commercial code beside SINGLE
+      # FAMILY RESIDENTIAL stays MSF, as do 49 of Brunswick's 62
+      # commercial-keyword MSF lots.
       - class: Multiple Single-Family
         min_score: 4
+        require:
+          - type: none_of
+            indicators:
+              - type: all_of
+                indicators:
+                  - type: in_set
+                    column: keyword_class
+                    values:
+                      [Vacant, Industrial, Commercial, Retail, Office,
+                       Institutional]
+                  - type: none_of
+                    indicators:
+                      - type: keyword
+                        column: use_group_combined
+                        pattern: 'RESID|FAMILY|DWELL|HOMESITE|\bRES\b|\bSFR\b'
         indicators:
           - type: any_of
             indicators:
@@ -754,6 +825,32 @@ share:
     - improvement_value
     - total_value
     - n_dwellings
+    # Share of the lot inside protected open space and that space's
+    # level of protection, so the viewer can draw the lots of one
+    # protected area alike across a town line (2026-10-17). Filled in
+    # Massachusetts by the US-MA patch of this recipe; empty elsewhere.
+    - protected_open_space_share
+    - protected_open_space_level
+    # The seven Fathom-free placeslab land value variants (ln real USD
+    # per hectare, 2010 market) and each one's area of applicability
+    # (at most 1 inside), for the Nantucket team value page
+    # (2026-10-18). Filled in Nantucket by the US-MA-NTC patch of this
+    # recipe; empty elsewhere. Their source is cleared for team bundles
+    # only, so every other bundle withholds them (io.delivery).
+    - land_value_per_ha_log_region_nb_bare
+    - land_value_per_ha_log_region_nb_people
+    - land_value_per_ha_log_region_nb_buildings
+    - land_value_per_ha_log_region_nb_wealth
+    - land_value_per_ha_log_region_nb_peoplewealth
+    - land_value_per_ha_log_region_nb_peoplebuildings
+    - land_value_per_ha_log_region_nb_popbldwealth
+    - area_of_applicability_region_nb_bare
+    - area_of_applicability_region_nb_people
+    - area_of_applicability_region_nb_buildings
+    - area_of_applicability_region_nb_wealth
+    - area_of_applicability_region_nb_peoplewealth
+    - area_of_applicability_region_nb_peoplebuildings
+    - area_of_applicability_region_nb_popbldwealth
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:
@@ -768,3 +865,29 @@ share:
       # reads its counties out of these, as the footprint recipe ships.
       - western-nc
       - cheer-eastern-nc
+      # Harris and Jefferson counties, the viewer's Texas places
+      # (2026-10-17). One county each rather than cheer-coastal-tx,
+      # which the footprint recipe ships, so this recipe still reads
+      # each county from one region. Jefferson's region carries the
+      # county's name, since its pages (Port Arthur, Beaumont) are
+      # two cities in it (maintainer, 2026-10-19).
+      - houston-tx
+      - jefferson-county-tx
+      # Madison WI, Dane County (2026-10-17).
+      - madison-wi
+      # Nantucket MA, the whole island (2026-10-18).
+      - nantucket-ma
+      # Lake County FL, for the team model page (2026-10-19).
+      - lake-county-fl
+      # Washington DC and the counties within 15 km of the Wilson
+      # Building (2026-10-19).
+      - washington-dc
+    # Also shipped as a team-internal bundle (`<region>.team`, in a
+    # `team/` subdirectory beside the region's own): it keeps the
+    # placeslab land values cleared for team sharing only, which every
+    # other bundle withholds. Shown only on the password-protected team
+    # value page (maintainer, 2026-10-18).
+    team_regions:
+      - nantucket-ma
+      # Fairfax County values, cleared for the team (2026-10-20).
+      - washington-dc

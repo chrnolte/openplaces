@@ -131,7 +131,14 @@ def deploy(
             profile_path = cfg.code_root / profile_path
         mode_args = ['--profile', str(profile_path)]
     else:
-        mode_args = ['--cores', str(cores or 4)]
+        # The profiles set these; a run without one needs them as
+        # flags, or a failed batched ingest deletes every unit's file.
+        mode_args = [
+            '--cores',
+            str(cores or 4),
+            '--keep-incomplete',
+            '--rerun-incomplete',
+        ]
     command = _snakemake_command(
         *mode_args,
         *_snakefile_args(snakefile),

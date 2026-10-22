@@ -62,6 +62,18 @@ columns:
   # that matches land-use words: measured on Jefferson, the curate-stage
   # parcel occupancy keywords hit 27 of 122,202 rows (0.0%), against 44.1%
   # for a state whose source ships English (NC nconemap).
+  #
+  # The remap sidecar names the codes the Comptroller defines at two
+  # characters (Property Classification Guide, March 2026, Exhibits 1
+  # and 5: C1, C2, D1, D2, F1, F2, G1 to G3, J1 to J9, L1, L2, M1, M2)
+  # beside the one-letter rows, which stay the fallback for a
+  # district's own codes (A2, E1, the X subcodes and so on). The
+  # longest key a code starts with decides, so F1 (commercial) and F2
+  # (industrial) no longer share the label "commercial and industrial".
+  # Rows scoped to US-TX-CAM keep Cameron on the letter labels: there
+  # the split moved 8,037 F1 lots Office to Retail through the cohort
+  # fill alone (maintainer's decision 2026-10-18, see
+  # plans/tx-two-character-state-codes.md).
   use_group_code: STAT_LAND_USE     # State category; see remap sidecar
   use_subgroup_code: LOC_LAND_USE   # Appraisal-district local code
   year_built: YEAR_BUILT

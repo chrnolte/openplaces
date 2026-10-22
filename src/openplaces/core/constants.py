@@ -137,6 +137,19 @@ RECIPE_STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
 # reruns that already take seconds to two minutes.
 CURATE_PHASES = ('gather', 'reconcile', 'standardize', 'infer', 'format')
 
+# Entity types whose ingest recipes auto-discovery reads in every
+# version. Elsewhere a version is a vintage of the same table and only
+# the newest of each (admin, source, filename suffix) is read
+# (io/harmonizer/spine.py, recipe/dependencies.py); a transaction
+# recipe's versions are collection windows of different sales.
+ALL_VERSIONS_ENTITY_TYPES = ('transaction',)
+
+# Column naming the envelope a footprint piece was cut from, where a
+# building crossing a unit line was reconciled to one envelope and cut
+# at the line (io/harmonizer/spine.py). The pieces of one building share
+# it; the export-time slicing leaves such rows alone.
+ENVELOPE_ID_COLUMN = 'envelope_id'
+
 
 # FILE HANDLING
 

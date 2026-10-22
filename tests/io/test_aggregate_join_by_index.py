@@ -119,6 +119,79 @@ def test_missing_base_table_skips_admin_unit(cache_to_tmp, capsys):
     assert 'boundaries' in capsys.readouterr().out
 
 
+def test_sidecar_stands_in_for_a_missing_base_table(cache_to_tmp):
+    """A unit delivered with a crosswalk instead of boundaries is joined
+    without geometry, keyed by the join key; the sidecar is kept."""
+    recipe = get_recipe_by_id(RECIPE_ID)
+    keys = ['k1', 'k2']
+    _write_partition(
+        recipe, ADMIN_ID, 'predictions', _attribute_df(keys, 'lnusd_ha', [1.1, 2.2])
+    )
+    _write_partition(
+        recipe, ADMIN_ID, 'predictors', _attribute_df(keys, 'slope', [3.0, 4.0])
+    )
+    crosswalk = pd.DataFrame(
+        {'parcel_id_new': ['new_1', 'new_1'], 'reference_parcel_id': keys}
+    )
+    crosswalk_path = get_output_path(recipe, ADMIN_ID, partition_id='crosswalk')
+    crosswalk_path.parent.mkdir(parents=True, exist_ok=True)
+    crosswalk.to_parquet(crosswalk_path)
+    before = crosswalk_path.read_bytes()
+
+    written = join_partitions_by_index(
+        recipe,
+        table_names=['boundaries', 'predictions', 'predictors', 'crosswalk'],
+        admin_ids=ADMIN_ID,
+        join_key_name='geo_id_source',
+        sidecar_tables=['crosswalk'],
+        verbose=False,
+    )
+
+    assert written == [ADMIN_ID]
+    out_path = get_output_path(recipe, ADMIN_ID)
+    assert not out_path.with_stem(out_path.stem + '_geo').exists()
+    result = read_parquet(out_path)
+    assert result.index.name == 'parcel_id'
+    assert list(result.index) == keys
+    assert list(result['geo_id_source']) == keys
+    assert list(result['slope']) == [3.0, 4.0]
+    assert 'geo_id' not in result.columns
+    assert crosswalk_path.read_bytes() == before
+    for table_name in ('predictions', 'predictors'):
+        assert not get_output_path(recipe, ADMIN_ID, partition_id=table_name).exists()
+
+
+def test_base_table_wins_and_sidecar_is_not_joined(cache_to_tmp):
+    """A unit with boundaries joins as before; its sidecar stays apart."""
+    recipe = get_recipe_by_id(RECIPE_ID)
+    keys = ['k1']
+    _write_partition(recipe, ADMIN_ID, 'boundaries', _boundaries_df(keys))
+    _write_partition(recipe, ADMIN_ID, 'crosswalk', _attribute_df(keys, 'pair', [1]))
+
+    join_partitions_by_index(
+        recipe,
+        table_names=['boundaries', 'crosswalk'],
+        admin_ids=ADMIN_ID,
+        sidecar_tables=['crosswalk'],
+        verbose=False,
+    )
+
+    result = read_parquet(get_output_path(recipe, ADMIN_ID), geom=True)
+    assert 'pair' not in result.columns
+    assert result.geometry.notna().all()
+    assert get_output_path(recipe, ADMIN_ID, partition_id='crosswalk').exists()
+
+
+def test_unknown_sidecar_table_raises(cache_to_tmp):
+    with pytest.raises(ValueError, match='sidecar_tables'):
+        join_partitions_by_index(
+            get_recipe_by_id(RECIPE_ID),
+            table_names=['boundaries'],
+            admin_ids=ADMIN_ID,
+            sidecar_tables=['crosswalk'],
+        )
+
+
 def test_missing_attribute_table_still_joins_the_rest(cache_to_tmp, capsys):
     recipe = get_recipe_by_id(RECIPE_ID)
     keys = ['k1']

@@ -97,3 +97,19 @@ def test_a_unit_that_became_unavailable_is_emptied_on_reprocess(monkeypatch, tmp
 
     ingester._record_units_the_source_does_not_cover(reprocess=True)
     assert len(read_parquet(stale)) == 0
+
+
+def test_a_joined_unit_missing_one_table_is_kept_on_reprocess(monkeypatch, tmp_path):
+    """A fmv county ships boundaries or a crosswalk, so one of its table
+    partitions is always unavailable; the join still wrote its output."""
+    ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
+    ingester._unavailable_units = {'US-NC-CAM'}
+    ingester._joined_units = {'US-NC-CAM'}
+    joined = tmp_path / 'US-NC-CAM.parquet'
+    save_parquet(
+        gpd.GeoDataFrame({'geometry': [box(0, 0, 1, 1)]}, crs='epsg:4326'), joined
+    )
+
+    ingester._record_units_the_source_does_not_cover(reprocess=True)
+
+    assert len(read_parquet(joined)) == 1

@@ -43,3 +43,7 @@ pipeline:
     # output, and reuse it on a later run instead of recomputing (the
     # expensive part of this step) unless reprocess=True.
     save_crosswalk: true
+    # Where the reference ships no boundaries, read the crosswalk the
+    # source delivered (the reference recipe's `crosswalk` sidecar)
+    # instead of building one; it must name this spine's parcel ids.
+    delivered_crosswalk_table: crosswalk

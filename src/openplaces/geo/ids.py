@@ -273,6 +273,46 @@ def get_openlocationcodes(
     return pd.Series(footprint_ids, index=gdf.index, name=name)
 
 
+def distinct_centroid_codes(gdf: gpd.GeoDataFrame, taken: set) -> pd.Series:
+    """Centroid Open Location Codes that collide with nothing in *taken*.
+
+    For a polygon cut from another (a building's piece on one side of a
+    unit line): its id is its centroid's 11-character code, like every
+    footprint id, and a code that is already taken, or shared by two of
+    the new polygons, is replaced by a longer code (a finer cell, 13 then
+    15 characters). A collision is broken by geometry, never by a
+    sequence number (design limit L3).
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        The new polygons, in any CRS.
+    taken : set of str
+        Ids already in use.
+
+    Returns
+    -------
+    pandas.Series
+        One code per row of *gdf*.
+
+    Raises
+    ------
+    ValueError
+        If a code still collides at 15 characters.
+    """
+    ids = get_openlocationcodes(gdf, handle_duplicates=False).astype(object)
+    for length in (13, 15):
+        clash = ids.isin(taken) | ids.duplicated(keep=False)
+        if not clash.any():
+            break
+        ids[clash] = get_openlocationcodes(
+            gdf[clash.to_numpy()], codelength=length, handle_duplicates=False
+        ).astype(object)
+    if ids.isin(taken).any() or ids.duplicated().any():
+        raise ValueError('distinct_centroid_codes: a code stays ambiguous.')
+    return ids
+
+
 def add_openlocationcode_index(
     gdf,
     name='openlocationcode',
@@ -967,6 +1007,11 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     else:
         regex = _pattern_regex(pattern)
 
+    if s.empty:
+        # A row-wise apply over no rows returns a frame, not a series, and
+        # the null mask below then fails: a statewide source with a county
+        # that filed nothing in a partition (Illinois MyDec, 2014) hit it.
+        return pd.Series(pd.NA, index=s.index, dtype='string')
     cols = s.str.extract(regex, expand=True)
     i_null = cols.isnull().sum(axis=1).eq(len(cols.columns))
     cols.columns = [str(c) for c in cols.columns]

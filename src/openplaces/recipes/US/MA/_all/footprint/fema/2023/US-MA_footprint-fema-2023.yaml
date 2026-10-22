@@ -25,13 +25,14 @@ entity:
     license: "public-domain (US Government work, 17 U.S.C. 105)"
     redistribution_restricted: false
     terms_url: null
-    portal_url: "https://disasters.geoplatform.gov/USA_Structures/"
-    download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
-    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)'
-    verify_ssl: false
+    # Same download as the national recipe; its header says why the
+    # Hub page's layout JSON is scraped (changed 2026-10-20).
+    portal_url: "https://gis-fema.hub.arcgis.com/pages/usa-structures-data"
+    download_url_source: "https://www.arcgis.com/sharing/rest/content/items/8388995e228e4e30a882686ac3ab256e/data?f=json"
+    download_url_source_regex: '(https://fema-femadata\.s3\.us-east-1\.amazonaws\.com/Partners/ORNL/USA_Structures/[^"\\<>\s]+/(?:Deliverable[0-9]+{admin2_id_leaf}|{admin2_id_leaf}_Structures_[0-9]+)\.zip)'
   version: 2023
 
-compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
+compressed_file_name: "*{admin2_id_leaf}*.zip"
 uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
 
 # Every U.S. county has FEMA USA Structures coverage: a unit with no data is an

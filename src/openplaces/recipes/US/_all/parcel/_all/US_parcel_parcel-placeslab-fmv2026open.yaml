@@ -1,0 +1,33 @@
+# Enrichment recipe: attach the "placeslab-fmv2026open" land value
+# predictions (Fathom-free model variants) onto current parcels as
+# area-weighted evidence. Twin of US_parcel_parcel-placeslab-fmv2026,
+# kept separate because its reference source is cleared for team
+# bundles and the restricted one is not (see the reference recipe's
+# header). Evidence columns carry the `_fmv2026open` suffix.
+
+description: >-
+  Placeslab-fmv2026open land value predictions (Fathom-free variants) as
+  area-weighted enrichment evidence on current parcels.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: parcel
+
+dataset: parcel-placeslab-fmv2026open
+
+# Needed for the crosswalk's overlay fallback (state.spine geometry).
+spine_geom: true
+
+reference_parcel_recipe_id: US_parcel-placeslab-fmv2026open
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_parcels_from_reference_crosswalk
+    min_overlap_m2: 10
+    area_ratio_tolerance: 0.01
+    silent_qa: true
+    save_crosswalk: true

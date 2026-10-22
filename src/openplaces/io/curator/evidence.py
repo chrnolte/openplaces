@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -120,11 +122,14 @@ def _apportioned_sources(
     apportionment ran on.
 
     Two rules, and one covers both apportionment styles. The token is the
-    **dominant** reference's -- exact for a
-    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS` column,
-    which goes to the principal entity from that one reference, and the
-    best available label for a proportional split, which is a weighted sum
-    over several. The derived marker is then applied if **any** contributing
+    **dominant** reference's, or the largest-overlap reference's that has
+    one where the dominant reference has none. That is exact for a
+    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS` column
+    drawn from one reference, and the best available label for a sum over
+    several: a proportional split, or a whole value that also draws on
+    references no principal entity took (the fallback in
+    :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`).
+    The derived marker is then applied if **any** contributing
     reference's value was derived, because a sum containing one estimated
     dollar is itself an estimate. Erring toward marking is the safe
     direction: a value wrongly called original is a false claim, a value
@@ -156,15 +161,23 @@ def _apportioned_sources(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[list(sides.values())]
     )
-    dominant = (
-        pairs.sort_values('area_intersection_m2', ascending=False)
-        .drop_duplicates(spine_id_col)
-        .set_index(spine_id_col)['parcel_id']
-    )
+    ranked = pairs.sort_values('area_intersection_m2', ascending=False)
+    dominant = ranked.drop_duplicates(spine_id_col).set_index(spine_id_col)['parcel_id']
 
     out = {}
     for col, side in sides.items():
-        tokens = dominant.map(lookup[side]).reindex(index).astype(object)
+        first_known = (
+            ranked.assign(_token=ranked['parcel_id'].map(lookup[side]))
+            .dropna(subset=['_token'])
+            .drop_duplicates(spine_id_col)
+            .set_index(spine_id_col)['_token']
+        )
+        tokens = (
+            dominant.map(lookup[side])
+            .reindex(index)
+            .astype(object)
+            .fillna(first_known.reindex(index))
+        )
         # Record the entity-crossing hop the same way geometry_source
         # does (`parcel.pamlicocounty`): the token names the lane and
         # the dataset it carried, so `parcel.floridagio` and the flat
@@ -288,8 +301,14 @@ def _measured_floors(frame, stories_column, height_column, story_height_m):
     The larger of the two where both are known: a measured height is
     the firmer of the two, and a stated count can be a tag left at its
     default (an outline of 103.8 m by Lidar stated at 1 floor, US-MA-BOS
-    `3|470`, 2026-10-16). Rounded up, at least one; missing where
-    neither is known.
+    `3|470`, 2026-10-16). A height counts the nearest whole number of
+    floors (half up), at least one; a stated fraction rounds up. Missing
+    where neither is known.
+
+    Rounding a height up counted a roof as a floor: a one-story house
+    with a pitched roof measured at 4 m read as two floors, and on a lot
+    split by floor area its value moved toward the pitched or taller
+    roofs beside a flat annex of 3.4 m (maintainer, 2026-10-17).
     """
     stated = pd.Series(np.nan, index=frame.index, dtype=float)
     if stories_column and stories_column in frame.columns:
@@ -297,7 +316,8 @@ def _measured_floors(frame, stories_column, height_column, story_height_m):
     from_height = pd.Series(np.nan, index=frame.index, dtype=float)
     if height_column and height_column in frame.columns:
         height = pd.to_numeric(frame[height_column], errors='coerce').astype(float)
-        from_height = height / float(story_height_m)
+        ratio = (height / float(story_height_m)).where(height > 0)
+        from_height = np.floor(ratio + 0.5).clip(lower=1)
     floors = pd.concat([stated, from_height], axis=1).max(axis=1)
     return np.ceil(floors.where(floors > 0)).clip(lower=1)
 
@@ -313,6 +333,9 @@ def flag_unconfirmed_height(
     stories_column: str | None = None,
     height_column: str | None = None,
     story_height_m: float = 3.5,
+    reconciled_stories_column: str | None = None,
+    lot_column: str | None = None,
+    lot_release_min_m2: float = 100.0,
 ) -> CurateState:
     """Flag outlines whose value per area no measured height explains.
 
@@ -353,6 +376,32 @@ def flag_unconfirmed_height(
         table.
     story_height_m : float
         Meters per story when only a height is known (default 3.5).
+    reconciled_stories_column : str, optional
+        The curated story count (the roll's or NSI's), used where it
+        exceeds the measured floors. Overture measures no height for
+        about one outline in nine, and without this an 8-story condo
+        building with no Overture height was flagged as a one-floor
+        box. Measured 2026-10-17 on boston-inner-core: flagged outlines
+        fall from 39 to 28; the 11 released are buildings of 2 to 8
+        stories, 6 of them over 400 m2 of outline.
+    lot_column : str, optional
+        The outline's lot id. Where given, an outline whose floor count
+        is known and whose area is at least *lot_release_min_m2* is not
+        flagged when its lot's value, over the floor area of all the
+        lot's outlines, stays within *max_value_per_floor_sqft*: its own
+        excess then comes from a value split by outline area among
+        buildings of different heights, not from a doubtful outline. An
+        outline with no floor count, or a small box drawn as a needle,
+        is still judged alone.
+        Measured 2026-10-17 on boston-inner-core: flagged outlines fall from 36 to 32.
+        The four released are three Old Colony public-housing buildings
+        of 2 stories (279 to 516 m2) on a lot that comes to $2,628 per
+        sq ft of floor, and a 211 m2 one-story building on a hospital
+        lot that comes to $196.
+    lot_release_min_m2 : float
+        Smallest outline (m2) the lot test can release (default 100,
+        the size below which the floor split treats an unmeasured
+        outline as one floor).
     """
     curated = state.curated
     value = pd.to_numeric(curated.get(value_column), errors='coerce')
@@ -361,9 +410,27 @@ def flag_unconfirmed_height(
         return state
     per_sqft = value / (area * M2_TO_SQFT)
     floors = _measured_floors(curated, stories_column, height_column, story_height_m)
+    if reconciled_stories_column and reconciled_stories_column in curated.columns:
+        reconciled = pd.to_numeric(
+            curated[reconciled_stories_column], errors='coerce'
+        ).clip(lower=1)
+        floors = pd.concat([floors, reconciled], axis=1).max(axis=1)
     per_floor = per_sqft / floors.fillna(1.0)
     flag = (per_sqft > min_value_per_sqft) & (per_floor > max_value_per_floor_sqft)
     known = (value > 0) & (area > 0)
+    if lot_column and lot_column in curated.columns:
+        lot = curated[lot_column]
+        floor_sqft = (area * M2_TO_SQFT * floors.fillna(1.0)).where(known)
+        lot_value = value.where(known).groupby(lot).transform('sum')
+        lot_floor_sqft = floor_sqft.groupby(lot).transform('sum')
+        lot_fits = (lot_value / lot_floor_sqft) <= max_value_per_floor_sqft
+        released = (
+            lot_fits.fillna(False)
+            & floors.notna()
+            & lot.notna()
+            & (area >= lot_release_min_m2)
+        )
+        flag &= ~released
     curated[output_column] = flag.where(known).astype('boolean')
     if state.verbose:
         print(
@@ -378,9 +445,10 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
 
     Read from the enrich recipe's own evidence file rather than from
     ``state.curated``: the apportionment runs before merge_enrichments
-    gathers evidence into the curated table. Floors are the stated
-    count, else the height over *story_height_m*; rounded up, at least
-    one. None when the unit has no such evidence.
+    gathers evidence into the curated table. Floors are the larger of
+    the stated count and the height over *story_height_m* rounded to
+    the nearest floor, at least one (`_measured_floors`). None when the
+    unit has no such evidence.
     """
     unknown = set(floor_weight) - {
         'recipe_id',
@@ -652,10 +720,12 @@ def apportion_curated_values(
         tower takes the tower's value and its one-story podium a
         podium's. Keys: ``recipe_id``, an enrich recipe whose evidence
         carries per-building heights; ``stories_column`` and
-        ``height_column`` on that evidence (floors are the story count,
-        else the height over ``story_height_m``, default 3.5). A
-        reference with any entity of unknown height keeps the area
-        split (see ``volume_weight`` in
+        ``height_column`` on that evidence (floors are the larger of the
+        story count and the height over ``story_height_m``, default 3.5,
+        rounded to the nearest floor). ``unmeasured_max_m2`` (default
+        100) counts an unmeasured outline below that area as one floor.
+        A reference with any larger entity of unknown height keeps the
+        area split (see ``volume_weight`` in
         :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`).
         Default None (off).
 
@@ -727,6 +797,19 @@ def apportion_curated_values(
         min_trimmed_area_m2=min_trimmed_area_m2,
         step='apportion_curated_values',
     )
+    # A link naming a parcel the curated table lacks passes it no value.
+    # Some are expected (parcels a curate filter dropped); a large count
+    # means the overlay and the parcel table name parcels differently,
+    # which until 2026-10-17 dropped 31,585 links in US-TX-HAR silently.
+    unknown = ~pairs['parcel_id'].isin(ref_values.index)
+    if unknown.any():
+        warnings.warn(
+            f'apportion_curated_values: {int(unknown.sum()):,d} of {len(pairs):,d} '
+            f'links in {state.admin_id} name '
+            f'{pairs.loc[unknown, "parcel_id"].nunique():,d} parcels absent from '
+            'the curated reference; their values are not apportioned.',
+            stacklevel=2,
+        )
 
     lot_area_refs = None
     if lot_area_when_unstated:

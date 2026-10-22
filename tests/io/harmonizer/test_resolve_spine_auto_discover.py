@@ -151,6 +151,93 @@ def test_expand_auto_discover_orders_most_specific_admin_id_first(monkeypatch):
     ]
 
 
+def _discover(monkeypatch, rows, entity_type, admin_id):
+    monkeypatch.setattr(spine_module, 'find_recipes', lambda *a, **k: rows)
+    monkeypatch.setattr(recipe_module, 'find_additional_layer_recipes', lambda *a: [])
+    state = HarmonizeState(
+        recipe={'admin_id': AdminId('US')},
+        admin_id=AdminId(admin_id),
+        verbose=False,
+        timer=None,
+        spine=None,
+    )
+    return spine_module._expand_auto_discover(
+        [{'auto_discover': True, 'entity_type': entity_type}], state
+    )
+
+
+def test_expand_auto_discover_keeps_the_newest_vintage_only(monkeypatch):
+    # Florida's 2025 and 2026 parcel layers are vintages of one table;
+    # merging the older as a further spine source added outlines of
+    # redrawn parcels, and the DAG never scheduled it.
+    rows = _rows(
+        [
+            {
+                'admin_id': 'US-FL',
+                'source_id': 'floridagio',
+                'version': version,
+                'entity_type': 'parcel',
+                'exclude_from_auto_discover': False,
+            }
+            for version in ('2025', '2026')
+        ]
+    )
+    discovered = _discover(monkeypatch, rows, 'parcel', 'US-FL-LA')
+    assert [s['recipe_id'] for s in discovered] == ['US-FL_parcel-floridagio-2026']
+
+
+def test_expand_auto_discover_keeps_tables_with_their_own_suffix(monkeypatch):
+    # A second table of one source names itself with a filename suffix
+    # and is not a vintage of the first.
+    rows = _rows(
+        [
+            {
+                'admin_id': 'US-PA-DA',
+                'source_id': 'dauphinco',
+                'version': '2026',
+                'entity_type': 'parcel',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-PA-DA',
+                'source_id': 'dauphinco',
+                'version': '2026',
+                'entity_type': 'parcel',
+                'exclude_from_auto_discover': False,
+            },
+        ]
+    )
+    rows['filename_suffix'] = ['', 'characteristics']
+    rows.loc[1, 'recipe_id'] = 'US-PA-DA_parcel-dauphinco-2026_characteristics'
+    discovered = _discover(monkeypatch, rows, 'parcel', 'US-PA-DA-HAR')
+    assert {s['recipe_id'] for s in discovered} == {
+        'US-PA-DA_parcel-dauphinco-2026',
+        'US-PA-DA_parcel-dauphinco-2026_characteristics',
+    }
+
+
+def test_expand_auto_discover_keeps_every_transaction_version(monkeypatch):
+    # Wisconsin's 2020 and 2026 RETR recipes are different sales
+    # (historical files and the current download), not vintages.
+    rows = _rows(
+        [
+            {
+                'admin_id': 'US-WI',
+                'source_id': 'widor',
+                'version': version,
+                'entity_type': 'transaction',
+                'exclude_from_auto_discover': False,
+            }
+            for version in ('2020', '2026')
+        ]
+    )
+    discovered = _discover(monkeypatch, rows, 'transaction', 'US-WI-VI')
+    assert [s['recipe_id'] for s in discovered] == [
+        'US-WI_transaction-widor-2026',
+        'US-WI_transaction-widor-2020',
+    ]
+
+
 def test_expand_auto_discover_skips_an_explicitly_listed_layer(monkeypatch):
     # A bundled additional_layers table listed explicitly must not be
     # rediscovered: the guard compared a bare recipe id against the

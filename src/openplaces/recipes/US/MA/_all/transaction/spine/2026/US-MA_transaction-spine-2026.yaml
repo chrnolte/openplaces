@@ -12,7 +12,17 @@
 # too, so their scoped documents are unaffected.
 #
 # The sale's id is its document, so Massachusetts ids read
-# `US-MA-SOM_<book>-<page>` from this patch on.
+# `US-MA-SOM_<book>-<page>` from this patch on, unpadded since
+# 2026-10-19: a registry and MassGIS pad one book and page differently
+# (`646/141` against `00313/0278`), and with the zeros stripped the
+# deed and the roll row citing it name one document. Anything that
+# stored Massachusetts sale ids before then has to re-key.
+#
+# `sale_document_ref` is that document without the record kind's scope,
+# written so the deed and its roll row can be told apart (two sale ids)
+# and still be paired: a deed, which names no parcel, takes the parcel
+# and account of the roll rows citing it (`cited_document`), and the
+# curate flags a roll row that repeats a deed.
 
 admin_id: US-MA
 stage: harmonize
@@ -32,3 +42,24 @@ pipeline_patch:
         - [sale_clerk_instrument]
         - [instrument_number]
         - [sale_book, sale_page]
+      strip_leading_zeros: true
+  - insert_after: derive_document_id
+    step:
+      step: derive_document_id
+      output: sale_document_ref
+      candidates:
+        - [book, page]
+        - [sale_book, sale_page]
+      strip_leading_zeros: true
+
+  # A last sale is a MassGIS assessor row: it names its parcel by the
+  # statewide id (`parcel_id_admin2`, LOC_ID) and its account by
+  # MAP_PAR_ID (`property_id_assessor`), and has no `parcel_id_local`,
+  # so the national passes reached it by address only. Both ids are
+  # exact. Measured 2026-10-18 on US-MA-NTC: parcel_id_admin2 names one parcel for 0.967 of sales.
+  # Measured 2026-10-18 on US-MA-NTC: the address link agrees on 10,801 of 10,805 sales.
+  - set: link_transactions
+    params:
+      parcel_id_keys: [parcel_id_admin2]
+      property_key: property_id_assessor
+      document_key: sale_document_ref

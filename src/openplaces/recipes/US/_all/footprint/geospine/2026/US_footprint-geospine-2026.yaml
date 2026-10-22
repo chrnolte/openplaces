@@ -57,6 +57,13 @@ pipeline:
         # under 450 sq ft; they never enter a footprint spine. Their
         # occupancy attributes still reach footprints as evidence.
         exclude_sources: [fema]
+    # A building crossing a unit line is one building: read the touching
+    # units' outlines that reach into this unit, choose one envelope with
+    # the rules below, and keep this unit's piece of it, so each unit's
+    # parcels value their own piece (maintainer, 2026-10-18;
+    # plans/cross-town-building-reconciliation.md). OPENPLACES_NEIGHBOR_
+    # READS=0 turns it off for a debug run.
+    neighbor_reads: true
     thresholds:
       min_area_m2: 10.0
       overlap_iou_max: 0.02
@@ -64,11 +71,21 @@ pipeline:
       elongated_angle_tol: 15.0
       elongated_long_overlap_min: 0.5
       elongated_lateral_sep_ratio: 2.0
-      # Apply a size-scaled keep-out buffer to prevent small sliver overlaps
-      # from generating duplicate footprints next to large buildings.
-      buffer_min_area_m2: 250.0
-      buffer_base_m: 2.0
-      buffer_area_scale: 0.5
+      # A lower-ranked outline overlapping accepted outlines by more than
+      # a tenth of its own area is a sliver or offset copy of them, even
+      # where its IoU stays small beside a large building. It replaces a
+      # size-scaled keep-out distance, which also removed separate
+      # buildings nearby (plans/footprint-keep-out-zone.md; maintainer,
+      # 2026-10-18).
+      overlap_share_max: 0.1
+      # Microsoft's imagery predates OBM's and the state layers'. A
+      # Microsoft outline clear of every accepted outline is left out
+      # where most of Microsoft's other outlines within 50 m match none:
+      # there its picture predates demolition and rebuilding.
+      stale_check_labels: [microsoft]
+      stale_radius_m: 50.0
+      stale_min_neighbors: 4
+      stale_agreement_min: 0.5
 
   - step: link_to_reference
     entity_type: parcel

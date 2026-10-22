@@ -279,11 +279,11 @@ def test_the_gate_refuses_values_redaction_missed(
 
 def test_team_regions_are_declared_beside_their_region():
     specs = delivery_module.delivery_regions('US_footprint-openplaces-2026')
-    team = [spec for spec in specs if spec['audience'] == 'team']
+    team = {spec['region_id']: spec for spec in specs if spec['audience'] == 'team'}
     base = next(spec for spec in specs if spec['region_id'] == 'cheer-eastern-nc')
 
-    assert [spec['region_id'] for spec in team] == ['cheer-eastern-nc.team']
-    assert team[0]['admin_ids'] == base['admin_ids']
+    assert set(team) == {'cheer-eastern-nc.team', 'washington-dc.team'}
+    assert team['cheer-eastern-nc.team']['admin_ids'] == base['admin_ids']
     assert base['audience'] == 'public'
 
 

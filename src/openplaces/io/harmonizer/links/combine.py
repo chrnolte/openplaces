@@ -80,13 +80,14 @@ def _write_prioritized(
     provenance_token : str, optional
         When given, also updates the ``{name}_source`` categorical sidecar
         (via :func:`openplaces.io.harmonizer._record_source`) for exactly
-        the cells this call actually changes -- a value written where none
-        existed, or an existing value outright replaced on a
-        majority-coverage overwrite. Cells left unchanged (including
-        still-null cells) are never touched. Reserve this for a recipe's
-        declared "key" columns (see ``link_by_id``'s ``track_provenance``)
-        rather than every joined attribute, to avoid a provenance-sidecar
-        column explosion.
+        the cells this call wrote. On a gap fill that is every cell that
+        was empty and now holds a value. On a majority-coverage overwrite
+        it is every cell *new_vals* holds a value for, including cells
+        whose value it replaced with an equal one. A cell *new_vals*
+        leaves empty keeps its value and its label. Reserve this for a
+        recipe's declared "key" columns (see ``link_by_id``'s
+        ``track_provenance``) rather than every joined attribute, to
+        avoid a provenance-sidecar column explosion.
     """
     from openplaces.io.harmonizer import _record_source, _record_sources
 
@@ -106,15 +107,31 @@ def _write_prioritized(
     before = spine[name].copy() if provenance_token is not None else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
     existing, incoming = _align_for_combine(spine[name], new_vals)
-    if coverage >= majority_coverage:
+    overwrite = coverage >= majority_coverage
+    if overwrite:
         spine[name] = incoming.combine_first(existing)
     else:
         spine[name] = existing.combine_first(incoming)
 
-    if provenance_token is not None:
-        after = spine[name]
-        changed = after.notna() & (before.isna() | (before != after))
-        _mark(changed)
+    if provenance_token is None:
+        return
+    after = spine[name]
+    if overwrite:
+        # The label names the source the value was taken from, not
+        # the first source that happened to state it. On an overwrite
+        # every non-null incoming cell is that source's value, so all
+        # of them are labeled, equal ones included. Labeling only the
+        # cells whose value changed (the rule before 2026-10-17) left
+        # a statewide layer's label on every parcel where the county
+        # roll agreed with it, so the sidecar under-counted the roll
+        # it was meant to credit (US-TX-HAR, TxGIO vs the HCAD roll).
+        # Values are untouched: this mask only feeds the sidecar.
+        written = incoming.notna() & after.notna()
+    else:
+        # A gap fill writes only where the spine was empty, so the
+        # cells it wrote are exactly the ones that changed.
+        written = after.notna() & (before.isna() | (before != after))
+    _mark(written)
 
 
 #: Columns *ref_address_key* needs on the reference: keyword name of

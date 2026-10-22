@@ -206,12 +206,26 @@ share:
       - boston-outer-rings
       - central-florida-lakes
       - northern-wisconsin
+      # Madison WI, Dane County, for the value pages (2026-10-17).
+      - madison-wi
+      # Nantucket MA, the whole island, for the value pages (2026-10-18).
+      - nantucket-ma
+      # Washington DC and the counties within 15 km of the Wilson
+      # Building (2026-10-19).
+      - washington-dc
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),
     # which every other bundle withholds. Never publish a team bundle.
     team_regions:
       - cheer-eastern-nc
+      # Fairfax County values, cleared for the team (2026-10-20).
+      - washington-dc
+    # An outline two units both curated is cut at the line between
+    # them and each piece keeps its own unit's assessed values
+    # (io/delivery/slicing.py; maintainer, 2026-10-17). Curated files
+    # are unchanged; only the bundle is.
+    slice_at_unit_lines: true
 
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
@@ -341,9 +355,14 @@ pipeline:
       living_area_sqft: living_area_sqft_parcel
 
   # Apportion curated parcel values to footprints:
-  # - improvement_value is split by footprint overlap-area share (residential splitting
-  #   excludes secondary structures; non-residential splits share among all structures).
-  # - land_value goes entirely to the principal footprint.
+  # - improvement_value is split by overlap-area share, or by floor area
+  #   where floor_weight below applies. On a residential lot a secondary
+  #   structure gets none, and its share passes to the lot's other
+  #   footprints; on a non-residential lot every structure keeps its own.
+  # - land_value and total_value go to the principal footprints, divided
+  #   among them by overlap area where a lot has several. A lot that is
+  #   no principal footprint's largest overlap divides them among the
+  #   non-secondary footprints linked to it.
   # - imputed land and improvement values are directly mapped to canonical land_value and
   #   structure_value columns without extra reconciliation.
   - step: apportion_curated_values
@@ -415,8 +434,16 @@ pipeline:
   # plainly does carry improvement value (Manufactured Home F1 -0.0112).
   # This split keeps the structure-level numerator that works and gives it
   # a consistent, parcel-level base.
+  #
+  # allow_missing: a unit whose parcels come from a geometry layer with
+  # no roll states no value at all (Virginia's VGIN parcels in
+  # Alexandria, Arlington and Falls Church), and apportionment above
+  # already skips a value the curated parcel lacks. The two names are
+  # fixed here, so the misspelling the strict default guards against
+  # cannot hide behind it.
   - step: link_curated_entity
     recipe_id: US_parcel-openplaces-2026
+    allow_missing: true
     columns:
       improvement_value: improvement_value_parcel_whole
       land_value: land_value_parcel_whole
@@ -1658,6 +1685,8 @@ pipeline:
   - step: flag_unconfirmed_height
     stories_column: n_stories_footprint_overture
     height_column: height_footprint_overture
+    reconciled_stories_column: n_stories
+    lot_column: parcel_id_local
     min_value_per_sqft: 3500
     max_value_per_floor_sqft: 3000
 

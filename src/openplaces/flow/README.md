@@ -52,3 +52,32 @@ The producers run, their outputs are newer than the consumers', and exactly
 those consumers rerun. A consumed intermediate (absent, with a cleanup
 receipt) is not returned, since `input_paths` already drops it for a job
 whose output exists.
+
+**A staging recipe's ingest is one job for all its units**
+(`ingest_<recipe>_batch` in the Snakefile, for recipes that stage a
+shared archive), and **the profiles keep a failed job's outputs**
+(`keep-incomplete`, `rerun-incomplete`; `flow/submit.py` passes both
+flags when it runs without a profile). Snakemake otherwise deletes every
+output of a failed job, so one failing unit removed the whole recipe's
+good files. What a failed batch leaves is whole, because
+`io.tables.to_parquet` writes under a temporary name
+(`<name>.parquet.tmp-<pid>`, which no `*.parquet` glob matches) and moves
+the file into place, retrying for about 10 s while Dropbox or a reader
+holds the target. Snakemake does not mark those kept files as
+incomplete: a downstream job that needs only a good unit runs on it, and
+the batch reruns when something needs a missing unit (tested 2026-10-17
+on a two-unit batch). An attribute file and its `_geo` sidecar are moved
+one after the other, so the pair is close to, not exactly, atomic. A
+script that calls `snakemake` directly, without a profile, should pass
+`--keep-incomplete --rerun-incomplete` too.
+
+**A footprint geospine depends on its neighbors' footprint ingests.** It
+reconciles buildings crossing the unit line (harmonizer README,
+`spine.py`), so the graph adds, for each touching unit, the ingest jobs
+`io.harmonizer.neighbors.neighbor_inputs` names: the sources the unit reads
+itself, less the step's `exclude_sources`, from recipes and admin polygons
+only. A one-unit run therefore plans more jobs; measured 2026-10-18 on
+US-MA-SOM: 15 more (OBM, Microsoft and MassGIS for 5 neighbors).
+`OPENPLACES_NEIGHBOR_READS=0` in the environment of the `snakemake` call
+drops the edges and the reads together for a debug run, and the geospine's
+sidecar fingerprints record it, so a later full run rebuilds it.

@@ -85,7 +85,12 @@ def load_geospine(
     re-keying is a rename while the relation is one to one; a row without
     a source id gets no links, and several rows sharing one source id are
     refused, because fanning a link out to them is a decision (slice b3
-    of the building spine) and not a lookup.
+    of the building spine) and not a lookup. A row built from several
+    source rows names only one of them, so the others' links would
+    stay unattributed: merging rows needs a link table as its key, not
+    this column. The spine's source ids must also be exactly the
+    source geospine's ids, or this spine was built from another version
+    of it and the step raises.
 
     Parameters
     ----------
@@ -179,6 +184,7 @@ def _restore_foreign_links(
             'several rows is a decision the slice that splits rows has to make.'
         )
     mapping = pd.Series(spine.index[present.to_numpy()], index=keys[present].to_numpy())
+    _require_same_rows(state, other, keys[present])
 
     already = set(state.crosswalks)
     for step_index, step_cfg in enumerate(other.get('pipeline') or []):
@@ -207,6 +213,30 @@ def _restore_foreign_links(
             f'{links_key} -> {spine_id_col}'
         )
     return state
+
+
+def _require_same_rows(state: HarmonizeState, other: dict, keys: pd.Series) -> None:
+    """Refuse links from a geospine this spine was not built from.
+
+    This spine (the building geospine's rows) names each row's source by
+    *keys*; the source geospine's ids are geometry hashes, so a rebuilt
+    source with any changed outline has ids this spine does not carry,
+    and this spine has ids the source dropped. Re-keying across that
+    gap gave the dropped rows no evidence and the new outlines no row,
+    silently. Ids rather than file times, because a sync tool touching
+    a file changes its mtime and not its content.
+    """
+    source_ids = get_entities(other, state.admin_id, geom=False, columns=[]).index
+    stale = keys[~keys.isin(source_ids)]
+    new = source_ids.difference(pd.Index(keys))
+    if len(stale) or len(new):
+        raise ValueError(
+            f'load_geospine: this spine was built from another version of '
+            f'{get_recipe_id(other)} for {state.admin_id} ({len(stale):,d} of its '
+            f'rows are gone there, {len(new):,d} rows there are new). Rerun '
+            'the geospine this spine is built from (the building geospine) '
+            'before this recipe.'
+        )
 
 
 def _rekey_frame(frame, old: str, new: str, mapping: pd.Series):
@@ -290,9 +320,10 @@ def adopt_entity_attributes(
         Column of that spine holding this spine's id. Defaults to this
         spine's index name. A row of the other spine without a key is
         ignored (a building with no outline); several rows sharing one
-        key are refused, as is a spine row no other row names, because
-        either means the relation is no longer one to one and the
-        projection would have to choose.
+        key are refused, as is a spine row no other row names and a
+        keyed row naming no spine row, because each means the relation
+        is no longer one to one, or the two spines were built from
+        different versions of the outlines.
     rename : dict, optional
         Column renames applied to the adopted columns.
     """
@@ -321,6 +352,16 @@ def adopt_entity_attributes(
         raise ValueError(
             f'adopt_entity_attributes: {len(missing):,d} {own_id} rows have no '
             f'row in {recipe_id}; rerun it for {state.admin_id} first.'
+        )
+    # The other way round too: a keyed row this spine lacks means the
+    # other spine was built from rows this one no longer has, and
+    # dropping it in the reindex below hid that.
+    extra = other.index.difference(spine.index)
+    if len(extra):
+        raise ValueError(
+            f'adopt_entity_attributes: {len(extra):,d} rows of {recipe_id} name '
+            f'a {own_id} this spine lacks; it was built from another version '
+            f"of this spine's geospine. Rerun it for {state.admin_id} first."
         )
     other = other.reindex(spine.index).drop(columns='geometry', errors='ignore')
     # A rename naming a column the other spine lacks is not an error: a
@@ -479,6 +520,11 @@ def _restore_link(
         linked = _load_point_link_sidecar(
             sidecar_path, fingerprint, verbose=state.verbose
         )
+        # An empty file is what the geospine writes for a reference with
+        # no points in the unit; it restores exactly as no file did, by
+        # the reference check below.
+        if linked is not None and linked.empty:
+            linked = None
         if linked is None:
             probe = get_entities(
                 resolved_id, state.admin_id, geom=False, missing='ignore', columns=[]

@@ -150,10 +150,14 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
     """Validity fingerprint for a checkpoint after step *upto*.
 
     The ordered config hashes of every step up to and including the
-    checkpointed one, plus the size/mtime of the entity_recipe output
-    the pipeline loads (the geospine for the split spine recipes): a
-    change to any covered step config or to the loaded input
-    invalidates the checkpoint, a change to a later step does not.
+    checkpointed one, plus the size/mtime of every geospine output the
+    covered steps load: the entity_recipe, and the geospine a
+    `load_geospine` step names under `links_recipe_id` (the building
+    spine re-keys the footprint geospine's link sidecars). A change to
+    any covered step config or to a loaded input invalidates the
+    checkpoint, a change to a later step does not. Until 2026-10-17 only
+    the entity_recipe was stamped, so a footprint geospine rerun on its
+    own left the building spine restoring its old parcel evidence.
     """
     import hashlib
     import json as _json
@@ -169,21 +173,29 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
                 _json.dumps(safe, sort_keys=True, default=str).encode()
             ).hexdigest()[:16]
         )
-    source = None
-    entity_recipe_id = recipe.get('entity_recipe')
-    if entity_recipe_id:
+    upstream_ids = [recipe.get('entity_recipe')] + [
+        step_cfg.get('links_recipe_id')
+        for step_cfg in pipeline[: upto + 1]
+        if isinstance(step_cfg, dict) and step_cfg.get('step') == 'load_geospine'
+    ]
+    sources = []
+    for upstream_id in upstream_ids:
+        if not upstream_id:
+            continue
         try:
-            upstream = get_recipe_by_id(str(entity_recipe_id))
+            upstream = get_recipe_by_id(str(upstream_id))
             path = get_output_path(upstream, admin_id)
             stat = path.stat()
-            source = {
-                'path': path.name,
-                'size': stat.st_size,
-                'mtime': round(stat.st_mtime, 3),
-            }
+            sources.append(
+                {
+                    'path': path.name,
+                    'size': stat.st_size,
+                    'mtime': round(stat.st_mtime, 3),
+                }
+            )
         except Exception:
-            source = None
-    return {'format': 1, 'steps': hashes, 'source': source}
+            sources.append(None)
+    return {'format': 2, 'steps': hashes, 'sources': sources}
 
 
 def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):

@@ -316,9 +316,11 @@ def _read_inputs(
     #    on. Nothing to recover, so the rate estimate stands -- but it is
     #    now capped, because land cannot exceed the parcel's whole value.
     #  - total > improvement (33.5%): a real land component was recorded
-    #    all along and is exactly total - improvement. No estimate needed,
-    #    and the improvement figure is already land-free, so it must NOT
-    #    be reduced afterwards.
+    #    all along and is total - improvement (less a roll's other value,
+    #    below). No estimate needed, and the improvement figure is already
+    #    land-free, so it must NOT be reduced afterwards. Two exceptions
+    #    go to the rate instead: a total repeated on every record of a
+    #    lot, and a residual that is only the other value.
     #
     # On the second group the estimate was not merely unnecessary but
     # wrong in both directions: median $35,438 against a recorded

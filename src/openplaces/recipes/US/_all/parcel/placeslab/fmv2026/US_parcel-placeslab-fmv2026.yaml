@@ -7,6 +7,13 @@
 # per county from Google Drive. Partitions are left-joined by their
 # shared `parcel_id_int` key post-ingest, which also computes the
 # standard openplaces `geo_id`/`parcel_id` for downstream use.
+#
+# Most counties ship no boundaries (the geometry is restricted) and a
+# `crosswalk` table instead: places' own overlay of its parcels onto
+# an openplaces delivered bundle (parcel_id_new, reference_parcel_id,
+# area_ha, fraction_of_old, match_type; footer: openplaces_commit,
+# bundle_file, bundle_sha256, bundle_rows). A county carries one or
+# the other; Nantucket keeps its boundaries.
 
 description: >-
   Legacy "placeslab-fmv" parcel dataset: predicted fair-market-value and
@@ -24,8 +31,13 @@ admin_id: US
 exclude_from_auto_discover: true
 
 # The predictions table carries the previous model's outputs as well
-# as its inputs (`land_value_per_ha_log_region_nb_2010` and the
-# `aoa` area-of-applicability columns in the column-notes sidecar).
+# as its inputs (`land_value_per_ha_log_<family>_2010`, the
+# `dissimilarity_index` and `aoa` area-of-applicability columns in
+# the column-notes sidecar). Since the 2026-10-18 delivery it holds
+# four model families (county, county-nb, region, region-nb), each
+# with lnusd-ha, DI and AOA for three cross-validation types (r, bg,
+# tbg). They use Fathom and TNC inputs, which is why the Fathom-free
+# variants are a separate source (US_parcel-placeslab-fmv2026open).
 # They exist for parity checks against that model. A valuation
 # connector must never let one into a predictor set: a model fit on
 # its predecessor's prediction reproduces it rather than the market.
@@ -34,9 +46,19 @@ entity:
   entity_type: parcel
   source:
     source_id: placeslab
-    portal_url: "https://drive.google.com/drive/folders/1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ"
-    # Drive folder, scraped via google_drive_scraper using
-    # scraper_options.file_path. The predictions come from a model
+    # Drive folder share/2025/places_fmv_conus, which holds
+    # `parcels/`, scraped via google_drive_scraper using
+    # scraper_options.file_path relative to it. Until 2026-10-18 this
+    # named folder 1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ, an older share
+    # holding 19 counties keyed by county FIPS (MA among them, from
+    # before MA level 3 became the town); it has no town-keyed MA
+    # folder, so the Nantucket pilot (parcels/MA/2501943790) cannot
+    # resolve there. The scraper caches each unit's folder listing
+    # beside its files without the folder URL, so a unit listed under
+    # the old folder keeps that listing until ingested with
+    # redownload=True.
+    portal_url: "https://drive.google.com/drive/folders/1TbKGxtwoDKSmC1ocB2gRzMg272M6ShlF"
+    # The predictions come from a model
     # trained on licensed inputs (ZTRAX, CoreLogic, Regrid), so its
     # columns are withheld from deliveries until the maintainer and
     # Boston University decide whether they may be shown publicly.
@@ -56,7 +78,7 @@ scraper_options:
 download_by:
   admin_level: 3
   partition: table
-  table_names: [boundaries, predictions, predictors]
+  table_names: [boundaries, predictions, predictors, crosswalk]
 
 # The google_drive_scraper handles extraction of the downloaded zip
 # itself, producing a single parquet file named
@@ -66,15 +88,19 @@ uncompressed_file_name: "{admin3_id_admin1}_parcel_{table}.parquet"
 # Opts this entity_type: parcel recipe out of TableIngester's automatic
 # geometry-hash geo_id indexing (table_ingester.py:651-659), which would
 # otherwise fire for `boundaries` (the one table with geometry) and
-# discard its real parcel_id_int index -- predictions/predictors don't
-# have geometry so were never at risk from that branch, but boundaries
-# needs an explicit directive (any directive; rename_index here is a
-# same-name no-op relabel, since parcel_id_int already arrives as the
-# index on all three raw tables) to keep join_partitions_by_index's
-# shared join key intact across the 3-table join.
+# discard its real key index, so boundaries needs an explicit
+# directive to keep join_partitions_by_index's shared join key intact
+# across the 3-table join. The key is the parcel's geometry_sha3_224,
+# which some deliveries store as the pandas index and others (MA,
+# 2026-10-19) as an ordinary column beside a RangeIndex.
+# index_by_key_column promotes the column when present and otherwise
+# keeps the index, so the join pairs rows by parcel in both layouts,
+# never by row position. The crosswalk's reference_parcel_id names
+# the same hashes.
 create_index:
-  function: openplaces.io.transform.rename_index
+  function: openplaces.io.transform.index_by_key_column
   args:
+    column: geometry_sha3_224
     name: parcel_id_int
 
 # Automatically left-joins the 3 table partitions above (column-wise, on
@@ -82,8 +108,21 @@ create_index:
 # ingested. join_key_name keeps parcel_id_int as a provenance column on the
 # joined output (whose own index becomes the standard openplaces
 # geo_id/parcel_id) -- see Ingester._join_table_partitions.
+#
+# `crosswalk` is a sidecar table: downloaded like the other three,
+# but copied as received (footer intact) to its own partition file
+# and never joined, because its rows are pairs of parcels (n:m), not
+# reference parcels. A county without `boundaries` but with a
+# crosswalk still gets its predictions and predictors joined, without
+# geometry, indexed by parcel_id_int. One recipe with an optional
+# table, rather than a second recipe for crosswalk counties, keeps
+# one reference recipe id for the enrich step and the DAG, and lets
+# a county move from one delivery form to the other without a recipe
+# change. The enrich step reads the sidecar (delivered_crosswalk_table
+# in US_parcel_parcel-placeslab-fmv2026.yaml).
 join_partitions_by:
   join_key_name: parcel_id_int
+  sidecar_tables: [crosswalk]
 
 # Keep all raw columns at ingest. They are mapped and canonicalized
 # later during enrichment using the column-notes CSV

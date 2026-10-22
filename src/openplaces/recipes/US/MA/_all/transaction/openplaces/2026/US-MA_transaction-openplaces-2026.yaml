@@ -1,0 +1,27 @@
+# Patch: Massachusetts transaction curation, a roll row that repeats a
+# registry deed.
+#
+# The national recipe's second `flag_sales_matching_other_kind` pass
+# keys on [book, page], which a deed carries and a MassGIS last-sale row
+# does not (it carries `sale_book` and `sale_page`), and the two pad
+# them differently: every Massachusetts last-sale row was left
+# unflagged. The spine patch writes `sale_document_ref`, the book and
+# page without the record kind's scope and without leading zeros, on
+# both kinds; the flag keys on it here. The test stays exact on four
+# values (the reference, year, month and price).
+
+admin_id: US-MA
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - set: flag_sales_matching_other_kind
+    occurrence: 2
+    params:
+      key_column: sale_document_ref

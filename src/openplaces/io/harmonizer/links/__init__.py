@@ -37,6 +37,7 @@ from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     discovery,
     overlaps,
     points,
+    roll_values,
     sidecars,
     spatial,
 )
@@ -100,6 +101,15 @@ from openplaces.io.harmonizer.links.points import (  # noqa: F401
     _point_quality_sort,
     _point_step_config,
     flag_duplicate_points,
+)
+from openplaces.io.harmonizer.links.roll_values import (  # noqa: F401
+    NOT_ON_ROLL_MIN_COVERAGE,
+    _coarser_than,
+    _recipe_scope,
+    _source_scopes,
+    apply_roll_values,
+    blank_values_not_on_roll,
+    parse_roll_values,
 )
 from openplaces.io.harmonizer.links.sidecars import (  # noqa: F401
     _fingerprint_safe_step,

@@ -1,0 +1,274 @@
+# Recipe: Washington, DC Office of Tax and Revenue (OTR) "Integrated
+# Tax System Public Extract" (ITSPE): the real property tax roll.
+#
+# Source: Hub item 7d5e6cabd2304e779c719a4d5515af77, layer 0 of the
+# hosted service ITSPE_08172026 (services.arcgis.com/neT9SoYxizqTHZPH;
+# the service name carries the extract date 2026-08-17). The same
+# table is layer 53 "ITSPE" of the DCGIS_DATA/
+# Property_and_Land_WebMercator MapServer that serves the sibling lot
+# recipes (dcgovrecordlots, layer 35; dcgovtaxlots, layer 39) and the
+# CAMA tables (dcgovcamaresidential, layer 25; dcgovcamacondo, layer
+# 24). A table without geometry, one row per SSL. Field meanings come
+# from the MapServer layer's aliases and its data dictionary (layer
+# 66, "ITSPE OWNER POLY DATA DICTIONARY"). Read the residential CAMA
+# header for why each OTR table has its own source_id.
+#
+# BULK vs REST (equivalence test, 2026-10-19). The Hub CSV export
+# carries the live service's 218 field names exactly (none missing,
+# none extra) and reconciles exactly against both endpoints, whose
+# counts agree with each other:
+# Measured 2026-10-19 on US-DC: export 221,667 rows = server 221,667.
+# Measured 2026-10-19 on US-DC: NEWLAND > 0 on 215,861 rows, both sides.
+# Measured 2026-10-19 on US-DC: NEWIMPR > 0 on 204,135 rows, both sides.
+# Measured 2026-10-19 on US-DC: NEWTOTAL > 0 on 216,100 rows, both sides.
+# Measured 2026-10-19 on US-DC: SALEPRICE > 0 on 130,878 rows, both sides.
+# The export's dates are plain strings (SALEDATE 'YYYY/MM/DD'), so
+# the epoch-millisecond trap of the REST lot recipes does not apply.
+#
+# ROW SHAPE. One row per SSL: 221,667 rows, 221,667 distinct SSL, all
+# 12 characters, none null. SSL shapes (fabricated): '9999    9999'
+# on 213,308 rows, '9999A   9999' (square suffix) on 6,427, 'PAR
+# 99999999' (unplatted parcels) on 1,420, a few hundred others.
+#
+# DEAD SSLs. DELCODE 'Dead or Active SSL' is 'Y' on 5,701 rows
+# (retired accounts: NEWTOTAL is 0 on 5,248 of them, USECODE null on
+# 4,265). They are filtered out by `query` below, so the output is the
+# 215,966 active accounts.
+# Measured 2026-10-19 on US-DC: 215,647 of 215,966 active SSL NEWTOTAL > 0.
+#
+# VALUES. Three vintages sit side by side:
+#   NEWLAND/NEWIMPR/NEWTOTAL 'Proposed Land/Build/Total': the latest
+#     assessment, mapped. NEWTOTAL = NEWLAND + NEWIMPR on every row.
+#   PHASELAND/PHASEBUILD 'Current Land/Build', summing to ASSESSMENT
+#     'Current Assessed Value Total' on every row: the year being
+#     billed (CY1YEAR, the current bill year, is 2026 on all but 4
+#     rows). Not mapped: the registry has one land_value.
+#   OLDLAND/OLDIMPR/OLDTOTAL 'Prior Year': not mapped (see LEFT
+#     UNDECIDED).
+# District sums: NEWTOTAL 394.9 bn, ASSESSMENT 380.2 bn, OLDTOTAL
+# 386.3 bn USD; NEWTOTAL equals ASSESSMENT on 43,842 rows only. DC
+# Code 47-820(a) sets assessed value at estimated market value, so
+# these are market values; the homestead cap (CAPCURR, CAPPROP)
+# limits taxable value, not these figures. A value of 0 is kept as
+# shipped (NEWIMPR is 0 on vacant land, NEWTOTAL on exempt shells).
+#
+# USE CODE. USECODE 'Property Use Code', three digits with leading
+# zeros (csv_dtype str keeps them), 92 codes, null on 430 active
+# rows; mapped as published to use_group_code. PROPTYPE 'Type of
+# property, obtained from use code' is its description and is mapped
+# to use_group in the source's wording. It is cut at 30 characters
+# by the extract ('Residential-Single Family (Row' is how the source
+# spells code 011), and 3 of the 92 codes carry two descriptions.
+# No crosswalk to the openplaces use groups is written here.
+#
+# LAND AREA. LANDAREA 'Square footage of land per surveyor' ->
+# land_area_sqft, 0 nulled (1,649 active rows). Median 2,097 sqft on
+# lots; 376 sqft on condominium units, where it is the unit's land
+# share (which the registry's land_area_sqft allows for).
+#
+# ADDRESS. PREMISEADD 'Property address' is populated on 221,641
+# rows and spells number, street, quadrant, an optional '# unit',
+# then 'WASHINGTON DC' and a ZIP. The transformations below keep the
+# part before ' WASHINGTON DC' and before ' #' as address, and the
+# five-digit ZIP after 'WASHINGTON DC' as postal_code (4,691 active
+# rows carry a shorter or no ZIP, left null). UNITNUMBER 'Unit
+# Number' -> address_unit (84,149 rows). Streets named Washington
+# survive the cut (198 active rows contain the word afterwards, none
+# of them 'WASHINGTON DC').
+#
+# LAST SALE. SALEPRICE 'Most recent property sale price' and
+# SALEDATE 'Most recent property sale date' -> last_sale_price and
+# last_sale_date. SALEDATE is present on 181,718 rows (1910 to 2026;
+# no sentinel spike). SALEPRICE is never null but is 0 on 90,789
+# rows: 39,949 of those have no sale date (no sale recorded) and
+# are nulled below, while 50,840 carry a date and keep their 0 as
+# the recorded consideration. ACCEPTCODE 'Property sale acceptance
+# code' -> last_sale_qualification_code in the source's wording
+# (20 values: 'Market Sale', 'Buyer = Seller', 'Multi-Market
+# Sale', 'Foreclosure', ...). SALETYPE 'Type of property sale'
+# ('Improved', 'Vacant') -> last_sale_vacant.
+#
+# NEIGHBORHOOD. NBHD "Assessor's Neighborhood Code" ->
+# tax_neighborhood_code (70 codes, never null).
+#
+# JOIN KEY. Like the siblings, SSL is copied to parcel_id_assessor
+# and converted with the default 'simple' rule (no US-DC row in the
+# parcel id overrides). Overlap, against the CAMA tables' Hub
+# exports and the lot recipes' downloads of 2026-08-19 (175,455
+# distinct lot SSL):
+# Measured 2026-10-19 on US-DC: 109,232 of 109,233 CAMA residential SSL in ITSPE.
+# Measured 2026-10-19 on US-DC: 61,329 of 61,329 CAMA condominium SSL in ITSPE.
+# Measured 2026-10-19 on US-DC: 129,502 of 215,966 active SSL are a lot SSL.
+# Measured 2026-10-19 on US-DC: 129,502 of 175,422 lot keys meet an active SSL.
+# The unmatched active SSL are mostly condominium units (next
+# section), plus air-rights lots (lot numbers 7000 and up, 1,199)
+# and 'PAR' parcels (1,355), which neither lot layer draws.
+#
+# CONDOMINIUM UNITS. A condominium unit is its own SSL, numbered in
+# the 2000 series within its square, and is not a lot: none of the
+# 61,577 rows with USECODE 016 or 017 (residential condominium) is a
+# lot SSL, none of the 6,461 investment-unit rows (216, 217), and 41
+# of the 14,271 garage-unit rows (018). Each unit row is one
+# property, as the entity model wants,
+# and this recipe only ingests it. The unit-to-lot relation is
+# OTR's CONDORELATE table (layer 52 of the same MapServer, 73,545
+# rows: unit SSL to its regime's record, tax or air-rights lot),
+# with CONDOONETOMANY (55) and CONDO REGIME (72) beside it. Folding
+# unit values onto the lot polygon is the curate's job and is not
+# built here; until it is, a condominium lot carries no value from
+# this roll.
+#
+# PERSONAL COLUMNS, deliberately not mapped: OWNERNAME, OWNNAME2,
+# CAREOFNAME (owner and bill recipient names), ADDRESS1, ADDRESS2,
+# CITYSTZIP (tax billing address), MORTGAGECO.
+#
+# LEFT UNMAPPED for want of a registry attribute or by choice: the
+# square, suffix and lot parts of SSL; ARN and ASRNAME (assessor);
+# CLASSTYPE (tax class 1A, 1B, 2, 3, 4) and TAXRATE; HSTDCODE
+# (homestead); MIXEDUSE and the MIX1/MIX2 blocks; QDRNTNAME; NBHDNAME,
+# SUBNBHD, PRMS_WARD, BIDNAME; OWNOCCT/COOPUNITS (co-op units);
+# ABTLOTCODE, PRESSL, PIPARENTLOT (lot lineage); INST_NO and DEEDDATE
+# (the deed of the last sale; the registry has no last-sale
+# instrument number); every tax bill, payment and balance field
+# (CY*, PY*, AMTDUE*, TOT*, BID*, SEWS*, PACE*, SWWSAD*, ANNUALTAX);
+# EXTRACTDAT, REASONCD; TRIGROUP, PCHILDCODE and VACLNDUSE (empty).
+#
+# DRY INGEST (2026-10-19): the recipe run in memory through
+# TableIngester._preprocess_recipe_data and _add_parcel_id_local on
+# the Hub export, nothing written. 215,966 rows; parcel_id_local
+# filled and distinct on every row; no personal column survives.
+# Measured 2026-10-19 on US-DC: total_value sums to 383.9 bn USD over active SSL.
+# Measured 2026-10-19 on US-DC: last_sale_price on 177,881 rows, > 0 on 127,810.
+# Measured 2026-10-19 on US-DC: use_group_code on 215,536 of 215,966 rows.
+#
+# LEFT UNDECIDED. (1) tax_year: the extract does not name the tax
+# year of the 'Proposed' values; with the current bill year 2026
+# they are most likely tax year 2027, but that is not stated, so no
+# tax_year is set. (2) OLD* as *_prior_year: those columns mean the
+# year before tax_year, which is not set here, and NEWTOTAL is > 0
+# on 99.9% of active rows, so the fallback would add little.
+#
+# License: the Hub item states CC BY 4.0; DC's district-data terms
+# page dedicates District data to the public domain (CC0 1.0),
+# permits redistribution and commercial use, and asks for (does not
+# require) attribution. No resale clause, no click-through.
+
+description: >-
+  Washington, DC OTR Integrated Tax System Public Extract: proposed land,
+  improvement and total values, use code, land area, address and last sale per SSL.
+
+admin_id: US-DC
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcgovitspe
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::integrated-tax-system-public-extract/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/7d5e6cabd2304e779c719a4d5515af77_0/downloads/data?format=csv&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "dc_itspe.csv"
+encoding: utf-8-sig
+csv_dtype: str
+
+# Retired accounts; see the header's DEAD SSLs.
+query: 'DELCODE != "Y"'
+
+columns:
+  parcel_id_admin2: SSL
+  land_value: NEWLAND
+  improvement_value: NEWIMPR
+  total_value: NEWTOTAL
+  use_group_code: USECODE
+  use_group: PROPTYPE
+  land_area_sqft: LANDAREA
+  address: PREMISEADD
+  address_unit: UNITNUMBER
+  tax_neighborhood_code: NBHD
+  last_sale_price: SALEPRICE
+  last_sale_date: SALEDATE
+  last_sale_qualification_code: ACCEPTCODE
+  last_sale_vacant: SALETYPE
+
+transformations:
+  # Raw SSL as the key parcel_id_local derives from, as in the
+  # sibling lot and CAMA recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: to_numeric
+    input: land_area_sqft
+    output: land_area_sqft
+  # A land area of 0 is a missing figure, not a lot without land.
+  - type: unary
+    operation: null_if_equal
+    input: land_area_sqft
+    output: land_area_sqft
+    args:
+      value: 0
+  # The ZIP is read before the address is cut down to the street.
+  - type: string
+    operation: extract_named
+    input: address
+    output: postal_code
+    args:
+      pattern: 'WASHINGTON DC (?P<postal_code>\d{5})'
+  - type: string
+    operation: split_take
+    input: address
+    output: address
+    args: {sep: " WASHINGTON DC", index: 0}
+  - type: string
+    operation: split_take
+    input: address
+    output: address
+    args: {sep: " #", index: 0}
+  - type: string
+    operation: strip
+    input: address
+    output: address
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+  - type: unary
+    operation: to_numeric
+    input: last_sale_price
+    output: last_sale_price
+  # A price with no sale date is the extract's 0 for "no sale
+  # recorded"; a dated 0 is kept as the recorded consideration.
+  - type: expression
+    expression: "last_sale_price.where(last_sale_date.notna())"
+    inputs: [last_sale_price, last_sale_date]
+    output: last_sale_price
+
+columns_to_categorical:
+  - use_group_code
+  - use_group
+  - tax_neighborhood_code
+  - last_sale_qualification_code
+  - last_sale_vacant
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

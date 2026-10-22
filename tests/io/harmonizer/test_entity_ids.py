@@ -109,6 +109,23 @@ def test_only_the_latest_roll_year_of_a_panel_is_kept():
     assert select_latest_vintage(rows.drop(columns='tax_year'))[1] == 0
 
 
+def test_rows_stamped_with_different_years_are_not_a_panel():
+    # Each row is its own property with its own roll year (units split
+    # off Wisconsin's statewide layer): nothing repeats, nothing goes.
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['U1', 'U2', 'U3', 'U4'],
+            'tax_year': [2024, 2024, 2024, 2025],
+        }
+    )
+    kept, n_dropped = select_latest_vintage(rows)
+    assert len(kept) == 4 and n_dropped == 0
+    # The same years on a key that repeats are a panel.
+    panel = rows.assign(parcel_id_local=['U1', 'U1', 'U2', 'U1'])
+    kept, n_dropped = select_latest_vintage(panel)
+    assert kept['parcel_id_local'].tolist() == ['U1'] and n_dropped == 3
+
+
 def test_split_units_keep_the_numbers_that_do_name_one_unit():
     # A parcel layer that repeats the lot's number on every unit of one
     # stack, and gives the units of another their own.

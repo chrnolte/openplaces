@@ -1,0 +1,30 @@
+# Patch: carry MassGIS's polygon type onto Massachusetts parcels.
+#
+# MassGIS types every polygon of its tax-parcel layer (POLY_TYPE: FEE,
+# TAX, ROW, PRIV_ROW, RAIL_ROW, WATER). The parcel geospine does not
+# keep the column, so the curate step that blanks the land-use class
+# of street, rail and water polygons (US-MA_parcel-openplaces-2026)
+# could not see it. Joined here by LOC_ID, which is unique per polygon,
+# so the change needs an attribute-only rerun, not a geometry one.
+# After the spine's checkpointed step, so a restored checkpoint cannot
+# skip it (plans/middlesex-fells-lot-values-findings.md).
+
+admin_id: US-MA
+stage: harmonize
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_parcel-spine-2026
+pipeline_patch:
+  - insert_before: estimate_property_counts
+    step:
+      step: link_by_id
+      recipe_id: US-MA_parcel-massgis-2025
+      mode: attributes
+      spine_key: parcel_id_admin2
+      ref_key: parcel_id_admin2
+      columns: [polygon_type]

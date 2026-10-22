@@ -80,6 +80,45 @@ def _building_state(footprint_ids):
     )
 
 
+def _footprint_ids(*ids):
+    """A get_entities stand-in returning a footprint geospine's ids."""
+
+    def fake(*args, **kwargs):
+        return pd.DataFrame(index=pd.Index(list(ids), name='footprint_id'))
+
+    return fake
+
+
+def _footprint_geospine_recipe(monkeypatch):
+    monkeypatch.setattr(
+        load_module,
+        'get_recipe_by_id',
+        lambda rid: {
+            'recipe_id': rid,
+            'entity': Entity('footprint', 'geospine', '2026'),
+            'pipeline': [],
+        },
+    )
+
+
+def test_foreign_links_refuse_a_rebuilt_source_geospine(monkeypatch):
+    # The footprint geospine was rebuilt: f1 is gone, f3 is new, and the
+    # building geospine still carries f1.
+    _footprint_geospine_recipe(monkeypatch)
+    monkeypatch.setattr(load_module, 'get_entities', _footprint_ids('f2', 'f3'))
+    state = _building_state(['f1', 'f2'])
+    with pytest.raises(ValueError, match='another version'):
+        _restore_foreign_links(state, 'US_footprint-geospine-2026', None, 'building_id')
+
+
+def test_foreign_links_refuse_a_source_with_new_rows(monkeypatch):
+    _footprint_geospine_recipe(monkeypatch)
+    monkeypatch.setattr(load_module, 'get_entities', _footprint_ids('f1', 'f2'))
+    state = _building_state(['f1'])
+    with pytest.raises(ValueError, match='1 rows there are new'):
+        _restore_foreign_links(state, 'US_footprint-geospine-2026', None, 'building_id')
+
+
 def test_foreign_links_refuse_rows_sharing_a_source_id(monkeypatch):
     monkeypatch.setattr(
         load_module,
@@ -126,6 +165,7 @@ def test_foreign_links_are_restored_with_the_source_key_and_rekeyed(monkeypatch)
         return state
 
     monkeypatch.setattr(load_module, '_restore_link', fake_restore)
+    monkeypatch.setattr(load_module, 'get_entities', _footprint_ids('f1'))
     state = _building_state(['f1', None])
     state.crosswalks['kept'] = pd.DataFrame({'footprint_id': ['f1']})
     state = _restore_foreign_links(
@@ -214,6 +254,16 @@ def test_adopt_refuses_two_buildings_on_one_footprint(monkeypatch):
         load_module, 'get_entities', lambda *a, **k: _buildings(('f1', 'f1', 'f2'))
     )
     with pytest.raises(ValueError, match='share a footprint_id'):
+        adopt_entity_attributes(_footprint_state(), 'US_building-spine-2026')
+
+
+def test_adopt_refuses_a_building_naming_a_footprint_this_spine_lacks(monkeypatch):
+    # The building spine was built from a footprint geospine holding f3,
+    # which this footprint spine no longer has.
+    monkeypatch.setattr(
+        load_module, 'get_entities', lambda *a, **k: _buildings(('f1', 'f2', 'f3'))
+    )
+    with pytest.raises(ValueError, match='another version'):
         adopt_entity_attributes(_footprint_state(), 'US_building-spine-2026')
 
 

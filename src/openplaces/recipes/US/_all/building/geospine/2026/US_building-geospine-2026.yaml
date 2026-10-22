@@ -11,9 +11,10 @@
 # What it does: takes the footprint geospine's rows as the single source
 # (geometry, the geographic ids the footprint geospine already joined,
 # each outline's own provenance), keeps each row's footprint id in
-# `footprint_id` and indexes the spine by `building_id`, minted from the
-# geometry the way `footprint_id` is, so the two ids are equal while the
-# relation is one to one. The footprint-to-building link table is
+# `footprint_id` and indexes the spine by `building_id`, which takes
+# the footprint id's value (adopt_source_entity_id), so the two ids are
+# equal while the relation is one to one; a building that is not one
+# outline gets its id from the step that adds it. The footprint-to-building link table is
 # written by the attribute recipe (US_building-spine-2026), which also
 # runs every attribute step that used to run on the footprint spine
 # (slice b2), against the footprint geospine's link sidecars re-keyed

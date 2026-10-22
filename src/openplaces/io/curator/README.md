@@ -130,8 +130,14 @@ Steps are organized by the nature of the transformation:
   `+`-separated parts of `occupancy_type_source`.
 - `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
   `order_columns`)
-- `filters.py` — (stub) remove records that do not belong in the canonical
-  dataset
+- `filters.py` — remove records that do not belong in the canonical
+  dataset, by value or by numeric threshold (`exclude_by_value`,
+  `keep_by_value`, `filter_numeric_at_least`, `exclude_numeric_above`),
+  and `normalize_id_column`. A threshold drops rows whose value is
+  missing too, because a missing value is never at least the minimum;
+  the parcel recipe's 1 m2 floor on `area_ha` relies on every curated
+  parcel carrying an area. Links that name a dropped parcel stay in
+  their tables (`apportion_curated_values` warns with a count).
 - `transactions.py` — steps for the transaction entity, which **grade and
   flag and never drop**. Since 2026-09-29 the rows arrive from
   `US_transaction-spine-2026` already as the entity: one row per recorded
@@ -251,9 +257,23 @@ dropped or flattened it before 2026-08-21.
 These concern-based modules mirror the processor categories used by related
 inventory systems, while remaining native to the openplaces recipe and state
 architecture. Value selection, gap-filling, and occupancy inference were
-migrated here from the harmonize stage; the harmonized spine
-(`US_footprint-spine-2026`) is now an evidence-only table. Curation outputs are
+migrated here from the harmonize stage; the harmonized spines are
+evidence-only tables (`US_footprint-spine-2026` is a projection of
+`US_building-spine-2026`, see the harmonizer README). Curation outputs are
 full entity recipes, not sidecar evidence tables.
+
+**Footprint values are pieces of the parcel's.** `apportion_curated_values`
+splits a parcel's improvement value among its footprints by overlap area,
+or by floor area (outline times measured floors, `floor_weight`) where
+every outline on the lot has a height or is under `unmeasured_max_m2`;
+a secondary structure's share passes to the lot's other footprints. Land
+and total value go to the principal footprints, divided by overlap area.
+A parcel that is no principal footprint's largest overlap (a lot of a
+townhome row drawn as one outline, a unit lot under a condominium
+cluster) divides its land and total among the footprints linked to it
+that are neither secondary nor dwelling-suppressed. Footprint sums still
+fall short of parcel sums, by the parcels with no footprint or only
+secondary ones; read regional totals from curated parcels.
 
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 

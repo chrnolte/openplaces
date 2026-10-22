@@ -8,6 +8,7 @@ from typing import NamedTuple
 # patch these three names on `openplaces.recipe`, and a function that
 # had imported them would keep the originals.
 from openplaces import recipe as _recipe
+from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
 from openplaces.core.schema import (
     AdminId,
     admin_scope_covers,
@@ -80,9 +81,12 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
     does at run time. That includes the dedup key: one recipe per
     (admin_id, source_id, filename_suffix), newest version, exactly as
     :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`
-    does. Emitting every version instead made the older file a declared
-    input, and a fingerprint input, of a job that never opens it, so
-    touching or deleting it read as staleness.
+    and the spine discovery (`spine._expand_auto_discover`) do. Emitting
+    every version instead made the older file a declared input, and a
+    fingerprint input, of a job that never opens it, so touching or
+    deleting it read as staleness. The entity types in
+    `ALL_VERSIONS_ENTITY_TYPES` keep every version, as the spine
+    discovery reads them all.
 
     Reads the shared recipe index rather than globbing and parsing the
     tree a second time; the index is parsed once per process.
@@ -100,8 +104,13 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             # staleness for data that never changed.
             continue
         admin_id_str = row['admin_id']
-        key = (admin_id_str, row['source_id'], row['filename_suffix'])
         version = str(row['version'] or '')
+        # Every version of a transaction source, whose versions are
+        # collection windows rather than vintages; the harmonizer's
+        # discovery reads them all (ALL_VERSIONS_ENTITY_TYPES).
+        key = (admin_id_str, row['source_id'], row['filename_suffix']) + (
+            (version,) if entity_type in ALL_VERSIONS_ENTITY_TYPES else ()
+        )
         candidate = {
             'recipe_id': row['recipe_id'],
             'admin_id': admin_id_str,
@@ -174,8 +183,9 @@ def get_recipe_dependencies(
     admin_str = str(admin_id) if admin_id is not None else None
     if admin_id is not None and recipe.get('pipeline'):
         # The unit runs the recipe with its patches applied, so its jobs
-        # read what the patches name too: a state patch that merges an
-        # enrichment (US-MA_footprint-openplaces-2026) must schedule it.
+        # read what the patches name too: a patch that adds a step
+        # reading another recipe (a state patch merging an enrichment
+        # into US_footprint-openplaces-2026) must schedule it.
         try:
             recipe, _ = _recipe.apply_recipe_patches(recipe, admin_id)
         except Exception:  # noqa: BLE001 - a patch that cannot apply adds nothing
@@ -328,6 +338,14 @@ def get_recipe_dependencies(
                     _add(src['recipe_id'], 'auto_discover', step=step_name)
             for match in additional:
                 _add(match['recipe_id'], 'auto_discover', step=step_name)
+        elif step_name == 'link_to_reference':
+            # The rule the step resolves its reference by, so the
+            # job runs after, and declares, the ingest it reads.
+            # find_entity_recipe_id differs where a same-scope
+            # recipe writes no geometry (Dauphin County PA's
+            # parcel characteristics outranked its parcel layer).
+            found = _recipe.find_reference_recipe_id(entity_type, admin_id)
+            _add(found, 'auto_discover', step=step_name, resolved=found is not None)
         else:
             found = find_entity_recipe_id(
                 admin_id, entity_type, stage='ingest', silent=True

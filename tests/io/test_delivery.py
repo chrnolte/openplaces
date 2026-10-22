@@ -239,6 +239,33 @@ def test_a_second_export_unlocks_its_own_outputs(two_counties):
     assert list(read_parquet(paths['canonical']).index) == ['a', 'b', 'c', 'd']
 
 
+def test_a_piece_keeping_its_source_id_is_one_evidence_row(two_counties, monkeypatch):
+    """A cut piece whose centroid code equals its source row's id must
+    not bring that row into the evidence file twice (found 2026-10-18 in
+    three exported footprint bundles)."""
+    import openplaces.io.delivery as delivery
+
+    def fake_slice(pooled, unit_column, units):
+        # 'c' in US-NC-BB is cut, and its piece gets back the id 'c'.
+        pooled = pooled.copy()
+        pooled['sliced_from'] = None
+        pooled.loc['c', 'sliced_from'] = 'c'
+        provenance = pd.DataFrame(
+            {'piece_id': ['c'], 'source_id': ['c'], unit_column: ['US-NC-BB']}
+        )
+        return pooled, provenance
+
+    monkeypatch.setattr(delivery, 'slice_at_unit_lines', fake_slice)
+    monkeypatch.setattr(delivery, 'get_admin', lambda *a, **k: None)
+    recipe = _recipe()
+    recipe['share']['delivery']['slice_at_unit_lines'] = True
+    paths = export_delivery(recipe, 'US-NC', admin_ids=two_counties)
+
+    evidence = read_parquet(paths['evidence'])
+    assert evidence.index.is_unique
+    assert list(evidence.index) == list(read_parquet(paths['canonical']).index)
+
+
 def test_ships_a_licence_notice_beside_the_data(two_counties):
     """The obligations travel with the bundle, not in someone's memory."""
     notice = _bundle(two_counties)['terms']

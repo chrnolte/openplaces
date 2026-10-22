@@ -44,6 +44,33 @@
 # own fixtures rows: median 2 bedrooms, median heated area 924 to
 # 1,417 sq ft by class. The room counts are per unit, not per building.
 #
+# PRIOR YEAR. Accounts HCAD has not yet valued for 2026 carry
+# value_status "All Values Pending" and empty land_val, bld_val and
+# tot_mkt_val, while prior_land_val, prior_bld_val and
+# prior_tot_mkt_val hold the district's own 2025 figures (97.9% of
+# them populated). The parcel geospine's roll_values rule reads these
+# columns only for a parcel whose 2026 values are all empty, labels
+# the values hcad and sets tax_year to 2025 there; elsewhere the 2026
+# figures stand. In the 2026-09-13 export 12,377 spine parcels are
+# pending (plans/value-viewer-new-places-sources.md, 2026-10-17). A
+# newer export may value some of them for 2026; re-ingest first.
+#
+# STATE CLASS CROSSWALK. The statewide TxGIO crosswalk keys on the
+# first letter, so F1 (HCAD: "Real, Commercial") and F2 ("Real,
+# Industrial") both read "commercial and industrial", and the parcel
+# vote's keyword INDUSTRIAL classed Harris office towers, hospitals
+# and shops Industrial. The crosswalk beside this recipe
+# (US-TX-HAR_property-hcad-2026_use-group-code-remap.csv) keys on two
+# characters, written from HCAD's code list (desc_r_01_state_class.txt
+# in Code_description_real.zip, 2026). It repeats the statewide labels
+# for every other code; codes it does not name (1D, TMBR, Z0 to Z5,
+# HH, U0) keep whatever the statewide crosswalk gave them. It overrides
+# the statewide one because it covers most of the spine (see
+# link_by_id's remap rule).
+# Measured 2026-10-18 on US-TX-HAR: 58,842 of 64,220 F1 parcels were classed Industrial.
+# The building type that splits F1 further comes from
+# US-TX-HAR_property-hcad-2026_building-other (plans/houston-sliver-check.md).
+#
 # NOT MAPPED. mailto and the mail_* block (owner name and mailing
 # address) are deliberately left out. yr_impr is ambiguous (year built
 # or year of the latest improvement; the file does not say) and is
@@ -102,6 +129,12 @@ columns:
   # tot_mkt_val is the district's market value (Tax Code 23.01), the
   # land-plus-structure total; tot_appr_val is the capped figure.
   total_value: tot_mkt_val
+  # The same three figures for the year before yr (2025 in this
+  # export). Read only where the 2026 roll states no value: see
+  # PRIOR YEAR in the header.
+  land_value_prior_year: prior_land_val
+  improvement_value_prior_year: prior_bld_val
+  total_value_prior_year: prior_tot_mkt_val
 
 transformations:
   - type: string
@@ -132,6 +165,18 @@ transformations:
     operation: to_numeric
     input: tax_year
     output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: land_value_prior_year
+    output: land_value_prior_year
+  - type: unary
+    operation: to_numeric
+    input: improvement_value_prior_year
+    output: improvement_value_prior_year
+  - type: unary
+    operation: to_numeric
+    input: total_value_prior_year
+    output: total_value_prior_year
 
 columns_to_categorical:
   - use_group_code

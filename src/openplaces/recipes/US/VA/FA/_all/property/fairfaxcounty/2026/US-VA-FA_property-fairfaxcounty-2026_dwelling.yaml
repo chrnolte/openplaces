@@ -80,6 +80,9 @@ entity:
       permission of Fairfax County."
     terms_url: "https://www.fairfaxcounty.gov/maps/disclaimer"
     redistribution_restricted: true
+    # Cleared for the research team (maintainer, 2026-10-20): team
+    # bundles keep its values, behind the password-protected team page.
+    team_sharing_permitted: true
     resale_restricted: true
     usage_requirement:
       non_commercial: true

@@ -9,6 +9,7 @@ followed (maintainer's decision, 2026-10-16; the reasoning is in
 plans/static-3d-value-viewer-boston-pilot.md).
 """
 
+import hashlib
 import html
 import json
 import threading
@@ -17,7 +18,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from openplaces.viz.web_scene import DEFAULT_TITLE
+from openplaces.viz.web_scene import DEFAULT_TITLE, ICON_FILES
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,9 @@ def capture_thumbnail(scene_dir, target, width=960, height=600) -> Path:
                 'window.openplacesScene && window.openplacesScene.loaded',
                 timeout=600_000,
             )
-            page.add_style_tag(content='.panel{display:none!important}')
+            # The panels, and the place's name shown as a page opens: the
+            # card prints the name beneath the photo.
+            page.add_style_tag(content='.panel,#place-title{display:none!important}')
             page.evaluate(
                 '(v) => window.openplacesScene.deck.setProps('
                 '{initialViewState: {...v, maxPitch: 85}})',
@@ -131,9 +134,19 @@ def build_landing(
         image = output_dir / 'thumbs' / f'{place.slug}.jpg'
         if thumbnails:
             capture_thumbnail(place.scene_dir, image)
+        # The photo's address carries a hash of its bytes: a browser that
+        # cached an older photo under the same name fetches the new one
+        # (seen 2026-10-20: cards still in the palette of an earlier
+        # build).
+        version = (
+            hashlib.sha256(image.read_bytes()).hexdigest()[:10]
+            if image.exists()
+            else '0'
+        )
         cards.append(
             f'<a class="card" href="{html.escape(place.slug)}/">'
-            f'<img src="thumbs/{html.escape(place.slug)}.jpg" alt="" loading="lazy">'
+            f'<img src="thumbs/{html.escape(place.slug)}.jpg?v={version}" alt="" '
+            'loading="lazy">'
             f'<span class="name">{html.escape(place.title)}</span>'
             f'<span class="sub">{html.escape(place.subtitle)}</span></a>'
         )
@@ -149,6 +162,16 @@ def build_landing(
         .replace('{{CARDS}}', '\n'.join(cards))
     )
     (output_dir / 'index.html').write_text(page, encoding='utf-8')
+    # The methods page, linked from each scene (the unexplained
+    # buildings' switch) as `../methods.html`.
+    (output_dir / 'methods.html').write_bytes(
+        (Path(__file__).parent / 'static' / 'methods.html').read_bytes()
+    )
+    # The openplaces logo, the landing and methods pages' icons.
+    for icon in ICON_FILES:
+        (output_dir / icon).write_bytes(
+            (Path(__file__).parent / 'static' / icon).read_bytes()
+        )
     # Read by each scene for its back link and its menu of the other
     # places (viewer.js `buildPlaceNav`).
     (output_dir / 'places.json').write_text(

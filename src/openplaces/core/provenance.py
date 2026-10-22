@@ -19,6 +19,12 @@ import pandas as pd
 # separator joining it to the route token it qualifies.
 IMPUTED_MARKER = 'imputed'
 TOKEN_SEPARATOR = '+'
+# The token a harmonize step leaves on a value cell it emptied because
+# the unit's roll does not carry that parcel's account, so an empty
+# cell says why it is empty rather than looking unreported (see
+# io/harmonizer/links/roll_values.py). Not a source and not a value:
+# readers that look for a source in a token find none here.
+NOT_ON_ROLL = 'not_on_roll'
 # A connector (a spoke package writing evidence back into the hub) names
 # itself and its model in one route token, joined by this separator:
 # `openplaces-valuation:et_v2`. The `+` grammar then qualifies it like

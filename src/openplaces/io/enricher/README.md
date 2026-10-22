@@ -33,7 +33,22 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   evidence file missing a declared column as a recipe error.
 - `parcels.py` — attach a reference *parcel* dataset's attributes to current
   parcels through a fractional area-weighted crosswalk, driven by a sidecar
-  `{recipe_id}_column-notes.csv` beside the reference recipe
+  `{recipe_id}_column-notes.csv` beside the reference recipe. Where the
+  reference ships no geometry, a crosswalk its source delivered
+  (`delivered_crosswalk_table`) is read instead of built. It names the
+  parcels of the bundle it was built against, so it is refused unless
+  99 percent of its own ids are in the spine; at least 90 percent of the
+  spine's ids must appear in it, and a share between 90 and 99 percent
+  warns, since parcels newer than the reference have no reference
+  parcel to name them.
+- `overlay.py` — `overlay_reference_polygons`: per entity, the share of
+  its area inside a reference polygon dataset (a thematic layer whose
+  polygons do not overlap, e.g. MassGIS protected open space) and the
+  attributes and id of the polygon covering most of it. The reference
+  is read at its own save level (a state file for a town's run); a unit
+  outside its scope gets the declared columns all-missing. `withhold`
+  leaves a label empty on polygons a recipe names (site names on
+  privately owned land).
 - `zonal.py` — `zonal_stats`: per-entity raster statistics over polygon
   geometry, dispatching to one of three backends in `geo/raster.py`
   (`exactextract` for fractional pixel-area weighting, `rasterstats`, or

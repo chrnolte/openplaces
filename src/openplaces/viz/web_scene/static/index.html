@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Land and building values</title>
+<title>Land &amp; structure value</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
   :root {
     --bg: #05070d;
@@ -22,7 +24,9 @@
     color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  #scene { position: fixed; inset: 0; }
+  /* All touch gestures go to the page's own handlers (no browser
+     scroll or zoom on the scene). */
+  #scene { position: fixed; inset: 0; touch-action: none; }
   .panel {
     box-sizing: border-box;
     position: fixed;
@@ -32,12 +36,40 @@
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
   #title-panel { top: 16px; left: 16px; max-width: min(420px, calc(100vw - 32px)); padding: 8px 12px; }
-  #title-panel h1 { font-size: 17px; margin: 0; }
+  /* Only the back arrow shows (maintainer, 2026-10-17); the title
+     stays for screen readers and the browser tab. */
+  #title-panel h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    margin: 0;
+  }
   #status:empty { display: none; }
   #title-panel { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
   #title-panel > :not(#home-link) { grid-column: 2; }
   #place-panel { top: 16px; right: 16px; padding: 8px 12px; max-width: calc(50vw - 24px); }
   #place-panel[hidden] { display: none; }
+  /* The compass sits under the places menu, top right. */
+  #compass {
+    top: 64px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font: inherit;
+  }
+  #compass .needle { grid-area: 1 / 1; font-size: 13px; color: #ff6b6b; line-height: 1; transition: transform 0.1s linear; transform-origin: 50% 70%; }
+  #compass .n { grid-area: 1 / 1; font-size: 9px; font-weight: 700; margin-top: 16px; color: var(--muted); }
+  #place-panel[hidden] ~ #compass { top: 16px; }
   /* The display controls open above the bottom bar, at the right. */
   #legend-panel {
     right: 16px;
@@ -68,9 +100,7 @@
   #legend-box[open] summary { margin-bottom: 6px; }
   #legend-box summary #palette-switch { margin: 0; gap: 4px; }
   #legend-box summary #palette-switch button { padding: 1px 7px; font-weight: 400; }
-  .footnote { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
-  .legend-none { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
-  .legend-none span { width: 14px; height: 10px; border-radius: 2px; border: 1px solid rgba(128, 128, 128, 0.5); }
+  .footnote { color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
   #home-link {
     grid-row: 1 / span 3;
     align-self: start;
@@ -87,10 +117,12 @@
   #place-menu .place-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   #place-menu a { color: var(--muted); text-decoration: none; }
   #place-menu a:hover { color: var(--text); }
-  #layer-switch, #view-switch, #values-switch, #palette-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  #view-switch:empty, #values-switch:empty { display: none; }
+  #layer-switch, #view-switch, #scale-switch, #values-switch, #palette-switch, #range-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #view-switch:empty, #scale-switch:empty, #values-switch:empty { display: none; }
+  /* The models' scale, shown only under "Modeled". */
+  #scale-switch[hidden], #range-switch[hidden] { display: none; }
   .switch-label { font-size: 12px; color: var(--muted); align-self: center; }
-  #layer-switch button, #view-switch button, #values-switch button, #palette-switch button {
+  #layer-switch button, #view-switch button, #scale-switch button, #values-switch button, #palette-switch button, #range-switch button {
     font: inherit;
     font-size: 12px;
     color: var(--muted);
@@ -100,12 +132,100 @@
     padding: 3px 10px;
     cursor: pointer;
   }
-  #layer-switch button::before { content: "\2610  "; }
-  #layer-switch button.active::before { content: "\2611  "; }
-  #layer-switch button.active, #view-switch button.active, #values-switch button.active, #palette-switch button.active {
+  /* Layer switches: a checkbox and a small symbol; the name is the
+     tooltip. */
+  #layer-switch { align-items: center; }
+  #layer-switch button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; }
+  #layer-switch button::before { content: "\2610"; }
+  #layer-switch button.active::before { content: "\2611"; }
+  #layer-switch svg { width: 18px; height: 16px; display: block; }
+  /* The ghosts' note, right beside their switch. */
+  /* The ghosts' question mark: a small round link right after their
+     switch. */
+  #layer-switch .ghost-note {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-left: -3px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+  }
+  #layer-switch .ghost-note:hover { color: var(--text); }
+  #layer-switch button.active, #palette-switch button.active {
     color: var(--text);
     border-color: rgba(255, 255, 255, 0.6);
     background: rgba(255, 255, 255, 0.08);
+  }
+  /* Two-way choices as one segmented toggle: a track holding both
+     options, the chosen one filled. */
+  #view-switch, #scale-switch, #values-switch, #range-switch {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+  /* The models' menu under "Modeled" (team pages): folded to the
+     chosen model's name, a list of buttons when open. */
+  /* The list opens upward from the chosen model's name, on its own
+     dark panel, so it reads over any palette and page. */
+  #model-menu { position: relative; width: fit-content; margin: -4px 0 10px; font-size: 12px; }
+  #model-menu[hidden] { display: none; }
+  #model-menu summary {
+    width: fit-content;
+    padding: 3px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+  }
+  #model-menu summary::-webkit-details-marker { display: none; }
+  #model-menu summary::after { content: " \25B4"; }
+  #model-menu[open] summary::after { content: " \25BE"; }
+  #model-menu > div {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100%;
+    padding: 6px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.92);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    z-index: 5;
+    text-shadow: none;
+  }
+  #model-menu button {
+    font: inherit;
+    color: rgba(232, 234, 240, 0.72);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    padding: 4px 12px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  #model-menu button:hover { color: #fff; }
+  #model-menu button.active { color: #fff; background: rgba(255, 255, 255, 0.14); font-weight: 600; }
+  #view-switch button, #scale-switch button, #values-switch button, #range-switch button { border: 0; padding: 3px 12px; }
+  #view-switch button.active, #scale-switch button.active, #values-switch button.active,
+  #range-switch button.active {
+    color: #10131c;
+    background: rgba(255, 255, 255, 0.88);
+    font-weight: 600;
   }
   .legend { margin-bottom: 10px; }
   .legend:last-child { margin-bottom: 0; }
@@ -113,18 +233,50 @@
   .legend.hidden canvas, .legend.hidden .legend-ticks { opacity: 0.25; }
   .legend.hidden .legend-label { color: var(--muted); }
   .legend canvas { width: 100%; height: 12px; display: block; border-radius: 2px; }
+  /* Per dwelling: the non-residential ramp as a thin strip right
+     under the main one, named in one line under the ticks. */
+  .legend canvas.legend-other { height: 5px; margin-top: 2px; border-radius: 0 0 2px 2px; }
+  .legend-other-note { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+  /* Which values a bar shows, behind its title, in the note's type. */
+  .legend-source { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+  .legend-other-note span { width: 18px; height: 5px; border-radius: 1px; flex: none; }
+  .legend.hidden .legend-other-note { opacity: 0.4; }
+  /* The type view: swatches in rows, as many per row as fit. */
+  .type-swatches { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 11px; margin-top: 4px; }
+  .type-swatches span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .type-swatches i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  /* "Sources" stays a chip in the bar; opened, its document pops up
+     above the chip, so the other controls never move (maintainer,
+     2026-10-18). Its own dark panel and colors read over any palette
+     and page. */
   #about-panel {
-    position: static;
-    max-width: min(460px, calc(100vw - 32px));
-    max-height: 50vh;
-    overflow: auto;
+    position: relative;
     padding: 8px 12px;
+  }
+  #notices {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: min(420px, calc(100vw - 32px));
+    max-height: 60vh;
+    overflow: auto;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.94);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    --text: #e8eaf0;
+    --muted: #a9afba;
+    color: var(--text);
+    text-shadow: none;
+    z-index: 6;
   }
   /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
-  #controls-chip {
+  /* "Replay tour": shown once the visitor has taken over. */
+  #replay-chip[hidden] { display: none; }
+  #controls-chip, #share-chip, #replay-chip {
     position: static;
     flex: none;
     font: inherit;
@@ -152,8 +304,117 @@
   #legend-panel { padding-top: 14px; }
   #about-panel summary { cursor: pointer; font-weight: 600; }
   #about-panel pre { white-space: pre-wrap; font-size: 11px; color: var(--muted); }
+  #notices { font-size: 12.5px; line-height: 1.45; }
+  .src-intro { color: var(--muted); margin: 10px 0 4px; }
+  .src-layer {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 14px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  }
+  .src-list { list-style: none; margin: 0; padding: 0; }
+  .src-group { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 8px 0 4px; }
+  .src-issues { margin: 0 0 4px; padding-left: 18px; font-size: 12.5px; }
+  .src-issues li { margin-bottom: 6px; }
+  .src-found { color: var(--muted); font-size: 11.5px; }
+  .src-item { margin: 0 0 10px; }
+  .src-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+  .src-name { font-weight: 600; }
+  .src-bar { height: 4px; border-radius: 2px; background: rgba(128, 128, 128, 0.2); position: relative; overflow: hidden; }
+  .src-bar::after { content: ""; position: absolute; inset: 0; width: var(--w); background: currentColor; opacity: 0.55; border-radius: 2px; }
+  .src-share { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .src-credit { margin-top: 2px; }
+  .src-terms { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .src-terms a { color: inherit; }
+  .src-note { color: var(--muted); font-size: 11.5px; margin: 4px 0 0; padding: 6px 8px; border-left: 2px solid rgba(128, 128, 128, 0.4); }
   #status { margin-top: 6px; color: var(--muted); font-size: 12px; }
   .deck-tooltip { font-size: 13px !important; max-width: 320px; }
+  /* The tour's messages (viewer.js `placeBanner`, `placeTip`, which
+     set left and bottom): the main ones centered at about a quarter
+     of the map's height, above the legend; the definition and the
+     countdown in a bubble above the switching button, pointing at it
+     (--arrow-x). */
+  #autopilot, #tour-tip {
+    position: fixed;
+    left: 16px;
+    bottom: 96px;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 7px 14px;
+    border-radius: 16px;
+    line-height: 1.35;
+    background: rgba(8, 11, 20, 0.78);
+    color: var(--text);
+    font-size: 14px;
+    text-align: center;
+    pointer-events: none;
+    /* Over the control panels. */
+    z-index: 10;
+    transition: opacity 1.2s ease;
+  }
+  #tour-tip { max-width: min(260px, calc(100vw - 32px)); font-size: 12px; }
+  #tour-tip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: var(--arrow-x, 50%);
+    translate: -50% 0;
+    border: 8px solid transparent;
+    border-top-color: rgba(8, 11, 20, 0.78);
+  }
+  #autopilot.fading, #tour-tip.fading { opacity: 0; }
+  /* A message's second line: why, or how. */
+  .tour-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #autopilot[hidden], #tour-tip[hidden] { display: none; }
+  /* The countdown under a message: 5 to 0. */
+  .tour-count { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .tour-count:empty { display: none; }
+  /* The place's name, top center for a few seconds as the page opens
+     (viewer.js `showPlaceTitle`). */
+  #place-title {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    translate: -50% 0;
+    max-width: calc(100vw - 32px);
+    padding: 8px 20px;
+    border-radius: 18px;
+    background: rgba(8, 11, 20, 0.72);
+    color: #f2f4f8;
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 1.5s ease;
+  }
+  #place-title.fading { opacity: 0; }
+  /* The bubble's arrow flickers once as it appears, pointing out the
+     button; the texts never flicker (maintainer, 2026-10-18). */
+  @keyframes tour-flick {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  #tour-tip.flick::after { animation: tour-flick 0.6s ease-in-out; }
+  /* The hover tooltip, placed beside the cursor by viewer.js. */
+  .hover-tip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    background: rgba(8, 11, 20, 0.92);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .hover-tip[hidden] { display: none; }
   /* A clicked feature's tooltip, placed above its anchor by viewer.js. */
   .pinned-tip {
     position: absolute;
@@ -212,6 +473,57 @@
     cursor: pointer;
   }
   .deck-tooltip .estimated { color: #ffd166; }
+  @media (min-width: 641px) {
+    /* Desktop: the controls sit in the bottom bar, left-aligned right
+       after the legend, in one row, on no background (maintainer,
+       2026-10-17); viewer.js moves them there. Always shown, so the
+       "Controls" chip and the fold button are not needed. */
+    #bottom-bar #legend-box { margin-right: 0; }
+    #bottom-bar #legend-panel {
+      position: static;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 18px;
+      width: auto;
+      max-width: none;
+      max-height: none;
+      overflow: visible;
+      margin-right: auto;
+      padding: 0 0 6px;
+      background: none;
+      box-shadow: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    }
+    #bottom-bar #legend-panel > div { margin-bottom: 0; }
+    #bottom-bar #layer-switch { flex-wrap: nowrap; }
+    #bottom-bar #view-switch, #bottom-bar #scale-switch, #bottom-bar #values-switch { background: rgba(8, 11, 20, 0.35); }
+    #controls-chip, #legend-minimize { display: none; }
+    /* On a light page the bare controls turn dark. */
+    .light-page #bottom-bar #legend-panel {
+      --text: #1b1f2a;
+      --muted: #4a505c;
+      color: var(--text);
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+    }
+    .light-page #bottom-bar #legend-panel button { border-color: rgba(20, 24, 36, 0.3); }
+    .light-page #bottom-bar #layer-switch button.active {
+      border-color: rgba(20, 24, 36, 0.7);
+      background: rgba(20, 24, 36, 0.06);
+    }
+    .light-page #bottom-bar #view-switch, .light-page #bottom-bar #scale-switch,
+    .light-page #bottom-bar #values-switch {
+      border-color: rgba(20, 24, 36, 0.3);
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .light-page #bottom-bar #view-switch button.active,
+    .light-page #bottom-bar #scale-switch button.active,
+    .light-page #bottom-bar #values-switch button.active {
+      color: #fff;
+      background: rgba(20, 24, 36, 0.85);
+      text-shadow: none;
+    }
+  }
   @media (max-width: 640px) {
     /* Phone: the legend takes the bar's first row, the chips the
        second; the controls open above the whole bar (its height is
@@ -220,10 +532,10 @@
     #legend-box { padding: 6px 10px; }
     #legend-box .legend { margin-bottom: 4px; }
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
-    #about-panel { flex: 1; max-height: 40vh; padding: 6px 10px; }
-    #controls-chip { padding: 6px 10px; }
+    #about-panel { flex: 1; padding: 6px 10px; }
+    #notices { max-height: 55vh; }
+    #controls-chip, #share-chip, #replay-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
-    #title-panel h1 { font-size: 14px; }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }
   }
@@ -232,7 +544,7 @@
 <body>
 <div id="scene"></div>
 <div id="title-panel" class="panel">
-  <h1 id="title">Land and building values</h1>
+  <h1 id="title">Land &amp; structure value</h1>
   <div id="status">Loading...</div>
 </div>
 <!-- Top right: the menu of places (viewer.js buildPlaceNav). -->

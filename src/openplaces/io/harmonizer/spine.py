@@ -14,8 +14,10 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from shapely.strtree import STRtree
 
+from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
 from openplaces.core.schema import admin_scope_covers
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
@@ -29,41 +31,64 @@ from openplaces.io.harmonizer import (
 from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
-from openplaces.recipe import raise_if_coverage_complete
+from openplaces.recipe import (
+    get_recipe_by_id,
+    raise_if_coverage_complete,
+    version_sort_key,
+)
+
+STRAY_MARGIN_DEG = 0.02
 
 
-def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
+def in_unit_extent(gdf, admin_id, margin_deg=STRAY_MARGIN_DEG) -> np.ndarray:
+    """Which rows of *gdf* lie within the admin unit's extent.
+
+    The one stray rule: a row is in the unit when its representative
+    point falls inside the unit's bounding box plus *margin_deg*. The
+    margin keeps genuine border-straddling buildings, matching the
+    delivery gate's own bbox logic. Every input a spine turns into rows
+    passes this test: the sources `resolve_spine` reads
+    (`_drop_out_of_unit_rows`) and the parcels the footprint geospine
+    turns into outlines (`infer_spine_additions`,
+    `consolidate_condo_cluster_footprints`). A parcel the parcel
+    geospine drops as a stray must not come back as an outline.
+
+    Every row counts as in the unit when the rows cannot be placed
+    against it: no geometry, no CRS (synthetic fixtures, or a source
+    whose CRS was never declared), or no polygon for *admin_id*.
+    """
+    n = 0 if gdf is None else len(gdf)
+    everywhere = np.ones(n, dtype=bool)
+    if n == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
+        return everywhere
+    if getattr(gdf, 'crs', None) is None:
+        return everywhere
+    try:
+        unit = get_admin([str(admin_id)], geom=True)
+        bounds = unit.total_bounds
+    except Exception:
+        return everywhere
+    pts = gdf.geometry.representative_point()
+    if unit.crs is not None and gdf.crs != unit.crs:
+        pts = pts.to_crs(unit.crs)
+    return (
+        (pts.x >= bounds[0] - margin_deg)
+        & (pts.y >= bounds[1] - margin_deg)
+        & (pts.x <= bounds[2] + margin_deg)
+        & (pts.y <= bounds[3] + margin_deg)
+    ).to_numpy()
+
+
+def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=STRAY_MARGIN_DEG):
     """Drop source rows far outside the admin unit being harmonized.
 
     A per-county source file is trusted to contain that county's rows,
     and mostly does - but real files carry strays (the NCDPS Cabarrus
     footprints include a 52-building block that sits in Buncombe,
-    190 km away), which then fail the delivery bbox gate. Rows whose
-    representative point falls outside the unit's bounding box plus a
-    margin are dropped with a warning; the margin keeps genuine
-    border-straddling buildings, matching the gate's own bbox logic.
+    190 km away), which then fail the delivery bbox gate. Rows outside
+    `in_unit_extent` are dropped with a warning.
     """
-    if gdf is None or len(gdf) == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
-        return gdf
-    # Without a CRS the rows cannot be placed against the unit at all
-    # (synthetic fixtures, or a source whose CRS was never declared), so
-    # nothing is dropped.
-    if getattr(gdf, 'crs', None) is None:
-        return gdf
-    try:
-        unit = get_admin([str(admin_id)], geom=True)
-        bounds = unit.total_bounds
-    except Exception:
-        return gdf
-    pts = gdf.geometry.representative_point()
-    if unit.crs is not None and gdf.crs != unit.crs:
-        pts = pts.to_crs(unit.crs)
-    inside = (
-        (pts.x >= bounds[0] - margin_deg)
-        & (pts.y >= bounds[1] - margin_deg)
-        & (pts.x <= bounds[2] + margin_deg)
-        & (pts.y <= bounds[3] + margin_deg)
-    )
+    inside = in_unit_extent(gdf, admin_id, margin_deg)
     n_out = int((~inside).sum())
     if n_out:
         warnings.warn(
@@ -73,6 +98,184 @@ def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
         )
         return gdf[inside]
     return gdf
+
+
+def _is_spine_product(recipe_id: str) -> bool:
+    """Whether *recipe_id* is a harmonize recipe (another spine's output).
+
+    Such a source is this unit's spine already, built under the stray
+    rule from inputs that passed it. Testing its rows again is a second
+    decision that can disagree with the first: the building geospine
+    dropped 466 Winnebago (US-WI-WI) outlines its footprint geospine
+    kept, and `load_geospine` then refused the pair.
+    """
+    try:
+        return get_recipe_by_id(recipe_id).get('stage') == 'harmonize'
+    except Exception:
+        return False
+
+
+def _add_neighbor_rows(source_gdfs: dict, state) -> None:
+    """Add each touching unit's outlines that reach into this unit.
+
+    The rows join the same source at the same rank, so `resolve_spine`'s
+    own rules choose one envelope per building across the line as they
+    do inside a unit, and the unit on the other side, reading this
+    unit's rows the same way, chooses the same one. Which inputs are
+    read is `neighbors.neighbor_inputs`, the answer the orchestrator and
+    the sidecar fingerprint use too; a missing input raises. Identical
+    geometries within a source are kept once: MassGIS's per-town files
+    both carry a building that crosses their line.
+    """
+    from openplaces.io.harmonizer.neighbors import neighbor_inputs, unit_polygons
+
+    pairs = neighbor_inputs(state.recipe, state.admin_id)
+    if not pairs:
+        return
+    own, touching = unit_polygons(state.admin_id)
+    for recipe_id, neighbor in pairs:
+        if recipe_id not in source_gdfs:
+            continue
+        gdf = get_entities(recipe_id, neighbor, geom=True, missing='raise')
+        if gdf is None or len(gdf) == 0:
+            continue
+        area = gpd.GeoSeries([own], crs=touching.crs).to_crs(gdf.crs).iloc[0]
+        rows = gdf[gdf.intersects(area)]
+        if rows.empty:
+            continue
+        merged = pd.concat([source_gdfs[recipe_id], rows])
+        merged = merged[~merged.geometry.to_wkb().duplicated().to_numpy()]
+        source_gdfs[recipe_id] = merged
+        if state.verbose:
+            print(f'  Load {recipe_id} from {neighbor}: {len(rows):,d} outlines')
+
+
+def _without_neighbor_outlines(gdf, admin_id, min_m2=10.0, min_share=0.05):
+    """Drop rows holding too little of this unit to become a piece here.
+
+    Applied to every source before the merge, own rows and neighbor rows
+    alike, with the cut's own threshold. A row lying almost wholly in a
+    neighbor would be dropped by the cut anyway; left in the merge, it
+    would still decide which of this unit's own outlines nearby enter
+    (overlap and keep-out tests) and then leave nothing in their place.
+    The neighbor unit, which holds most of such a building, still merges
+    it. Returns the kept rows and the outlines left out, so that other
+    sources' copies of those buildings can be left out too.
+    """
+    from openplaces.io.harmonizer.neighbors import unit_polygons
+
+    if gdf is None or len(gdf) == 0:
+        return gdf, gdf.geometry[:0] if gdf is not None else None
+    try:
+        _, touching = unit_polygons(admin_id)
+    except (KeyError, ValueError, FileNotFoundError, OSError):
+        return gdf, gdf.geometry[:0]
+    if touching.empty:
+        return gdf, gdf.geometry[:0]
+    others = gpd.GeoSeries([touching.union_all()], crs=touching.crs).to_crs(gdf.crs)
+    near = gdf.geometry.intersects(others.iloc[0]).to_numpy()
+    if not near.any():
+        return gdf, gdf.geometry[:0]
+    metric = gdf.geometry[near].to_crs('epsg:6933')
+    area = metric.area.to_numpy()
+    outside = metric.intersection(others.to_crs('epsg:6933').iloc[0]).area.to_numpy()
+    floor = np.maximum(min_m2, min_share * area)
+    keep = np.ones(len(gdf), dtype=bool)
+    keep[np.flatnonzero(near)[(area - outside) < floor]] = False
+    return gdf[keep], gdf.geometry[~keep]
+
+
+def _drop_copies_of(gdf, outlines, pair_share=0.5):
+    """Drop rows that draw the same building as one of *outlines*.
+
+    Same building: an overlap of at least *pair_share* of the smaller
+    outline, the pair test the merge itself uses. A building left to the
+    neighbor (see `_without_neighbor_outlines`) must not come back in
+    this unit as another source's copy of it: the neighbor keeps it
+    whole, and a copy here would be cut into a second, overlapping piece.
+    """
+    if gdf is None or len(gdf) == 0 or outlines is None or len(outlines) == 0:
+        return gdf
+    left = gpd.GeoDataFrame(geometry=gdf.geometry.to_crs('epsg:6933').to_numpy())
+    right = gpd.GeoDataFrame(geometry=outlines.to_crs('epsg:6933').to_numpy())
+    j = gpd.sjoin(left, right, predicate='intersects')
+    if j.empty:
+        return gdf
+    ga = left.geometry.to_numpy()[j.index]
+    gb = right.geometry.to_numpy()[j['index_right'].to_numpy()]
+    inter = gpd.GeoSeries(ga).intersection(gpd.GeoSeries(gb)).area.to_numpy()
+    small = np.minimum(
+        gpd.GeoSeries(ga).area.to_numpy(), gpd.GeoSeries(gb).area.to_numpy()
+    )
+    copies = np.unique(j.index[inter >= pair_share * small])
+    keep = np.ones(len(gdf), dtype=bool)
+    keep[copies] = False
+    return gdf[keep]
+
+
+def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
+    """Keep this unit's piece of every outline crossing into a neighbor.
+
+    After the merge an outline crossing the line is the building's one
+    envelope (see `_add_neighbor_rows`). Its part inside a touching
+    unit's polygon is removed: what remains is this unit's piece, and
+    the unit's parcels value it in curate as they value any outline
+    (maintainer, 2026-10-18). Removing the neighbors' parts, rather
+    than intersecting with this unit's polygon, keeps a part that lies
+    in no unit at all (a generalized shoreline) with the building.
+
+    Below *min_m2* or *min_share* of the envelope nothing is cut: a
+    building that crosses the line by a sliver stays whole in the unit
+    holding most of it, and the unit holding the sliver drops it. Both
+    units apply the same test to the same envelope, so they agree.
+
+    A cut piece takes its own centroid's code as its id, lengthened on
+    a collision (`geo.ids.distinct_centroid_codes`, never a sequence
+    number), and `envelope_id` the envelope's centroid code, which both
+    units compute alike, so the two pieces of one building can be found
+    again. They are never merged.
+    """
+    from openplaces.core.constants import ENVELOPE_ID_COLUMN
+    from openplaces.geo.ids import distinct_centroid_codes, get_openlocationcodes
+    from openplaces.io.harmonizer.neighbors import unit_polygons
+
+    try:
+        _, touching = unit_polygons(admin_id)
+    except (KeyError, ValueError, FileNotFoundError, OSError):
+        return spine
+    if spine is None or spine.empty or touching.empty:
+        return spine
+    others = gpd.GeoSeries([touching.union_all()], crs=touching.crs).to_crs(spine.crs)
+    near = spine.geometry.intersects(others.iloc[0]).to_numpy()
+    if not near.any():
+        return spine
+    metric = spine.geometry[near].to_crs('epsg:6933')
+    others_m = others.to_crs('epsg:6933').iloc[0]
+    area = metric.area.to_numpy()
+    outside = metric.intersection(others_m).area.to_numpy()
+    floor = np.maximum(min_m2, min_share * area)
+    inside = area - outside
+    rows = spine.index[near]
+    drop = rows[inside < floor]
+    cut = rows[(outside >= floor) & (inside >= floor)]
+    spine = spine.drop(index=drop)
+    if len(cut) == 0:
+        return spine
+    envelopes = gpd.GeoDataFrame(geometry=spine.geometry.loc[cut], crs=spine.crs)
+    envelope_ids = get_openlocationcodes(envelopes, handle_duplicates=False)
+    pieces = envelopes.geometry.difference(others.iloc[0])
+    taken = set(spine.index.astype(str)) - set(cut.astype(str))
+    new_ids = distinct_centroid_codes(gpd.GeoDataFrame(geometry=pieces), taken)
+    spine = spine.copy()
+    if ENVELOPE_ID_COLUMN not in spine.columns:
+        spine[ENVELOPE_ID_COLUMN] = pd.Series(pd.NA, index=spine.index, dtype=object)
+    spine.loc[cut, 'geometry'] = pieces.to_numpy()
+    spine.loc[cut, ENVELOPE_ID_COLUMN] = envelope_ids.to_numpy()
+    rename = dict(zip(cut, new_ids.to_numpy(), strict=True))
+    spine.index = pd.Index(
+        [rename.get(i, i) for i in spine.index], name=spine.index.name
+    )
+    return spine
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
@@ -242,6 +445,93 @@ def drop_elongated_duplicates(
     return to_add
 
 
+def _positional_pairs(left: gpd.GeoSeries, right: gpd.GeoSeries):
+    """Intersecting (left, right) positions and their intersection areas."""
+    a = gpd.GeoDataFrame(geometry=left.to_numpy(), crs=left.crs)
+    b = gpd.GeoDataFrame(geometry=right.to_numpy(), crs=right.crs)
+    j = gpd.sjoin(a, b, predicate='intersects')
+    if j.empty:
+        return np.array([], dtype=int), np.array([], dtype=int), np.array([])
+    ia = j.index.to_numpy()
+    ib = j['index_right'].to_numpy()
+    inter = shapely.area(
+        shapely.intersection(a.geometry.to_numpy()[ia], b.geometry.to_numpy()[ib])
+    )
+    return ia, ib, inter
+
+
+def _overlap_share_reject_ids(spine, candidate, share_max: float) -> pd.Index:
+    """Candidates overlapping accepted outlines by more than *share_max*.
+
+    The share is the candidate's area inside accepted outlines over its own
+    area. Unlike IoU it does not shrink when the accepted outline is large,
+    so a sliver along a big building is caught; unlike a keep-out distance
+    it leaves a separate building alone however close it stands. Measured
+    2026-10-18 on US-NC-NHA: lower-ranked outlines kept by the IoU test that
+    touch an OBM outline overlap it by under 0.05 of their area at the 90th
+    percentile, and 0.1 rejects 3 of 105 of them.
+    """
+    if spine.empty or candidate.empty:
+        return candidate.index[:0]
+    cand = candidate.geometry.to_crs('epsg:6933')
+    ia, _, inter = _positional_pairs(cand, spine.geometry.to_crs('epsg:6933'))
+    if not len(ia):
+        return candidate.index[:0]
+    covered = pd.Series(inter).groupby(ia).sum()
+    share = covered / cand.area.to_numpy()[covered.index.to_numpy()]
+    return candidate.index[covered.index.to_numpy()[(share > share_max).to_numpy()]]
+
+
+def _stale_neighborhood_reject_ids(
+    spine, candidate, radius_m: float, min_neighbors: int, agreement_min: float
+) -> pd.Index:
+    """Candidates clear of the spine where their source disagrees locally.
+
+    A candidate overlapping no accepted outline is either a building the
+    accepted sources missed or a building that is no longer there. The
+    source's own other outlines nearby tell the two apart: where most of
+    them match an accepted outline (overlap of half the smaller or more),
+    the source agrees with the accepted layers there and the candidate is
+    kept; where at least *min_neighbors* of them lie within *radius_m* and
+    fewer than *agreement_min* match, the source's picture of that block
+    predates the accepted layers' (demolition, rebuilding) and the
+    candidate is left out. The candidate itself is not counted. Measured
+    2026-10-18 on US-NC-NHA: of 158 Microsoft outlines the old keep-out
+    distance removed whose local agreement was under 0.5 (against OBM and
+    NC DPS, the outline itself counted), one was drawn by an independent
+    source.
+    """
+    if spine.empty or len(candidate) <= min_neighbors:
+        return candidate.index[:0]
+    cand = candidate.geometry.to_crs('epsg:6933')
+    accepted = spine.geometry.to_crs('epsg:6933')
+    ia, ib, inter = _positional_pairs(cand, accepted)
+    touches = np.zeros(len(cand), dtype=bool)
+    matched = np.zeros(len(cand), dtype=bool)
+    if len(ia):
+        touches[ia[inter > 1.0]] = True
+        small = np.minimum(cand.area.to_numpy()[ia], accepted.area.to_numpy()[ib])
+        matched[ia[inter >= 0.5 * small]] = True
+    clear = np.flatnonzero(~touches)
+    if not len(clear):
+        return candidate.index[:0]
+    zones = gpd.GeoSeries(cand.to_numpy()[clear], crs=cand.crs).centroid.buffer(
+        radius_m
+    )
+    za, zb, _ = _positional_pairs(zones, cand)
+    others = clear[za] != zb
+    za, zb = za[others], zb[others]
+    if not len(za):
+        return candidate.index[:0]
+    counts = (
+        pd.DataFrame({'zone': za, 'matched': matched[zb]})
+        .groupby('zone')['matched']
+        .agg(['size', 'mean'])
+    )
+    stale = counts[(counts['size'] >= min_neighbors) & (counts['mean'] < agreement_min)]
+    return candidate.index[clear[stale.index.to_numpy()]]
+
+
 def _buffer_reject_ids(
     spine: gpd.GeoDataFrame,
     candidate: gpd.GeoDataFrame,
@@ -285,6 +575,7 @@ def resolve_spine(
     keep_columns: list[str] | None = None,
     track_provenance: list[str] | None = None,
     evidence_resolution: bool = False,
+    neighbor_reads: bool = False,
 ) -> HarmonizeState:
     """Build the primary entity spine from multiple prioritized sources.
 
@@ -292,12 +583,19 @@ def resolve_spine(
     from a lower-priority source is added to the spine only if its IoU with
     every existing spine geometry is below ``overlap_iou_max`` (default 0.02).
 
-    Source entries may include an ``auto_discover: true`` sentinel entry,
-    which is replaced at runtime by all ingest recipes of the same entity
-    type that are scoped to child admin_ids of the recipe's ``admin_id``,
-    excluding any recipe with ``exclude_from_auto_discover: true`` (a
-    reference dataset meant to be consumed only via an explicit crosswalk,
-    not folded into the canonical spine's geometry).
+    A source's rows outside the unit's extent (`in_unit_extent`) are
+    dropped as strays, except a harmonize recipe's: another spine of this
+    unit, built under the same rule, whose rows this spine keeps as they
+    are (the building geospine carries every footprint geospine row).
+
+    Discovered ingest recipes of the same entity type, scoped to child
+    admin_ids of the recipe's ``admin_id``, are added to the listed
+    sources whether or not the list holds an ``auto_discover: true``
+    sentinel; the sentinel only says where they rank, and an
+    ``auto_discover: false`` entry turns discovery off. Excluded are
+    recipes with ``exclude_from_auto_discover: true`` (a reference
+    dataset meant to be consumed only via an explicit crosswalk, not
+    folded into the canonical spine's geometry).
 
     Parameters
     ----------
@@ -364,6 +662,13 @@ def resolve_spine(
         why in `spine_resolution`. Default False, and no recipe sets
         it: independent layers sided with the dropped outlines in its
         test, see :mod:`openplaces.io.harmonizer.spine_resolution`.
+    neighbor_reads : bool, optional
+        Reconcile buildings crossing the unit line: read the touching
+        units' outlines that reach into this unit into the same sources
+        (`_add_neighbor_rows`), so one envelope is chosen per building,
+        and keep this unit's piece of it (`_cut_at_unit_lines`). Default
+        False; the footprint geospine sets it. Off for a run whose
+        environment sets `OPENPLACES_NEIGHBOR_READS=0`.
     """
     if not sources:
         warnings.warn(f'resolve_spine: no sources configured for {state.admin_id}.')
@@ -399,7 +704,8 @@ def resolve_spine(
             continue
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
-            gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
+            if not _is_spine_product(recipe_id):
+                gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
             source_gdfs[recipe_id] = gdf
             loaded.append(src)
             if len(gdf):
@@ -413,6 +719,25 @@ def resolve_spine(
     if not source_gdfs:
         warnings.warn(f'resolve_spine: no footprints loaded for {state.admin_id}.')
         return state
+
+    from openplaces.io.harmonizer.neighbors import neighbor_reads_enabled
+
+    reconcile_lines = neighbor_reads and neighbor_reads_enabled()
+    if reconcile_lines:
+        _add_neighbor_rows(source_gdfs, state)
+        left_out = []
+        for recipe_id in list(source_gdfs):
+            source_gdfs[recipe_id], gone = _without_neighbor_outlines(
+                source_gdfs[recipe_id], state.admin_id
+            )
+            if gone is not None and len(gone):
+                left_out.append(gone.to_crs(source_gdfs[recipe_id].crs))
+        if left_out:
+            neighbors_buildings = pd.concat(left_out)
+            for recipe_id in list(source_gdfs):
+                source_gdfs[recipe_id] = _drop_copies_of(
+                    source_gdfs[recipe_id], neighbors_buildings
+                )
 
     if state.timer:
         state.timer.mark('Load')
@@ -500,6 +825,22 @@ def resolve_spine(
             )
         else:
             near_ids = candidate.index[:0]
+        if thresholds.get('overlap_share_max') is not None:
+            near_ids = near_ids.union(
+                _overlap_share_reject_ids(
+                    spine, candidate, float(thresholds['overlap_share_max'])
+                )
+            )
+        if label in (thresholds.get('stale_check_labels') or ()):
+            near_ids = near_ids.union(
+                _stale_neighborhood_reject_ids(
+                    spine,
+                    candidate,
+                    radius_m=float(thresholds.get('stale_radius_m', 50.0)),
+                    min_neighbors=int(thresholds.get('stale_min_neighbors', 4)),
+                    agreement_min=float(thresholds.get('stale_agreement_min', 0.5)),
+                )
+            )
 
         to_add = candidate[
             ~candidate.index.isin(overlap_ids) & ~candidate.index.isin(near_ids)
@@ -540,8 +881,8 @@ def resolve_spine(
             msg = (
                 f'  Merge {label}: +{len(to_add):,d} ({len(overlap_ids):,d} overlapping'
             )
-            if apply_buffer:
-                msg += f', {len(near_ids):,d} near-buffer'
+            if len(near_ids):
+                msg += f', {len(near_ids):,d} sliver or stale'
             if n_elong_dropped:
                 msg += f', {n_elong_dropped:,d} elongated duplicates'
             print(msg + ')')
@@ -558,6 +899,22 @@ def resolve_spine(
     # still need that join, self-join or not.
     state.metadata['spine_source_recipe_ids'] = {s['recipe_id'] for s in resolved}
     state.metadata['spine_keep_columns'] = set(keep_columns)
+
+    if reconcile_lines:
+        n_before = len(spine)
+        spine = _cut_at_unit_lines(spine, state.admin_id)
+        if state.verbose:
+            from openplaces.core.constants import ENVELOPE_ID_COLUMN
+
+            n_cut = (
+                int(spine[ENVELOPE_ID_COLUMN].notna().sum())
+                if ENVELOPE_ID_COLUMN in spine.columns
+                else 0
+            )
+            print(
+                f'  Unit lines: {n_cut:,d} outlines cut, '
+                f'{n_before - len(spine):,d} left to a neighbor'
+            )
 
     # A source can ship rows whose geometries hash to the same geo_id
     # (seen: 6 duplicated parcel ids in Fort Bend, TX), and a duplicated
@@ -886,6 +1243,11 @@ def _expand_auto_discover(
     recipe anywhere and would otherwise never resolve. These are appended
     after the standalone recipes, in their own (unordered) discovery order.
 
+    Of the standalone recipes, one per (admin id, source, filename suffix)
+    is kept, the newest version, except for the entity types in
+    `ALL_VERSIONS_ENTITY_TYPES`, whose versions are different records
+    rather than vintages of the same ones.
+
     A recipe declaring ``supplements: <recipe_id>`` is skipped. It details
     another recipe's entities (an improvement-detail table beside its
     appraisal roll, one row per building component) and reaches them
@@ -941,6 +1303,19 @@ def _expand_auto_discover(
     )
 
     df = find_recipes(entity_type, stage='ingest')
+    # One recipe per (admin, source, filename suffix), the newest
+    # version: a recipe's version names a vintage of the same table
+    # (Florida's 2025 and 2026 parcel layers), and merging an older
+    # vintage as a further spine source would add the outlines of
+    # parcels since redrawn or retired. The dependency scan
+    # (recipe.dependencies._scan_ingest_recipe_ids) keeps the same one,
+    # so the DAG schedules exactly what is read here. A table that is
+    # not a vintage of another names itself with a filename suffix.
+    # Transactions are the exception: their versions are collection
+    # windows of different sales (Wisconsin's historical files and its
+    # current download), so every version is read.
+    newest_only = entity_type not in ALL_VERSIONS_ENTITY_TYPES
+    newest: dict[tuple[str, str, str], tuple] = {}
     ranked: list[tuple[int, str, dict]] = []
     for _, row in df.iterrows():
         if row['exclude_from_auto_discover']:
@@ -964,14 +1339,26 @@ def _expand_auto_discover(
             child_id = row['recipe_id']
             if (child_id, None) not in existing_ids:
                 specificity = rid_str.count('-') + 1
-                ranked.append(
-                    (
-                        specificity,
-                        str(row['version']),
-                        {'recipe_id': child_id, 'label': row['source_id']},
-                    )
+                entry = (
+                    specificity,
+                    str(row['version']),
+                    {'recipe_id': child_id, 'label': row['source_id']},
                 )
                 existing_ids.add((child_id, None))
+                if not newest_only:
+                    ranked.append(entry)
+                    continue
+                key = (
+                    rid_str,
+                    str(row['source_id']),
+                    str(row.get('filename_suffix') or ''),
+                )
+                held = newest.get(key)
+                if held is None or version_sort_key(entry[1]) > version_sort_key(
+                    held[1]
+                ):
+                    newest[key] = entry
+    ranked.extend(newest.values())
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
     discovered: list[dict] = [entry for _specificity, _version, entry in ranked]
 

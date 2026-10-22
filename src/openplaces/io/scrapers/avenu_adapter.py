@@ -24,7 +24,6 @@ from openplaces.io.scrapers.avenu_selectors import (
     PROGRESS_BAR,
     REAL_PAGE_INDICATOR,
     RESULTS_ROW,
-    RESULTS_TABLE,
     SCREEN_BLOCKER,
     SUBMIT,
     TOWNS_DROPDOWN,
@@ -120,6 +119,7 @@ class AvenuAdapter:
         date_to: str,
         town: str | None = None,
         doc_type: str | None = None,
+        results_timeout: float = 10.0,
     ) -> None:
         """Submit a date-range search form with optional town and doc-type filters.
 
@@ -135,6 +135,11 @@ class AvenuAdapter:
         doc_type : str, optional
             Document type display label, e.g. ``'DEED'``.
             Pass ``None`` to search all document types.
+        results_timeout : float
+            Seconds to wait for a result grid that differs from the one
+            shown before the search. A search with no results waits the
+            full time; a grid still unchanged then is left for the
+            caller's town, date and type check to reject.
         """
 
         def _fmt(iso: str) -> str:
@@ -211,36 +216,47 @@ class AvenuAdapter:
             """)
             await asyncio.sleep(0.2)
 
-        # Select document type via JS (same visibility issue)
+        # Select document type via JS (same visibility issue). Matched
+        # ignoring spaces and case, and an unmatched label raises: a
+        # select left empty searches every type, which is how 'UNITDEED'
+        # returned 414 rows of all types where the dropdown says
+        # 'UNIT DEED' (Nantucket, 2026-10-19).
         if doc_type is not None:
-            safe_label = doc_type.replace("'", "\\'")
-            await self.page.evaluate(f"""
+            safe_label = doc_type.replace("'", "\\'").replace(' ', '').upper()
+            matched = await self.page.evaluate(f"""
                 (() => {{
                     const el = document.querySelector('{DOC_TYPE_DROPDOWN}');
                     for (const o of el.options) o.selected = false;
                     for (const o of el.options) {{
-                        if (o.text.trim() === '{safe_label}') {{
-                            o.selected = true; break;
+                        const t = o.text.replace(/\\s+/g, '').toUpperCase();
+                        if (t === '{safe_label}') {{
+                            o.selected = true;
+                            el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                            return true;
                         }}
                     }}
-                    el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                    return false;
                 }})()
             """)
+            if not matched:
+                raise ValueError(
+                    f'Avenu: no document type {doc_type!r} in the dropdown of '
+                    f'{self.base_url}; searching without it would return '
+                    'every type.'
+                )
             await asyncio.sleep(0.2)
 
-        # Submit — wait for networkidle, then wait for the AJAX-populated results
-        # table (onload="ClientLoad(100);" fires ~100ms after page load).
-        # Timeout is swallowed so a zero-results page doesn't raise.
+        # Submit, then wait for the AJAX-populated results table. The
+        # previous search's grid stays in the page until the partial
+        # update lands, so a wait for any result row returned at once
+        # and the crawl parsed the old month's rows: the mismatch guard
+        # then rejected every second month. Measured 2026-10-19 on
+        # US-MA-NTC: 14 of the first 24 re-crawled months rejected.
+        before = await self._first_row_text()
         await self._wait_unblocked()
         await self.page.locator(SUBMIT).click()
         await self.page.wait_for_load_state('networkidle')
-        try:
-            await self.page.wait_for_selector(
-                f'{RESULTS_TABLE} tr.DataGridRow',
-                timeout=10000,
-            )
-        except Exception:
-            pass
+        await self._wait_for_new_results(before, timeout=results_timeout)
 
     async def parse_results(
         self, fetch_details: bool = False, debug: bool = False
@@ -449,11 +465,57 @@ class AvenuAdapter:
         cls = await el.get_attribute('class') or ''
         return 'disabled' not in cls.lower()
 
-    async def next_page(self) -> None:
-        """Navigate to the next results page via the Next postback link."""
+    async def _first_row_text(self) -> str:
+        """The first result row's text, or '' when the grid has none."""
+        return await self.page.evaluate(
+            '(sel) => { const tr = document.querySelector(sel); '
+            "return tr ? tr.innerText.trim() : ''; }",
+            RESULTS_ROW,
+        )
+
+    async def _wait_for_new_results(self, before: str, timeout: float) -> None:
+        """Return once the grid's first row is non-empty and not *before*.
+
+        An empty read does not end the wait: the grid is briefly empty
+        while it redraws, and returning then would save a month with
+        rows as a month without any. At *timeout* it returns anyway.
+        """
+        for _ in range(int(timeout / 0.3)):
+            current = await self._first_row_text()
+            if current and current != before:
+                return
+            await asyncio.sleep(0.3)
+
+    async def next_page(self, timeout: float = 15.0) -> None:
+        """Navigate to the next results page via the Next postback link.
+
+        Returns once the grid shows the new page: its first row differs
+        from the one before the click. Network idle comes before the
+        grid's partial update, and reading rows then gave the first row of
+        the new page the book and page of the old page's first row while
+        its click loaded the new row's details, which is the one repeated
+        (book, page) of every multi-page month. Measured 2026-10-19 on
+        US-MA-NTC: page 2 of 2024-04 read 8 rows from the old grid.
+
+        Raises
+        ------
+        TimeoutError
+            When the grid has not changed within *timeout* seconds, so a
+            stale page is never parsed as the next one.
+        """
+        before = await self._first_row_text()
         await self._wait_unblocked()
         await self.page.click(NEXT_BUTTON)
         await self.page.wait_for_load_state('networkidle')
+        for _ in range(int(timeout / 0.3)):
+            current = await self._first_row_text()
+            if current and current != before:
+                return
+            await asyncio.sleep(0.3)
+        raise TimeoutError(
+            'Avenu: the results grid did not change after Next; refusing to '
+            'parse the previous page again.'
+        )
 
     async def dump_details_candidates(self) -> None:
         """Print frame URLs and locate the "Consideration" label across all frames.

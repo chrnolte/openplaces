@@ -1,0 +1,51 @@
+use_group_code,use_group,use_subgroup
+A1,residential,single family
+A2,residential,single family
+A3,residential,single family
+A4,residential,single family
+B1,residential,multi-family
+B2,residential,multi-family
+B3,residential,multi-family
+B4,residential,multi-family
+C1,open_space,vacant
+C2,open_space,vacant
+C3,open_space,vacant
+D2,open_space,agricultural land
+E1,residential,single family rural
+F1,commercial,commercial
+F2,industrial,industrial and manufacturing
+G1,industrial,oil gas and mineral reserves
+G2,industrial,oil gas and mineral reserves
+J1,industrial,utilities
+J2,industrial,utilities
+J3,industrial,utilities
+J4,industrial,utilities
+J5,industrial,utilities
+J6,industrial,utilities
+M3,residential,mobile home
+O1,residential,residential inventory
+O2,residential,residential inventory
+X1,exempt,totally exempt
+X2,exempt,totally exempt
+X3,exempt,totally exempt
+X4,exempt,totally exempt
+X7,exempt,totally exempt
+XA,exempt,totally exempt
+XD,exempt,totally exempt
+XE,exempt,totally exempt
+XF,exempt,totally exempt
+XG,exempt,totally exempt
+XH,exempt,totally exempt
+XI,exempt,totally exempt
+XJ,exempt,totally exempt
+XL,exempt,totally exempt
+XM,exempt,totally exempt
+XN,exempt,totally exempt
+XO,exempt,totally exempt
+XP,exempt,totally exempt
+XQ,exempt,totally exempt
+XR,exempt,totally exempt
+XS,exempt,totally exempt
+XT,exempt,totally exempt
+XU,exempt,totally exempt
+XV,exempt,totally exempt

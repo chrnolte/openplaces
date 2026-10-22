@@ -1,0 +1,95 @@
+# Recipe: FHFA House Price Index, counties, annual, all-transactions
+#
+# FHFA's developmental county index ("HPI for Counties
+# (All-Transactions Index)", not seasonally adjusted), one row per
+# county and year. The workbook's own note asks that these annual
+# county indexes be treated as developmental. Listed on the FHFA HPI datasets page
+# (https://www.fhfa.gov/data/hpi/datasets?tab=additional-data) under
+# "Annual House Price Indexes"; the bulk file is one xlsx sheet with
+# five note rows above the header (header row index 5). The .csv URL
+# beside it serves the same xlsx bytes, so the xlsx is read directly.
+#
+# Measured 2026-10-18 on the file "last updated March 31, 2026":
+# 106,252 rows, 2,795 counties, years 1975 to 2025 (2,795 rows in each
+# of 2023 to 2025), keyed by a 5-digit FIPS code.
+#
+# Columns kept: FIPS code (county_fips), Year, Annual Change (%), "HPI"
+# (house_price_index) and "HPI with 2000 base". Both index columns are
+# kept because they are missing in different places:
+# - "HPI" is 100 in each county's own first year, so its base differs
+#   by county; a ratio of two years within a county is still the
+#   published change. Missing on 1,057 rows in 504 counties, where FHFA
+#   publishes no value for the year (118 to 130 counties in each of
+#   2023 to 2025; Nantucket MA, 25019, has none after 2021).
+# - "HPI with 2000 base" is missing on 9,043 rows: the 1,057 above,
+#   plus every row of the 372 counties whose series starts after 2000,
+#   plus 78 rows of counties that start earlier.
+# Left unmapped: "HPI with 1990 base" (the same index, a third base)
+# and the State and County names (the FIPS code is the key).
+#
+# Key: county FIPS, not an admin id. In New England level 3 is the town
+# and counties carry no admin id (US-MA-NTC is the town; its county is
+# 25019), so county_fips is the one key that covers every county.
+#
+# Design limits checked: L7, L29. This recipe ingests an index FHFA
+# publishes, as published; nothing in openplaces builds a price index.
+
+description: >-
+  FHFA all-transactions house price index for US counties, annual, with
+  2000 = 100 and the published annual percent change.
+
+admin_id: US
+
+dataset:
+  theme: economy-price-house
+  source:
+    source_id: fhfa
+    # Checked 2026-10-18. FHFA's website policy, section 10:
+    # "information and materials produced by Federal agencies,
+    # including FHFA, are in the public domain" (seals and trademarks
+    # excepted). Section 11: "All services that use data developed by
+    # FHFA must prominently display the following notice", quoted in
+    # `license`. The datasets page itself states no further terms.
+    license: >-
+      public-domain (US Government work, 17 U.S.C. 105); required notice:
+      'This product uses FHFA data but is neither endorsed nor certified
+      by FHFA.'
+    terms_url: "https://www.fhfa.gov/about/fhfa-policies/website-privacy-policy"
+    redistribution_restricted: false
+    portal_url: "https://www.fhfa.gov/data/hpi/datasets?tab=additional-data"
+    download_url: "https://www.fhfa.gov/hpi/download/annual/hpi_at_county.xlsx"
+  version: "2026"
+
+uncompressed_file_name: "hpi_at_county.xlsx"
+
+sheet_name: county
+header: 5
+
+csv_dtype:
+  FIPS code: str
+
+columns:
+  county_fips: FIPS code
+  year: Year
+  house_price_index_annual_change: Annual Change (%)
+  house_price_index: HPI
+  house_price_index_base_2000: HPI with 2000 base
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: house_price_index
+    output: house_price_index
+  - type: unary
+    operation: to_numeric
+    input: house_price_index_annual_change
+    output: house_price_index_annual_change
+  - type: unary
+    operation: to_numeric
+    input: house_price_index_base_2000
+    output: house_price_index_base_2000
+
+keep_unnamed_columns: false
+
+save_to:
+  data_dir: core
