@@ -251,16 +251,39 @@ def test_curate_recipe_keeps_party_and_owner_columns_out_of_share(monkeypatch):
     assert list(out.columns) == ['price']
 
 
-def _grading_specs(output):
-    from openplaces.recipe import get_recipe_by_id
+def _grading_specs(outputs, admin_id=None):
+    # The recipe as *admin_id* runs it: each state grades its own
+    # vocabulary in a patch, so the specs are read after patching.
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
 
+    if isinstance(outputs, str):
+        outputs = {outputs}
     recipe = get_recipe_by_id('US_transaction-openplaces-2026')
+    if admin_id is not None:
+        recipe, _ = apply_recipe_patches(recipe, admin_id)
     return [
         spec
         for step in recipe['pipeline']
         for spec in step.get('indicators', [])
-        if spec['output'] == output
+        if spec['output'] in outputs
     ]
+
+
+def test_national_recipe_grades_no_state_vocabulary():
+    # A grade is a statement about one source's vocabulary, so it lives
+    # in that state's patch. A state with no patch (Massachusetts) runs
+    # no grading map at all, and Florida's and Wisconsin's maps never
+    # reach each other's rows.
+    graded = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    assert _grading_specs(graded) == []
+    assert _grading_specs(graded, 'US-MA-NTC') == []
+    columns = {
+        str(spec.get('column', spec.get('columns')))
+        for spec in _grading_specs(graded, 'US-WI')
+    }
+    assert 'sale_qualification_code' not in columns
+    florida = _grading_specs(graded, 'US-FL')
+    assert {spec['column'] for spec in florida} == {'sale_qualification_code'}
 
 
 def test_wisconsin_sale_is_graded_from_conveyance_and_relationship():
@@ -290,21 +313,13 @@ def test_wisconsin_sale_is_graded_from_conveyance_and_relationship():
             ],
         }
     )
-    from openplaces.recipe import get_recipe_by_id
-
-    recipe = get_recipe_by_id('US_transaction-openplaces-2026')
     wanted = {
         '_conveyance_grade',
         '_relationship_grade',
         'sale_arms_length_confidence',
         'sale_qualification_group',
     }
-    specs = [
-        spec
-        for step in recipe['pipeline']
-        for spec in step.get('indicators', [])
-        if spec['output'] in wanted
-    ]
+    specs = _grading_specs(wanted, 'US-WI')
     out = derive_indicators(_state(df), indicators=specs).curated
     conf = out['sale_arms_length_confidence']
     # A sale between strangers is the only 1.0; an unlisted conveyance
@@ -327,7 +342,7 @@ def test_florida_codes_grade_like_their_labels():
 
     import openplaces
 
-    specs = _grading_specs('sale_arms_length_confidence')
+    specs = _grading_specs('sale_arms_length_confidence', 'US-FL')
     florida = next(s for s in specs if s['column'] == 'sale_qualification_code')
     labels = pd.read_csv(
         Path(openplaces.__file__).parent

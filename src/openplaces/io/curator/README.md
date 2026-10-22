@@ -164,13 +164,17 @@ Steps are organized by the nature of the transformation:
   What runs here: `collapse_double_closings` (compared within
   one record kind) and `flag_sales_matching_other_kind`
   (`sale_matches_deed`: exact equality of parcel, year, month and price, no
-  tolerance and no score). `sale_arms_length_confidence` is graded per source
-  in the recipe: Florida from the state's qualification codes (labels and the
-  raw two-digit codes alike, because last-sale rows read from the parcel
-  layer are undecoded), Wisconsin as the lower of two grades, the conveyance
-  type and the relationship the parties themselves state on the RETR form
-  (`sale_party_relationship`; about 20% of transfers are `Family`), through
-  the `minimum` indicator type and `fill_only`.
+  tolerance and no score). `sale_arms_length_confidence` and
+  `sale_qualification_group` are graded per state, each in a patch recipe at
+  the state's scope inserted right after the national recipe's first
+  `derive_indicators` step: Florida from the state's qualification codes
+  (labels and the raw two-digit codes alike, because last-sale rows read
+  from the parcel layer are undecoded), Wisconsin as the lower of two
+  grades, the conveyance type and the relationship the parties themselves
+  state on the RETR form (`sale_party_relationship`; about 20% of transfers
+  are `Family`), through the `minimum` indicator type and `fill_only`,
+  Illinois from the PTAX-203 conditions. A state with no patch leaves both
+  columns unwritten.
   `join_temporal_snapshot` is the one as-of join in the repo (the only
   `pd.merge_asof`), attaching **the property as it was when it sold**: a
   hedonic model wants the sale-date values, and where a county renumbered

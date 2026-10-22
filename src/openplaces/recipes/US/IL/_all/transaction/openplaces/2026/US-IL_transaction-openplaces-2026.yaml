@@ -1,8 +1,9 @@
 # Patch: Illinois transaction curation, grading the PTAX-203 sale
 # conditions (US-IL_transaction-ildor-2026).
 #
-# The national recipe grades each source's own qualification
-# vocabulary; Illinois states none. The declaration asks the parties
+# Each state grades its own sale qualification vocabulary in a patch
+# like this one (Florida's and Wisconsin's beside it); Illinois states
+# no qualification. The declaration asks the parties
 # instead, on line 10, which of 18 conditions applied, and on line 5
 # which instrument conveyed the property. The ingest writes line 10 as
 # one code, `L10:` followed by the letters of the checked lines in form
