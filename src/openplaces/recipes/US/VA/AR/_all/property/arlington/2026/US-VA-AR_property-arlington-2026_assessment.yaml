@@ -1,0 +1,138 @@
+# Recipe: Arlington County, VA assessment records, tax year 2026.
+# Supplement of US-VA-AR_property-arlington-2026; see that recipe for
+# the terms and the join key.
+#
+# SOURCE. The county's open-data API, table RealEstate/Assessment,
+# filtered on the server to assessment dates in 2026 and read in two
+# pages of at most 50,000 rows (the API's cap), read 2026-10-19:
+# 67,577 rows over 67,130 RPCs. The table holds every assessment
+# record of every year (2,630,944 rows); the catalog's bulk copy,
+# download.data.arlingtonva.us/RealEstate/Assessment.txt.gz, is a
+# gzip file, which the ingester's flat-file reader does not open, and
+# would need the same year filter.
+#
+# WHAT ONE ROW IS. One assessment record of an RPC. Each of the
+# 67,130 RPCs has its '01- Annual' record dated 2026-01-01; 447 later
+# records (Review, Board of Equalization, Tax to Exempt, Exempt to
+# Tax, New Construction, Permit, Court Order) revise 444 of them, and
+# 329 of those revisions change the total. The latest record of the
+# year is kept: the highest assessmentKey, which is also the latest
+# assessmentDate on every RPC (measured). Earlier records' values are
+# nulled by the transformations, so the per-RPC reduction returns the
+# latest.
+#
+# MAPPED. landValueAmt land_value, improvementValueAmt
+# improvement_value, totalValueAmt total_value (land plus improvement
+# on every row); tax_year from assessmentDate (2026). A value of 0 is
+# kept as published (vacant land, exempt and not-valued classes).
+# NOT MAPPED: assessmentChangeReasonTypeDsc (no registry home),
+# provalLrsnId (the CAMA system's internal key).
+#
+# JOIN. On property_id_assessor (the RPC); 99.91% of the table's RPCs
+# are roll RPCs (the rest are status T accounts the roll drops).
+# Measured 2026-10-19 on US-VA-AR: total_value on 99.80% of 67,202 roll rows.
+# Measured 2026-10-19 on US-VA-AR: total_value on 99.93% of residential rows.
+# Measured 2026-10-19 on US-VA-AR: total_value sums to 103.1 bn USD on roll rows.
+
+description: >-
+  Arlington County, VA assessment records (datahub API), 2026: land,
+  improvement and total assessed value per RPC, latest record kept.
+
+admin_id: US-VA-AR
+
+entity:
+  entity_type: property
+  source:
+    source_id: arlington
+    download_url_scraper: "json_endpoints_scraper"
+    # Same terms as the roll; see its TERMS note. Restricted until a
+    # person reads the notice.
+    license: "unknown (Open Data Public Use Notice not yet read by a person)"
+    terms_url: "https://topics.arlingtonva.us/open-government-resources/terms/"
+    redistribution_restricted: true
+    portal_url: "https://data.arlingtonva.us/"
+  version: 2026
+
+scraper_options:
+  urls:
+    - "https://datahub-v2.arlingtonva.us/api/RealEstate/Assessment?$filter=assessmentDate%20ge%202026-01-01%20and%20assessmentDate%20lt%202027-01-01&$orderby=assessmentKey&$top=50000&$skip=0"
+    - "https://datahub-v2.arlingtonva.us/api/RealEstate/Assessment?$filter=assessmentDate%20ge%202026-01-01%20and%20assessmentDate%20lt%202027-01-01&$orderby=assessmentKey&$top=50000&$skip=50000"
+
+uncompressed_file_name: "arlington_assessment_2026.csv"
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  property_id_assessor: realEstatePropertyCode
+  land_value: landValueAmt
+  improvement_value: improvementValueAmt
+  total_value: totalValueAmt
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: assessmentKey
+    output: assessmentKey
+  # The latest record of the year per RPC; earlier ones are nulled, so
+  # any reduction below returns the latest. See WHAT ONE ROW IS.
+  - type: expression
+    expression: >-
+      assessmentKey == assessmentKey.groupby(property_id_assessor)
+      .transform('max')
+    inputs: [assessmentKey, property_id_assessor]
+    output: is_latest_record
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: expression
+    expression: "land_value.where(is_latest_record)"
+    inputs: [land_value, is_latest_record]
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: expression
+    expression: "improvement_value.where(is_latest_record)"
+    inputs: [improvement_value, is_latest_record]
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: expression
+    expression: "total_value.where(is_latest_record)"
+    inputs: [total_value, is_latest_record]
+    output: total_value
+  - type: string
+    operation: extract_named
+    input: assessmentDate
+    output: tax_year
+    args:
+      pattern: '^(?P<tax_year>\d{4})'
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+drop_columns:
+  - assessmentKey
+  - is_latest_record
+
+aggregation_function:
+  land_value: max
+  improvement_value: max
+  total_value: max
+  tax_year: max
+
+supplements: US-VA-AR_property-arlington-2026
+# The roll's parcel_id_local names the lot (polygonId), which this
+# table does not carry, so it joins the roll on the account.
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: assessment
