@@ -525,13 +525,46 @@ class _DownloadMixin:
             # recipe reads does not unpack them into the heap, where
             # the cleanup below (which deletes only `data_path`)
             # would leave them behind.
+            # Partition placeholders resolve here too, so a yearly
+            # archive can extract only that year's members.
+            members = self.recipe.get('extract_members')
+            if members and 'download_by' in self.recipe:
+                members = [
+                    self._resolve_placeholders(m)
+                    for m in ([members] if isinstance(members, str) else members)
+                ]
             unzip(
                 self.download_partition['downloaded_path'],
                 self.recipe_heap_dir,
-                members=self.recipe.get('extract_members'),
+                members=members,
                 verbose=self.verbose,
             )
             self.timer.mark(f'Unzip{_dl_suffix}')
+
+        # `read_members`: the partition's data is every extracted file
+        # matching a pattern, read together by the table reader. Vermont
+        # ships a year of transfer returns as one archive of overlapping
+        # monthly and weekly extracts, so no single member is the year.
+        # The first match stands in as `data_path` for the checks below.
+        if self.recipe.get('read_members'):
+            members_glob = self.recipe['read_members']
+            if 'download_by' in self.recipe:
+                members_glob = self._resolve_placeholders(members_glob)
+            self.download_partition['read_members_glob'] = members_glob
+            heap = self.recipe_heap_dir
+            matched = (
+                sorted(p for p in heap.glob(members_glob) if p.is_file())
+                if heap.exists()
+                else []
+            )
+            if not matched:
+                raise FileNotFoundError(
+                    f'No extracted file matches read_members {members_glob!r} '
+                    f'in {self.recipe_heap_dir}.'
+                )
+            self.download_partition['data_path'] = matched[0]
+            if self.verbose:
+                print(f'Reading {len(matched)} members matching {members_glob}')
 
         # If the expected flat path wasn't created by extraction, search
         # recursively (tar archives often add nested subdirectories).

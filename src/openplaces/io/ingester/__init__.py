@@ -556,6 +556,15 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
                     print('Deleting unzipped data.')
                 for matched_path in self.recipe_heap_dir.glob(partition_glob):
                     delete_data(matched_path)
+            elif self.download_partition.get('read_members_glob'):
+                # Every member read, not only the one standing in as
+                # `data_path`.
+                if self.verbose:
+                    print('Deleting unzipped data.')
+                for matched_path in self.recipe_heap_dir.glob(
+                    self.download_partition['read_members_glob']
+                ):
+                    delete_data(matched_path)
             elif self.download_partition['data_path'].is_relative_to(
                 self.recipe_heap_dir
             ):
