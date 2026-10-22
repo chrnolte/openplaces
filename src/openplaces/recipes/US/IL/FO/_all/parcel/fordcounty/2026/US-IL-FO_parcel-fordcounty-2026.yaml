@@ -1,0 +1,149 @@
+# Recipe: Ford County, IL tax parcels with the assessor's values and
+# last sale, from the layer behind the county's "REACH Assessor Map"
+# (the GIS link on fordcounty.illinois.gov, ford-il.bhamaps.com, an
+# ArcGIS Experience built by the county's mapping vendor). Hosted
+# layer "Parcels" (item 2a44c42923354729b412b76ce4c71fee, layer 2,
+# "Dynamic parcels for pop-ups in REACH"), pulled as the Hub's cached
+# GeoJSON export. source_id names the county: the vendor publishes
+# the layer for the county's assessor map.
+#
+# The older vendor map service (ags.bhamaps.com, FordIL_Taxmap) answers
+# 404 behind an expired certificate (checked 2026-10-21) and is not
+# used.
+#
+# KEY. ParcelNumber is the 12-digit PIN without separators
+# ('999999999999'); MyDec writes the same number as '99-99-99-999-999'.
+# The bundled Ford conversions expect separators on both sides (the
+# tax one drops the 2-digit township prefix and joins the other four
+# groups with '|'), so the parcel side gets an override row in
+# US_parcel_id-overrides.csv (US-IL-FO, fordcounty, parcel:
+# string_lengths 2 2 2 3 3, drop_cols 0) that cuts the same five
+# groups by width and yields the tax side's key. 16 rows carry a word
+# instead of a number and 12 none; they get no key. Measured
+# 2026-10-21 on the export (10,691 rows): parcel_id_local filled
+# 99.7%, 10,496 distinct (ParcelNumber has 10,497, the extra one a
+# word); the conversion adds no duplicate.
+#
+# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026). Measured
+# 2026-10-21: 85.8% of the 730 ingested Ford declarations (all
+# 2018-2019) find their parcel. The misses are retired PINs: 92.3% of
+# them share their 9-digit block with a current parcel, farm (line 8
+# J: 56%) and land (A: 71%) declarations carry most of them, residences
+# (B) match 93.8%, and the portal's later Ford declarations match
+# 86-89% for 2020-2024 and 93.5% for 2025-2026 (residences 97%).
+#
+# VALUES (assessed; Illinois assesses non-farm property at one third of
+# market value and farmland at its use value). LandValue and
+# FarmLandValue are both assessed land: land_value is their sum and
+# land_value_preferential the farmland part. improvement_value sums
+# ImprovementValue and FarmImprovementValue. total_value is
+# TotalAssessedValue, which equals the sum of the four on every row.
+# Above zero: LandValue 65.4%, ImprovementValue 59.0%, FarmLandValue
+# 37.1%, FarmImprovementValue 9.4%, TotalAssessedValue 96.3%.
+#
+# LAST SALE. LastSaleDate is text ('Ddd, 99 Mmm 9999 00:00:00 GMT'),
+# filled on 53.4%, years 1962-2026. last_sale_price is
+# LastSaleNetPrice (net consideration, as MyDec line 13), above zero on
+# 49.7%; LastSaleGrossPrice equals it on 98.9% and is not mapped.
+#
+# MAPPED. use_group_code from PropertyUseCode (the Illinois property
+# class: 0040 residential 4,981, 0021 farmland 2,871, 0011 farm with
+# buildings 1,094, 0060 commercial 511, 0030 residential vacant 446,
+# 0090 exempt 311, 0080 industrial 269 and 8 rarer codes; blank on 85).
+# PropertyUseName is its label and is left to curate's translation.
+# tax_district from TaxCode (80 codes). land_area_ac from
+# StatedGrossAcres (above zero on 38.9%; zeros emptied). address from
+# SiteAddress (99.2%), postal_code from the last word of
+# SiteCityStateZip.
+#
+# NOT MAPPED. Taxpayer, FirstOwnerName and MailingAddress: never read.
+# Description (a legal description), the school, fire, road, college,
+# TIF and multi-township district names, Municipality, Township,
+# StatedHomesiteAcres, CalcAcres and Angle. No year built or living
+# area field exists.
+#
+# RECONCILIATION (ingested 2026-10-22). The export holds 10,691 rows,
+# the live layer 10,691 (returnCountOnly). The stacked-unit split
+# drops 11 exact duplicate rows and moves one 2-row stack to the
+# property layer: 10,679 parcels, parcel_id_local filled 99.85%.
+# Server against parquet, above zero: TotalAssessedValue 10,292 /
+# total_value 10,292; LastSaleNetPrice 5,311 / last_sale_price 5,311;
+# FarmLandValue 3,964 / land_value_preferential 3,964.
+#
+# LICENCE. Checked 2026-10-21: the item, the REACH web map and
+# experience carry no licence or terms text; two vector tile items in
+# the same organization state "Public" as their licence. Recorded as
+# unknown.
+
+description: >-
+  Ford County, IL tax parcels with assessed land and building values,
+  property class and last sale from the county assessor map's layer.
+
+admin_id: US-IL-FO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: fordcounty
+    license: "unknown: no licence or terms text on the item or the REACH assessor map (checked 2026-10-21)"
+    terms_url: null
+    redistribution_restricted: null
+    portal_url: "https://ford-il.bhamaps.com/"
+    # The v3 datasets download answers 404 for this layer (checked
+    # 2026-10-22); the v1 items download serves the same export.
+    download_url: "https://hub.arcgis.com/api/download/v1/items/2a44c42923354729b412b76ce4c71fee/geojson?layers=2&spatialRefId=4326"
+  version: 2026
+
+uncompressed_file_name: "ford_parcels.geojson"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  use_group_code: PropertyUseCode
+  tax_district: TaxCode
+  land_area_ac: StatedGrossAcres
+  address: SiteAddress
+  postal_code: SiteCityStateZip
+  land_value: LandValue
+  improvement_value: ImprovementValue
+  land_value_preferential: FarmLandValue
+  total_value: TotalAssessedValue
+  last_sale_date: LastSaleDate
+  last_sale_price: LastSaleNetPrice
+
+transformations:
+  - type: string
+    operation: split_take
+    input: postal_code
+    args: {sep: " ", index: -1}
+    output: postal_code
+  - type: unary
+    operation: null_if_equal
+    input: land_area_ac
+    args: {value: 0}
+    output: land_area_ac
+  - type: aggregate
+    operation: sum
+    inputs: [land_value, land_value_preferential]
+    output: land_value
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value, FarmImprovementValue]
+    output: improvement_value
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+columns_to_categorical:
+  - use_group_code
+  - tax_district
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
