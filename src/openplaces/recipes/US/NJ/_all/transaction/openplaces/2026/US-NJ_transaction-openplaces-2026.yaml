@@ -1,0 +1,150 @@
+# Patch: New Jersey transaction curation, grading the SR1A usable and
+# nonusable deed categories (US-NJ_transaction-njtaxation-2026).
+#
+# The ingest writes the Division of Taxation's own verdict as one code:
+# `U` for a deed usable in the sales-ratio study, `N` and the category
+# of N.J.A.C. 18:12-1.1 for a nonusable one (`N25`). The categories
+# are the State's, so a state patch. The national recipe's map does not
+# know these codes and leaves them missing; this patch fills them. A
+# code not listed here (a category the rule may add later) stays
+# missing: there is no default.
+#
+# 1.0: `U`, the assessor and the Division found nothing against the
+# sale.
+#
+# 0.7: categories that disqualify the assessment, not the price. The
+# sale may well be at arm's length; it is unusable for a ratio because
+# the assessment does not describe what was sold, or the timing is
+# off. 5 deed dated before the January preceding the sampling period;
+# 6 a portion of the assessed lot (apportionment, split-off); 7
+# improved after assessment; 16 assessed in more than one taxing
+# district; 19 damaged or demolished after assessment; 24 value
+# changed by zoning or approvals after assessment; 27 before a
+# revaluation reached the roll; 29 assessment fixed by court order or
+# the Freeze Act; 30 several lots that are not one economic unit; 32
+# record card error; 33 farmland, exempt or abated; 34 property class
+# not the actual use; 36 assessment not municipal practice, or an
+# individual ratio so far off that it would distort the municipal
+# ratio (the State's ratio, read as a code; openplaces computes none,
+# L29).
+#
+# 0.0: categories that say the price is not a market price. 1 immediate
+# family; 2 "love and affection"; 3 corporation and its stockholder or
+# affiliate; 4 transfer of convenience; 8 undivided interest; 9 under
+# a tax sale certificate or lien; 10 by guardian, trustee, executor or
+# administrator; 11 judicial sale; 12 sheriff's sale; 13 bankruptcy,
+# receivership, liquidation or short sale; 14 doubtful title, quitclaim;
+# 15 to or from a government; 17 to or from a charity; 18 in lieu of
+# foreclosure; 20 utility right of way; 21 low or moderate income
+# housing; 22 exchange; 23 commercial sale with personalty of unknown
+# value; 25 consideration of 100 dollars or less; 26 other, not a
+# willing buyer and seller; 28 leaseback; 31 first sale after a bank's
+# foreclosure; 35 less than full ownership. The rule's (b) list (1, 3,
+# 9, 10, 15, 17, 26, 28, 30, 35) may be used after investigation; a
+# deed carrying the code was not, so the code stands.
+#
+# Group: qualified for `U`; related_parties_family for 1,
+# related_parties_business for 3; not_a_sale for 2, 4, 22 and 25;
+# qualified_parcel_changed for 6, 7, 19 and 24; qualified_multi_parcel
+# for 16 and 30; disqualified for the other 0.0 codes. The other 0.7
+# codes get no group, since none of the registry's groups describes
+# them; the confidence carries them.
+#
+# Measured 2026-10-22 on US-NJ-CU (27,305 SR1A deeds, 2019-07 to
+# 2026-06): 1.0 on 8,821 (32.3%), 0.7 on 4,811, 0.0 on 13,673; every
+# code present is listed, so none is left missing. Categories 22, 27
+# and 36 do not occur in the county.
+
+admin_id: US-NJ
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "U": 1.0
+            "N05": 0.7
+            "N06": 0.7
+            "N07": 0.7
+            "N16": 0.7
+            "N19": 0.7
+            "N24": 0.7
+            "N27": 0.7
+            "N29": 0.7
+            "N30": 0.7
+            "N32": 0.7
+            "N33": 0.7
+            "N34": 0.7
+            "N36": 0.7
+            "N01": 0.0
+            "N02": 0.0
+            "N03": 0.0
+            "N04": 0.0
+            "N08": 0.0
+            "N09": 0.0
+            "N10": 0.0
+            "N11": 0.0
+            "N12": 0.0
+            "N13": 0.0
+            "N14": 0.0
+            "N15": 0.0
+            "N17": 0.0
+            "N18": 0.0
+            "N20": 0.0
+            "N21": 0.0
+            "N22": 0.0
+            "N23": 0.0
+            "N25": 0.0
+            "N26": 0.0
+            "N28": 0.0
+            "N31": 0.0
+            "N35": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "U": qualified
+            "N01": related_parties_family
+            "N03": related_parties_business
+            "N02": not_a_sale
+            "N04": not_a_sale
+            "N22": not_a_sale
+            "N25": not_a_sale
+            "N06": qualified_parcel_changed
+            "N07": qualified_parcel_changed
+            "N19": qualified_parcel_changed
+            "N24": qualified_parcel_changed
+            "N16": qualified_multi_parcel
+            "N30": qualified_multi_parcel
+            "N08": disqualified
+            "N09": disqualified
+            "N10": disqualified
+            "N11": disqualified
+            "N12": disqualified
+            "N13": disqualified
+            "N14": disqualified
+            "N15": disqualified
+            "N17": disqualified
+            "N18": disqualified
+            "N20": disqualified
+            "N21": disqualified
+            "N23": disqualified
+            "N26": disqualified
+            "N28": disqualified
+            "N31": disqualified
+            "N35": disqualified
