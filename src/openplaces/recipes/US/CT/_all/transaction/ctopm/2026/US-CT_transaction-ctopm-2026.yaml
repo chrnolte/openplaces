@@ -1,0 +1,167 @@
+# Recipe: Connecticut real estate sales, as the towns' assessors
+# report them to the Office of Policy and Management (OPM) under
+# C.G.S. 10-261a and 10-261b, published on the state's Socrata portal
+# (data.ct.gov, dataset 5mzw-sjtu, "Real Estate Sales 2001-2024 GL").
+# One row per sale of 2,000 USD or more, all 169 towns, by grand list
+# year (sales from October 1 of the list year to September 30 of the
+# next). A town in its revaluation year need not report, so a town
+# can miss a year.
+#
+# PRIVACY. The dataset carries no buyer or seller field. Its two
+# remark columns (Assessor Remarks, OPM remarks) are free text and are
+# not requested: the download URL names an allow-list of columns
+# ($select). The address is the property's own, not a person's.
+#
+# NO PARCEL ID. A row names its town and the property's street
+# address, nothing else. It reaches a parcel only through the
+# transaction spine's exact address key, scoped by the file's town
+# (each town is a level-3 unit here), against the CT parcel layer's
+# `Location` (US-CT_parcel-ctgov-2024). The spine parses `address`
+# through its existing `reconcile_addresses` entries, which read that
+# column for every source (the provenance token then reads `nhcgov`).
+# The dataset's Location point (geo_coordinates, 28.3% filled
+# statewide) is not requested.
+#
+# COVERAGE, measured 2026-10-21 (SoQL counts): 1,188,997 rows, list
+# years 2001-2024 (recorded 2001-10 to 2025-09); 47,275 rows in 2024.
+# One row has the town '***Unknown***' and matches no unit. The
+# download is one request per list year (`download_by`).
+#   price (Sale Amount): filled on every row.
+#   recorded_date (Date Recorded): filled on all but 2 rows. 353
+#     carry a two-digit year (0023 to 0025), which parses as a real
+#     year 24; the query blanks any date before 1990 (see THE
+#     QUERY). The one 1999 date is kept.
+#   address: filled on 1,188,860 rows.
+#   Serial Number is unique within town and list year, not
+#     statewide (106,791 distinct values), so it is the source id and
+#     never a key on its own.
+#
+# RECONCILED, ingest of the 23 torrington-ct towns, 2026-10-22:
+#   rows: 99,672 ingested against 99,672 in SoQL counts for those
+#     towns, equal in every list year 2001-2024 (2,175 in 2008 to
+#     7,204 in 2004) and in every town; no town, list year and serial
+#     number repeats.
+#   price: 99,672 filled (100%), 99,578 above zero, 129 below the
+#     dataset's own 2,000 USD floor.
+#   recorded_date: 99,668 filled; the 4 others are the two-digit
+#     years the query blanks. Range 2001-10-01 to 2025-09-30.
+#   address: 99,666 filled. The exact address key (house number and
+#     street, as the spine's derive_address_id_local writes it) forms
+#     on 95,170 rows (95.5%; 77.6% in Warren to 99.1% in Avon).
+#   key overlap with the cached CT parcel layer's address (same
+#     normalization, exact, per town): 73,481 rows (73.7%). It is
+#     near zero in Avon, Bethlehem and Warren, where that layer's
+#     addresses carry no house number, and 30% in Cornwall; 85-91%
+#     in Torrington, Thomaston, Barkhamsted and New Hartford.
+#   use_group_code: 67,347 filled (Single Family 48,744, Condo
+#     11,298).
+#   sale_qualification_code: 71,682 'NU:' (no code), 27,990 coded,
+#     59 distinct values, all graded by the curate patch.
+#
+# THE QUERY. Three columns are composed in SoQL, so that no ingest
+# operation is needed:
+#   recorded_date: Date Recorded where it falls in 1990 or later,
+#     else empty (case() without an else); the row and its price are
+#     kept.
+#   sale_qualification_code: the assessor's non-usable code, written
+#     'NU:' followed by the code as shipped ('NU:' alone when none is
+#     given, 'NU:07 - Change in Property', 'NU:7'), as the Illinois
+#     recipe writes its line 10. The prefix keeps "no code stated"
+#     distinct from a missing value. Towns spell the codes two ways,
+#     the number with its label or the bare number; both spellings
+#     are kept as received and the curate patch
+#     (US-CT_transaction-openplaces-2026) grades each. 852,839 rows
+#     carry no code; 75 distinct codes otherwise, statewide.
+#   use_group_code: Residential Type where given, else Property Type
+#     (the residential subtype is the finer of the two: Property Type
+#     reads 'Residential' on 20,418 of the region's rows where
+#     Residential Type says which). 382,446 rows carry neither.
+#     Values: Single Family, Condo, Two/Three/Four Family, Vacant
+#     Land, Commercial, Apartments, Industrial, Public Utility.
+#
+# KEPT AS RECEIVED, unregistered (`keep_unnamed_columns`): List Year
+# (the grand list year the sale belongs to) and Assessed Value (the
+# property's assessment, at 70% of market value in Connecticut).
+# Sales Ratio is not requested: it is the assessed value over the
+# price, and no openplaces step grades or adjusts a sale by a ratio.
+#
+# DESIGN LIMITS CHECKED: L7 and L29 (no ratio is requested or
+# computed, no index; code 25 is the assessor's own judgment, graded
+# as stated), L18 (one address source per row, so reconcile_addresses
+# keeps its priority base), L27 (the address key is exact; no
+# neighbor's number fills a gap).
+#
+# LICENCE. Socrata licenseId PUBLIC_DOMAIN, attribution "Office of
+# Policy and Management" (checked 2026-10-21). The portal's terms
+# (data.ct.gov/terms) give the data "as is"; no click-through.
+
+description: >-
+  Connecticut real estate sales reported by town assessors to OPM, 2001
+  onward: price, recording date, address, property type and non-usable
+  code.
+
+admin_id: US-CT
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: ctopm
+    portal_url: "https://data.ct.gov/d/5mzw-sjtu"
+    download_url: "https://data.ct.gov/resource/5mzw-sjtu.csv?%24select=serialnumber%2C%20listyear%2C%20case%28daterecorded%20%3E%3D%20%271990-01-01T00%3A00%3A00%27%2C%20daterecorded%29%20as%20date_recorded%2C%20town%2C%20address%2C%20assessedvalue%2C%20saleamount%2C%20coalesce%28residentialtype%2C%20propertytype%29%20as%20property_type_reported%2C%20%27NU%3A%27%20%7C%7C%20coalesce%28nonusecode%2C%20%27%27%29%20as%20non_use_code&%24where=listyear%3D{year}&%24order=town%2C%20serialnumber&%24limit=1000000"
+    license: "Public Domain (data.ct.gov dataset licence)"
+    terms_url: "https://data.ct.gov/terms"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+# One request per grand list year (84,056 rows at most, in 2004).
+download_by:
+  partition: year
+  first: 2001
+  last: 2024
+
+uncompressed_file_name: "ct_real_estate_sales_{year}.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: town
+  admin_id_crosswalk:
+    # The town names are spelled exactly as in the CAMA roll's
+    # crosswalk (all 169 match, measured 2026-10-21).
+    recipe_id: "US-CT_property-ctgov-2024_admin3-crosswalk"
+
+columns:
+  transaction_id_source: serialnumber
+  recorded_date: date_recorded
+  admin3_name: town
+  address: address
+  price_raw: saleamount
+  use_group_code: property_type_reported
+  sale_qualification_code: non_use_code
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: price_raw
+    output: price
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+
+keep_unnamed_columns: true
+
+columns_to_categorical:
+  - use_group_code
+  - sale_qualification_code
+
+save_to:
+  data_dir: cache
+  admin_level: 3
+
+# Integrate the per-year files into one file per town, as the
+# Illinois, Wisconsin and Indiana transfer recipes do.
+aggregate_by:
+  single_file: true

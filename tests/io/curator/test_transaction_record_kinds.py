@@ -341,6 +341,52 @@ def test_florida_codes_grade_like_their_labels():
         assert mapping.get(key) == mapping.get(label), (key, label)
 
 
+def test_connecticut_non_usable_codes_are_graded_in_both_spellings():
+    from openplaces.io.curator.inferers import derive_indicators
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe, applied = apply_recipe_patches(
+        get_recipe_by_id('US_transaction-openplaces-2026'), AdminId('US-CT-TOR')
+    )
+    assert 'US-CT_transaction-openplaces-2026' in applied
+    wanted = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    specs = [
+        spec
+        for step in recipe['pipeline']
+        for spec in step.get('indicators', [])
+        if spec['output'] in wanted
+    ]
+    codes = [
+        'NU:',
+        'NU:07 - Change in Property',
+        'NU:7',
+        'NU:01 - Family',
+        'NU:29',
+        'NU:88',
+        None,
+    ]
+    df = pd.DataFrame({'sale_qualification_code': codes})
+    out = derive_indicators(_state(df), indicators=specs).curated
+    conf = out['sale_arms_length_confidence']
+    assert conf.tolist()[:5] == [1.0, 0.7, 0.7, 0.0, 0.0]
+    # A code outside OPM's list, and a row without the field, stay
+    # missing: neither is the assessor accepting the sale.
+    assert conf.isna().tolist()[5:] == [True, True]
+    assert out['sale_qualification_group'].tolist()[:5] == [
+        'qualified',
+        'qualified_parcel_changed',
+        'qualified_parcel_changed',
+        'related_parties',
+        'not_a_sale',
+    ]
+    # Every labelled spelling grades like its bare number.
+    patch = next(s for s in specs if 'NU:' in s.get('mapping', {}))
+    for key, grade in patch['mapping'].items():
+        if ' - ' in key:
+            bare = 'NU:' + str(int(key[3:5]))
+            assert patch['mapping'][bare] == grade, key
+
+
 def test_a_second_source_fills_only_what_the_first_left_missing():
     from openplaces.io.curator.inferers import derive_indicators
 
