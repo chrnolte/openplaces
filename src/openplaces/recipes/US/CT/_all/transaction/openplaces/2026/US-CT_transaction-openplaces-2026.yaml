@@ -1,0 +1,202 @@
+# Patch: Connecticut transaction curation, grading the assessors'
+# non-usable sale codes (US-CT_transaction-ctopm-2026).
+#
+# Connecticut's assessors report every sale of 2,000 USD or more to
+# OPM and mark a sale they find unusable with one of 30 codes, from
+# OPM's own list ("Non Usable Codes.pdf", attached to data.ct.gov
+# dataset 5mzw-sjtu, read 2026-10-21). A sale with no code is one the
+# assessor accepted. The ingest writes the code as 'NU:' followed by
+# the value as shipped, 'NU:' alone when there is none. A state's
+# vocabulary, so a state patch.
+#
+# Towns spell a code two ways, the number with its label ('07 -
+# Change in Property') or the bare number ('7'); both are listed.
+# Measured 2026-10-21, statewide: 852,839 of 1,188,997 rows carry no
+# code; every code 1 to 30 occurs in both spellings, code 13 in two
+# label spellings ('Bankrupcy', 'Bankruptcy'). Values outside the
+# list (bare numbers 31 to 88 and 'Single Family', 35 rows statewide,
+# none in the torrington-ct towns) map to nothing and stay missing;
+# no `default` is set for that reason. Graded shares in those 23
+# towns' 99,672 rows: 71.9% at 1.0, 8.8% at 0.7, 19.2% at 0.0.
+#
+# Grades, on the national scale (0, 0.7, 1):
+#   1.0  no code: the assessor accepted the sale.
+#   0.7  the code says the assessment no longer describes what sold,
+#        not that the price is off market: 05 deed date (signed over
+#        six months before the sampling year), 06 a portion of the
+#        assessed unit, 07 changed after the assessment date, 12 a
+#        non-buildable lot sold to an abutter (as Illinois grades its
+#        adjacent-owner box), 17 a parcel in two towns, 23 a zoning
+#        change since assessment, 24 plottage (sites combined into one
+#        ownership), 26 rehabilitation deferral, 27 crumbling
+#        foundation assessment reduction, 28 farm, forest or open
+#        space use assessment.
+#   0.0  every other code: family (01), love and affection (02),
+#        related corporations (03), correcting deed (04), part
+#        interest (08), tax sale (09), a will (10), court order (11),
+#        bankruptcy (13), foreclosure (14), government agency (15),
+#        charitable group (16), in lieu of foreclosure (18), easement
+#        (19), cemetery (20), exchange for other assets (21), personal
+#        property included (22), other reasons (25), no consideration
+#        (29), auction (30).
+# Code 25 reads in part "ratio is either way too high or way too
+# low": that is the assessor's judgment, graded as stated; no ratio
+# is computed here (design limits L7, L29 checked).
+#
+# Groups: qualified for no code; related_parties for 01 to 03;
+# not_a_sale for 04, 10 and 29, which convey without a sale;
+# qualified_parcel_changed for 06, 07 and 23; qualified_multi_parcel
+# for 17 and 24; disqualified for the remaining 0.0 codes. 05, 12 and
+# 26 to 28 get no group, since none of the registry's groups describes
+# them; the confidence carries them.
+
+admin_id: US-CT
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "NU:": 1.0
+            "NU:01 - Family": 0.0
+            "NU:1": 0.0
+            "NU:02 - Love and Affection": 0.0
+            "NU:2": 0.0
+            "NU:03 - Inter Corporation": 0.0
+            "NU:3": 0.0
+            "NU:04 - Correcting Deed": 0.0
+            "NU:4": 0.0
+            "NU:05 - Deed Date": 0.7
+            "NU:5": 0.7
+            "NU:06 - Portion of Property": 0.7
+            "NU:6": 0.7
+            "NU:07 - Change in Property": 0.7
+            "NU:7": 0.7
+            "NU:08 - Part Interest": 0.0
+            "NU:8": 0.0
+            "NU:09 - Tax": 0.0
+            "NU:9": 0.0
+            "NU:10 - A Will": 0.0
+            "NU:10": 0.0
+            "NU:11 - Court Order": 0.0
+            "NU:11": 0.0
+            "NU:12 - Non Buildable Lot": 0.7
+            "NU:12": 0.7
+            "NU:13 - Bankrupcy": 0.0
+            "NU:13 - Bankruptcy": 0.0
+            "NU:13": 0.0
+            "NU:14 - Foreclosure": 0.0
+            "NU:14": 0.0
+            "NU:15 - Government Agency": 0.0
+            "NU:15": 0.0
+            "NU:16 - Charitable Group": 0.0
+            "NU:16": 0.0
+            "NU:17 - Two Towns": 0.7
+            "NU:17": 0.7
+            "NU:18 - In Lieu Of Foreclosure": 0.0
+            "NU:18": 0.0
+            "NU:19 - Easement": 0.0
+            "NU:19": 0.0
+            "NU:20 - Cemetery": 0.0
+            "NU:20": 0.0
+            "NU:21 - Personal Property Exchange": 0.0
+            "NU:21": 0.0
+            "NU:22 - Money and Personal Property": 0.0
+            "NU:22": 0.0
+            "NU:23 - Zoning": 0.7
+            "NU:23": 0.7
+            "NU:24 - Plottage": 0.7
+            "NU:24": 0.7
+            "NU:25 - Other": 0.0
+            "NU:25": 0.0
+            "NU:26 - Rehabilitation Deferred": 0.7
+            "NU:26": 0.7
+            "NU:27 - CRUMBLING FOUNDATION ASSESSMENT REDUCTION": 0.7
+            "NU:27": 0.7
+            "NU:28 - Use Assessment": 0.7
+            "NU:28": 0.7
+            "NU:29 - No Consideration": 0.0
+            "NU:29": 0.0
+            "NU:30 - Auction": 0.0
+            "NU:30": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "NU:": qualified
+            "NU:01 - Family": related_parties
+            "NU:1": related_parties
+            "NU:02 - Love and Affection": related_parties
+            "NU:2": related_parties
+            "NU:03 - Inter Corporation": related_parties
+            "NU:3": related_parties
+            "NU:04 - Correcting Deed": not_a_sale
+            "NU:4": not_a_sale
+            "NU:05 - Deed Date": null
+            "NU:5": null
+            "NU:06 - Portion of Property": qualified_parcel_changed
+            "NU:6": qualified_parcel_changed
+            "NU:07 - Change in Property": qualified_parcel_changed
+            "NU:7": qualified_parcel_changed
+            "NU:08 - Part Interest": disqualified
+            "NU:8": disqualified
+            "NU:09 - Tax": disqualified
+            "NU:9": disqualified
+            "NU:10 - A Will": not_a_sale
+            "NU:10": not_a_sale
+            "NU:11 - Court Order": disqualified
+            "NU:11": disqualified
+            "NU:12 - Non Buildable Lot": null
+            "NU:12": null
+            "NU:13 - Bankrupcy": disqualified
+            "NU:13 - Bankruptcy": disqualified
+            "NU:13": disqualified
+            "NU:14 - Foreclosure": disqualified
+            "NU:14": disqualified
+            "NU:15 - Government Agency": disqualified
+            "NU:15": disqualified
+            "NU:16 - Charitable Group": disqualified
+            "NU:16": disqualified
+            "NU:17 - Two Towns": qualified_multi_parcel
+            "NU:17": qualified_multi_parcel
+            "NU:18 - In Lieu Of Foreclosure": disqualified
+            "NU:18": disqualified
+            "NU:19 - Easement": disqualified
+            "NU:19": disqualified
+            "NU:20 - Cemetery": disqualified
+            "NU:20": disqualified
+            "NU:21 - Personal Property Exchange": disqualified
+            "NU:21": disqualified
+            "NU:22 - Money and Personal Property": disqualified
+            "NU:22": disqualified
+            "NU:23 - Zoning": qualified_parcel_changed
+            "NU:23": qualified_parcel_changed
+            "NU:24 - Plottage": qualified_multi_parcel
+            "NU:24": qualified_multi_parcel
+            "NU:25 - Other": disqualified
+            "NU:25": disqualified
+            "NU:26 - Rehabilitation Deferred": null
+            "NU:26": null
+            "NU:27 - CRUMBLING FOUNDATION ASSESSMENT REDUCTION": null
+            "NU:27": null
+            "NU:28 - Use Assessment": null
+            "NU:28": null
+            "NU:29 - No Consideration": not_a_sale
+            "NU:29": not_a_sale
+            "NU:30 - Auction": disqualified
+            "NU:30": disqualified
