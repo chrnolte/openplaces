@@ -930,3 +930,128 @@ def test_zero_retries_raises_the_real_error(monkeypatch, tmp_path):
             verbose=False,
             label='test',
         )
+
+
+# Layers that answer with errors only
+
+
+class _FakeResponse:
+    def __init__(self, payload, status=200):
+        self._payload = payload
+        self.status_code = status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f'{self.status_code} error')
+
+    def json(self):
+        return self._payload
+
+
+_LAYER = 'http://svc/MapServer/7'
+_ERROR_BODY = {
+    'error': {'code': 400, 'message': 'Fabricated query failure', 'details': []}
+}
+
+
+@pytest.fixture
+def no_waiting(monkeypatch):
+    """Skip the pacing and backoff sleeps of the real request path."""
+    monkeypatch.setattr(scraper, '_pace', lambda interval_s: None)
+    monkeypatch.setattr(scraper.time, 'sleep', lambda seconds: None)
+
+
+def _error_layer(monkeypatch, *, total, max_record_count):
+    """Serve metadata and a count, and an error body for every page."""
+    queries = []
+
+    def fake_get(url, params=None, timeout=None, headers=None, **kwargs):
+        if not url.endswith('/query'):
+            return _FakeResponse(
+                {'maxRecordCount': max_record_count, 'objectIdField': 'OBJECTID'}
+            )
+        if params.get('returnCountOnly'):
+            return _FakeResponse({'count': total})
+        queries.append((params['resultOffset'], params['resultRecordCount']))
+        return _FakeResponse(_ERROR_BODY)
+
+    monkeypatch.setattr(scraper.requests, 'get', fake_get)
+    return queries
+
+
+def test_layer_answering_only_errors_fails_fast(monkeypatch, no_waiting, tmp_path):
+    """A page and both of its end records failing ends the download.
+
+    The regression this pins: every failed page was bisected down to
+    single records, about two requests per record times the retry
+    budget, so a layer rejecting every query paged for many minutes.
+    """
+    queries = _error_layer(monkeypatch, total=10_000, max_record_count=2000)
+    out = tmp_path / 'layer.geojson'
+
+    with pytest.raises(scraper.ArcGISLayerError) as raised:
+        scraper.fetch(target_path=out, layer_url=_LAYER, retries=3)
+
+    message = str(raised.value)
+    assert _LAYER in message
+    assert 'Fabricated query failure' in message
+    # One page and two single-record probes, three attempts each.
+    assert len(queries) == 9
+    assert {q[0] for q in queries} == {0, 1999}
+    assert not out.exists()
+    assert list(tmp_path.glob('*.part*')) == []
+
+
+def test_one_record_pages_answering_errors_stop_after_the_limit(
+    monkeypatch, no_waiting, tmp_path
+):
+    queries = _error_layer(monkeypatch, total=500, max_record_count=1)
+    out = tmp_path / 'layer.geojson'
+
+    with (
+        pytest.warns(UserWarning, match='skipping unfetchable record'),
+        pytest.raises(scraper.ArcGISLayerError, match='Fabricated query failure'),
+    ):
+        scraper.fetch(target_path=out, layer_url=_LAYER, retries=1)
+
+    assert len(queries) == scraper.MAX_CONSECUTIVE_FAILED_PAGES
+
+
+def test_one_transient_error_page_is_retried(monkeypatch, no_waiting, tmp_path):
+    """A single error answer followed by data still downloads the layer."""
+    answered = {'errors': 0}
+
+    def fake_get(url, params=None, timeout=None, headers=None, **kwargs):
+        if not url.endswith('/query'):
+            return _FakeResponse({'maxRecordCount': 2, 'objectIdField': 'OBJECTID'})
+        if params.get('returnCountOnly'):
+            return _FakeResponse({'count': 4})
+        if answered['errors'] == 0:
+            answered['errors'] += 1
+            return _FakeResponse(_ERROR_BODY)
+        offset = int(params['resultOffset'])
+        end = min(offset + int(params['resultRecordCount']), 4)
+        return _FakeResponse({'features': [_feature(i) for i in range(offset, end)]})
+
+    monkeypatch.setattr(scraper.requests, 'get', fake_get)
+    out = tmp_path / 'layer.geojson'
+
+    scraper.fetch(target_path=out, layer_url=_LAYER, retries=3)
+
+    assert answered['errors'] == 1
+    ids = [f['properties']['OBJECTID'] for f in _read(out)['features']]
+    assert ids == [0, 1, 2, 3]
+
+
+def test_bad_record_at_a_page_start_is_still_bisected(fake_service, tmp_path):
+    """The end probe must not mistake one bad record for a broken layer."""
+    fake_service['total'] = 4
+    fake_service['max_record_count'] = 4
+    fake_service['fail_offsets'] = {0}
+    out = tmp_path / 'layer.geojson'
+
+    with pytest.warns(UserWarning, match='offset 0'):
+        scraper.fetch(target_path=out, layer_url='http://svc/0', allow_partial=True)
+
+    ids = [f['properties']['OBJECTID'] for f in _read(out)['features']]
+    assert ids == [1, 2, 3]
