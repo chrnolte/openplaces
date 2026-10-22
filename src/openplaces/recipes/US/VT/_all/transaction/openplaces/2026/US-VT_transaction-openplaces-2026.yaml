@@ -1,0 +1,200 @@
+# Patch: Vermont transaction curation, grading the property transfer
+# tax return (US-VT_transaction-vttax-2026).
+#
+# Vermont assigns no qualification to a sale. The return asks the
+# parties three things a grade can read, and the ingest maps each as
+# received: line E1, the transfer tax exemption claimed
+# (`sale_qualification_code`, two digits, '00' for none); line E2, how
+# the parties are related (`sale_party_relationship`); line F2, the
+# interest conveyed (`conveyance_type`). A state's vocabulary, so a
+# state patch.
+#
+# WHY A REPLACEMENT. Illinois inserts its grades after the national
+# grading step and fills only what it left. Vermont cannot: that step
+# reads `sale_qualification_code` as Florida's undecoded two-digit
+# codes ('05' is "qualified, multiple parcels" there, family transfer
+# here) and grades every `conveyance_type` other than Wisconsin's
+# 'Sale' as 0.0 and `not_a_sale`, without `fill_only` on the first.
+# So for Vermont units this patch replaces that step with Vermont's
+# grades, and carries over its last indicator (`sale_record_kind`)
+# unchanged. A change to the national step does not reach Vermont
+# until it is copied here.
+#
+# The confidence is the lowest of three grades, as Wisconsin's is the
+# lower of two: a transfer is at arm's length only if no exemption
+# says otherwise, the parties state no relationship, and the whole
+# property changed hands.
+#
+# Exemption (E1): 1.0 for '00', no exemption claimed. 0.7 for '99'
+# (the buyer's principal residence financed through the Vermont
+# Housing Finance Agency, USDA Rural Development or a homeland grant,
+# whose resale price can be restricted) and '26' (a new Energy Star
+# mobile home). 0.0 for every other exemption: each is a transfer
+# without a market price (gifts and family transfers 05, corrections
+# 04, security and its release 03 and 07, changes of form and
+# reorganizations 06, 09 to 11, 15, 16), or one to or from a party
+# that does not sell at market (government 02, nonprofits 12 to 14,
+# 20, 21, 23, a municipality's blighted dwellings 25), or not a sale
+# of the fee (partition 08, utility easements 17, foreclosure 18,
+# divorce 19, a deed whose earlier instrument was taxed 22, leases 24,
+# transfers recorded before 1968 01). A code not listed stays
+# missing. Measured 2026-10-21 on US-VT's 2019 returns: 17,355 of
+# 31,071 claim no exemption and 96.6% of those state a price above 0;
+# of the 7,527 family transfers (05), 34 do.
+#
+# Relationship (E2): 0.0 for married or civil union, parent and
+# child, grandparent and grandchild, and self or an exempt trust; 0.7
+# for 'Other' (related, and not how, as Wisconsin's 'Other'). A blank
+# answer states no relationship and reads 1.0, through `default`; the
+# return asks it only beside an exemption, yet 439 of 2019's returns
+# claiming none answer it.
+#
+# Interest (F2): 1.0 for fee simple, 0.7 for 'Other' (1,750 of 2019's
+# returns, defined only in a write-in), 0.0 for a life estate, an
+# easement or right of way, a lease, a timeshare and an undivided
+# share.
+#
+# Group: the relationship first, as the parties' own statement
+# (family, unspecified, or `not_a_sale` for a transfer to oneself or
+# an exempt trust); then the exemption (`related_parties_family` for
+# family and divorce, `related_parties_business` for changes of form
+# and reorganizations, `not_a_sale` for transfers that convey no sale,
+# `disqualified` for the rest); then, where no exemption was claimed,
+# the interest (`qualified` for fee simple). The 0.7 codes get no
+# group, as in Illinois.
+#
+# Design limits L7 and L29 checked: no price index, sales ratio or
+# price threshold enters any grade.
+
+admin_id: US-VT
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - replace: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: _exemption_grade
+          type: value_map
+          column: sale_qualification_code
+          mapping:
+            "00": 1.0
+            "99": 0.7
+            "26": 0.7
+            "01": 0.0
+            "02": 0.0
+            "03": 0.0
+            "04": 0.0
+            "05": 0.0
+            "06": 0.0
+            "07": 0.0
+            "08": 0.0
+            "09": 0.0
+            "10": 0.0
+            "11": 0.0
+            "12": 0.0
+            "13": 0.0
+            "14": 0.0
+            "15": 0.0
+            "16": 0.0
+            "17": 0.0
+            "18": 0.0
+            "19": 0.0
+            "20": 0.0
+            "21": 0.0
+            "22": 0.0
+            "23": 0.0
+            "24": 0.0
+            "25": 0.0
+        - output: _relationship_grade
+          type: value_map
+          column: sale_party_relationship
+          mapping:
+            "01. Married/Civil Union": 0.0
+            "02. Parent/Child": 0.0
+            "03. Grandparent/Grandchild": 0.0
+            "04. Self or Exempt Trust": 0.0
+            "05. Other": 0.7
+          default: 1.0
+        - output: _interest_grade
+          type: value_map
+          column: conveyance_type
+          mapping:
+            "Fee Simple": 1.0
+            "Other": 0.7
+            "Life Estate": 0.0
+            "Easement/Row": 0.0
+            "Lease": 0.0
+            "Timeshare": 0.0
+            "Undivided 1/2 Interest": 0.0
+            "Undivided __% Interest": 0.0
+        - output: sale_arms_length_confidence
+          type: minimum
+          columns: [_exemption_grade, _relationship_grade, _interest_grade]
+        - output: sale_qualification_group
+          type: value_map
+          column: sale_party_relationship
+          mapping:
+            "01. Married/Civil Union": related_parties_family
+            "02. Parent/Child": related_parties_family
+            "03. Grandparent/Grandchild": related_parties_family
+            "04. Self or Exempt Trust": not_a_sale
+            "05. Other": related_parties_unspecified
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "01": not_a_sale
+            "02": disqualified
+            "03": not_a_sale
+            "04": not_a_sale
+            "05": related_parties_family
+            "06": related_parties_business
+            "07": not_a_sale
+            "08": not_a_sale
+            "09": related_parties_business
+            "10": related_parties_business
+            "11": related_parties_business
+            "12": disqualified
+            "13": disqualified
+            "14": disqualified
+            "15": related_parties_business
+            "16": related_parties_business
+            "17": not_a_sale
+            "18": disqualified
+            "19": related_parties_family
+            "20": disqualified
+            "21": disqualified
+            "22": not_a_sale
+            "23": disqualified
+            "24": not_a_sale
+            "25": disqualified
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: [sale_qualification_code, conveyance_type]
+          mapping:
+            "00|Fee Simple": qualified
+            "00|Life Estate": disqualified
+            "00|Easement/Row": not_a_sale
+            "00|Lease": not_a_sale
+            "00|Timeshare": disqualified
+            "00|Undivided 1/2 Interest": disqualified
+            "00|Undivided __% Interest": disqualified
+        # Carried over from the national step unchanged.
+        - output: sale_record_kind
+          type: value_map
+          column: sale_record_kind
+          mapping:
+            deed: deed
+            assessor_last_sale: assessor_last_sale
+          default: deed

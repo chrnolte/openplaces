@@ -70,5 +70,24 @@ columns:
 
 null_value_strings: ["UNKNOWN", "unknown"]
 
+# The join key is the SPAN (School Property Account Number), the
+# statewide 11-digit number the grand list, the property transfer tax
+# return (US-VT_transaction-vttax-2026) and this layer all carry, so
+# a sale reaches its parcel on it exactly. It is written here as
+# '999-999-99999' (town code, school code, account); `simple` keeps
+# the digits, which is the form the return states it in. The inline
+# instruction at US-VT takes precedence over the bundled per-town
+# conversions, which were derived for the town parcel id, not SPAN.
+# Measured 2026-10-22 on rutland-vt: parcel_id_local filled on 22,823
+# of 23,407 parcel rows (97.5%), 22,810 distinct. Condominium units
+# and mobile homes on another's land have a SPAN of their own on the
+# grand list and no polygon here, so their sales find no parcel (see
+# US-VT_transaction-vttax-2026).
+parcel_id_local:
+  source: parcel_id_admin2
+  kind: parcel
+  instruction:
+    US-VT: {conv: simple}
+
 save_to:
   admin_level: 3

@@ -1,0 +1,222 @@
+# Recipe: Vermont property transfer tax returns (form PTT-172), from
+# the Vermont Department of Taxes' public extract. One row per return;
+# a return is filed with every deed that transfers real property in
+# Vermont, priced or not (gifts and corrections file one too).
+#
+# SOURCE. The department publishes the returns as XML on a public
+# Azure blob container (listing:
+# https://taxpttrpublicblob.blob.core.usgovcloudapi.net/taxpttrpublic?restype=container&comp=list),
+# with its documentation (XSD, the November 2024 field and code
+# reference, a decode workbook) in `_Documentation/`. Files are cut by
+# the date a return was *posted*, not by when the sale closed: the
+# file for posting year Y holds returns that closed in Y and, filed
+# late, in earlier years. One annual archive per posting year from
+# 2019 on (`property_transfer_files/PT{Y}/PT{Y}0101_{Y}1231.zip`), so
+# `download_by` is by year. Bulk download, no REST paging.
+#
+# COVERAGE. 2019-2025 (posting years). Not read here, and why:
+# - 2026 is published as weekly and monthly files only until the year
+#   closes; the 2024 and 2025 annual files appeared in February and
+#   March of the next year. Extend `last` when PT2026 appears.
+# - 2011-2018 sit under another path,
+#   `property_transfer_files/Archive/PT{Y}/PT{Y}.zip`, in the layout of
+#   2023-2025 (monthly and weekly extracts); a second year range in
+#   this recipe needs a per-partition URL the ingester does not offer.
+# - 2006-2010 are fixed-width text (`pt2006.txt`, layout in
+#   `Archive/_Documentation/pt_layout.txt`), an older form.
+# Late filing is real: of the 31,071 returns posted in 2019, 4,419
+# closed in 2018 or earlier (measured 2026-10-21), so closings of
+# 2017 and 2018 are partly present.
+#
+# PRIVACY. Each return names its sellers and buyers with their mailing
+# addresses (in the return header and in the PTT-175 list beneath it)
+# and states the property's street address. The XML cannot be
+# filtered at the source, so the file on disk holds them; the reader
+# takes only the header elements (`xml_xpath`), and none of the name,
+# address or street fields is mapped, so none reaches the ingested
+# table. Of the header, only the columns below are kept
+# (`keep_unnamed_columns` is off).
+#
+# MAPPED.
+# - transaction_id_source: returnID, the department's return number.
+# - parcel_id_assessor: span, the SPAN (School Property Account
+#   Number): 11 digits, town code (3), school code (3), account (5).
+#   The same number the statewide parcel layer carries as SPAN
+#   (US-VT_parcel-vtgov-2025, there written with dashes), so both
+#   take `parcel_id_local` from it with `simple`. The department
+#   derives `townCode` from it, and `townSpan`, the town clerk's copy,
+#   equals it on every 2019 return.
+# - parcel_id_admin3: townParcelIDNo, the town's own parcel number as
+#   the clerk entered it.
+# - recorded_date: townDateOfRecord, as the clerk entered it; it holds
+#   typing errors (a year after 2020 on 8 of 2019's returns, up to
+#   9999), so the sale period does not come from it.
+# - sale_year, sale_month: from closingDate, the transfer date the
+#   parties state. Median 5 days before recording, 90% within 30
+#   days (2019). The spine's `derive_sale_period` keeps a stated year
+#   and month, so the period is the closing month.
+# - book, page: townBookNumber, townPageNumber, the town land records'
+#   book and page; with the town they name the deed
+#   (`derive_document_id`). 476 of 2019's 30,700 returns with both
+#   share a town, book and page with another return: a deed of several
+#   parcels files one return per SPAN.
+# - price_raw / price: realPropValuePaidOrTrans (line J10), the value
+#   paid for the real property; valuePaidOrTransferred (J8) adds
+#   personal property (J9, above 0 on 123 of 2019's returns) and is
+#   left unmapped, as Illinois maps net consideration.
+# - sale_qualification_code: propertyTaxExemption (line E1), the
+#   two-digit transfer tax exemption claimed, '00' for none.
+# - sale_party_relationship: familyMemberDesc (line E2), the stated
+#   relationship of the parties ('02. Parent/Child'; codes 01 to 05).
+# - conveyance_type: interestUndivPercentDesc (line F2), the decoded
+#   interest conveyed (Fee Simple, Life Estate, Easement/Row, Lease,
+#   Timeshare, Undivided 1/2 Interest, Undivided __% Interest, Other).
+# - building_type_code: buildingConstruction1Desc (line F3), the
+#   first building type at transfer ('01. None' for land without a
+#   building).
+# - area_deed_ac: landSize (line C), the land area the return states,
+#   in acres.
+# The curate patch US-VT_transaction-openplaces-2026 grades E1, E2
+# and F2.
+#
+# NOT MAPPED, for want of a registry attribute (raised with the
+# hand-off): buyerAdjoiningProperty (H6, an adjacent owner; true on
+# 2,811 of 2019's returns), financing (F5: owner financing on 912),
+# tenantPurchase (F4), sellerAcquire (F1), buyer and seller use of
+# the property (H1, H2), the town's grand list value and category,
+# rentedBefore and rentedAfter, and the land gains tax exemption.
+#
+# RECONCILED, measured 2026-10-22 on rutland-vt (15 towns, posting
+# years 2019-2025), against an independent parse of every archive
+# member: 13,952 returns in the source and 13,952 ingested, equal in
+# every year (1,995; 1,926; 2,259; 2,086; 1,867; 1,886; 1,933) and in
+# every town; return numbers unique. The 2023 to 2025 archives list
+# 37,854, 56,501 and 57,174 rows statewide for 27,816, 28,769 and
+# 29,275 distinct returns. Price present on every row, above 0 on
+# 8,439 (as in the source) and above 1,000 USD on 8,314; SPAN on every
+# row (9,608 distinct). Closing years run 2000 to 2025, 328 of them
+# before 2019.
+#
+# PARCEL OVERLAP, same measurement: 12,938 of 13,952 sales (92.7%)
+# find a parcel of US-VT_parcel-vtgov-2025 on parcel_id_local, all in
+# their own town; 96.9% of the 13,012 sales of anything other than a
+# condominium or mobile home, and 34.7% of the 940 that are. A
+# condominium unit or a mobile home on leased land has a SPAN of its
+# own on the grand list and no polygon in the parcel layer (Mendon,
+# with Killington's condominiums, finds 73.0%). The layer's grand list
+# SPAN (GLIST_SPAN) adds none. A grand list table with every SPAN
+# would close the gap; the repo has none.
+#
+# LICENCE. No licence or terms page on the container or in its
+# documentation (checked 2026-10-21). The extract's documentation
+# says it carries the PTT-172 and PTT-175 as filed, with Social
+# Security numbers and contact information withheld, and the
+# department presents it as-is. Anonymous public download, no
+# click-through.
+
+description: >-
+  Vermont property transfer tax returns (PTT-172) from the Department of
+  Taxes: SPAN, closing and recording dates, price, exemption and interest
+  conveyed.
+
+admin_id: US-VT
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: vttax
+    portal_url: "https://taxpttrpublicblob.z2.web.core.usgovcloudapi.net/"
+    download_url: "https://taxpttrpublicblob.blob.core.usgovcloudapi.net/taxpttrpublic/property_transfer_files/PT{year}/PT{year}0101_{year}1231.zip"
+    license: "unknown (no terms stated; public release, VT Dept. of Taxes)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+download_by:
+  partition: year
+  first: 2019
+  last: 2025
+
+compressed_file_name: "PT{year}0101_{year}1231.zip"
+uncompressed_file_name: "PT{year}????_{year}????.xml"
+
+# The 2019 to 2022 archives hold one XML file for the year; the 2023
+# to 2025 archives hold the year as 12 monthly and 52 or 53 weekly
+# extracts, which overlap. Every member whose posting window starts
+# and ends in the year is read, and a return listed in two of them is
+# kept once, by its return number. The window rule leaves out the
+# weekly extract that spans New Year (PT20241230_20250105 sits in the
+# 2024 archive): its returns are in the next year's January extract,
+# and read twice they were 17 repeated returns in the region.
+read_members: "PT{year}????_{year}????.xml"
+# Only those members are unpacked, so the cross-year extract (which
+# holds the parties' names) is never written to the heap.
+extract_members: ["PT{year}????_{year}????.xml"]
+drop_duplicates: [transaction_id_source]
+
+# One row per return header; the PTT-175 buyer and seller list beside
+# each header is not read.
+xml_xpath: ".//formHeader"
+
+# SPANs, codes and book numbers are text with leading zeros.
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: townCode
+  admin_id_crosswalk:
+    recipe_id: "US-VT_transaction-vttax-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  transaction_id_source: returnID
+  parcel_id_assessor: span
+  parcel_id_admin3: townParcelIDNo
+  recorded_date: townDateOfRecord
+  book: townBookNumber
+  page: townPageNumber
+  price_raw: realPropValuePaidOrTrans
+  sale_qualification_code: propertyTaxExemption
+  sale_party_relationship: familyMemberDesc
+  conveyance_type: interestUndivPercentDesc
+  building_type_code: buildingConstruction1Desc
+  area_deed_ac: landSize
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: price_raw
+    output: price
+  - type: unary
+    operation: to_numeric
+    input: area_deed_ac
+    output: area_deed_ac
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+  - type: datetime
+    operation: year
+    input: closingDate
+    output: sale_year
+  - type: datetime
+    operation: month
+    input: closingDate
+    output: sale_month
+
+# SPAN is statewide, so one conversion serves every town; the inline
+# instruction at US-VT takes precedence over the bundled per-town
+# rows, which were derived for town parcel ids.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
+  instruction:
+    US-VT: {conv: simple}
+
+save_to:
+  data_dir: cache
+
+# The per-year files become one file per town; the footer records the
+# years ingested, so a re-run skips them.
+aggregate_by:
+  single_file: true

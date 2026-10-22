@@ -94,6 +94,11 @@ every CAMA field null with a perfectly plausible feature count.
   `columns:` block is then needed.
 - `query:` — a pandas query applied before parsing, e.g. to drop a leaked
   header row.
+- `read_members:` — a glob (partition placeholders allowed) naming every
+  extracted file that together makes up the partition's table, read in
+  name order and stacked; for an archive that ships a year as monthly
+  and weekly extracts (Vermont's transfer returns). Pair it with a
+  `drop_duplicates` key where the members overlap.
 - `drop_duplicates:` — an explicit column subset. A bare full-row dedupe keeps
   rows that differ only in a column you do not care about.
 - `drop_columns:` — scratch columns a transformation produced and the output

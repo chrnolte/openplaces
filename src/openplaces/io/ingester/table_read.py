@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import shutil
 import warnings
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -226,14 +227,16 @@ class _TableReadMixin:
         )
         return gdf
 
-    def _read_flat_table(self, data_path, columns, encoding):
+    def _read_flat_table(self, data_path, columns, encoding, member=False):
         """Read one flat (non-spatial) source file in full.
 
         Covers the fixed-width, JSON, flat XML, spreadsheet,
         delimited-text and Microsoft Access layouts a recipe can
         declare. Row filtering is the caller's job: this returns every
         row of the file, so a chunked recipe can parse once per
-        download partition and slice per admin unit.
+        download partition and slice per admin unit. A recipe with
+        ``read_members`` reads every extracted file matching that
+        pattern beside *data_path*, in name order, as one table.
 
         Parameters
         ----------
@@ -243,7 +246,24 @@ class _TableReadMixin:
             Column names to read, where the layout supports selection.
         encoding : str, optional
             From the recipe's ``encoding`` key.
+        member : bool, optional
+            Read *data_path* alone, as one member of a ``read_members``
+            set.
         """
+        partition = getattr(self, 'download_partition', None) or {}
+        members_glob = partition.get('read_members_glob')
+        if members_glob and not member:
+            files = sorted(
+                p for p in Path(data_path).parent.glob(members_glob) if p.is_file()
+            )
+            return pd.concat(
+                [
+                    self._read_flat_table(p, columns, encoding, member=True)
+                    for p in files
+                ],
+                ignore_index=True,
+            )
+
         # `csv_dtype: str` reads every column as text, the robust choice
         # for messy flat dumps where a column mixes ints and strings.
         # A dict maps specific columns to dtypes.
