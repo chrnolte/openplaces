@@ -131,8 +131,9 @@ transformations:
 ```
 
 Useful ops: `null_if_equal`, `set_null` (empty a whole column, keeping its
-dtype), `to_numeric`, `to_datetime`, `parse_currency`, `resolve_century`
-(2-digit years), `split_take`, `concat`, `zfill`.
+dtype), `to_numeric`, `to_datetime`, `epoch_ms_to_datetime` (an Esri date
+read through `f=geojson`), `parse_currency`, `resolve_century` (2-digit
+years), `split_take`, `concat`, `zfill`.
 
 ### One county's defect in a statewide source: `admin_ids`
 

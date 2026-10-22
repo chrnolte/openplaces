@@ -170,6 +170,12 @@ UNARY_OPS: dict[str, Callable] = {
     # split (a bath count published as 2.1 for two full and one half).
     'round': lambda x, decimals=0: pd.to_numeric(x, errors='coerce').round(decimals),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
+    # Esri serializes a date field as epoch milliseconds in f=geojson,
+    # which to_datetime reads as nanoseconds and places in 1970. Dates
+    # before 1970 arrive negative and are kept.
+    'epoch_ms_to_datetime': lambda x: pd.to_datetime(
+        pd.to_numeric(x, errors='coerce'), unit='ms', errors='coerce'
+    ),
     'null_if_equal': lambda x, value: x.mask(x == value),
     'set_null': _set_null,
     'acres_to_sqft': lambda x: pd.to_numeric(x, errors='coerce') * AC_TO_SQFT,
