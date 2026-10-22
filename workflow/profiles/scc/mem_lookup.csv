@@ -1,4 +1,8 @@
 stage,recipe_id,admin_id,mem_mb
+# Fallback only: a job is reserved by its measured peak (the machine's
+# own table, then profiles/mem_seed.csv; openplaces.flow.memory). A
+# stage-wide row applies to a family never measured; a row naming a
+# recipe or unit is a floor under the measured value.
 ingest,,,4000
 harmonize,,,16000
 enrich,,,8000

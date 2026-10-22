@@ -57,6 +57,12 @@ from pathlib import Path
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
 from openplaces.flow.dag import parse_deliver_config, rule_name
+from openplaces.flow.memory import (
+    MemoryModel,
+    default_table_path,
+    input_megabytes,
+    record_input_size,
+)
 from openplaces.flow.sync import exclude_bookkeeping_from_sync
 
 # A run writes tens of thousands of small bookkeeping files (job
@@ -158,7 +164,7 @@ STAGE_RUNTIME_MIN = {
 
 
 def mem_mb(stage, admin_id, recipe_id=None):
-    """Memory reservation, most specific match first.
+    """Flat memory reservation, most specific match first.
 
     Keyed on the recipe as well as the stage, because the heavy jobs are
     heavy by recipe: a global tile overlay and a one-county parcel ingest
@@ -174,6 +180,69 @@ def mem_mb(stage, admin_id, recipe_id=None):
         if key in MEM_LOOKUP:
             return MEM_LOOKUP[key]
     return 8000
+
+
+def _pinned_mem_mb(stage, admin_id, recipe_id):
+    """A reservation mem_lookup.csv sets for this recipe or unit, or None."""
+    for key in (
+        (stage, recipe_id, admin_id),
+        (stage, recipe_id, None),
+        (stage, None, admin_id),
+    ):
+        if key in MEM_LOOKUP:
+            return MEM_LOOKUP[key]
+    return None
+
+
+# Memory is reserved by each job's expected size (openplaces.flow.memory),
+# not by one flat value per stage: measured 2026-10-20 on the FL
+# statewide wave, harmonize jobs peaked at 0.2 to 1.5 GB per family
+# (median) and up to 31.8 GB, so a flat 16 GB ran one job at a time on
+# 20 cores and still under-reserved the largest.
+#
+# Order: this machine's measured peak for the job, this machine's
+# envelope for its family, the shipped seed envelope
+# (profiles/mem_seed.csv), then the flat lookup above. A pin in
+# mem_lookup.csv for a recipe or unit stays a floor. Peaks are
+# platform-specific (Windows committed memory, Linux resident set), so
+# the measured table is per machine and outside git: under the logs
+# directory by default, `--config mem_table=<csv>` to point elsewhere.
+# Refresh it after a wave with `python -m openplaces.flow.memory
+# refresh`. A machine without one, such as the cluster, starts from the
+# seed.
+#
+# The callable takes `input`, so Snakemake evaluates it when the job is
+# ready to run, with its inputs on disk (checked with Snakemake 9.23).
+# The cluster profile gets the same per-job value as `mem_per_core`.
+MEM_MODEL = MemoryModel.from_files(
+    config.get('mem_table') or default_table_path(),
+    Path(workflow.basedir) / 'profiles' / 'mem_seed.csv',
+)
+BENCHMARK_DIR = Path(cfg.get_dir('logs')) / 'benchmarks'
+# The run's --resources mem_mb, None when the run sets none (a cluster
+# run). Snakemake hands it over as a Resource object.
+_mem_cap = workflow.global_resources.get('mem_mb')
+MEM_CAP_MB = getattr(_mem_cap, 'value', _mem_cap)
+
+
+def reserve_mem_mb(job_rule, stage, recipe_id, admin_id, inputs, attempt):
+    # `job_rule`, not `rule`: the Snakefile parser takes `rule` as the
+    # keyword even as a parameter name.
+    input_mb = input_megabytes(inputs)
+    if input_mb is not None:
+        record_input_size(BENCHMARK_DIR, job_rule, input_mb)
+    estimate = MEM_MODEL.estimate(
+        job_rule,
+        stage,
+        recipe_id,
+        input_mb,
+        mem_mb(stage, admin_id, recipe_id),
+        ceiling_mb=MEM_CAP_MB,
+    )
+    pinned = _pinned_mem_mb(stage, admin_id, recipe_id)
+    if pinned is not None:
+        estimate = max(estimate, pinned)
+    return estimate * attempt
 
 
 rule all:
@@ -216,8 +285,9 @@ for _recipe_id, _nodes in BATCHED_INGESTS.items():
         benchmark:
             str(Path(cfg.get_dir('logs')) / 'benchmarks' / f'{_name}.tsv')
         resources:
-            mem_mb=lambda wc, attempt, _r=_recipe_id: mem_mb('ingest', None, _r)
-            * attempt,
+            mem_mb=lambda wc, input, attempt, _r=_recipe_id, _n=_name: (
+                reserve_mem_mb(_n, 'ingest', _r, None, input, attempt)
+            ),
             runtime=STAGE_RUNTIME_MIN['ingest'] * 4,
             **{
                 token: int(_recipe_id == owner)
@@ -309,8 +379,8 @@ for node in dag.nodes():
                 / f'{rule_name(node)}.tsv'
             )
         resources:
-            mem_mb=lambda wc, attempt, _s=node.stage, _a=node.admin_id, _r=node.recipe_id: (
-                mem_mb(_s, _a, _r) * attempt
+            mem_mb=lambda wc, input, attempt, _n=rule_name(node), _s=node.stage, _a=node.admin_id, _r=node.recipe_id: (
+                reserve_mem_mb(_n, _s, _r, _a, input, attempt)
             ),
             runtime=STAGE_RUNTIME_MIN.get(node.stage, 240),
             # One token per shared-heap recipe, not one for all ingest.
