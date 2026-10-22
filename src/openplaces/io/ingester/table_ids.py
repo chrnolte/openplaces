@@ -65,6 +65,42 @@ def drop_resolved_suffixes(parcels: pd.DataFrame) -> pd.DataFrame:
     return parcels
 
 
+def partition_in_range(partition_id, spec: str) -> bool:
+    """Whether a download partition falls in an override row's range.
+
+    *spec* is blank (every partition), one partition (`2025`) or an
+    inclusive range open on either side (`2024-`, `-2023`,
+    `2019-2021`). Numeric bounds compare as numbers; anything else
+    matches only exactly. A row with a range never matches a run with
+    no partition.
+
+    Parameters
+    ----------
+    partition_id : str, int or None
+        The partition being ingested (a roll year).
+    spec : str
+        The row's `partitions` value.
+
+    Returns
+    -------
+    bool
+    """
+    spec = (spec or '').strip()
+    if not spec:
+        return True
+    if partition_id is None:
+        return False
+    value = str(partition_id).strip()
+    if '-' not in spec:
+        return value == spec
+    low, high = (part.strip() for part in spec.split('-', 1))
+    try:
+        number = float(value)
+        return (not low or number >= float(low)) and (not high or number <= float(high))
+    except ValueError:
+        return False
+
+
 class _TableIdMixin:
     """Methods of :class:`~openplaces.io.ingester.table_ingester.TableIngester`
     (table_ids).
@@ -93,7 +129,14 @@ class _TableIdMixin:
         truncated to 8 of the real 15-digit PIN's digits for ~99% of its
         rows: no amount of pattern/conv tuning can recover precision a
         source field never had, so a different column must be chosen
-        instead). Admin-hierarchy walking from a specific admin id to a
+        instead). A row's optional ``partitions`` column limits it to
+        the download partitions in a range (``2024-``, see
+        :func:`partition_in_range`) and takes precedence over a row
+        without one: a county that reordered its id between two roll
+        years of a yearly panel gets one conversion per era, because a
+        single conversion would key either era apart from the parcel
+        layer (Orange County FL's DOR roll swapped its section and range
+        digits in 2024). Admin-hierarchy walking from a specific admin id to a
         broader one is handled by
         :func:`~openplaces.geo.ids._resolve_instruction` for
         pattern/conv/tolerance and by :meth:`_resolve_parcel_id_source` for
@@ -130,13 +173,28 @@ class _TableIdMixin:
                 entry['source'] = source
             return entry
 
+        partition = (getattr(self, 'download_partition', None) or {}).get(
+            'partition_id_to_download'
+        )
+        scoped = (
+            table['partitions']
+            if 'partitions' in table.columns
+            else pd.Series('', index=table.index)
+        )
+        applies = scoped.map(lambda spec: partition_in_range(partition, spec))
+        # Least specific first, so that a later row overwrites: any
+        # source before this source, an unranged row before a ranged one.
         overrides: dict[str, dict] = {}
-        for _, row in table[table['source_id'] == ''].iterrows():
-            if row['admin_id']:
-                overrides[row['admin_id']] = _entry(row)
-        for _, row in table[table['source_id'] == source_id].iterrows():
-            if row['admin_id']:
-                overrides[row['admin_id']] = _entry(row)
+        for source in ('', source_id):
+            for ranged in (False, True):
+                rows = table[
+                    (table['source_id'] == source)
+                    & applies
+                    & (scoped.str.strip() != '').eq(ranged)
+                ]
+                for _, row in rows.iterrows():
+                    if row['admin_id']:
+                        overrides[row['admin_id']] = _entry(row)
         return overrides or None
 
     @staticmethod

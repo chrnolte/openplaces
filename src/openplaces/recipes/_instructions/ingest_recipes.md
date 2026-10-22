@@ -187,7 +187,11 @@ parcel_id_local:
 Per-county conversions come from `geo/parcel_id_links.csv`. When that default
 does not fit a source, add a row to
 `US/_all/parcel/_all/US_parcel_id-overrides.csv` rather than editing the
-bundled table. Full treatment of the three failure modes — misfitting pattern,
+bundled table (or the `property` / `transaction` table beside it). A row's
+`partitions` column (`2024-`, `-2023`, `2019-2021`) limits it to those
+download partitions and wins over the county's row without one: Orange
+County FL's DOR roll and sales files reordered the id with the 2024 roll,
+so each era keeps its own conversion. Full treatment of the three failure modes — misfitting pattern,
 degenerate source column, empty column — is in
 [`acquiring_sources.md`](acquiring_sources.md#phase-5--the-join-key-parcel_id_local).
 
