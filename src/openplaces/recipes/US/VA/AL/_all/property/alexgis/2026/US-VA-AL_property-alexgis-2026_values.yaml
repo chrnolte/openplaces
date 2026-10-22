@@ -1,0 +1,101 @@
+# Recipe: City of Alexandria, VA current-year assessed values
+# (AlexGIS parcel map service). Supplement of
+# US-VA-AL_property-alexgis-2026; see that recipe for the join key.
+#
+# SOURCE. The City's ArcGIS Server, alxParcelsWm MapServer layer 0
+# ("all the parcels as one file including the condos"), read
+# 2026-10-19 by the REST scraper, attributes only (ACCOUNTNO,
+# LAND_CYR 'Land Current Year Assessment', IMP_CYR 'Structure Current
+# Year Assessment', TOT_CYR 'Total Current Year Assessment'; no
+# geometry): 47,567 rows, at most 1,000 per request. No bulk export
+# or Hub item of this layer exists; the CC0 item the roll reads has
+# no value fields. Matix_Parcels on the same server carries the same
+# values but covers 99.40% of the roll's accounts against 99.97%
+# here.
+#
+# WHAT ONE ROW IS. One polygon of an account. An account drawn as
+# several polygons repeats with identical values (148 rows over 58
+# accounts, none differing), so the first row is kept. TOT_CYR =
+# LAND_CYR + IMP_CYR on every filled row. The layer does not name the
+# tax year of 'Current Year', so no tax_year is set.
+# Measured 2026-10-19 on US-VA-AL: 47,478 rows kept, 47,477 distinct accounts.
+#
+# JOIN. On property_id_assessor (ACCOUNTNO); 99.76% of these accounts
+# are roll accounts.
+# Measured 2026-10-19 on US-VA-AL: total_value on 99.89% of 47,380 roll rows.
+# Measured 2026-10-19 on US-VA-AL: total_value > 0 on 99.85% of residential rows.
+# Measured 2026-10-19 on US-VA-AL: total_value sums to 56.7 bn USD on roll rows.
+# Zeros are kept as published: condominium master cards (802),
+# common areas (980) and utility classes carry 0.
+#
+# TERMS: A PERSON MUST READ THEM BEFORE ANY RELEASE. Quoted by the
+# research client on 2026-10-19. The map service states no licence; its
+# description is a disclaimer: the maps "are provided 'as is' and the
+# City expressly disclaims all warranties". The City's website terms
+# (terms_url): "The entire original contents of the City's websites
+# are copyright 1996-2024 by the City of Alexandria, Virginia, unless
+# otherwise noted. You may freely reproduce and distribute, for
+# personal or nonprofit use, any original content on a site produced
+# by the City". Read as covering this service, distribution is
+# granted for personal or nonprofit use only, so
+# redistribution_restricted and resale_restricted are true. Whether
+# the website terms govern the map service at all, and any
+# usage requirement, are for a person to decide; none is set, and the
+# restriction flags stand until that person has read the terms.
+
+description: >-
+  City of Alexandria, VA current-year land, improvement and total assessed
+  values per account, from the AlexGIS parcel map service.
+
+admin_id: US-VA-AL
+
+entity:
+  entity_type: property
+  source:
+    source_id: alexgis
+    license: >-
+      City of Alexandria website terms: "You may freely reproduce and
+      distribute, for personal or nonprofit use, any original content on a
+      site produced by the City"; the map service adds an "as is" disclaimer.
+    terms_url: "https://www.alexandriava.gov/Legal"
+    redistribution_restricted: true
+    resale_restricted: true
+    portal_url: "https://maps.alexandriava.gov/arcgis/rest/services/alxParcelsWm/MapServer/0"
+    download_url_scraper: arcgis_rest_scraper
+  version: 2026
+
+uncompressed_file_name: "alexandria_values.geojson"
+
+scraper_options:
+  layer_url: "https://maps.alexandriava.gov/arcgis/rest/services/alxParcelsWm/MapServer/0"
+  where: "1=1"
+  out_fields: "ACCOUNTNO,LAND_CYR,IMP_CYR,TOT_CYR"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  land_value: LAND_CYR
+  improvement_value: IMP_CYR
+  total_value: TOT_CYR
+
+# An account drawn as several polygons repeats with the same values;
+# see the header.
+drop_duplicates: [property_id_assessor]
+
+aggregation_function:
+  land_value: max
+  improvement_value: max
+  total_value: max
+
+supplements: US-VA-AL_property-alexgis-2026
+# The roll's parcel_id_local is built from PID_RE, which this layer
+# does not carry, so it joins the roll on the account.
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: values
