@@ -50,9 +50,12 @@ transformations:
 columns_to_categorical:
   - sale_qualification_code
 
+# The whole ACCTID, as in segment 1.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+  instruction:
+    US-MD: {conv: simple}
 
 save_to:
   data_dir: cache

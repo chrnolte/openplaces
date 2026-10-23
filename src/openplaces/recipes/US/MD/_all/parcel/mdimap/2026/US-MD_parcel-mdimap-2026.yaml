@@ -473,13 +473,28 @@ transformations:
         output: false
     output: has_basement
 
-# No bundled US_parcel_id-overrides.csv row exists for US-MD; falls
-# back to the default 'simple' conversion. ACCTID is SDAT's own
-# account number (this layer's `displayField`), a stable per-parcel
-# key already unique within its jurisdiction.
+# The key is the whole ACCTID, SDAT's own account number (this
+# layer's `displayField`), already unique within its jurisdiction.
+# The instruction at US-MD outranks the bundled per-county table
+# (geo/parcel_id_links.csv), whose rows were fit to ZTRAX APNs: on
+# ACCTID they cut the trailing digit, dropped the county code and
+# pipe-joined the rest ('string_lengths: 2 2 6' on Prince George's
+# 11 digits), and merged distinct placeholder accounts into one key.
+# Every Maryland recipe keyed by ACCTID (property mdplanning and its
+# supplements, transaction sdat and its segments) carries the same
+# instruction, so their keys match this one exactly. ACCTID length
+# varies by county (10 digits in most, 11 Prince George's, 12
+# Montgomery, 13 with letters in Baltimore City); 'simple' keeps it
+# whole and only drops spaces and punctuation. Measured 2026-10-23 on
+# US-MD-PG: the old keys ('9|99999'-like) matched none of the
+# 197,506 accounts in the valuation sales file; the whole ACCTID
+# matches all of them, and 86.6% of SDAT segment-1 accounts find a
+# polygon. Montgomery (US-MD-MO): 39,082 of 39,082, and 78.8%.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+  instruction:
+    US-MD: {conv: simple}
 
 # No save_to.admin_level: process_by already chunks at admin3, the
 # same granularity we want to save at (unlike MassGIS, which

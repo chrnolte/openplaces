@@ -150,9 +150,13 @@ columns_to_categorical:
 drop_columns:
   - geometry
 
+# The whole ACCTID, as on US-MD_parcel-mdimap-2026 (see its note):
+# the instruction outranks the bundled ZTRAX-fit county table.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+  instruction:
+    US-MD: {conv: simple}
 
 save_to:
   data_dir: core
