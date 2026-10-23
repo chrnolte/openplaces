@@ -75,7 +75,22 @@ DEFAULT_PAGE_SIZE = 2000
 # below the rate at which these services start shedding requests.
 DEFAULT_REQUEST_INTERVAL_S = 0.2
 
+# Pages in a row that may come back with nothing but unfetchable
+# records before the layer is declared broken. Only reachable with
+# one-record pages: a larger page that fails is probed at both ends
+# first (see _probe_range_ends), which settles the question sooner.
+MAX_CONSECUTIVE_FAILED_PAGES = 3
+
 _last_request_at = 0.0
+
+
+class ArcGISLayerError(RuntimeError):
+    """A layer answered its feature queries with errors only.
+
+    Raised instead of bisecting a failing page down to single records,
+    which on a layer that rejects every query costs thousands of
+    requests and many minutes before the download fails anyway.
+    """
 
 
 def _pace(interval_s: float) -> None:
@@ -590,6 +605,57 @@ def _layer_count(
     return int(count_page['count'])
 
 
+def _layer_of(query_url: str) -> str:
+    """Return the layer URL a `/query` endpoint belongs to."""
+    url = query_url.rstrip('/')
+    return url.removesuffix('/query')
+
+
+def _probe_range_ends(
+    query_url: str,
+    params: dict,
+    offset: int,
+    count: int,
+    *,
+    timeout: float,
+    retries: int,
+    verbose: bool,
+    label: str,
+    range_error: Exception,
+) -> None:
+    """Raise :class:`ArcGISLayerError` if neither end of a range is served.
+
+    Each probe asks for one record with the caller's full retry budget,
+    so a transient outage is retried as before; only a layer that keeps
+    answering with an error at the range itself and at both of its end
+    records is declared broken.
+    """
+    last = offset + count - 1
+    probe_error = range_error
+    for probe_offset in (offset, last):
+        try:
+            _get_json(
+                query_url,
+                {**params, 'resultOffset': probe_offset, 'resultRecordCount': 1},
+                timeout=timeout,
+                retries=retries,
+                verbose=verbose,
+                label=f'{label}: probe',
+            )
+            return
+        except (requests.exceptions.RequestException, RuntimeError, ValueError) as exc:
+            probe_error = exc
+    raise ArcGISLayerError(
+        f'{label}: the layer {_layer_of(query_url)} answered every feature '
+        f'query with an error: records [{offset}, {last + 1}) and the single '
+        f'records at offsets {offset} and {last} all failed after '
+        f'{max(1, int(retries))} '
+        f'attempt(s) each. Server said: {probe_error}. The layer may not '
+        'support this query; where the same layer is published as both a '
+        'MapServer and a FeatureServer, try the other.'
+    ) from probe_error
+
+
 def _fetch_range(
     query_url: str,
     params: dict,
@@ -601,8 +667,23 @@ def _fetch_range(
     verbose: bool,
     label: str,
     skipped: list,
+    errors: list | None = None,
+    probe_ends: bool = False,
 ) -> list:
     """Fetch features [offset, offset+count) with automatic bisection.
+
+    With *probe_ends*, a failed range of more than one record is first
+    tested with a single-record request at each end, and
+    :class:`ArcGISLayerError` is raised when both fail as well. A bad
+    record sits at one place in a page, so at least one end of the page
+    is served; a layer that rejects the query itself (a MapServer copy
+    of a table that its FeatureServer copy serves, for instance) fails
+    at both, and bisecting it would only repeat the same error for
+    every record of every page. The caller sets it for whole pages
+    only; the halves of a bisection are not probed again.
+
+    The message of each skipped record's error is appended to *errors*,
+    when given, so the caller can name the server's answer.
 
     Some county-hosted services return a 400 for one specific record inside
     an otherwise fine page (e.g. Robeson County: a working service that
@@ -633,10 +714,24 @@ def _fetch_range(
     except (requests.exceptions.RequestException, RuntimeError, ValueError) as exc:
         if count <= 1:
             skipped.append(offset)
+            if errors is not None:
+                errors.append(str(exc))
             warnings.warn(
                 f'{label}: skipping unfetchable record at offset {offset} ({exc})'
             )
             return []
+        if probe_ends:
+            _probe_range_ends(
+                query_url,
+                params,
+                offset,
+                count,
+                timeout=timeout,
+                retries=retries,
+                verbose=verbose,
+                label=label,
+                range_error=exc,
+            )
         if verbose:
             _log(
                 f'{label}: range [{offset}, {offset + count}) failed, '
@@ -653,6 +748,7 @@ def _fetch_range(
             verbose=verbose,
             label=label,
             skipped=skipped,
+            errors=errors,
         ) + _fetch_range(
             query_url,
             params,
@@ -663,6 +759,7 @@ def _fetch_range(
             verbose=verbose,
             label=label,
             skipped=skipped,
+            errors=errors,
         )
 
 
@@ -789,6 +886,12 @@ def fetch(
 
     Raises
     ------
+    ArcGISLayerError
+        If the layer answers its feature queries with errors only: a page
+        and the single records at both of its ends all fail after
+        `retries` attempts each, or `MAX_CONSECUTIVE_FAILED_PAGES` pages
+        in a row yield nothing. The message names the layer URL and the
+        server's last error. Raised whatever `allow_partial` says.
     RuntimeError
         If fewer features were written than the layer reported and
         `allow_partial` is False.
@@ -891,10 +994,13 @@ def fetch(
     part_path = _part_path(target_path)
     n_written = 0
     skipped: list[int] = []
+    errors: list[str] = []
+    failed_pages = 0
     try:
         with part_path.open('w', encoding='utf-8') as handle:
             handle.write('{"type": "FeatureCollection", "features": [')
             for offset in range(0, total, page_size):
+                n_skipped = len(skipped)
                 batch = _fetch_range(
                     query_url,
                     page_params,
@@ -905,7 +1011,23 @@ def fetch(
                     verbose=verbose,
                     label=prefix,
                     skipped=skipped,
+                    errors=errors,
+                    probe_ends=True,
                 )
+                # A page that yields nothing and skips records is a
+                # failed page; a run of them means the layer is down
+                # or rejects the query, not that records are bad.
+                if not batch and len(skipped) > n_skipped:
+                    failed_pages += 1
+                else:
+                    failed_pages = 0
+                if failed_pages >= MAX_CONSECUTIVE_FAILED_PAGES:
+                    raise ArcGISLayerError(
+                        f'{prefix}: the layer {layer_url} answered '
+                        f'{failed_pages} pages in a row with errors only '
+                        f'(through offset {offset}). Server said: '
+                        f'{errors[-1]}.'
+                    )
                 for feature in batch:
                     # Separator driven by the running written count, not
                     # the page index: a bisected range can legitimately
