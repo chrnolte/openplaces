@@ -263,6 +263,47 @@ occupancy:
       aspect_min: &mh_aspect_min 2.5
       area_max_m2: &mh_area_max_m2 185
       class: Manufactured Home
+      # Shape is a helper, not a witness (maintainer, 2026-10-22):
+      # where the roll and NSI both name a site-built residential
+      # class, footprint shape and the probability trained on it may
+      # add to a Manufactured Home call but cannot make it alone.
+      # The vote's Manufactured Home decision aliases this entry as
+      # its insufficient_alone (indicators.score_decisions).
+      #
+      # The cutoffs above were calibrated where narrow outlines are
+      # single-wides (NC, TX). Where rowhouses are drawn one unit per
+      # outline, the same shape is an attached house. Measured
+      # 2026-10-22 on US-VA-AL: 2,424 of 28,563 footprints were
+      # Manufactured Home, 2,407 on shape and keyword_probability
+      # alone, and on 1,979 of the 2,424 the roll and NSI both named
+      # Single-Family or Multi-Family. With this entry 449 remain
+      # (1,970 became Single-Family, 5 Secondary); US-VA-AR goes from
+      # 738 to 211. Where shape finds real manufactured homes the
+      # entry moves few rows: US-NC-PEN 10,520 to 9,755, US-NC-HAL 5,719 to 5,572, US-TX-CHA
+      # 2,350 to 2,318. Against strong-tier permits, Manufactured Home
+      # precision rose (Pender 0.900 to 0.936, Chambers 0.944 to
+      # 0.956), Pender's recall fell 0.516 to 0.512 (4 of 854), and
+      # overall agreement held (0.652 to 0.653; 0.826 both). The
+      # survey's Halifax points (376 linked) score 0.822 either way.
+      #
+      # "Agree" here means both name one of these classes, not
+      # necessarily the same one: a roll's Multi-Family and NSI's
+      # Single-Family on a townhouse row disagree on how many
+      # dwellings, and agree that it was built on site.
+      # keyword_probability is listed because p_manufactured_home is
+      # a morphology model (outline shape and its neighbors' shapes),
+      # not a reading of any source's text.
+      shape_insufficient_alone: &mh_shape_insufficient_alone
+        labels: [morphology, shape_band, keyword_probability]
+        where:
+          type: all_of
+          indicators:
+            - type: in_set
+              column: occupancy_type_parcel
+              values: &site_built_residential [Single-Family, Multi-Family]
+            - type: in_set
+              column: occupancy_type_nsi_class
+              values: *site_built_residential
     manufactured_home_value:
       review_max_ratio: &mh_value_share_max 0.025
       class: Manufactured Home
@@ -1122,6 +1163,9 @@ pipeline:
         require:
           - {type: equals, column: dwelling_multiplicity, value: single}
           - {type: numeric_at_least, column: area_m2, min: 20}
+        # Shape needs a partner where the roll and NSI both name a
+        # site-built class; see the occupancy block above.
+        insufficient_alone: *mh_shape_insufficient_alone
         indicators:
           # 90% precise within the single-dwelling population; the strongest
           # evidence for this class by a wide margin, hence sufficient alone.

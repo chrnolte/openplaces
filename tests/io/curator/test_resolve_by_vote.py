@@ -440,3 +440,64 @@ def test_default_source_mode_still_replaces_the_token():
         _state(df), target='occupancy_type', decisions=decisions, default_source='band'
     ).curated
     assert out['occupancy_type_source'].astype(object).iloc[0] == 'band'
+
+
+def test_insufficient_alone_needs_a_partner_only_where_its_context_holds():
+    # Fabricated rows: 'shape' is a helper wherever 'agree' is set.
+    df = pd.DataFrame(
+        {
+            'occupancy_type': [None] * 5,
+            'shape': [True, True, True, True, False],
+            'other': [False, False, True, False, True],
+            'agree': [False, True, True, None, True],
+        },
+        index=['NO_CONTEXT', 'ALONE', 'PARTNER', 'CONTEXT_UNKNOWN', 'PARTNER_ONLY'],
+    )
+    decisions = [
+        {
+            'class': 'A',
+            'min_score': 2,
+            'insufficient_alone': {
+                'labels': ['shape'],
+                'where': {'type': 'equals', 'column': 'agree', 'value': True},
+            },
+            'indicators': [
+                {
+                    'type': 'equals',
+                    'column': 'shape',
+                    'value': True,
+                    'weight': 2,
+                    'label': 'shape',
+                },
+                {'type': 'equals', 'column': 'other', 'value': True, 'label': 'other'},
+            ],
+        },
+        {'class': 'B', 'indicators': [{'type': 'not_null', 'column': 'shape'}]},
+    ]
+    out = resolve_by_vote(_state(df), target='occupancy_type', decisions=decisions)
+    cls = out.curated['occupancy_type'].astype(object)
+    assert cls['NO_CONTEXT'] == 'A'
+    assert cls['ALONE'] == 'B'
+    assert cls['PARTNER'] == 'A'
+    assert cls['CONTEXT_UNKNOWN'] == 'A'
+    # The partner alone stays short of min_score: the guard never adds
+    # weight, it only withholds eligibility.
+    assert cls['PARTNER_ONLY'] == 'B'
+    assert out.curated['occupancy_type_source'].astype(object)['PARTNER'] == (
+        'shape+other'
+    )
+
+
+def test_insufficient_alone_without_where_applies_everywhere():
+    df = pd.DataFrame({'occupancy_type': [None], 'shape': [True]})
+    decisions = [
+        {
+            'class': 'A',
+            'insufficient_alone': {'labels': ['shape']},
+            'indicators': [
+                {'type': 'equals', 'column': 'shape', 'value': True, 'label': 'shape'}
+            ],
+        }
+    ]
+    out = resolve_by_vote(_state(df), target='occupancy_type', decisions=decisions)
+    assert out.curated['occupancy_type'].isna().all()

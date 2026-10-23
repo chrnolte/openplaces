@@ -49,7 +49,12 @@ Steps are organized by the nature of the transformation:
   to the decision's declared `source` only where it labeled nothing. Labels
   are opt-in per recipe; unlabeled decisions keep their old behavior, which
   is why a `{col}_source` can still read as a synonym of the value beside
-  it until its indicators are labeled.
+  it until its indicators are labeled. A decision's `insufficient_alone`
+  names labeled indicators that may support it but not carry it alone
+  where a context indicator holds: the footprint recipe's Manufactured
+  Home decision needs a partner for footprint shape and
+  `p_manufactured_home` where the roll and NSI both name Single-Family
+  or Multi-Family (maintainer, 2026-10-22).
 - `reconcilers.py` — resolve conflicts between competing source columns
   (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
   `resolve_by_vote`, the single voting seam every curate classification
