@@ -1,0 +1,161 @@
+# Recipe: Weld County, CO Assessor sales table, the recorded documents
+# the Assessor's Office associates with Weld parcels (one row per
+# reception number and account), 1883 to date.
+#
+# SOURCE. Weld's open-data hub (AGOL org ewjSqmSyHJnkfBLL, tag
+# OpenDataTable): item bcf79d1ba7d94a84b1585aed162ac66c, service
+# Sales2/FeatureServer/18, 854,116 rows (2026-10-22). The item text:
+# "all recorded documents that the Assessor's Office has associated
+# with one or more Weld County parcels ... one line per RECEPTNO and
+# ACCOUNTNO combination". A document of several accounts is several
+# rows sharing recptno.
+#
+# PRIVACY, AND WHY REST RATHER THAN THE HUB CSV. The table carries
+# grantor and grantee names. The Hub CSV export ships every column;
+# the REST query names an allow-list (`out_fields`), so the names are
+# never downloaded. That costs about 430 pages of 2,000 rows against
+# one bulk file, and is the reason this recipe pages.
+#
+# THE PARCEL. A sales row names its account (accountno, 'A9999999'),
+# not its parcel. The scraper's attribute join adds PARCELNO from the
+# county's current account inventory (AcctCurrentInvntry, the table
+# US-CO-WE_property-weldcounty-2026 reads), matched on the account
+# number exactly. The two tables spell the field differently
+# (accountno, ACCOUNTNO); the join matches field names without regard
+# to case, as ArcGIS does. An account retired before the inventory's
+# date has no row there, so its sales carry no parcel id; 199,250
+# accounts occur in the sales table against 183,653 in the inventory.
+#
+# MAPPED. recptno -> instrument_number (the Clerk and Recorder's
+# reception number); accountno -> property_id_assessor; PARCELNO ->
+# parcel_id_assessor; salep -> price; saledt -> recorded_date (the
+# sale date, as the North Carolina county recipes map theirs; docdt,
+# the recording date, is kept as received); deedtype -> doc_type (82
+# codes, no labels published); excludereason -> sale_qualification_code
+# (70 values, the assessor's reason for leaving a sale out of
+# valuation); impvac -> sale_vacant ('Improved', 'Vacant').
+#
+# DATES. Esri dates arrive as epoch milliseconds; multiplied by 10^6
+# they are nanoseconds, which to_datetime reads, back to 1883. A sale
+# date of 1900-01-01 means unknown (the item text: "more likely means
+# an unknown sale date for older documents"): 45,466 rows, nulled
+# before the conversion; the row and its price are kept.
+#
+# NOT REQUESTED: grantor, grantee (see PRIVACY); adjsalep, the
+# assessor's adjusted price (444,364 rows above 0), because what it is
+# adjusted for is not documented and openplaces carries no adjusted
+# price (design limits L7, L29).
+#
+# MEASURED 2026-10-22 (REST counts): salep above 0 on 444,375 rows,
+# null on 409,741; docfee above 0 on 436,714; saledt from 1883, 654,343
+# rows in 2000 or later, 338,538 in 2016 or later; excludereason null
+# on 639,876, 'WOL' on 123,039, 'No' on 34,662 (none after 2009),
+# 'Yes' on 5,742, 66 labelled reasons on the rest.
+#
+# RECONCILED, ingest of 2026-10-22: 854,116 rows written, equal to the
+# service count; price above 0 on 444,375 and missing on 409,741, as
+# counted on the service; recorded_date on 808,650 rows (all but the
+# 45,466 unknown dates), 1883-07-19 to 2026-10-06; 654,343 rows from
+# 2000 and 338,538 from 2016, as counted. The inventory join gave
+# 772,210 rows (90.4%) a parcel id, 158,694 distinct; 95.5% of rows
+# from 2016 on. docdt runs to one recording year of 2099, kept as
+# received. No grantor or grantee column is present.
+#
+# TERMS. The item licence is the county's disclaimer, recorded
+# verbatim as on US-CO-WE_property-weldcounty-2026: no redistribution
+# or resale clause and no click-through.
+
+description: >-
+  Weld County, CO Assessor sales table, 1883 onward: price, sale date,
+  deed type, exclusion reason and improved or vacant, per document and
+  account.
+
+admin_id: US-CO-WE
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: weldcounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=bcf79d1ba7d94a84b1585aed162ac66c"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      unknown (no licence). Item licence, verbatim: 'This product has been
+      developed solely for internal use only by Weld County. The GIS
+      database, applications, and data in the product is subject to
+      constant change and the accuracy and completeness cannot be and is
+      not guaranteed. The designation of lots or parcels or land uses in
+      the database does not imply that the lots or parcels were legally
+      created or that the land uses comply with applicable State or Local
+      law. UNDER NO CIRCUMSTANCE SHALL ANY PART THE PRODUCT BE USED FOR
+      FINAL DESIGN PURPOSES. WELD COUNTY MAKES NO WARRANTIES OR GUARANTEES,
+      EITHER EXPRESSED OR IMPLIED AS TO THE COMPLETENESS, ACCURACY, OR
+      CORRECTNESS OF SUCH PRODUCT, NOR ACCEPTS ANY LIABILITY, ARISING FROM
+      ANY INCORRECT, INCOMPLETE OR MISLEADING INFORMATION CONTAINED
+      THEREIN.'
+    terms_url: "https://www.arcgis.com/home/item.html?id=bcf79d1ba7d94a84b1585aed162ac66c"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "weld_sales.geojson"
+
+scraper_options:
+  layer_url: "https://services.arcgis.com/ewjSqmSyHJnkfBLL/arcgis/rest/services/Sales2/FeatureServer/18"
+  where: "1=1"
+  out_fields: "accountno,recptno,salep,saledt,deedtype,docfee,docdt,excludereason,impvac"
+  extra_params:
+    returnGeometry: "false"
+  attribute_join:
+    layer_url: "https://services.arcgis.com/ewjSqmSyHJnkfBLL/arcgis/rest/services/AcctCurrentInvntry/FeatureServer/12"
+    key: accountno
+    fields: [PARCELNO]
+  # Sales of retired accounts find no inventory row (see THE PARCEL).
+  join_min_match: 0.8
+
+process_by:
+  admin_level: 3
+
+columns:
+  instrument_number: recptno
+  property_id_assessor: accountno
+  parcel_id_assessor: PARCELNO
+  price: salep
+  recorded_date: saledt
+  doc_type: deedtype
+  sale_qualification_code: excludereason
+  sale_vacant: impvac
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price, output: price}
+  - {type: unary, operation: to_numeric, input: recorded_date,
+     output: recorded_date}
+  # 1900-01-01 means an unknown sale date (see DATES).
+  - {type: unary, operation: null_if_equal, input: recorded_date,
+     args: {value: -2208988800000}, output: recorded_date}
+  - type: expression
+    expression: "recorded_date * 1000000"
+    inputs: [recorded_date]
+    output: recorded_date
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+  - {type: unary, operation: to_numeric, input: docdt, output: docdt}
+  - type: expression
+    expression: "docdt * 1000000"
+    inputs: [docdt]
+    output: docdt
+  - {type: unary, operation: to_datetime, input: docdt, output: docdt}
+
+keep_unnamed_columns: true
+
+columns_to_categorical:
+  - doc_type
+  - sale_qualification_code
+  - sale_vacant
+
+# The account inventory's PARCELNO is the key the Weld roll and the
+# statewide OIT layer share (US-CO-WE_property-weldcounty-2026).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

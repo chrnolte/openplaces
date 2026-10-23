@@ -1,0 +1,98 @@
+# Recipe: Larimer County, CO Assessor sales table, from the Assessor's
+# Public Data Center (larimer.gov/assessor/publicdata): one row per
+# reception number and account, 1875 to date.
+#
+# SOURCE. The bulk file assessor-public-sales.csv on the county's
+# public storage bucket (101 MB, 663,350 rows, RUNDATE 2026-10-21;
+# the county refreshes it in place). Primary key ACCOUNTNO +
+# RECEPTIONNO, unique on every row. A document of several accounts is
+# several rows sharing RECEPTIONNO (20,752 receptions name more than
+# one parcel). ACCOUNTNO prefixes: R real property (643,061 rows), M
+# mobile homes (20,289).
+#
+# PRIVACY. The file carries GRANTOR and GRANTEE, and a static CSV
+# cannot be asked to leave them out. Neither is mapped and
+# keep_unnamed_columns is off, so the names are dropped as the file is
+# read and never reach an ingested table.
+#
+# MAPPED. RECEPTIONNO -> instrument_number (the Clerk and Recorder's
+# reception number); ACCOUNTNO -> property_id_assessor; PARCELNO ->
+# parcel_id_assessor (filled on all but one row); SALEPRICE -> price
+# (above 0 on 425,537 rows, 0 on 237,813); SALEDATE -> recorded_date
+# (the sale date, as the North Carolina county recipes map theirs);
+# DEEDDESCRIPTION -> doc_type (23 types, one per DEEDCODE; Warranty
+# Deed 246,810, Quit Claim 126,772, Special Warranty Deed 102,175).
+# No sale qualification or condition is published.
+#
+# JOIN KEY. PARCELNO is the ten-digit parcel number the statewide
+# OIT layer (US-CO_parcel-cooit-2026) carries as parcel_id for
+# Larimer; both recipes key on it with the same conversion. Measured
+# 2026-10-22 against that layer's Larimer rows (180,961): 99.64% of
+# sales rows and 99.33% of distinct sale parcel numbers are found
+# there, and 90.5% of its parcel ids have at least one sale.
+#
+# DATES. Every row has a date, 1875-12-07 to 2026-10-20. Sales of the
+# 1990s are dated to the month: the five commonest dates are the 1st
+# of a month in 1993-1998 (1,690 to 1,968 rows each), so a day from
+# that era is not a real day; sale_month is.
+#
+# RECONCILED, ingest of 2026-10-22 against the file read directly:
+# 663,350 rows, equal; price above 0 on 425,537 and 0 on 237,813,
+# equal; recorded_date on every row; parcel_id_local on 663,349 rows
+# (158,292 distinct); 23 doc_type values. No grantor or grantee
+# column reaches the output.
+#
+# TERMS. The Public Data Center states no licence and no click-through;
+# its disclaimer reads "The information provided is for assessment
+# purposes only", with no warranty and use "at the risk of the user".
+# Nothing restricts redistribution or resale.
+
+description: >-
+  Larimer County, CO Assessor sales table, 1875 onward: price, sale date
+  and deed type per document and account.
+
+admin_id: US-CO-LA
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: larimercounty
+    portal_url: "https://www.larimer.gov/assessor/publicdata"
+    download_url: "https://storage.googleapis.com/lc-public/asr/assessor-public-sales.csv"
+    license: >-
+      unknown (no licence stated). Disclaimer: 'The information provided
+      is for assessment purposes only'; no warranty, use at the risk of
+      the user.
+    terms_url: "https://www.larimer.gov/assessor/publicdata"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "assessor-public-sales.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  instrument_number: RECEPTIONNO
+  property_id_assessor: ACCOUNTNO
+  parcel_id_assessor: PARCELNO
+  price_raw: SALEPRICE
+  recorded_date: SALEDATE
+  doc_type: DEEDDESCRIPTION
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price_raw, output: price}
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+
+columns_to_categorical:
+  - doc_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
