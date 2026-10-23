@@ -18,6 +18,7 @@ import pandas as pd
 import shapely
 import yaml
 
+from openplaces.core.held_recipes import is_undiscoverable
 from openplaces.core.schema import admin_scope_covers
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_admin_ids, get_entities
@@ -159,6 +160,11 @@ def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dic
         # A supplement details another recipe's entities (see
         # spine._expand_auto_discover) and is never the source to pick.
         if data.get('supplements'):
+            continue
+        # A held or run-excluded recipe is never a source
+        # (core.held_recipes). This scan globs the tree itself rather
+        # than reading find_recipes, so it needs its own check.
+        if is_undiscoverable(Path(rp).stem, data):
             continue
         entity = data.get('entity') or {}
         raw_admin_id = data.get('admin_id')

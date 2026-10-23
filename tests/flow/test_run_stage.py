@@ -43,6 +43,41 @@ def test_no_orchestrated_flag(monkeypatch, no_orchestrated_env):
     assert os.environ.get('OPENPLACES_ORCHESTRATED') is None
 
 
+def test_exclude_recipe_ids_reach_the_jobs_discovery(monkeypatch, no_orchestrated_env):
+    """The run's excluded ids are in the job's environment before it runs.
+
+    The graph prunes them, and the job's own discovery reads them from
+    there (core.held_recipes), so an excluded recipe's output left on
+    disk by an earlier run is not joined.
+    """
+    import os
+
+    from openplaces.core.held_recipes import EXCLUDE_ENV, run_excluded_recipe_ids
+
+    # Recorded so monkeypatch restores the variable's absence.
+    monkeypatch.setenv(EXCLUDE_ENV, '')
+    seen = {}
+    monkeypatch.setattr(
+        harmonizer_mod,
+        'harmonize',
+        lambda *a, **k: seen.update(env=os.environ.get(EXCLUDE_ENV)),
+    )
+    run_stage.main(
+        [
+            'harmonize',
+            'US_parcel-geospine-2026',
+            'US-NC-BR',
+            '--exclude-recipe-ids',
+            'US-XX_property-b-2026,US-XX_property-a-2026,',
+        ]
+    )
+    assert seen['env'] == 'US-XX_property-a-2026,US-XX_property-b-2026'
+    assert run_excluded_recipe_ids() == {
+        'US-XX_property-a-2026',
+        'US-XX_property-b-2026',
+    }
+
+
 def test_enrich_forwards_entity_recipe(monkeypatch, no_orchestrated_env):
     import openplaces.io.enricher as enricher_mod
 

@@ -11,6 +11,8 @@ a re-dispatched already-complete job no-ops in seconds; pass
 decides which jobs to re-dispatch, so the flag stays per-job). Sets
 OPENPLACES_ORCHESTRATED so receipt-based skips are voided and the
 physical output file the orchestrator expects is always produced.
+--exclude-recipe-ids carries the run's `exclude_recipe_ids` into the
+job, so its auto-discovery skips the recipes the graph pruned.
 
 'deliver' is the exception. It is not a recipe stage but the terminal
 bundling job (openplaces.io.delivery), it takes the region as a single
@@ -215,10 +217,28 @@ def main(argv=None) -> None:
         action='store_true',
         help='Do not set OPENPLACES_ORCHESTRATED (honor receipt skips)',
     )
+    parser.add_argument(
+        '--exclude-recipe-ids',
+        default=None,
+        help=(
+            "Comma-separated recipe ids the run excluded; the job's "
+            'auto-discovery skips them as the graph did'
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.no_orchestrated:
         os.environ['OPENPLACES_ORCHESTRATED'] = '1'
+    if args.exclude_recipe_ids is not None:
+        # The graph pruned these ids (`exclude_recipe_ids`), but
+        # discovery inside the job reads the recipe tree and the files
+        # on disk, so without this it still joined an excluded
+        # recipe's output left by an earlier run. Set before any
+        # recipe is resolved: the discovery scans are cached per
+        # process (core.held_recipes).
+        from openplaces.core.held_recipes import EXCLUDE_ENV, format_exclude_env
+
+        os.environ[EXCLUDE_ENV] = format_exclude_env(args.exclude_recipe_ids.split(','))
 
     if args.stage == DELIVER:
         from openplaces.io.delivery import export_delivery

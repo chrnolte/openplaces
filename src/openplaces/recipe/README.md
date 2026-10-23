@@ -76,6 +76,14 @@ record, "the best source available at build time" is not reproducible.
   a patch recipe as an entity's recipe and the DAG keeps one recipe id
   per job.
 
+- `held: true` - keeps a recipe out of every auto-discovery path (spine
+  unions, `link_by_id` joins, `find_entity_recipe_id`, the dependency
+  scan). `core.held_recipes` also holds by source id (Shovels) and by
+  recipe id from tracked code, because a held connector's own file is
+  git-ignored. An explicit `recipe_id:` reference still loads it. The
+  run's `exclude_recipe_ids` reach each job's discovery the same way,
+  through `run_stage --exclude-recipe-ids`.
+
 ## Supplements: detail tables of a roll
 
 A table whose rows are *details* of a roll's properties (one row per
