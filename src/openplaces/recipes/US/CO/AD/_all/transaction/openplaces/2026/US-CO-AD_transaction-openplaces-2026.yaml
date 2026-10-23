@@ -1,0 +1,92 @@
+# Patch: Adams County, CO transaction curation, grading the deed type
+# (US-CO-AD_transaction-adamscounty-2026).
+#
+# Adams publishes no sale qualification, only the document type, coded
+# in the Assessor's own lookup (Document_Codes.TXT in the data dump
+# Admin_2026_2.zip, 38 codes, read 2026-10-22). A document type can say
+# that a record conveys no market price; it cannot say that a deed was
+# at arm's length. So the grade is one-sided, as Illinois grades its
+# instrument line: 0.0 where the type rules a market price out, and
+# missing everywhere else. A county's vocabulary, so a county patch.
+#
+# 0.0, group not_a_sale:
+#   quit claims (QC, UNQ unrecorded quit claim);
+#   forced sales, as Illinois grades its judicial, sheriff's and tax
+#   deeds: PTD public trustee's deed (foreclosure), SHD sheriff's deed,
+#   TRD treasurer's deed (tax sale);
+#   records that convey nothing at a price: AFF affidavit, DAF death
+#   affidavit, DTH death certificate, DED dedication, DISC disclaimer,
+#   MRG merger, PLT plat, PAT patent, RIT release of inheritance tax,
+#   DEC court decree, ORD court order, MD mineral deed, MC mining claim,
+#   BOS bill of sale (personal property).
+# Left missing: WD, SWD, D, BS, TTD, PRD, CD, GD, AD, BLK (blanket
+# deed, one deed of several lots), CON, AGR, ASN, STA, TTL, OTH, UNW,
+# UNC, UND. Measured 2026-10-22 on the 769,293 sales rows: QC 145,600,
+# PTD 32,969, DTH 26,165, AFF 11,010, MRG 2,447 and the rest smaller
+# among the 0.0 codes; WD 266,335, SWD 150,654 and BLK 93,344 among the
+# missing.
+
+admin_id: US-CO-AD
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: doc_type
+          mapping:
+            QC: 0.0
+            UNQ: 0.0
+            PTD: 0.0
+            SHD: 0.0
+            TRD: 0.0
+            AFF: 0.0
+            DAF: 0.0
+            DTH: 0.0
+            DED: 0.0
+            DISC: 0.0
+            MRG: 0.0
+            PLT: 0.0
+            PAT: 0.0
+            RIT: 0.0
+            DEC: 0.0
+            ORD: 0.0
+            MD: 0.0
+            MC: 0.0
+            BOS: 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: doc_type
+          mapping:
+            QC: not_a_sale
+            UNQ: not_a_sale
+            PTD: not_a_sale
+            SHD: not_a_sale
+            TRD: not_a_sale
+            AFF: not_a_sale
+            DAF: not_a_sale
+            DTH: not_a_sale
+            DED: not_a_sale
+            DISC: not_a_sale
+            MRG: not_a_sale
+            PLT: not_a_sale
+            PAT: not_a_sale
+            RIT: not_a_sale
+            DEC: not_a_sale
+            ORD: not_a_sale
+            MD: not_a_sale
+            MC: not_a_sale
+            BOS: not_a_sale

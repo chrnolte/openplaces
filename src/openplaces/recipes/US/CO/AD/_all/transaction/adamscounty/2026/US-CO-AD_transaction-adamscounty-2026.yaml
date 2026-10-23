@@ -1,0 +1,118 @@
+# Recipe: Adams County, CO Assessor "Property Sales" table, the
+# recorded documents the Assessor associates with each account, 1901
+# to date (one row per reception number and account).
+#
+# SOURCE. AdamsCO_GIS item c518fafaabf8476fb83d5a7b7b1aa7be, service
+# Property_Sales/FeatureServer/0, 769,293 rows (2026-10-22), "Updated
+# weekly ... can be joined to the Parcels feature layer on the PARCELNB
+# field". The Assessor's data dump (US-CO-AD_property-adamscounty-2026)
+# also ships a Sales table; this item is read instead because its own
+# metadata carries the licence.
+#
+# PRIVACY, AND WHY REST. The table carries grantor and grantee names;
+# the Hub CSV would ship them. The REST query names an allow-list
+# (`out_fields`), so the names are never downloaded.
+#
+# LINKING. parcel_id_local joins the county's own CC BY parcel layer,
+# US-CO-AD_parcel-adamscountygis-2026; the statewide OIT composite
+# also draws Adams but its terms are unknown.
+#
+# MAPPED. recptno -> instrument_number (the Clerk and Recorder's
+# reception number); book, page -> book, page; accountno ->
+# property_id_assessor; parcelnb -> parcel_id_assessor (13 digits,
+# filled on every row; the key the Adams roll and parcel recipes use);
+# salep -> price (above 0 on 561,489 rows, 0 on 207,804); saledt ->
+# recorded_date (the sale date, as the North Carolina county recipes
+# map theirs; docdt, the recording date, empty on 74,475 rows, is kept
+# as received); deedtype -> doc_type (32 codes, no labels published:
+# WD 266,335, SWD 150,654, QC 145,600, BLK 93,344, PTD 32,969, DTH
+# 26,165 and 26 smaller). No qualification or condition is published,
+# so the table carries no sale_qualification_code.
+#
+# DATES. Esri dates arrive as epoch milliseconds; multiplied by 10^6
+# they are nanoseconds, which to_datetime reads. No sentinel date:
+# saledt is filled on every row and none falls on 1900-01-01; 768,867
+# are 1990 or later; one runs to 2029, kept as received.
+#
+# RECONCILED, ingest of 2026-10-22: 769,293 rows written, equal to
+# the service count; price above 0 on 561,489 and 0 on 207,804, as
+# counted; recorded_date on every row, 1901-10-22 to 2029-06-19;
+# docdt on 694,818. Against the county parcel layer
+# (US-CO-AD_parcel-adamscountygis-2026, same key conversion): 99.99%
+# of sale rows and 99.97% of distinct sale parcels are found, 99.98%
+# of rows from 2016 on; 91.8% of parcels have a sale. No grantor or
+# grantee column reaches the output.
+#
+# TERMS. The item licence: "This work is licensed under a Creative
+# Commons Attribution 4.0 International License", followed by an
+# as-is disclaimer (no warranty). No click-through.
+
+description: >-
+  Adams County, CO Assessor property sales table, 1901 onward: price,
+  sale date, deed type, reception, book and page per document and
+  account.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: adamscounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=c518fafaabf8476fb83d5a7b7b1aa7be"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=c518fafaabf8476fb83d5a7b7b1aa7be"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "adams_property_sales.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/4PNQOtAivErR7nbT/arcgis/rest/services/Property_Sales/FeatureServer/0"
+  where: "1=1"
+  out_fields: "accountno,parcelnb,recptno,book,page,deedtype,saledt,docfee,docdt,salep"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  instrument_number: recptno
+  book: book
+  page: page
+  property_id_assessor: accountno
+  parcel_id_assessor: parcelnb
+  price: salep
+  recorded_date: saledt
+  doc_type: deedtype
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price, output: price}
+  - {type: unary, operation: to_numeric, input: recorded_date,
+     output: recorded_date}
+  - type: expression
+    expression: "recorded_date * 1000000"
+    inputs: [recorded_date]
+    output: recorded_date
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+  - {type: unary, operation: to_numeric, input: docdt, output: docdt}
+  - type: expression
+    expression: "docdt * 1000000"
+    inputs: [docdt]
+    output: docdt
+  - {type: unary, operation: to_datetime, input: docdt, output: docdt}
+
+keep_unnamed_columns: true
+
+columns_to_categorical:
+  - doc_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
