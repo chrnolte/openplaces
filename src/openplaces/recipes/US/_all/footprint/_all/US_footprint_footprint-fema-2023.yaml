@@ -1,0 +1,57 @@
+# Enrichment recipe: attach FEMA USA Structures' LiDAR building height
+# to each footprint, by polygon overlap.
+#
+# Exists so that a measured height reaches the building it measures.
+# Until now FEMA's HEIGHT reached parcels only (the parcel geospine's
+# FEMA overlay, `n_stories_footprint_fema` on the curated parcel), and
+# footprint story counts came from NSI and CHEER. The footprint curate
+# derives a story count from it that fills where NSI has none.
+# HEIGHT is filled only on FEMA's NGA outlines, flown as LiDAR in 2008
+# and 2012; the ORNL outlines drawn from imagery carry none (see the
+# FEMA ingest recipe's PINNED RELEASES).
+#
+# An enrichment rather than a link in the footprint geospine: a
+# geospine link adds an ingest input to that recipe, which changes the
+# fingerprint of every link sidecar it writes and forces a full
+# geometry rerun in every unit. Here the overlay runs once per unit in
+# enrich and the footprint curate merges the result.
+#
+# FEMA outlines themselves never enter the spine (US_footprint-
+# geospine-2026, maintainer 2026-10-16, confirmed 2026-10-22 after
+# plans/fema-heights-to-footprints-and-missing-outlines.md found most
+# FEMA outlines the spine lacks unsupported by Microsoft or Overture).
+# This recipe adds a value to an existing footprint, never a footprint.
+#
+# min_iou 0.3 as for Overture: each footprint takes the one FEMA
+# outline it overlaps best, and only if that outline is the same
+# building drawn twice, not a neighbor clipping it.
+# Measured 2026-10-21 on US-WI-DA: 98.8% of 89,013 FEMA heights overlap a spine footprint.
+# Measured 2026-10-22 on US-WI-DA: 76,752 of 209,686 footprints take a FEMA height.
+
+description: >-
+  FEMA USA Structures LiDAR building height attached to footprints by
+  polygon overlap.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: footprint
+
+dataset: footprint-fema-2023
+
+# Matching is geometric, so the spine must be loaded with its geometry.
+spine_geom: true
+
+reference_building_recipe_id: US_footprint-fema-2023
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_footprints_from_reference_buildings
+    # Attached as `height_footprint_fema`; the footprint curate derives
+    # n_stories_footprint_fema from it.
+    min_iou: 0.3
+    columns:
+      - height

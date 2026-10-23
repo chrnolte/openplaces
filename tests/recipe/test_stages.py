@@ -56,6 +56,9 @@ def test_curation_recipe_declares_predecessors():
         # National: Overture heights, which the floor-weighted value
         # split and the unconfirmed-height flag read.
         'US_footprint_footprint-overture-2026',
+        # National: FEMA's LiDAR heights, from which the n_stories
+        # reconcile takes a measured story count.
+        'US_footprint_footprint-fema-2023',
     }
 
 
