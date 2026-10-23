@@ -1,0 +1,9 @@
+{
+  "accuracy_m": -1.0,
+  "grid_files": [],
+  "operation_definition": "proj=pipeline step inv proj=tmerc lat_0=4.596200417 lon_0=-74.077507917 k=1 x_0=1000000 y_0=1000000 ellps=GRS80 step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of unnamed + Ballpark geographic offset from CGS_SIRGAS to WGS 84 + axis order change (2D)",
+  "registered": "2026-10-22",
+  "source_crs": "PROJCRS[\"GAUSS_BTA_MAGNA\",BASEGEOGCRS[\"CGS_SIRGAS\",DATUM[\"CGS_SIRGAS\",ELLIPSOID[\"GRS_1980\",6378137,298.257222101,LENGTHUNIT[\"metre\",1,ID[\"EPSG\",9001]]]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"Degree\",0.0174532925199433]]],CONVERSION[\"unnamed\",METHOD[\"Transverse Mercator\",ID[\"EPSG\",9807]],PARAMETER[\"Latitude of natural origin\",4.596200417,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8801]],PARAMETER[\"Longitude of natural origin\",-74.077507917,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8802]],PARAMETER[\"Scale factor at natural origin\",1,SCALEUNIT[\"unity\",1],ID[\"EPSG\",8805]],PARAMETER[\"False easting\",1000000,LENGTHUNIT[\"Meter\",1],ID[\"EPSG\",8806]],PARAMETER[\"False northing\",1000000,LENGTHUNIT[\"Meter\",1],ID[\"EPSG\",8807]]],CS[Cartesian,2],AXIS[\"easting\",east,ORDER[1],LENGTHUNIT[\"Meter\",1]],AXIS[\"northing\",north,ORDER[2],LENGTHUNIT[\"Meter\",1]]]",
+  "target_crs": "EPSG:4326"
+}

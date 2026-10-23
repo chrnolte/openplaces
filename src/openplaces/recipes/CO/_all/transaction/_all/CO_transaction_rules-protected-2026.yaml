@@ -1,0 +1,84 @@
+# Recipe: protection status of each land acquisition polygon, static and
+# per year: the twin of CO_parcel_rules-protected-2026, whose header
+# explains the layers, the dates and the design limits checked. Its
+# steps are the parcel recipe's, verbatim (a test keeps them equal), so
+# that a treated polygon that is not a cadastral parcel carries the same
+# columns as every untreated parcel (decision D3: a treatment polygon is
+# enriched on its own geometry).
+
+description: >-
+  Share of each land acquisition polygon inside protected areas and
+  indigenous reserves, static (current RUNAP, ANT) and per year 1997-2024.
+
+stage: enrich
+admin_id: CO
+
+entity:
+  entity_type: transaction
+
+dataset:
+  theme: rules-protected
+  source:
+    source_id: openplaces
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-runap-2026
+    share_column: protected_share
+    id_column: protected_area_id
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _runap
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_runap_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-pnn-2015
+    share_column: protected_share
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _pnn
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_pnn_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-sinap-2015
+    share_column: protected_share
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _sinap
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_sinap_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-rnsc-2015
+    share_column: protected_share
+    suffix: _rnsc
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_rnsc_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-indigenous-ant-2026
+    share_column: indigenous_reserve_share
+    suffix: _ant
+    year_column: indigenous_reserve_year
+    year_range: [1997, 2024]
+    year_share_column: indigenous_reserve_share_ant_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-indigenous-incoder-2012
+    share_column: indigenous_reserve_share
+    suffix: _incoder
+    year_column: indigenous_reserve_year
+    year_range: [1997, 2024]
+    year_share_column: indigenous_reserve_share_incoder_{year}

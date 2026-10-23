@@ -1,0 +1,50 @@
+# Recipe: Colombia's regional and other SINAP protected areas outside
+# the national parks system, 2015 layer, for the date each was declared.
+#
+# The current RUNAP (CO_rules-protected-runap-2026) states no declaration
+# date; this layer does (fecha_acto, the date of the declaring act).
+# Read by CO_parcel_rules-protected-2026 for the annual protection
+# status.
+#
+# Source: Otras_areas_sinap.shp in the maintainer's Colombia GIS folder
+# (Protection/REGIONALES, file dated 2015-09-25), 275 areas, EPSG:4686,
+# 6 categories, fecha_acto 1938-11-26 to 2015-07-02 (none missing),
+# declared by 31 authorities. Published by PNN as part of RUNAP's
+# predecessor files; PNN's current terms are CC BY-SA 4.0, the 2015
+# terms were not checked. An area declared after mid-2015 is in RUNAP
+# only.
+#
+# Names (nombre) are not mapped and are not unique (273 of 275), so
+# rows keep a positional index.
+
+description: >-
+  Colombia's regional and other non-national SINAP protected areas (2015
+  layer): category and the year of the declaring act.
+
+admin_id: CO
+
+dataset:
+  theme: rules-protected
+  source:
+    source_id: sinap
+    portal_url: "https://runap.parquesnacionales.gov.co"
+    license: "PNN; current terms CC BY-SA 4.0 (2015 terms not checked)"
+    terms_url: "https://portaldatosabiertos-PNNC.hub.arcgis.com"
+    redistribution_restricted: false
+  version: 2015
+
+uncompressed_file_name: "Otras_areas_sinap.shp"
+
+columns:
+  protected_area_category: categoria
+
+transformations:
+  - output: protected_area_year
+    input: fecha_acto
+    type: datetime
+    operation: year
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: core

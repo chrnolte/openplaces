@@ -1,0 +1,73 @@
+# Recipe: Colombia's indigenous reserves (resguardos) as of 2012, for
+# the year each was constituted.
+#
+# The current ANT layer (CO_rules-indigenous-ant-2026) dates only each
+# resguardo's latest administrative act; this layer states the
+# constitution (RICONSTITU). Read by CO_parcel_rules-protected-2026 for
+# the annual status.
+#
+# Source: "Resguardos Indigenas (2012).shp" in the maintainer's
+# Colombia GIS folder (Protection/Resguardos, file dated 2016-07-20),
+# 691 resguardos, MAGNA-SIRGAS Bogotá. The publisher is inferred, not
+# verified: the field set (RICODIGO, RIEXPEDIEN, RICONSTITU,
+# RIAMPLIACI) is that of INCODER's resguardo layer, the agency ANT
+# replaced in 2015, as distributed through IGAC's SIGOT; terms not
+# checked.
+#
+# RICONSTITU holds the constituting act, often as an HTML link to its
+# scan followed by "Resolución 9999 del 99-<mon>-9999": the year is the
+# last four-digit year in the text, after the link's own dates. 679 of
+# 691 have one (1967-2012). Names (RINOMBRE, RIETNIA) and population
+# counts are not mapped.
+
+description: >-
+  Colombia's indigenous reserves as of 2012 (INCODER layer, inferred
+  publisher): the year of the constituting act.
+
+admin_id: CO
+
+dataset:
+  theme: rules-indigenous
+  source:
+    source_id: incoder
+    license: "unknown (INCODER layer via SIGOT, inferred; terms not checked)"
+    redistribution_restricted: null
+  version: 2012
+
+uncompressed_file_name: "Resguardos Indigenas (2012).shp"
+
+transformations:
+  - output: indigenous_reserve_year
+    input: RICONSTITU
+    type: string
+    operation: extract_named
+    args:
+      pattern: '.*(?<!\d)(?P<year>(?:19|20)\d\d)(?!\d)'
+  - output: indigenous_reserve_year
+    input: indigenous_reserve_year
+    type: unary
+    operation: to_numeric
+
+keep_unnamed_columns: False
+
+# keep_unnamed_columns acts only with a `columns:` mapping; every source
+# field is dropped by name (2026-10-22: the first trial ingest kept
+# them).
+drop_columns:
+  - RICODIGO
+  - RIEXPEDIEN
+  - RINOMBRE
+  - RIETNIA
+  - RIFAMILIA
+  - RIAREA
+  - RICONSTITU
+  - RIAMPLIACI
+  - RIRESTRUCT
+  - RIACLARACI
+  - ANO
+  - RIPOBLACIO
+  - RICODLEY
+  - RI_NGLOBOS
+
+save_to:
+  data_dir: core

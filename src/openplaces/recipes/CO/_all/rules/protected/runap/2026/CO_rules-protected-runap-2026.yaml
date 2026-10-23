@@ -1,0 +1,70 @@
+# Recipe: RUNAP, Colombia's national register of protected areas
+# (Registro Único Nacional de Áreas Protegidas), as Parques Nacionales
+# Naturales (PNN) publishes it today.
+#
+# Read by CO_parcel_rules-protected-2026 for French et al.'s static
+# protection covariate (the category of the area covering most of a
+# parcel, and the share covered) and, with the dated layers beside it,
+# for the annual status Reboredo Segovia et al. match on.
+#
+# Source: PNN's bulk shapefile (latest.zip, 70,106,486 bytes,
+# Last-Modified 2026-10-22; the ArcGIS item says it refreshes itself
+# daily), 1,936 areas, EPSG:4686, all SINAP categories: national,
+# regional (declared by the CARs) and civil-society reserves. Licence on
+# the item: "RUNAP © 2025 por Parques Nacionales Naturales licenciado
+# bajo CC BY-SA 4.0"; PNN's open-data terms allow sharing and
+# commercial use, require credit with a link to the licence and source,
+# and bind derived work to the same terms (share-alike).
+#
+# No declaration date (checked 2026-10-21): fecha_insc and fecha_regi
+# are the dates an area was inscribed and registered in RUNAP, which
+# began in 2011 (2011-06-30 to 2026-10-22); a park declared in 1964
+# reads 2011-07-13. The inscription year is mapped as an upper bound of
+# the year the area took effect: it never counts an area too early, and
+# counts the areas declared before 2011 late, which the dated layers
+# (CO_rules-protected-{pnn,sinap,rnsc}-2015) cover.
+#
+# condicion: REGISTRADA 1,623, INSCRITA 230, CONSTRUCCION 81,
+# REGISTRADO 1. The 81 in construction are areas being declared, not
+# yet protected, and are left out. Names (ap_nombre) are not mapped:
+# civil-society reserves are private land, often named after their
+# owners; nor the NIT of the declaring organization.
+
+description: >-
+  RUNAP protected areas of Colombia (PNN, current release): category and
+  year of inscription in the register, an upper bound of the declaration.
+
+admin_id: CO
+
+dataset:
+  theme: rules-protected
+  source:
+    source_id: runap
+    portal_url: "https://portaldatosabiertos-PNNC.hub.arcgis.com"
+    download_url: "https://storage.googleapis.com/pnn_geodatabase/runap/latest.zip"
+    license: "CC BY-SA 4.0 (RUNAP, Parques Nacionales Naturales de Colombia)"
+    terms_url: "https://www.arcgis.com/sharing/rest/content/items/4a673b3d51c146abab5fd462992dd2c0?f=json"
+    redistribution_restricted: false
+  version: 2026
+
+compressed_file_name: "runap_latest.zip"
+uncompressed_file_name: "runap.shp"
+
+query: "condicion != 'CONSTRUCCION'"
+
+columns:
+  protected_area_id: ap_id
+  protected_area_category: ap_categor
+
+transformations:
+  - output: protected_area_year
+    input: fecha_insc
+    type: datetime
+    operation: year
+
+keep_unnamed_columns: False
+
+set_index: protected_area_id
+
+save_to:
+  data_dir: core

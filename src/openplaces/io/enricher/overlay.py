@@ -77,7 +77,8 @@ def overlay_shares(
     entities: gpd.GeoSeries,
     reference: gpd.GeoDataFrame,
     max_vertices: int = 256,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
+    return_pairs: bool = False,
+):
     """Covered share and dominant reference polygon per entity.
 
     Parameters
@@ -91,6 +92,9 @@ def overlay_shares(
         coordinates (`openplaces.geo.polygon.subdivide_polygons`) before
         the overlay, so that a large site is not scanned once per
         entity it touches.
+    return_pairs : bool
+        Also return the intersection areas per (entity, reference)
+        pair and the entities' own areas, for `yearly_shares`.
 
     Returns
     -------
@@ -102,12 +106,25 @@ def overlay_shares(
         intersection area; missing where none intersects.
     dominant_share : pandas.Series
         That polygon's intersection area over the entity's area.
+    pairs, own : pandas.DataFrame, pandas.Series
+        Only with *return_pairs*: columns entity, ref, area; and each
+        entity's own area (missing where zero).
     """
     share = pd.Series(0.0, index=entities.index)
     dominant = pd.Series(pd.NA, index=entities.index, dtype=object)
     dominant_share = pd.Series(np.nan, index=entities.index)
+    empty_pairs = pd.DataFrame({'entity': [], 'ref': [], 'area': []})
+    own = pd.Series(
+        shapely.area(shapely.make_valid(entities.values)), index=entities.index
+    )
+    own = own.where(own > 0)
+
+    def _out(pairs):
+        result = (share.fillna(0.0), dominant, dominant_share)
+        return (*result, pairs, own) if return_pairs else result
+
     if entities.empty or reference.empty:
-        return share, dominant, dominant_share
+        return _out(empty_pairs)
     ref = gpd.GeoSeries(
         shapely.make_valid(reference.geometry.values),
         index=reference.index,
@@ -118,7 +135,7 @@ def overlay_shares(
     geoms = shapely.make_valid(entities.values)
     i_e, i_p = shapely.STRtree(pieces.values).query(geoms, predicate='intersects')
     if len(i_e) == 0:
-        return share, dominant, dominant_share
+        return _out(empty_pairs)
     area = shapely.area(shapely.intersection(geoms[i_e], pieces.values[i_p]))
     pairs = (
         pd.DataFrame(
@@ -133,8 +150,6 @@ def overlay_shares(
         .reset_index()
     )
     pairs = pairs[pairs['area'] > 0]
-    own = pd.Series(shapely.area(geoms), index=entities.index)
-    own = own.where(own > 0)
     covered = pairs.groupby('entity')['area'].sum()
     share.loc[covered.index] = (covered / own.reindex(covered.index)).clip(upper=1)
     # Largest overlap first; a tie goes to the smaller reference id so
@@ -143,7 +158,55 @@ def overlay_shares(
     top = top.drop_duplicates('entity').set_index('entity')
     dominant.loc[top.index] = top['ref'].to_numpy()
     dominant_share.loc[top.index] = (top['area'] / own.reindex(top.index)).clip(upper=1)
-    return share.fillna(0.0), dominant, dominant_share
+    return _out(pairs)
+
+
+def yearly_shares(
+    pairs: pd.DataFrame,
+    own: pd.Series,
+    ref_years: pd.Series,
+    years: range,
+) -> pd.DataFrame:
+    """Covered share per entity and year, counting references by their year.
+
+    For a layer of areas each established in a known year (a protected
+    area's declaration, a reserve's constitution): the share of each
+    entity covered, in year *y*, by the areas established in *y* or
+    earlier. Areas without a year are left out of every year, so a
+    share never counts an area before its date is known.
+
+    Parameters
+    ----------
+    pairs : pandas.DataFrame
+        Columns entity, ref, area, from `overlay_shares(...,
+        return_pairs=True)`.
+    own : pandas.Series
+        Each entity's own area, indexed by entity id.
+    ref_years : pandas.Series
+        Year each reference polygon was established, indexed by its id.
+    years : range
+        Years to write.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One column per year (named by the year), indexed like *own*;
+        0.0 where no dated area covers the entity by then.
+    """
+    out = pd.DataFrame(0.0, index=own.index, columns=list(years))
+    if pairs.empty:
+        return out
+    dated = pairs.assign(year=pairs['ref'].map(ref_years)).dropna(subset=['year'])
+    for year in years:
+        covered = dated.loc[dated['year'] <= year].groupby('entity')['area'].sum()
+        if len(covered):
+            out.loc[covered.index, year] = (
+                (covered / own.reindex(covered.index))
+                .clip(upper=1)
+                .fillna(0.0)
+                .to_numpy()
+            )
+    return out
 
 
 @_register('overlay_reference_polygons')
@@ -156,6 +219,9 @@ def overlay_reference_polygons(
     suffix: str | None = None,
     withhold: dict | None = None,
     max_vertices: int = 256,
+    year_column: str | None = None,
+    year_range: list[int] | None = None,
+    year_share_column: str | None = None,
 ) -> EnrichState:
     """Write covered share and dominant-polygon attributes for each entity.
 
@@ -189,6 +255,17 @@ def overlay_reference_polygons(
         are still written.
     max_vertices : int
         Passed to :func:`overlay_shares`.
+    year_column, year_range, year_share_column : optional
+        For a layer whose polygons each carry the year they took effect
+        (a declaration or constitution year in *year_column*): also
+        write, for every year from ``year_range[0]`` to
+        ``year_range[1]`` (not ``years``, which the enricher unrolls
+        into one step per year), the
+        share covered by the polygons in effect by then
+        (:func:`yearly_shares`), under *year_share_column* with
+        ``{year}`` replaced (no *suffix* is added; name the source in
+        the template, as in ``protected_share_pnn_{year}``). Polygons
+        without a year count in no year.
 
     Returns
     -------
@@ -207,12 +284,27 @@ def overlay_reference_polygons(
         suffix = f'_{dataset.source.source_id}'
     outputs = [share_column, *([id_column] if id_column else []), *columns.values()]
     evidence = pd.DataFrame(index=spine.index, columns=outputs, dtype=object)
+    if year_column and not (year_range and year_share_column):
+        raise ValueError('year_column needs year_range and year_share_column.')
+    years = range(year_range[0], year_range[1] + 1) if year_column else range(0)
+    annual = pd.DataFrame(np.nan, index=spine.index, columns=list(years))
 
     def _finish():
         evidence[share_column] = pd.to_numeric(evidence[share_column], errors='coerce')
         for column in outputs:
             state.evidence[f'{column}{suffix}'] = evidence[column].reindex(
                 state.evidence.index
+            )
+        if len(years):
+            # One concat, not one insert per year: 28 years of six layers
+            # inserted one by one fragment the evidence frame.
+            named = annual.rename(columns=lambda y: year_share_column.format(year=y))
+            state.evidence = pd.concat(
+                [
+                    state.evidence.drop(columns=named.columns, errors='ignore'),
+                    named.reindex(state.evidence.index),
+                ],
+                axis=1,
             )
         return state
 
@@ -237,8 +329,18 @@ def overlay_reference_polygons(
     if state.timer:
         state.timer.mark('load reference polygons')
 
-    share, dominant, _ = overlay_shares(entities, nearby, max_vertices=max_vertices)
+    share, dominant, _, pairs, own = overlay_shares(
+        entities, nearby, max_vertices=max_vertices, return_pairs=True
+    )
     evidence[share_column] = share.reindex(evidence.index)
+    if year_column:
+        ref_years = (
+            pd.to_numeric(nearby[year_column], errors='coerce')
+            if year_column in nearby.columns
+            else pd.Series(np.nan, index=nearby.index)
+        )
+        per_year = yearly_shares(pairs, own, ref_years, years)
+        annual.loc[per_year.index, :] = per_year.to_numpy()
     has = dominant.notna()
     hit = dominant[has]
     if id_column:

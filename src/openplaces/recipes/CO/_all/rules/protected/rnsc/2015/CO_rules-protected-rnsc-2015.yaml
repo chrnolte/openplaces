@@ -1,0 +1,64 @@
+# Recipe: Colombia's civil-society nature reserves (Reservas Naturales
+# de la Sociedad Civil, RNSC), 2015 layer, for the year each was
+# registered by resolution.
+#
+# The current RUNAP (CO_rules-protected-runap-2026) holds 1,477 RNSC
+# without a resolution date; this layer has it in its resolution text.
+# Read by CO_parcel_rules-protected-2026 for the annual protection
+# status.
+#
+# Source: RNSC.shp in the maintainer's Colombia GIS folder
+# (Protection/RNSC, file dated 2015-05-27), 306 reserves, EPSG:4686.
+# resolucion reads "9999 (99 <month> de 9999)": the year is the last
+# four-digit year in the text; all 306 have one (2001-2014). Published
+# by PNN; current terms CC BY-SA 4.0, the 2015 terms were not checked.
+#
+# These are private land: the reserve name (nom_rnsc) is often the
+# owner's and is not mapped, nor the free-text observations; the
+# category is the same for every row and is written by the enrich step.
+
+description: >-
+  Colombia's civil-society nature reserves (RNSC, 2015 layer): the year
+  of the registering resolution.
+
+admin_id: CO
+
+dataset:
+  theme: rules-protected
+  source:
+    source_id: rnsc
+    portal_url: "https://runap.parquesnacionales.gov.co"
+    license: "PNN; current terms CC BY-SA 4.0 (2015 terms not checked)"
+    terms_url: "https://portaldatosabiertos-PNNC.hub.arcgis.com"
+    redistribution_restricted: false
+  version: 2015
+
+uncompressed_file_name: "RNSC.shp"
+
+transformations:
+  - output: protected_area_year
+    input: resolucion
+    type: string
+    operation: extract_named
+    args:
+      pattern: '.*(?<!\d)(?P<year>(?:19|20)\d\d)(?!\d)'
+  - output: protected_area_year
+    input: protected_area_year
+    type: unary
+    operation: to_numeric
+
+keep_unnamed_columns: False
+
+# keep_unnamed_columns acts only with a `columns:` mapping, which this
+# layer has nothing for; so every source field is dropped by name, the
+# reserve names first (2026-10-22: the first trial ingest kept them).
+drop_columns:
+  - nom_rnsc
+  - observacio
+  - resolucion
+  - hectareas
+  - st_area_sh
+  - st_length_
+
+save_to:
+  data_dir: core

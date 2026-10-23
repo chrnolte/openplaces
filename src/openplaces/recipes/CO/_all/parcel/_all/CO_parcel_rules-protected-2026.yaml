@@ -1,0 +1,108 @@
+# Recipe: protection status of each parcel, static and per year, for
+# the matching of the land acquisition analyses (French et al.; Reboredo
+# Segovia et al.). The same steps run on the transaction spine
+# (CO_transaction_rules-protected-2026).
+#
+# Neither paper drops protected parcels; both match on protection:
+#   - French et al.: the RUNAP category of the area covering a parcel
+#     and the share covered (RUNAP 2023), and indigenous reserves (ANT
+#     2024). Here: the current RUNAP and ANT layers, static.
+#   - Reboredo Segovia et al.: protected in the year before treatment,
+#     where at least 20% of the parcel is covered (RUNAP 2020 with
+#     declaration years). Here: a covered share per year and layer,
+#     1997-2024; the 20% rule and the year before treatment are applied
+#     where the treatment table is built.
+#
+# The annual shares count each area from the year it took effect. The
+# current RUNAP and ANT layers state only a later date (registration in
+# RUNAP from 2011; ANT's latest act), an upper bound: they never count
+# an area too early. The 2015 layers (national parks, regional areas,
+# civil-society reserves) and the 2012 resguardos state the declaring
+# or constituting act and count the older areas from their own year.
+# The status in a year is the largest of the layers' shares, taken in
+# the treatment table: each layer is overlaid on its own geometry and
+# no area is matched across layers (design limits L6, L25, L28
+# checked; none crossed).
+#
+# Columns: protected_share_runap, protected_area_id_runap,
+# protected_area_category_runap, protected_share_pnn,
+# protected_area_category_pnn, indigenous_reserve_share_ant (static);
+# protected_share_{runap,pnn,sinap,rnsc}_{year} and
+# indigenous_reserve_share_{ant,incoder}_{year} (annual).
+
+description: >-
+  Share of each parcel inside protected areas and indigenous reserves,
+  static (current RUNAP, ANT) and per year 1997-2024.
+
+stage: enrich
+admin_id: CO
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: rules-protected
+  source:
+    source_id: openplaces
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-runap-2026
+    share_column: protected_share
+    id_column: protected_area_id
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _runap
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_runap_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-pnn-2015
+    share_column: protected_share
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _pnn
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_pnn_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-sinap-2015
+    share_column: protected_share
+    columns:
+      protected_area_category: protected_area_category
+    suffix: _sinap
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_sinap_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-protected-rnsc-2015
+    share_column: protected_share
+    suffix: _rnsc
+    year_column: protected_area_year
+    year_range: [1997, 2024]
+    year_share_column: protected_share_rnsc_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-indigenous-ant-2026
+    share_column: indigenous_reserve_share
+    suffix: _ant
+    year_column: indigenous_reserve_year
+    year_range: [1997, 2024]
+    year_share_column: indigenous_reserve_share_ant_{year}
+
+  - step: overlay_reference_polygons
+    reference_recipe_id: CO_rules-indigenous-incoder-2012
+    share_column: indigenous_reserve_share
+    suffix: _incoder
+    year_column: indigenous_reserve_year
+    year_range: [1997, 2024]
+    year_share_column: indigenous_reserve_share_incoder_{year}
