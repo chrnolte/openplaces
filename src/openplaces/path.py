@@ -418,6 +418,32 @@ def share_path(*args, root=cfg.share_dir, **kwargs):
     return path(*args, root=root, **kwargs)
 
 
+def data_dir(name: str) -> Path:
+    """Return the configured data directory *name*.
+
+    The roots this module builds every path from (``out``, ``share``,
+    ``core``, ``cache``, ``external`` and the rest of the user's
+    configuration), for code that may not import this module: a connector
+    reads the hub only through ``openplaces.api``, where this is
+    ``get_data_dir``.
+
+    Parameters
+    ----------
+    name : str
+        A directory name from the configuration, e.g. ``'out'``.
+
+    Returns
+    -------
+    pathlib.Path
+
+    Raises
+    ------
+    KeyError
+        If the configuration has no directory of that name.
+    """
+    return Path(cfg.get_dir(name))
+
+
 def models_path(*args, root=cfg.models_dir, use_prefix=False, **kwargs):
     return path(*args, root=root, use_prefix=use_prefix, **kwargs)
 

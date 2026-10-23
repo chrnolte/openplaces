@@ -1,7 +1,7 @@
 import pytest
 
 from openplaces import cfg
-from openplaces.path import external_path, path  # adjust import
+from openplaces.path import data_dir, external_path, path  # adjust import
 
 
 @pytest.mark.parametrize(
@@ -36,3 +36,9 @@ from openplaces.path import external_path, path  # adjust import
 def test_path_generation(call, expected):
     """Test that path functions generate correct file paths."""
     assert call() == expected()
+
+
+def test_data_dir_is_the_configured_root():
+    assert data_dir('out') == cfg.get_dir('out')
+    with pytest.raises(KeyError):
+        data_dir('no-such-directory')

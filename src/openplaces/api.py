@@ -31,13 +31,15 @@ _SOURCES = {
     # For connectors (spokes), which may read the hub only through this
     # module: the attribute registry and how a column name resolves to
     # it, admin containment and ancestry, and a recipe's columns
-    # without reading its data.
+    # without reading its data. And where the configured data
+    # directories are, so a connector's files sit beside the hub's.
     'get_attribute_registry': 'openplaces.core.attribute_registry:load_registry',
     'get_agg_func': 'openplaces.core.attribute_registry:get_agg_func',
     'resolve_attribute_name': 'openplaces.recipe:resolve_attribute_name',
     'admin_scope_covers': 'openplaces.core.schema:admin_scope_covers',
     'get_admin_ancestor': 'openplaces.core.schema:admin_ancestor',
     'describe_recipe': 'openplaces.io.readers:describe_recipe',
+    'get_data_dir': 'openplaces.path:data_dir',
 }
 
 __all__ = list(_SOURCES)
