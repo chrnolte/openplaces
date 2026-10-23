@@ -16,6 +16,7 @@ from openplaces import recipe as _recipe
 from openplaces.core.constants import (
     RECIPE_STAGES,
 )
+from openplaces.core.held_recipes import is_undiscoverable
 from openplaces.core.schema import (
     AdminId,
     admin_scope_covers,
@@ -133,6 +134,13 @@ def find_entity_recipe_id(
         # would be picked as the county's curate recipe.
         if filename is None and recipe_data.get('patches'):
             continue
+        # A held or run-excluded recipe is never chosen for a unit
+        # (core.held_recipes). This resolver globs the tree itself
+        # rather than reading find_recipes, so it needs its own check.
+        # Asking for it by filename is an explicit reference and still
+        # finds it, like a supplement.
+        if filename is None and is_undiscoverable(Path(filepath).stem, recipe_data):
+            continue
         entity = recipe_data.get('entity') or {}
         if entity.get('entity_type') != entity_type:
             continue
@@ -231,6 +239,12 @@ def find_reference_recipe_id(
         if _flag(row, 'supplements', '') or _flag(row, 'patches', ''):
             continue
         if not _flag(row, 'writes_geometry', True):
+            continue
+        # find_recipes already leaves held recipes out; a caller passing
+        # its own frame gets the same rule (core.held_recipes).
+        if _flag(row, 'held', False) == True or is_undiscoverable(  # noqa: E712
+            row['recipe_id'], source_id=_flag(row, 'source_id', None)
+        ):
             continue
         scope = str(row['admin_id'] or '')
         if not admin_scope_covers(scope, admin_str):

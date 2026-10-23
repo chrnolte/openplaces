@@ -8,6 +8,7 @@ import warnings
 
 import pandas as pd
 
+from openplaces.core.held_recipes import is_undiscoverable
 from openplaces.core.schema import (
     AdminId,
 )
@@ -57,6 +58,14 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     best: dict[tuple[str, str, str], tuple[str, str, int]] = {}
     for _, row in find_recipes(entity_type, stage='ingest').iterrows():
         if row['exclude_from_auto_discover']:
+            continue
+        # find_recipes already drops held and run-excluded recipes;
+        # checked again at the join because this is where a held
+        # permit table reached parcel values (core.held_recipes), and
+        # a caller or test substituting the index must not bypass it.
+        if row.get('held') == True or is_undiscoverable(  # noqa: E712 - numpy bool
+            row['recipe_id'], source_id=row.get('source_id')
+        ):
             continue
         admin_id_str = row['admin_id']
         if not admin_id_str or not AdminId(admin_id_str).is_parent_or_equal_of(

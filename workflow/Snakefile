@@ -88,6 +88,16 @@ if isinstance(ADMIN_IDS, str):
 exclude_recipe_ids = config.get('exclude_recipe_ids', [])
 if isinstance(exclude_recipe_ids, str):
     exclude_recipe_ids = [r for r in exclude_recipe_ids.split(',') if r]
+exclude_recipe_ids = [str(r) for r in exclude_recipe_ids or [] if r]
+
+# The same ids reach every job, so its own auto-discovery skips what the
+# graph pruned (core.held_recipes); otherwise a job joined an excluded
+# recipe's output that an earlier run had left on disk.
+EXCLUDE_ARG = (
+    f' --exclude-recipe-ids {",".join(sorted(set(exclude_recipe_ids)))}'
+    if exclude_recipe_ids
+    else ''
+)
 
 # None lets the DAG decide from scope; true/false override it. The
 # parsing lives in flow.dag so it can be tested: Snakemake types a
@@ -331,7 +341,10 @@ for _recipe_id, _nodes in BATCHED_INGESTS.items():
             runtime=STAGE_RUNTIME_MIN['ingest'] * 4,
             **{HEAP_TOKENS[_recipe_id]: 1},
         params:
-            cmd=f'python -m openplaces.flow.run_stage ingest {_recipe_id} {_admins}',
+            cmd=(
+                f'python -m openplaces.flow.run_stage ingest {_recipe_id} {_admins}'
+                f'{EXCLUDE_ARG}'
+            ),
         shell:
             '{params.cmd}'
 
@@ -392,7 +405,7 @@ for node in dag.nodes():
     # is defined, like `input` and `output`.
     _cmd = (
         f'python -m openplaces.flow.run_stage {node.stage}'
-        f' {node.recipe_id}{_admin_arg}'
+        f' {node.recipe_id}{_admin_arg}{EXCLUDE_ARG}'
     )
 
     rule:

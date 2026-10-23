@@ -20,6 +20,7 @@ from openplaces.core.constants import (
     PANDAS_EXTENSIONS,
     STRING_SEPARATOR_WITHIN_IDS,
 )
+from openplaces.core.held_recipes import is_held, run_excluded_recipe_ids
 from openplaces.core.schema import AdminId, sanitize
 from openplaces.path import recipe_roots
 
@@ -27,10 +28,15 @@ from openplaces.path import recipe_roots
 def find_recipes(
     entity_type: str,
     stage: str | None = None,
+    include_held: bool = False,
 ) -> pd.DataFrame:
     """Find all recipes for a given entity type.
 
     Scans the recipes directory and returns a table of available recipes.
+    Held recipes and the ones the current run excluded
+    (:mod:`openplaces.core.held_recipes`) are left out unless
+    *include_held* is set: every auto-discovery path reads this table,
+    so leaving them out here keeps them out of all of those paths.
 
     Parameters
     ----------
@@ -40,6 +46,9 @@ def find_recipes(
         If given, only return recipes whose ``stage`` field matches
         (e.g. ``'ingest'``, ``'harmonize'``).  Recipes without an explicit
         ``stage`` field are treated as ``'ingest'``.
+    include_held : bool
+        Keep held and run-excluded recipes, for a report of what
+        exists rather than a choice of what to read.
 
     Returns
     -------
@@ -73,7 +82,8 @@ def find_recipes(
         :func:`~openplaces.recipe.get_supplements_key`), empty string
         otherwise. ``writes_geometry`` is False for a recipe whose
         declaration alone shows it writes no geometry (a flat source
-        file, or ``save_to: geometry: false``), True otherwise.
+        file, or ``save_to: geometry: false``), True otherwise. ``held``
+        is True for a held recipe (never, unless *include_held*).
     """
     index = _recipe_index()
     if index.empty:
@@ -81,6 +91,15 @@ def find_recipes(
     mask = index['entity_type'] == entity_type
     if stage is not None:
         mask &= index['stage'] == stage
+    if not include_held:
+        # Held is fixed for the process and read from the cached
+        # index; the run's exclusions come from the environment and
+        # are applied per call, so a job sees the ids its run passed.
+        # A fabricated index (tests) may lack the column.
+        excluded = run_excluded_recipe_ids()
+        if 'held' in index.columns:
+            mask &= ~index['held'].fillna(False).astype(bool)
+        mask &= ~index['recipe_id'].isin(excluded)
     return index[mask].reset_index(drop=True)
 
 
@@ -208,6 +227,7 @@ def _recipe_index() -> pd.DataFrame:
                 'recipe_id': recipe_id,
                 'filename_suffix': filename_suffix,
                 'writes_geometry': _writes_geometry(data),
+                'held': is_held(recipe_id, data),
             }
         )
 
@@ -228,6 +248,7 @@ def _recipe_index() -> pd.DataFrame:
             'recipe_id',
             'filename_suffix',
             'writes_geometry',
+            'held',
         ],
     )
     if not df.empty:

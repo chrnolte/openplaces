@@ -18,6 +18,7 @@ import shapely
 from shapely.strtree import STRtree
 
 from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
+from openplaces.core.held_recipes import is_undiscoverable
 from openplaces.core.schema import admin_scope_covers
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
@@ -1325,6 +1326,13 @@ def _expand_auto_discover(
         if row.get('supplements'):
             # Adds columns to another recipe's entities, never rows to
             # a spine (see the docstring).
+            continue
+        # Held and run-excluded recipes never supply a spine's rows
+        # (core.held_recipes); find_recipes already drops them, and
+        # the check here keeps a substituted index from bypassing it.
+        if row.get('held') == True or is_undiscoverable(  # noqa: E712
+            row['recipe_id'], source_id=row.get('source_id')
+        ):
             continue
         rid_str = row['admin_id']
         # Containment by level, not by string prefix: a recipe scoped to
