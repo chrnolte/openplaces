@@ -1,10 +1,14 @@
 # Recipe: Maryland statewide CAMA building sketch lines (one row per
 # subarea), supplementing the account roll
-# US-MD_property-mdplanning-2026. Same download as the roll; read its
-# header for the source and terms.
+# US-MD_property-mdplanning-2026. Same REST service as the roll; read
+# its header for the source, terms and why the source moved from the
+# geodatabase to REST on 2026-10-23.
 #
-# Layer CAMA_SUBAREA: 7,955,603 rows, one per sketch line of a
-# building (CAMALINK plus SA_ITMNUMB unique), keyed by ACCTID. Each
+# Layer 3, "CAMA Building Subarea" (the geodatabase's CAMA_SUBAREA,
+# same field names): 8,000,267 rows on 2026-10-23, one per sketch line
+# of a building (CAMALINK plus SA_ITMNUMB unique), keyed by ACCTID; the
+# query names an allow-list and asks for no geometry. The counts below
+# are from the geodatabase build of 2026-09-13 (7,955,603 rows). Each
 # line has a subarea code (SA_NAMSUBA, 41 codes, one description each
 # in SA_DSCSUBA; 40,387 lines carry no code), a foundation area
 # (SA_FNDSQFT, the line's footprint, > 0 on 99.9% of coded lines) and
@@ -62,7 +66,7 @@
 
 description: >-
   Maryland statewide CAMA sketch lines (stories, basement, main-body, garage,
-  deck, porch areas) supplementing MDP's 2026 Q2 account roll.
+  deck, porch areas) supplementing MDP's CAMA account roll.
 
 admin_id: US-MD
 
@@ -70,22 +74,27 @@ entity:
   entity_type: property
   source:
     source_id: mdplanning
-    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
-    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
-    # Same download and terms as the roll (see its source block).
+    portal_url: "https://www.arcgis.com/home/item.html?id=2ccc8b09386e489b9cf8745f9dfd5837"
+    download_url_scraper: arcgis_rest_scraper
+    # Same service and terms as the roll (see its source block).
     license: >-
       MD iMAP: "The Data can be freely distributed as long as the metadata
       entry is not modified or deleted. Any data derived from the Data must
-      acknowledge the State of Maryland in the metadata." Geodatabase item:
-      "Attribution: Please credit the Maryland Department of Planning".
-    terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+      acknowledge the State of Maryland in the metadata." Maryland
+      Department of Planning: "Attribution: Please credit the Maryland
+      Department of Planning".
+    terms_url: "https://www.arcgis.com/home/item.html?id=2ccc8b09386e489b9cf8745f9dfd5837"
     redistribution_restricted: false
   version: "2026"
 
-compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
-uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+uncompressed_file_name: "md_cama_subareas.geojson"
 
-layer: CAMA_SUBAREA
+scraper_options:
+  layer_url: "https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ComputerAssistedMassAppraisal/MapServer/3"
+  where: "1=1"
+  out_fields: "ACCTID,JURSCODE,SA_NAMSUBA,SA_DSCSUBA,SA_FNDSQFT,SA_ENCSQFT"
+  extra_params:
+    returnGeometry: "false"
 
 process_by:
   admin_level: 3

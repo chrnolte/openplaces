@@ -1,32 +1,35 @@
 # Recipe: Maryland statewide assessment accounts (the property roll),
-# from the Maryland Department of Planning's (MDP) 2026 Q2 statewide
-# CAMA (computer-assisted mass appraisal) geodatabase.
+# from the Maryland Department of Planning's (MDP) CAMA
+# (computer-assisted mass appraisal) data on the MD iMAP REST service
+# PlanningCadastre/MD_ComputerAssistedMassAppraisal.
 #
-# Source: one public zip (412,705,680 bytes; fetched 2026-09-13 by the
-# identified client, HTTP 200) holding a file geodatabase of four
-# point layers in EPSG:26985. The item says "the date of the
-# assessment data linked to the parcel point locations is April 2026".
-#   - CAMA_MAIN: 2,445,307 rows, one per SDAT account (condominium
-#     units included), 2,445,307 distinct ACCTID. Read here.
-#   - CAMA_BUILDING: 2,176,526 rows, one per building (97.97% of
-#     accounts with a building have one). Read by the _buildings
-#     supplement.
-#   - CAMA_SUBAREA: 7,955,603 rows, one per building sketch line.
-#     Read by the _subareas supplement.
-#   - CAMA_LAND: 4,244,911 rows, one per land pricing line. Not read:
-#     its codes are pricing classes, and lot size is already mapped
-#     on US-MD_parcel-mdimap-2026 from ACRES.
-# The same four layers are served by the MD iMAP CAMA MapServer
-# (maxRecordCount 1000; about 20,000 accounts fewer, an older build),
-# whose advertised bulk link (MDiMAPDataDownload) answers HTTP 500.
-# The geodatabase is newer and one request, so it is the source.
+# SOURCE. Layer 1, "CAMA Core": one row per SDAT account (condominium
+# units included), 2,428,561 rows statewide on 2026-10-23, CAMADATE
+# "2026AUG". The same service serves layer 0, "CAMA Detailed Building
+# Characteristics" (2,177,865 rows, read by the _buildings supplement),
+# layer 3, "CAMA Building Subarea" (8,000,267 rows, read by the
+# _subareas supplement) and layer 2, "CAMA Land" (4,229,991 rows, not
+# read: its codes are pricing classes, and lot size is already mapped
+# on US-MD_parcel-mdimap-2026 from ACRES). The query names an
+# allow-list (`out_fields`) and asks for no geometry; no layer carries
+# an owner or name field.
+#
+# WHY REST (changed 2026-10-23, maintainer's decision). Until then the
+# source was MDP's 2026 Q2 statewide CAMA file geodatabase (ArcGIS
+# item a23d795088e04e34ae4a53d09249ce3a, a 412,705,680-byte zip, "the
+# date of the assessment data ... is April 2026"), chosen because the
+# REST service was then an older build with about 20,000 accounts
+# fewer. On 2026-10-23 that item answered HTTP 403 to an anonymous
+# client (no longer public), and the REST layers read CAMADATE
+# "2026AUG", the newer build. The REST fields are the geodatabase's
+# (CAMA_MAIN, CAMA_BUILDING, CAMA_SUBAREA under the same names), so the
+# mappings below are unchanged. The measurements further down were
+# taken on the geodatabase build of 2026-09-13 and are kept as such.
 #
 # WHY THREE RECIPES, NOT additional_layers. The roll and its two
-# supplements read one zip once: the download and unzip directories
-# depend only on the entity (property-mdplanning-2026), not on the
-# recipe's filename suffix, so the second and third recipes find the
-# file already present (as the Victoria County TX supplements share
-# one roll zip). additional_layers cannot carry a detail table here:
+# supplements read three layers of one service, one download each,
+# into the entity's directory (property-mdplanning-2026) under their
+# own file names. additional_layers cannot carry a detail table here:
 # a layer entry is never a supplement (links._discover_link_sources
 # gives layers no `supplements`), so the property spine's
 # supplements_only join would never reduce its rows onto these
@@ -77,6 +80,20 @@
 # so Caroline's rows would be written into Carroll's unit. Not fixed
 # here (an admin-id file); fixing that one row fixes both recipes.
 #
+# RECONCILED on REST for salisbury-md, ingest of 2026-10-23 (US-MD-WI,
+# -SO, -WO, -DO; where narrowed to their JURSCODEs for that run only):
+#   - Roll: 157,016 rows written, equal to the service count (WI
+#     48,050, SO 17,300, WO 67,993, DO 23,673), one per account,
+#     parcel_id_local on every row, tax_neighborhood_code 100%,
+#     gross_floor_area_sqft 54.5-81.5% by county.
+#   - _buildings 132,140 and _subareas 377,230 rows, equal to the
+#     service counts; every account key found in the roll.
+#   - SDAT sales (US-MD_transaction-sdat-2026, three segments)
+#     whose account has a roll row, raw account numbers compared:
+#     WI 98.63%, SO 99.98%, WO 99.72%, DO 99.98%. In Worcester, of
+#     the 10,325 sale accounts with no iMAP polygon (Ocean City
+#     condominium units), 10,066 (97.49%) have a roll row.
+#
 # MEASURED in memory 2026-09-13 (this recipe's reader and
 # preprocessing on the downloaded geodatabase; aggregates only):
 #   - Rows: 2,445,307 read and kept, one per account;
@@ -104,7 +121,7 @@
 
 description: >-
   Maryland statewide assessment accounts (neighborhood, gross enclosed area) from
-  MDP's 2026 Q2 CAMA geodatabase; one row per SDAT account.
+  MDP's CAMA on the MD iMAP REST service; one row per SDAT account.
 
 admin_id: US-MD
 
@@ -112,26 +129,34 @@ entity:
   entity_type: property
   source:
     source_id: mdplanning
-    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
-    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
-    # The geodatabase item's licenseInfo (fetched 2026-09-13) is a
-    # no-warranty note plus "Attribution: Please credit the Maryland
-    # Department of Planning". The MD iMAP CAMA items carry the
-    # state's standard licence, quoted below. Neither restricts
-    # sharing or resale, and neither conditions use on the user.
+    portal_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+    download_url_scraper: arcgis_rest_scraper
+    # The MD iMAP CAMA items (CAMA Core 17ebd56a..., Buildings
+    # ef9a0317..., Subarea 2ccc8b09...) carry the state's standard
+    # licence, quoted below, after an as-is, no-liability paragraph.
+    # The former geodatabase item added "Attribution: Please credit the
+    # Maryland Department of Planning", kept. The site-terms audit of
+    # 2026-10-23 (MD iMAP Hub, mdgeodata, maryland.gov) found no terms
+    # restricting use, automated access or redistribution, so the item
+    # licence stands. Neither text restricts sharing or resale.
     license: >-
       MD iMAP: "The Data can be freely distributed as long as the metadata
       entry is not modified or deleted. Any data derived from the Data must
-      acknowledge the State of Maryland in the metadata." Geodatabase item:
-      "Attribution: Please credit the Maryland Department of Planning".
+      acknowledge the State of Maryland in the metadata." Maryland
+      Department of Planning: "Attribution: Please credit the Maryland
+      Department of Planning".
     terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
     redistribution_restricted: false
   version: "2026"
 
-compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
-uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+uncompressed_file_name: "md_cama_core.geojson"
 
-layer: CAMA_MAIN
+scraper_options:
+  layer_url: "https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ComputerAssistedMassAppraisal/MapServer/1"
+  where: "1=1"
+  out_fields: "ACCTID,JURSCODE,CM_NBRHOOD,PR_ENCSQFT"
+  extra_params:
+    returnGeometry: "false"
 
 process_by:
   admin_level: 3
