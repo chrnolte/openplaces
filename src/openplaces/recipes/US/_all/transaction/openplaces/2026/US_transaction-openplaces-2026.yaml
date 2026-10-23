@@ -341,6 +341,11 @@ share:
     regions:
       - wisconsin-statewide
       - florida-statewide
+      # Sales regions for openplaces-valuation
+      # (plans/sales-regions-one-per-state.md); each ships in a folder
+      # of its own beside the state's bundle.
+      - lakeland-fl
+      - eau-claire-wi
     # Each of these is its whole state, so its bundle is filed as the
     # state's own (US-WI_transaction-openplaces-2026.parquet); every
     # other region gets a folder named after it beside that file
