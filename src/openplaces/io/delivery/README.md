@@ -62,6 +62,22 @@ for "the" region -- silently picking one would ship a region's rows under
 another's filename. A single-region recipe needs no selector, so
 `export_delivery(recipe_id)` still works unchanged.
 
+**A named region's bundle sits in a folder named after the region**, inside
+its unit's folder (`share/US/FL/_all/transaction/openplaces/2026/lakeland-fl/`;
+maintainer's rule, 2026-10-23: regional bundles do not sit in the state
+folder). The file names still carry the unit (`US-FL_...`), so the folder is
+what tells a Lakeland bundle from Florida's. Only a region the recipe lists
+under `share: delivery: whole_unit_regions:` is filed as its unit's own
+bundle, with no folder (`florida-statewide` is
+`.../2026/US-FL_transaction-openplaces-2026.parquet`), and `export_delivery`
+refuses one whose members are not every process-level unit of it. A
+region's path therefore does not depend on which other regions its recipe
+declares. `delivery_paths` raises where a bundle filed as its unit would
+land on a curated output (an inline `admin_ids:` grouping on a county) or on
+another whole-unit region's bundle. Consumers ask `delivery_paths` (or
+`delivery_accuracy_dir`, whose `accuracies/` folder follows the bundle) and
+never rebuild the path.
+
 Sibling regions are told apart by containment, not by level: both CHEER bundles
 sit at admin level 2, so `RecipeDAG._delivery_in_scope` asks whether a requested
 unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
@@ -95,7 +111,7 @@ which `deploy_web_scene` uploads behind a password file on the host and
 refuses to upload without one (maintainer, 2026-10-18). A region listed
 under `share: delivery: team_regions:` also ships as `<region>.team`, in a
 `team/` subdirectory beside the region's own bundle (whose path does not
-move). A team bundle keeps the values of sources a person has cleared with
+move): `.../2026/nantucket-ma/team/`. A team bundle keeps the values of sources a person has cleared with
 `team_sharing_permitted: true` (Edgecombe's parcels, decided by the user
 2026-09-13), and its notice opens "TEAM-INTERNAL BUNDLE"; every other bundle
 withholds them, and uncleared sources are withheld from team bundles too.

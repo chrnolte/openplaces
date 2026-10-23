@@ -341,3 +341,11 @@ share:
     regions:
       - wisconsin-statewide
       - florida-statewide
+    # Each of these is its whole state, so its bundle is filed as the
+    # state's own (US-WI_transaction-openplaces-2026.parquet); every
+    # other region gets a folder named after it beside that file
+    # (maintainer, 2026-10-23). The export refuses a region listed here
+    # whose members are not every county of its state.
+    whole_unit_regions:
+      - wisconsin-statewide
+      - florida-statewide
