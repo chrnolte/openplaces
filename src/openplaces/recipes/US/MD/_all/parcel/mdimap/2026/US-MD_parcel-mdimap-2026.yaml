@@ -299,6 +299,20 @@
 #     no BLDG_STORY value is lost.
 #   - has_basement, residential: filled on 81.25%, true on 59.15%.
 #
+# RECONCILED for salisbury-md, ingest of 2026-10-23 (US-MD-WI, -SO,
+# -WO, -DO, downloaded with the where clause narrowed to their
+# JURSCODEs for that run only): 146,190 features written, equal to the
+# service count (WI 48,656, SO 16,969, WO 57,550, DO 23,015 lots; no
+# stacks). Against US-MD_transaction-sdat-2026 and its two segments
+# (same key conversion), the share of sale rows whose account finds a
+# polygon: WI 98.6%, SO 99.3%, DO 99.6%, WO 84.9%. Worcester's gap is
+# Ocean City (district 10, 10,019 of 10,324 unmatched accounts): of
+# 200 unmatched accounts drawn at random, 195 are on MD_PropertyData's
+# account points and 191 of those are condominium units (LU U 178, CC
+# 13), which this polygon layer does not draw. 1,250 / 355 / 1,528 /
+# 348 polygons carry no account (roads, alleys, common areas) and so
+# no parcel_id_local.
+#
 # License: the ArcGIS item's own `licenseInfo` (fetched directly via
 # the AGOL sharing API, not just its rendered Hub page) states: "The
 # Data can be freely distributed as long as the metadata entry is
