@@ -98,16 +98,22 @@ entity:
   entity_type: property
   source:
     source_id: dakotacounty
-    # Checked 2026-09-12: the item's licence text and the Commons
-    # metadata give the Dakota County GIS Database Disclaimer. Data
-    # are made available under the MN Government Data Practices Act
-    # (Minn. Stat. ch. 13), as is, no warranty; access constraints
-    # none. No fee, gate, resale or redistribution clause.
+    # Re-checked 2026-10-23 (site-terms audit): the item's licenseInfo
+    # reads "This data is made available under the Open Database
+    # License ... Any rights in individual contents of the database
+    # are licensed under the Database Contents License". The county's
+    # GIS data page adds "without fees or use restrictions", and its
+    # disclaimer a pass-along duty: "If you transmit or provide the GIS
+    # Data (or any portion of it) to another user, you must provide a
+    # copy of this disclaimer and the accompanying metadata". ODbL is
+    # share-alike: a bundle carrying these values is ODbL and must not
+    # be mixed with CC BY-SA data (maintainer, 2026-10-23). The earlier
+    # reading (2026-09-12) recorded only the Minn. Stat. ch. 13
+    # disclaimer; its Commons metadata link no longer resolves.
     license: >-
-      Dakota County GIS Database Disclaimer: made available under the
-      Minnesota Government Data Practices Act (Minn. Stat. ch. 13), as
-      is, without warranty; access constraints none.
-    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_dakota/plan_parcels/metadata/metadata.html"
+      ODbL-1.0 (contents under the Database Contents License, DbCL 1.0);
+      pass on the Dakota County GIS disclaimer and metadata with any copy.
+    terms_url: "https://www.arcgis.com/home/item.html?id=9785dd74842d4d7781be0fe7c0cbfe62"
     redistribution_restricted: false
     portal_url: "https://www.arcgis.com/home/item.html?id=9785dd74842d4d7781be0fe7c0cbfe62"
     download_url: "https://hub.arcgis.com/api/v3/datasets/9785dd74842d4d7781be0fe7c0cbfe62_71/downloads/data?format=csv&spatialRefId=26915&where=1%3D1"
