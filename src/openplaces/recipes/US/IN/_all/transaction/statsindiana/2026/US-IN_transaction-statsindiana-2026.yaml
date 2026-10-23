@@ -137,9 +137,12 @@ entity:
     source_id: statsindiana
     portal_url: "https://www.stats.indiana.edu/topic/sdf.asp"
     download_url: "https://www.stats.indiana.edu/sdfdata/SDF_{year}.zip"
-    license: "unknown (no separate terms/license page found; see header)"
-    terms_url: null
-    redistribution_restricted: null
+    # Checked 2026-10-22: STATS Indiana's about page: "The data on
+    # STATS Indiana may be reproduced without permission" (a citation
+    # is requested).
+    license: "STATS Indiana: 'may be reproduced without permission'; citation requested"
+    terms_url: "https://www.stats.indiana.edu/about.asp"
+    redistribution_restricted: false
   version: "2026"
 
 # Tab-delimited 2021+ schema only; 2008-2020 used a different

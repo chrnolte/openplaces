@@ -113,9 +113,12 @@ entity:
     source_id: statsindianaparcel
     portal_url: "https://www.stats.indiana.edu/topic/sdf.asp"
     download_url: "https://www.stats.indiana.edu/sdfdata/SDF_{year}.zip"
-    license: "unknown (no separate terms/license page found; see header)"
-    terms_url: null
-    redistribution_restricted: null
+    # Checked 2026-10-22: same files and terms as
+    # US-IN_transaction-statsindiana-2026 ("may be reproduced without
+    # permission"; citation requested).
+    license: "STATS Indiana: 'may be reproduced without permission'; citation requested"
+    terms_url: "https://www.stats.indiana.edu/about.asp"
+    redistribution_restricted: false
   version: "2026"
 
 download_by:
