@@ -1,0 +1,45 @@
+# Patch: Sarpy County, NE transaction curation, grading the Assessor's
+# qualified flag (US-NE-SA_transaction-sarpycounty-2026).
+#
+# The sales table states for each sale whether the Assessor qualified
+# it ("Qualified": Yes or No; the layer's alias is "Qualified", no
+# further codes or reasons are published). The grade follows the
+# statement and nothing else: Yes 1.0, group qualified; No 0.0, group
+# disqualified; an empty flag stays missing. A county's vocabulary, so
+# a county patch. Measured 2026-10-23 on US-NE-SA: Yes 50,370, No
+# 26,479, empty 14 on all 76,863 rows of the live layer; the recipe
+# reads the 50,367 that carry a sale date, and every one of them reads
+# Yes (the No rows are the parcels with no sale on file). The table
+# thus holds the latest qualified sale per parcel, and today the No and
+# missing branches grade nothing; they stay for a later vintage.
+
+admin_id: US-NE-SA
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "Yes": 1.0
+            "No": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "Yes": qualified
+            "No": disqualified

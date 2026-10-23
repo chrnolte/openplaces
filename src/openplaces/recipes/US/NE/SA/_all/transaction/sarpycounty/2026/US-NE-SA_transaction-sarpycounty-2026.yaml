@@ -1,0 +1,108 @@
+# Recipe: Sarpy County, NE "Parcel_Sales2", the most recent sale per
+# parcel with the Assessor's qualification of it.
+#
+# SOURCE. sarpyViewer item 4b2b92f7178542169adf61c83e07b55c, service
+# Parcel_Sales2/FeatureServer/0, 76,863 rows (2026-10-23), one per
+# parcel number: "Most recent sales data by property with associated
+# parcel information". A last-sale table, not a history.
+#
+# ROWS WITHOUT A SALE. 26,482 rows carry the Esri date 1900-01-01
+# (-2208988800000 ms), price 0 and no book and page, and 14 rows carry
+# no date at all: parcels with no sale on file, not transactions. The
+# REST `where` asks only for rows dated after 1900-01-02, 50,367 rows
+# on the live layer.
+#
+# PRIVACY, AND WHY REST. The layer carries owner names and mailing
+# addresses (OwnerName1, OwnerName2, OwnerAddress and the like). The
+# REST query names an allow-list (`out_fields`) and asks for no
+# geometry (the rows are points), so the names are never downloaded.
+#
+# LINKING. PIN, 9 digits, is the PARCELID of the county's CC0 tax
+# parcel layer, US-NE-SA_parcel-sarpycountygis-2026. Measured
+# 2026-10-23 on the live services: 99.3% of PINs are found there, 99.9%
+# of priced sales from 2016 on; 98.3% of parcels have a sale row.
+#
+# MAPPED. PIN -> parcel_id_assessor; SaleDate -> recorded_date (the
+# sale date, as the Adams CO and North Carolina county recipes map
+# theirs); SalePrice -> price (above 0 on all but 5 of the 50,367
+# rows); BookPage -> instrument_number (year and sequence, the form
+# "YYYY-NNNNN"); Qualified -> sale_qualification_code (Yes 50,370, No
+# 26,479 on all 76,863 rows; Yes on every row with a sale date), graded
+# by US-NE-SA_transaction-openplaces-2026. PropertyType, PropertyClass,
+# values and legal description describe the parcel and are left out.
+#
+# DATES. Esri epoch milliseconds, read by epoch_ms_to_datetime. Sales
+# run from 1997 to 2025, about 500 to 3,500 a year, with a few earlier
+# rows (the first in 1980); one row reads 2028, kept as received. No
+# 2026 sale was on the layer on 2026-10-23.
+#
+# RECONCILED, ingest of 2026-10-23: 50,367 rows written, equal to the
+# filtered service count; price above 0 on 50,362; recorded_date on
+# every row, 1980-07-31 to 2028-05-16 (one row; the next latest is in
+# 2025). Against US-NE-SA_parcel-sarpycountygis-2026 (same key
+# conversion): 99.90% of sale rows find a parcel, 99.90% of priced
+# rows from 2016 on; 64.8% of parcels have a sale row. No owner column
+# reaches the output.
+#
+# TERMS. The item licence (CC0 1.0 dedication): "To the extent possible
+# under law, Sarpy County has waived all copyright and related or
+# neighboring rights to the data made available through the Sarpy
+# County Open Data Bank portal. This work is published from: United
+# States." No click-through.
+
+description: >-
+  Sarpy County, NE most recent sale per parcel: price, sale date, book and
+  page and the Assessor's qualified flag, keyed by parcel number.
+
+admin_id: US-NE-SA
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: sarpycounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=4b2b92f7178542169adf61c83e07b55c"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/): "To the
+      extent possible under law, Sarpy County has waived all copyright and
+      related or neighboring rights to the data made available through the
+      Sarpy County Open Data Bank portal. This work is published from:
+      United States."
+    terms_url: "https://www.arcgis.com/home/item.html?id=4b2b92f7178542169adf61c83e07b55c"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "sarpy_parcel_sales.geojson"
+
+scraper_options:
+  layer_url: "https://services.arcgis.com/OiG7dbwhQEWoy77N/arcgis/rest/services/Parcel_Sales2/FeatureServer/0"
+  where: "SaleDate > DATE '1900-01-02'"
+  out_fields: "PIN,SaleDate,SalePrice,BookPage,Qualified"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PIN
+  instrument_number: BookPage
+  price: SalePrice
+  recorded_date: SaleDate
+  sale_qualification_code: Qualified
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price, output: price}
+  - {type: unary, operation: epoch_ms_to_datetime, input: recorded_date,
+     output: recorded_date}
+
+columns_to_categorical:
+  - sale_qualification_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

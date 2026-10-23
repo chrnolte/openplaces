@@ -1,0 +1,79 @@
+# Recipe: Sarpy County, NE tax parcel polygons from the county's own
+# "Tax Parcels" layer.
+#
+# WHY THIS LAYER. The statewide composite (US-NE_parcel-nebraskamap-2026)
+# also draws Sarpy; this layer carries the county's CC0 dedication and
+# the PARCELID the county's sales table (US-NE-SA_transaction-sarpycounty-
+# 2026) is keyed by. Item 870d5e73fd3e43e3b8e5f9a2029b9573, service
+# Cadastral/LandRecordsSearch/MapServer/5, 77,661 polygons (2026-10-23),
+# "Data current as of the last business day".
+#
+# SOURCE ID. `sarpycountygis`, not `sarpycounty`: the ingest splits
+# stacked parcels into an implicit property layer named
+# property-<source>-<version>, which would otherwise take the sales
+# source's id.
+#
+# PRIVACY. The layer carries owner names and mailing addresses
+# (OWNERNME1, OWNERNME2, PSTLADDRESS and the like). The REST query names
+# an allow-list (`out_fields`), so they are never downloaded.
+#
+# MAPPED. PARCELID -> parcel_id_assessor (9 digits, 77,654 distinct);
+# SITEADDRESS -> address. Values, use and building fields are the
+# roll's and are left out.
+#
+# RECONCILED, ingest of 2026-10-23: 77,661 features written, equal to
+# the service count; the stacked-unit split gives 77,639 lots (22
+# stacks, 44 rows moved to the implicit property layer). No owner
+# column reaches the output.
+#
+# TERMS. The item licence (CC0 1.0 dedication): "To the extent possible
+# under law, Sarpy County has waived all copyright and related or
+# neighboring rights to the data made available through the Sarpy
+# County Open Data Bank portal. This work is published from: United
+# States." Access information: "Sarpy County GIS". No click-through.
+# The server answers 403 to a bare Python client and 200 to the
+# openplaces request headers.
+
+description: >-
+  Sarpy County, NE tax parcel polygons with parcel number and situs
+  address, from the county's CC0 tax parcel layer.
+
+admin_id: US-NE-SA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: sarpycountygis
+    portal_url: "https://www.arcgis.com/home/item.html?id=870d5e73fd3e43e3b8e5f9a2029b9573"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/): "To the
+      extent possible under law, Sarpy County has waived all copyright and
+      related or neighboring rights to the data made available through the
+      Sarpy County Open Data Bank portal. This work is published from:
+      United States."
+    terms_url: "https://www.arcgis.com/home/item.html?id=870d5e73fd3e43e3b8e5f9a2029b9573"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "sarpy_tax_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://geodata.sarpy.gov/arcgis/rest/services/Cadastral/LandRecordsSearch/MapServer/5"
+  where: "1=1"
+  out_fields: "PARCELID,SITEADDRESS"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PARCELID
+  address: SITEADDRESS
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
