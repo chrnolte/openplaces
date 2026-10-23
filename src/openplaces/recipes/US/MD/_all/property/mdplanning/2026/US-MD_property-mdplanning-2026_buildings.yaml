@@ -1,10 +1,14 @@
 # Recipe: Maryland statewide CAMA buildings (one row per building),
 # supplementing the account roll US-MD_property-mdplanning-2026. Same
-# download as the roll; read its header for the source and terms.
+# REST service as the roll; read its header for the source, terms and
+# why the source moved from the geodatabase to REST on 2026-10-23.
 #
-# Layer CAMA_BUILDING: 2,176,526 rows, one per building, keyed by
-# ACCTID (2,108,897 accounts; 97.97% have one building) and CAMALINK
-# (unique per building).
+# Layer 0, "CAMA Detailed Building Characteristics" (the geodatabase's
+# CAMA_BUILDING, same field names): 2,177,865 rows on 2026-10-23, one
+# per building, keyed by ACCTID and CAMALINK (unique per building).
+# The query names an allow-list and asks for no geometry. On the
+# geodatabase build of 2026-09-13: 2,176,526 rows over 2,108,897
+# accounts (97.97% have one building).
 #
 # Columns:
 #   - quality_grade: BL_BLDGRAD, the SDAT grade code 1 to 9 ("Codes
@@ -47,7 +51,7 @@
 
 description: >-
   Maryland statewide CAMA buildings (grade, year built, style, dwelling type), one
-  row per building, supplementing MDP's 2026 Q2 account roll.
+  row per building, supplementing MDP's CAMA account roll.
 
 admin_id: US-MD
 
@@ -55,22 +59,27 @@ entity:
   entity_type: property
   source:
     source_id: mdplanning
-    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
-    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
-    # Same download and terms as the roll (see its source block).
+    portal_url: "https://www.arcgis.com/home/item.html?id=ef9a0317a94e4d0d9eb46998e8b9c936"
+    download_url_scraper: arcgis_rest_scraper
+    # Same service and terms as the roll (see its source block).
     license: >-
       MD iMAP: "The Data can be freely distributed as long as the metadata
       entry is not modified or deleted. Any data derived from the Data must
-      acknowledge the State of Maryland in the metadata." Geodatabase item:
-      "Attribution: Please credit the Maryland Department of Planning".
-    terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+      acknowledge the State of Maryland in the metadata." Maryland
+      Department of Planning: "Attribution: Please credit the Maryland
+      Department of Planning".
+    terms_url: "https://www.arcgis.com/home/item.html?id=ef9a0317a94e4d0d9eb46998e8b9c936"
     redistribution_restricted: false
   version: "2026"
 
-compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
-uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+uncompressed_file_name: "md_cama_buildings.geojson"
 
-layer: CAMA_BUILDING
+scraper_options:
+  layer_url: "https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ComputerAssistedMassAppraisal/MapServer/0"
+  where: "1=1"
+  out_fields: "ACCTID,JURSCODE,BL_BLDGRAD,BL_YEARBLT,BL_DSCSTYL,BL_DSCTYPE"
+  extra_params:
+    returnGeometry: "false"
 
 process_by:
   admin_level: 3
