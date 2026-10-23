@@ -3,7 +3,8 @@
 A spoke may read the hub only through `openplaces`'s public module, never
 a submodule import. Each export here removed a guess a spoke was making:
 the registry's aggregation rule, the provenance-suffix resolver, admin
-containment and ancestry, and a recipe's columns without its data.
+containment and ancestry, a recipe's columns without its data, and the
+configured data directories.
 """
 
 import pandas as pd
@@ -21,6 +22,7 @@ import openplaces as op
         'admin_scope_covers',
         'get_admin_ancestor',
         'describe_recipe',
+        'get_data_dir',
     ],
 )
 def test_exported(name):
@@ -40,3 +42,7 @@ def test_ancestry_and_containment_agree():
     assert op.get_admin_ancestor('US-NC-WAR', 2) == 'US-NC'
     assert op.admin_scope_covers('US-NC', 'US-NC-WAR')
     assert not op.admin_scope_covers('US-NC-WA', 'US-NC-WAR')
+
+
+def test_data_dirs_are_the_hubs_roots():
+    assert op.get_data_dir('core') == op.cfg.dir_core
