@@ -98,8 +98,10 @@ def delivery_regions(recipe) -> list[dict]:
     -------
     list of dict
         Each with ``region_id`` (None when declared inline), ``admin_level``,
-        ``admin_ids``, and ``admin_id`` (the bundle's own unit, None when it
-        should be derived from the members).
+        ``admin_ids``, ``admin_id`` (the bundle's own unit, None when it
+        should be derived from the members) and `whole_unit` (True for a
+        region listed under `whole_unit_regions`, whose bundle is filed
+        as its unit's own; see :func:`delivery_paths`).
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -118,6 +120,10 @@ def delivery_regions(recipe) -> list[dict]:
                 'admin_level': default_level,
                 'admin_ids': [str(a) for a in block['admin_ids']],
                 'admin_id': block.get('admin_id'),
+                # An inline grouping has no name to file it under, so
+                # `delivery_paths` files it as its unit, and refuses one
+                # that would land on a curated output.
+                'whole_unit': False,
             }
         ]
 
@@ -125,6 +131,13 @@ def delivery_regions(recipe) -> list[dict]:
 
     if isinstance(names, str):
         names = [names]
+    whole_units = {str(name) for name in block.get('whole_unit_regions') or []}
+    undeclared = sorted(whole_units - {str(name) for name in names})
+    if undeclared:
+        raise KeyError(
+            f'whole_unit_regions names {", ".join(map(repr, undeclared))}, '
+            'which is not one of the declared delivery regions.'
+        )
     # One registry read for the whole block, not one per named region:
     # the CSV was re-parsed for each of the seven declared regions, and
     # `delivery_paths` resolves regions repeatedly.
@@ -145,6 +158,7 @@ def delivery_regions(recipe) -> list[dict]:
                 'admin_ids': list(dict.fromkeys(rows['admin_id'].dropna())),
                 'admin_id': str(anchor.iat[0]) if len(anchor) else None,
                 'audience': 'public',
+                'whole_unit': str(name) in whole_units,
             }
         )
     # A team bundle is a second delivery of a declared region, for the
@@ -592,6 +606,35 @@ def delivery_members(recipe, admin_id=None, admin_ids=None, region=None) -> list
     return list(dict.fromkeys(str(aid) for aid in admin_ids))
 
 
+def _require_whole_unit(recipe, admin_id, members) -> None:
+    """Raise unless *members* are every process-level unit of *admin_id*.
+
+    A whole-unit region is filed at its unit's own path, the path a
+    reader takes for the unit's complete bundle. Checked when the bundle
+    is written rather than when its path is resolved, because the
+    orchestrator resolves paths for every job it plans and the check
+    reads the admin spine.
+    """
+    expected = {
+        str(unit)
+        for unit in get_admin(
+            AdminId(str(admin_id)), get_process_admin_level(recipe)
+        ).index
+    }
+    members = {str(member) for member in members}
+    missing = sorted(expected - members)
+    extra = sorted(members - expected)
+    if missing or extra:
+        raise ValueError(
+            f'A whole-unit region of {recipe.get("recipe_id", recipe)!r} is '
+            f'filed as the bundle of {admin_id}, but its members are not '
+            f'every unit of it (missing: {", ".join(missing[:10]) or "none"}; '
+            f'outside it: {", ".join(extra[:10]) or "none"}). Remove it from '
+            '`whole_unit_regions`, which files it in a folder of its own, or '
+            'complete its members in the region registry.'
+        )
+
+
 def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
     """Return the process admin level and the [(admin_id, path)] files to pool.
 
@@ -637,6 +680,58 @@ def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
     return get_process_admin_level(recipe), inputs
 
 
+def _bundle_output_recipe(recipe, admin_level, output_dir=None) -> dict:
+    """Return a copy of *recipe* saving at *admin_level*, into *output_dir*."""
+    output_recipe = dict(recipe)
+    output_recipe['save_to'] = {
+        **recipe.get('save_to', {}),
+        'admin_level': admin_level,
+    }
+    if output_dir is not None:
+        output_recipe['save_to']['data_dir'] = output_dir
+    return output_recipe
+
+
+def _refuse_shared_flat_path(recipe, spec, admin_id, canonical) -> None:
+    """Raise when a bundle filed as its unit would share a path.
+
+    Only a whole-unit region and an inline grouping are filed as their
+    unit; every other region has a folder of its own. Two such bundles
+    can still meet: two whole-unit regions of one recipe on one unit,
+    or a bundle whose unit is at the recipe's save level, whose path is
+    then that unit's curated output. Either would overwrite a file.
+    """
+    try:
+        curated = get_output_path(recipe, admin_id)
+    except ValueError:
+        # A unit coarser than the save level has no curated file.
+        curated = None
+    if curated is not None and canonical == curated:
+        raise ValueError(
+            f'The {spec.get("region_id") or "inline"} bundle of '
+            f'{recipe.get("recipe_id", recipe)!r} would be written over the '
+            f'curated output of {admin_id} ({curated}). Name the region in '
+            'the region registry, so that it is filed in a folder of its own.'
+        )
+    region_id = spec.get('region_id')
+    if region_id is None:
+        return
+    sharing = [
+        other['region_id']
+        for other in delivery_regions(recipe)
+        if other.get('whole_unit')
+        and other.get('audience') != 'team'
+        and other['region_id'] != region_id
+        and str(delivery_admin_id(recipe, region=other['region_id'])) == str(admin_id)
+    ]
+    if sharing:
+        raise ValueError(
+            f'{recipe.get("recipe_id", recipe)!r} lists {region_id!r} and '
+            f'{", ".join(sharing)} under `whole_unit_regions`, all on '
+            f'{admin_id}; one unit has one whole-unit bundle.'
+        )
+
+
 def delivery_paths(
     recipe, admin_id=None, admin_level=None, output_dir=None, region=None
 ) -> dict:
@@ -651,15 +746,37 @@ def delivery_paths(
     coarser (a state-level file pooling county-level ones), so the level is
     overridden on a recipe copy first, the same way `io.aggregate` does it.
 
+    Where a bundle is filed:
+
+    - A named region sits in a folder named after it, inside its unit's
+      folder: `share/US/FL/_all/transaction/openplaces/2026/lakeland-fl/
+      US-FL_transaction-openplaces-2026.parquet`. Its path therefore
+      never equals another region's, its state's, or a county's curated
+      output, whichever unit it rolls up to.
+    - A region the recipe lists under `share: delivery:
+      whole_unit_regions:` is its unit (`florida-statewide`), and is
+      filed as the unit's own bundle, with no folder.
+      `export_delivery` refuses one whose members are not every unit
+      of it.
+    - An inline grouping (`admin_ids:`) has no name, and is filed as
+      its unit too.
+    - A team bundle (`<region>.team`) sits in a `team/` folder beside
+      its region's bundle.
+
+    Raises `ValueError` when a bundle filed as its unit would be written
+    over a curated output, or over another whole-unit region's bundle.
+
     Parameters
     ----------
     recipe : str or dict
         Recipe ID or loaded recipe dictionary.
     admin_id : str or `AdminId`, optional
-        Admin unit the bundle covers. Defaults to `delivery_admin_id`.
+        Admin unit the bundle covers, which names its files. Defaults to
+        `delivery_admin_id`.
     admin_level : int, optional
-        Admin level of the bundle. Defaults to the recipe's declared
-        `share: delivery: admin_level:`, then 2.
+        Level `delivery_admin_id` truncates the members to when the
+        region declares no unit of its own. Defaults to the recipe's
+        declared `share: delivery: admin_level:`, then 2.
     output_dir : str, optional
         Directory to write into, as named in STANDARD_DIRS. Defaults to the
         recipe's declared value, then the recipe's own `save_to: data_dir:`.
@@ -688,39 +805,28 @@ def delivery_paths(
         output_dir = spec.get('output_dir')
     if admin_id is None:
         admin_id = delivery_admin_id(recipe, admin_level, region)
+    admin_id = AdminId(str(admin_id))
 
-    output_recipe = dict(recipe)
-    output_recipe['save_to'] = {
-        **recipe.get('save_to', {}),
-        'admin_level': admin_level,
-    }
-    if output_dir is not None:
-        output_recipe['save_to']['data_dir'] = output_dir
-
+    # The file is named after the unit, at the unit's own level: a
+    # region anchored on a county (`region_admin_id` US-FL-PO) used to
+    # be asked for at the declared level 2, which `get_output_path`
+    # refuses for a level-3 id.
+    output_recipe = _bundle_output_recipe(recipe, admin_id.get_level(), output_dir)
     canonical = get_output_path(output_recipe, admin_id)
 
-    # Two declared regions can roll up to the same admin unit (both
-    # Boston test regions are Massachusetts towns), which would give
-    # their bundles identical filenames in one directory - the second
-    # delivery silently overwriting the first. Nest each colliding
-    # region's bundle in a subdirectory named after it; regions with a
-    # unit of their own (the CHEER NC/TX pair) keep their flat paths.
-    if region is not None:
-        # Team bundles nest under their base region (above), so they are
-        # not siblings here and cannot move a public bundle's path.
-        siblings = [
-            r['region_id']
-            for r in delivery_regions(recipe)
-            if r.get('region_id') is not None and r.get('audience') != 'team'
-        ]
-        if len(siblings) > 1 and region in siblings:
-            unit_of = {
-                rid: str(delivery_admin_id(recipe, admin_level, rid))
-                for rid in siblings
-            }
-            mine = unit_of[region]
-            if sum(unit == mine for unit in unit_of.values()) > 1:
-                canonical = canonical.parent / str(region) / canonical.name
+    # A named region is filed in a folder of its own, named after it,
+    # inside its unit's folder (maintainer's rule, 2026-10-23: regional
+    # bundles do not sit in the state folder). Only a region declared
+    # under `whole_unit_regions`, which is its unit, takes the unit's
+    # own path. Before, a region was nested only when a sibling region
+    # of the same recipe shared its unit, so adding a second Florida
+    # region moved the statewide bundle, and a region filed flat on
+    # its state's path read as that state's bundle.
+    region_id = spec.get('region_id')
+    if region_id is not None and not spec.get('whole_unit'):
+        canonical = canonical.parent / str(region_id) / canonical.name
+    else:
+        _refuse_shared_flat_path(recipe, spec, admin_id, canonical)
 
     paths = {'canonical': canonical}
     # A non-spatial bundle has no point or boundary file, and this is
@@ -883,6 +989,10 @@ def export_delivery(
     if admin_id is None:
         admin_id = delivery_admin_id(recipe, admin_level, region)
 
+    if delivery_spec(recipe, region).get('whole_unit'):
+        _require_whole_unit(
+            recipe, admin_id, delivery_members(recipe, admin_id, admin_ids, region)
+        )
     process_level, inputs = _resolve_inputs(recipe, admin_id, admin_ids, region)
     if not inputs:
         raise FileNotFoundError(
