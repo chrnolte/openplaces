@@ -1,0 +1,113 @@
+# Recipe: Maryland SDAT assessment records, sales segment 1 (the most
+# recent transfer of each account), from the statewide open-data table
+# "Maryland Real Property Assessments: Hidden Property Owner Names"
+# (opendata.maryland.gov, Socrata ed4q-f8tm; SDAT records joined with
+# MDP parcel data, refreshed monthly).
+#
+# THREE RECIPES, ONE PER SEGMENT. SDAT keeps the last three transfers
+# of each account as three groups of columns ("sales segments" 1 to 3)
+# on the account's one row. A transaction row is one sale, so each
+# segment is its own recipe: this one, `_segment-2` and `_segment-3`.
+# Each requests its segment's columns under the same aliases, so the
+# three outputs share one schema and the spine unions them (discovery
+# keeps one recipe per admin id, source and filename suffix). A
+# segment with no transfer (date '0000.00.00' and no consideration)
+# is not requested.
+#
+# PRIVACY. The table hides owner names already; the segments' grantor
+# name columns are not requested ($select names an allow-list).
+#
+# MAPPED, per segment: Account ID (ACCTID) -> parcel_id_assessor, the
+# key the iMAP parcel recipe (US-MD_parcel-mdimap-2026) uses with the
+# same conversion; Transfer Number -> transaction_id_source; Transfer
+# Date (YYYY.MM.DD) -> recorded_date; Consideration -> price; How
+# Conveyed Ind. -> sale_qualification_code, as SDAT labels it
+# ('Private arms-length transfer, Improved (1)', '... Vacant at time
+# of sale (2)', '... multiple parcel (3)', 'Private non-arms-length
+# transfer such as a foreclosure, gift or auction (4)', 'No Data'),
+# graded by US-MD_transaction-openplaces-2026. Not requested: the
+# segment's mortgage, its market land and improvement values, and the
+# grantor's own deed reference (the deed by which the seller acquired,
+# not this transfer's).
+#
+# SEGMENT 1 AND THE ROLL. The iMAP parcel recipe's last sale
+# (CONSIDR1, TRADATE) is this segment's transfer. The spine keeps both
+# and flags the roll's last-sale row that repeats a deed
+# (flag_sales_matching_other_kind), so neither is counted twice.
+#
+# MEASURED 2026-10-22 on the four salisbury-md counties (Wicomico,
+# Somerset, Worcester, Dorchester; 154,903 accounts, one row each):
+#   segment 1: 147,776 real dates (7,127 '0000.00.00'), 99,278 priced;
+#     how conveyed: non-arms-length 67,760, arms-length improved
+#     59,560, multiple parcel 13,337, vacant 6,845, No Data 7,401.
+#   segment 2: 127,529 dates, 85,262 priced.
+#   segment 3: 99,853 dates, 65,819 priced.
+#   Dates run from the 1880s; 60,913 segment-1 transfers are from the
+#   2020s, 40,612 from the 2010s.
+#   Account key against the live iMAP layer, Somerset: 98.1% of SDAT
+#   accounts and 99.2% of those with a priced segment-1 sale are
+#   found there; 97.7% of iMAP ids are found in SDAT.
+#
+# RECONCILED, ingest of 2026-10-22 for the four counties: segment 1
+# 147,783 rows (147,776 dated, plus 7 priced transfers whose date is
+# '0000.00.00'), 99,278 priced; segment 2 127,536 rows, 127,529 dated,
+# 85,262 priced; segment 3 99,855 rows, 99,853 dated, 65,819 priced:
+# each equal to the counts above. Every row carries the account key.
+# Dates run from 1884 to 2026-09-28. No name column is present.
+#
+# LICENCE. Socrata licenseId PUBLIC_DOMAIN (checked 2026-10-22). The
+# documentation PDF carries MDP's map disclaimer (no warranty, not a
+# legal description); no click-through.
+
+description: >-
+  Maryland SDAT assessment records, sales segment 1 (most recent
+  transfer per account): price, transfer date and how conveyed.
+
+admin_id: US-MD
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: sdat
+    portal_url: "https://opendata.maryland.gov/d/ed4q-f8tm"
+    download_url: "https://opendata.maryland.gov/resource/ed4q-f8tm.csv?%24select=jurisdiction_code_mdp_field_jurscode%20as%20jurscode%2C%20account_id_mdp_field_acctid%20as%20acctid%2C%20sales_segment_1_transfer_number_mdp_field_transno1_sdat_field_79%20as%20transfer_number%2C%20sales_segment_1_how_conveyed_ind_mdp_field_convey1_sdat_field_87%20as%20how_conveyed%2C%20sales_segment_1_transfer_date_yyyy_mm_dd_mdp_field_tradate_sdat_field_89%20as%20transfer_date%2C%20sales_segment_1_consideration_mdp_field_considr1_sdat_field_90%20as%20consideration&%24where=sales_segment_1_transfer_date_yyyy_mm_dd_mdp_field_tradate_sdat_field_89%20%21%3D%20%270000.00.00%27%20OR%20sales_segment_1_consideration_mdp_field_considr1_sdat_field_90%20%3E%200&%24order=acctid&%24limit=4000000"
+    license: "Public Domain (opendata.maryland.gov dataset licence)"
+    terms_url: "https://opendata.maryland.gov/d/ed4q-f8tm"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "sdat_sales_segment_1.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: jurscode
+  admin_id_crosswalk:
+    # The same jurisdiction codes the iMAP parcel layer uses.
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: acctid
+  transaction_id_source: transfer_number
+  recorded_date: transfer_date
+  price_raw: consideration
+  sale_qualification_code: how_conveyed
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price_raw, output: price}
+  - {type: unary, operation: null_if_equal, input: recorded_date,
+     args: {value: "0000.00.00"}, output: recorded_date}
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+
+columns_to_categorical:
+  - sale_qualification_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

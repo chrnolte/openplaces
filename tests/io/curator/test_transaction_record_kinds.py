@@ -387,6 +387,41 @@ def test_connecticut_non_usable_codes_are_graded_in_both_spellings():
             assert patch['mapping'][bare] == grade, key
 
 
+def test_maryland_how_conveyed_is_graded_and_no_data_stays_missing():
+    from openplaces.io.curator.inferers import derive_indicators
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe, applied = apply_recipe_patches(
+        get_recipe_by_id('US_transaction-openplaces-2026'), AdminId('US-MD-SO')
+    )
+    assert 'US-MD_transaction-openplaces-2026' in applied
+    wanted = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    specs = [
+        spec
+        for step in recipe['pipeline']
+        for spec in step.get('indicators', [])
+        if spec['output'] in wanted
+    ]
+    codes = [
+        'Private arms-length transfer, Improved (1)',
+        'Private arms-length transfer, Vacant at time of sale (2)',
+        'Private arms-length transfer, multiple parcel (3)',
+        'Private non-arms-length transfer such as a foreclosure, gift or auction (4)',
+        'No Data',
+    ]
+    df = pd.DataFrame({'sale_qualification_code': codes})
+    out = derive_indicators(_state(df), indicators=specs).curated
+    conf = out['sale_arms_length_confidence']
+    assert conf.tolist()[:4] == [1.0, 1.0, 0.7, 0.0]
+    assert pd.isna(conf.iloc[4])
+    assert out['sale_qualification_group'].tolist()[:4] == [
+        'qualified',
+        'qualified',
+        'qualified_multi_parcel',
+        'disqualified',
+    ]
+
+
 def test_a_second_source_fills_only_what_the_first_left_missing():
     from openplaces.io.curator.inferers import derive_indicators
 
