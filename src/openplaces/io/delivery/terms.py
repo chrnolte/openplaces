@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from functools import cache
 
+from openplaces.core.schema import admin_scope_covers
 from openplaces.recipe import (
     apply_recipe_patches,
     get_recipe_by_id,
@@ -411,12 +412,16 @@ def _catalog_terms() -> dict[str, list[dict]]:
             'portal_url': source.get('portal_url'),
             'redistribution_restricted': source.get('redistribution_restricted'),
             'resale_restricted': source.get('resale_restricted'),
+            # The recipe's scope, so a bundle can tell a source of its
+            # own units from one of another state (`_applies_to`).
+            'admin_id': str(recipe.get('admin_id') or '') or None,
         }
-        # First recipe wins per distinct set of terms: several
-        # versions of one source record the same terms, and a later
-        # one should not replace an earlier. Different terms are
-        # kept side by side.
-        key = _terms_key(entry)
+        # First recipe wins per distinct set of terms and scope:
+        # several versions of one source record the same terms, and a
+        # later one should not replace an earlier. Different terms,
+        # or the same terms recorded for another scope, are kept side
+        # by side.
+        key = (*_terms_key(entry), entry['admin_id'])
         if key in seen:
             continue
         seen.add(key)
@@ -450,7 +455,10 @@ def bundle_terms(
         the geometry are reported under ``values`` and take part in the
         attribution, restriction and unrecorded checks like the
         geometry's sources: a roll that supplies a county's values ships
-        in the bundle as surely as an outline does.
+        in the bundle as surely as an outline does. With *admin_ids*, a
+        token counts only where the walk reached its source or a recipe
+        of that source covers one of the units: a token a step wrote
+        under another state's name is not that state's source.
 
     Returns
     -------
@@ -541,15 +549,28 @@ def bundle_terms(
         by_id.setdefault(entry['source_id'], []).append(entry)
     values = []
     value_counts: dict[str, int] = {}
+    # The catalog answers only for recipes scoped to the bundle's units.
+    # A provenance token is a step's label, and a label can name a
+    # source whose data is not in the row: the transaction spine's
+    # `reconcile_addresses` writes its first declared key, `nhcgov`
+    # (New Hanover County NC), on every row with an `address` column,
+    # so Florida's and Wisconsin's sales read `address_source = nhcgov`
+    # and both bundles listed a North Carolina county's terms. The
+    # scope test, not a fix to that one label, is what keeps any such
+    # label out of the notice.
+    in_scope = {
+        source_id: [entry for entry in entries if _applies_to(entry, admin_ids)]
+        for source_id, entries in catalog.items()
+    }
     for token, count in (value_cells or {}).items():
         source_id = _resolve_source_id(token, known_ids)
-        if source_id not in known_ids and source_id not in catalog:
+        if source_id not in known_ids and not in_scope.get(source_id):
             continue
         value_counts[source_id] = value_counts.get(source_id, 0) + count
     for source_id, count in sorted(value_counts.items(), key=lambda kv: -kv[1]):
         if source_id in listed:
             continue
-        entries = by_id.get(source_id) or catalog.get(source_id)
+        entries = by_id.get(source_id) or in_scope.get(source_id)
         seen_licences = set()
         for entry in entries:
             if entry['license'] in seen_licences:
@@ -592,6 +613,25 @@ def bundle_terms(
         'unknown_share': unknown_share,
         'values': values,
     }
+
+
+def _applies_to(entry: dict, admin_ids) -> bool:
+    """True when *entry*'s recipe scope relates to one of *admin_ids*.
+
+    Related in either direction: a state recipe covers its counties,
+    and a county recipe sits inside a state bundle. A recipe with no
+    scope is national or global and applies everywhere, as does any
+    entry when the units are not known.
+    """
+    if admin_ids is None:
+        return True
+    scope = entry.get('admin_id')
+    if not scope:
+        return True
+    return any(
+        admin_scope_covers(scope, unit) or admin_scope_covers(unit, scope)
+        for unit in admin_ids
+    )
 
 
 def value_source_cells(frame) -> dict[str, int]:
