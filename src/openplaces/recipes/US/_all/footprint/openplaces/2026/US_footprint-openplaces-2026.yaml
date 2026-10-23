@@ -526,6 +526,12 @@ pipeline:
         columns:
           height_footprint_overture: height_footprint_overture
           n_stories_footprint_overture: n_stories_footprint_overture
+      # FEMA's LiDAR height on the outline it measures (2008-2012
+      # flights, NGA outlines only); a story count is derived from it
+      # before n_stories is reconciled below.
+      - recipe_id: US_footprint_footprint-fema-2023
+        columns:
+          height_footprint_fema: height_footprint_fema
 
   # Carry the county's federal FIPS code alongside openplaces' own
   # admin3_id. Only one of the two is ours to change: an admin-id re-mint
@@ -774,15 +780,30 @@ pipeline:
       # evidence falls through to the next lane.
       year_built: [1500, 2035]
 
-  # Reconcile canonical n_stories: direct floor detection first, then NSI's
-  # modeled count, then CHEER's -- last because it is the same modeled
-  # lineage as NSI rather than an independent observation.
+  # A story count from FEMA's LiDAR height (height over 3.5 m,
+  # rounded, at least one), for the reconcile below. 3.5 m rather than
+  # the parcel recipe's 3.05: the height includes the roof, and a
+  # pitched one-story roof reads as two stories at 3.05. Scored on
+  # Madison's single-family homes with one footprint against the
+  # roll's floor areas (31,322 with both counts):
+  # Measured 2026-10-22 on US-WI-DA: LiDAR stories match the roll on 84.9% at 3.5 m, 81.7% at 3.05 m.
+  # Measured 2026-10-22 on US-WI-DA: NSI stories match the roll on 94.0% of the same homes.
+  - step: derive_stories_from_height
+    floor_height_m: 3.5
+
+  # Reconcile canonical n_stories: direct floor detection first, then
+  # NSI's modeled count, then FEMA's LiDAR height, then CHEER's -- last
+  # because it is the same modeled lineage as NSI rather than an
+  # independent observation. LiDAR fills where NSI is silent and does
+  # not override it, because it scored below NSI against the roll
+  # above (maintainer, 2026-10-22).
   - step: reconcile_values
     phase_override: >-
       the indicators derived above read n_stories before this lane is
       reconciled; moving the step changes the vote
     priority:
-      n_stories: [n_stories_brails, n_stories_building_nsi, n_stories_building_cheer]
+      n_stories: [n_stories_brails, n_stories_building_nsi,
+                  n_stories_footprint_fema, n_stories_building_cheer]
       # The roll's story count is not a lane here: rolls define stories
       # differently (Harris TX counts one NSI does not; Medfield MA's
       # code is not a count), so it is adopted per admin unit by the
