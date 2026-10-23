@@ -116,8 +116,8 @@ pipeline:
     column: postal_code
 
   # Town-scoped address matching key, for linking a reference that carries no
-  # parcel_id_local (e.g. MA masslandrecords transactions -- see
-  # US_transaction-spine-2026, which joins back onto this key).
+  # parcel_id_local (see US_transaction-spine-2026, which joins back onto
+  # this key).
   - step: derive_address_id_local
 
   # Build the combined use_group_combined label from whatever use_group /

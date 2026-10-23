@@ -701,40 +701,23 @@ def ingest(
     verbose : bool
         Print progress messages.
     years : int, list of int, or None
-        Four-digit calendar years to process. Registry recipes receive this
-        filter directly. For standard recipes partitioned by year or
-        year-month, it is converted to ``partition_ids``.
+        Four-digit calendar years to process, for recipes partitioned by
+        year or year-month; converted to ``partition_ids``.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
     if years and partition_ids:
         raise ValueError('Pass either partition_ids or years, not both.')
 
-    # A `scraper` block names a dedicated ingester orchestrator (the scraper
-    # crawls records directly rather than producing a downloadable file, so it
-    # cannot use the standard download->TableIngester flow). The value of
-    # `scraper.ingester` (or a bare `scraper` scalar) selects which one. This
-    # is distinct from `source.download_url_scraper`, which is a file-producing
-    # browser scraper handled inside the standard Ingester.
-    scraper = recipe.get('scraper')
-    if scraper is not None:
-        ingester_name = (
-            scraper.get('ingester') if isinstance(scraper, dict) else scraper
-        )
-        if ingester_name == 'registry':
-            from openplaces.io.ingester.registry_ingester import RegistryIngester
-
-            RegistryIngester(
-                recipe,
-                admin_ids=admin_ids,
-                partition_ids=partition_ids,
-                years=years,
-                reprocess=reprocess,
-                verbose=verbose,
-            ).ingest()
-            return
+    # A `scraper` block once named an ingester that crawled a registry
+    # of deeds page by page. The site it served prohibits scraping and
+    # crawling in its terms, so the ingester was removed (maintainer,
+    # 2026-10-23); openplaces reads files a source publishes. Refusing
+    # the key keeps such a recipe from reaching the download path.
+    if recipe.get('scraper') is not None:
         raise ValueError(
-            f"Unknown scraper ingester '{ingester_name}'. Supported: 'registry'."
+            "Recipes with a 'scraper' block are not supported: openplaces "
+            'ingests files a source publishes and does not crawl record sites.'
         )
 
     if years:

@@ -6,7 +6,6 @@ from openplaces.recipe import get_recipe_by_id
 
 def test_transaction_recipes_map_and_parse_price():
     for recipe_id, raw_value, expected in [
-        ('US-MA_transaction-masslandrecords-v1', '820000.00', 820000.0),
         ('US-WI_transaction-widor-2026', '$99,350.00', 99350.0),
     ]:
         recipe = get_recipe_by_id(recipe_id)

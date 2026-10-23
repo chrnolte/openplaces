@@ -77,16 +77,8 @@ pipeline:
       widor:
         address_full: address
         city: city
-      masslandrecords:
-        address_street: street_name
-        address_number: street_number
-        unit_number: unit_from_description
     number_output_col: address_number
     unit_output_col: address_unit
-    # masslandrecords rows get no city_output_col: a MA registry district
-    # (admin4_id) can contain several villages that each use their own name
-    # as a street address's city (e.g. Newton, MA contains Newton Centre,
-    # Waban, ...) -- do not synthesize one from the containing town.
 
   # The town a record names, as an id. A parcel's address key is scoped
   # by its town (`admin4_id`), and a return that only *names* its
@@ -102,7 +94,7 @@ pipeline:
     level: 4
     name_pattern: '^(?P<name>.*?),?\s+(?P<type>town|village|city)\b(?:\s+of?)?$'
 
-  # Town-scoped address matching key for masslandrecords, which carries no
+  # Town-scoped address matching key for records that carry no
   # parcel_id_local (see US_parcel-spine-2026's own derive_address_id_local
   # step, computed identically there).
   - step: derive_address_id_local
