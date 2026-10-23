@@ -1,0 +1,57 @@
+# Patch: Maryland transaction curation, grading SDAT's How Conveyed
+# indicator (US-MD_transaction-sdat-2026 and its segments 2 and 3).
+#
+# SDAT states for each transfer whether it was at arm's length, in
+# five labelled values; the ingest keeps the label as received. A
+# state's vocabulary, so a state patch. Measured 2026-10-22 on the
+# four salisbury-md counties, segment 1 (154,903 accounts):
+# non-arms-length 67,760, arms-length improved 59,560, multiple parcel
+# 13,337, vacant 6,845, No Data 7,401.
+#
+# Grades, on the national scale (0, 0.7, 1):
+#   1.0  arms-length, improved (1) or vacant at the time of sale (2).
+#   0.7  arms-length, multiple parcel (3): the price covers several
+#        parcels, an area problem the aggregation solves, as Florida's
+#        multi-parcel qualification is graded.
+#   0.0  non-arms-length, "such as a foreclosure, gift or auction" (4).
+#   'No Data' is absence of evidence and stays missing; no `default`.
+# Groups: qualified for (1) and (2), qualified_multi_parcel for (3),
+# disqualified for (4); SDAT does not say which non-arms-length kind,
+# so no finer group is given.
+
+admin_id: US-MD
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "Private arms-length transfer, Improved (1)": 1.0
+            "Private arms-length transfer, Vacant at time of sale (2)": 1.0
+            "Private arms-length transfer, multiple parcel (3)": 0.7
+            ? "Private non-arms-length transfer such as a foreclosure, gift or auction (4)"
+            : 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "Private arms-length transfer, Improved (1)": qualified
+            "Private arms-length transfer, Vacant at time of sale (2)": qualified
+            "Private arms-length transfer, multiple parcel (3)": qualified_multi_parcel
+            ? "Private non-arms-length transfer such as a foreclosure, gift or auction (4)"
+            : disqualified

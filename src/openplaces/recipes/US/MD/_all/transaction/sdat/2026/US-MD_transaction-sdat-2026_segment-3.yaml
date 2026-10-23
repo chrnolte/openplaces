@@ -1,0 +1,59 @@
+# Recipe: Maryland SDAT assessment records, sales segment 3 (the
+# third most recent transfer of each account). One of three recipes,
+# one per segment; the source, mapping, privacy, licence and
+# measurements are described in the segment-1 recipe,
+# US-MD_transaction-sdat-2026.
+
+description: >-
+  Maryland SDAT assessment records, sales segment 3 (third most recent
+  transfer per account): price, transfer date and how conveyed.
+
+admin_id: US-MD
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: sdat
+    portal_url: "https://opendata.maryland.gov/d/ed4q-f8tm"
+    download_url: "https://opendata.maryland.gov/resource/ed4q-f8tm.csv?%24select=jurisdiction_code_mdp_field_jurscode%20as%20jurscode%2C%20account_id_mdp_field_acctid%20as%20acctid%2C%20sales_segment_3_transfer_number_sdat_field_119%20as%20transfer_number%2C%20sales_segment_3_how_conveyed_ind_sdat_field_127%20as%20how_conveyed%2C%20sales_segment_3_transfer_date_yyyy_mm_dd_sdat_field_129%20as%20transfer_date%2C%20sales_segment_3_consideration_sdat_field_130%20as%20consideration&%24where=sales_segment_3_transfer_date_yyyy_mm_dd_sdat_field_129%20%21%3D%20%270000.00.00%27%20OR%20sales_segment_3_consideration_sdat_field_130%20%3E%200&%24order=acctid&%24limit=4000000"
+    license: "Public Domain (opendata.maryland.gov dataset licence)"
+    terms_url: "https://opendata.maryland.gov/d/ed4q-f8tm"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "sdat_sales_segment_3.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: jurscode
+  admin_id_crosswalk:
+    # The same jurisdiction codes the iMAP parcel layer uses.
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: acctid
+  transaction_id_source: transfer_number
+  recorded_date: transfer_date
+  price_raw: consideration
+  sale_qualification_code: how_conveyed
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price_raw, output: price}
+  - {type: unary, operation: null_if_equal, input: recorded_date,
+     args: {value: "0000.00.00"}, output: recorded_date}
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+
+columns_to_categorical:
+  - sale_qualification_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: segment-3
