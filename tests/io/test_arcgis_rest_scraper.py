@@ -759,6 +759,36 @@ def test_composite_key_is_requested_from_the_service(fake_service):
     assert fake_service['attribute_queries'] == ['PIN,EXTRA,EXTRA'] * 2
 
 
+def test_attribute_fields_are_matched_case_insensitively(monkeypatch):
+    """A layer answers in its own spelling (`ACCOUNTNO`) whatever case
+    the query named; the join key and fields still find their values,
+    stored under the names the recipe asked for."""
+    monkeypatch.setattr(scraper, '_layer_metadata', lambda *a, **k: {})
+    monkeypatch.setattr(scraper, '_layer_count', lambda *a, **k: 2)
+    page = {
+        'features': [
+            {'attributes': {'ACCOUNTNO': 'A0000001', 'PARCELNO': '999999999001'}},
+            {'attributes': {'ACCOUNTNO': 'A0000002', 'PARCELNO': '999999999002'}},
+        ]
+    }
+    monkeypatch.setattr(scraper, '_get_json', lambda *a, **k: page)
+    table = scraper._fetch_attribute_table(
+        'http://svc/12',
+        key='accountno',
+        fields=['parcelno'],
+        where='1=1',
+        page_size=2,
+        timeout=1,
+        retries=1,
+        verbose=False,
+        label='t',
+    )
+    assert table == {
+        'A0000001': {'parcelno': '999999999001'},
+        'A0000002': {'parcelno': '999999999002'},
+    }
+
+
 # Paging order, quoting, staging and retry-budget edge cases
 
 

@@ -292,12 +292,19 @@ def _fetch_attribute_table(
             label=f'{label}: attributes',
         )
         for feature in page.get('features', []):
-            attributes = feature.get('attributes') or {}
-            parts = [attributes.get(f) for f in key_fields]
+            # ArcGIS field names are case-insensitive in a query but come
+            # back in the layer's own spelling, so the attributes are
+            # looked up by lowercase name: Weld County's sales table
+            # writes `accountno` where its account table, joined for the
+            # parcel number, writes `ACCOUNTNO`. Stored under the names
+            # the recipe asked for.
+            raw = feature.get('attributes') or {}
+            attributes = {str(k).lower(): v for k, v in raw.items()}
+            parts = [attributes.get(f.lower()) for f in key_fields]
             if any(part is None for part in parts):
                 continue
             key_value = _KEY_PART_SEPARATOR.join(str(part) for part in parts)
-            table[key_value] = {f: attributes.get(f) for f in fields}
+            table[key_value] = {f: attributes.get(f.lower()) for f in fields}
         if verbose:
             _log(f'{label}: joined {len(table)} attribute rows so far')
     return table
