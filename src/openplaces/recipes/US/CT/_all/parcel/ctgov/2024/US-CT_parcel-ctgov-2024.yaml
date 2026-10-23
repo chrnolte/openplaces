@@ -31,6 +31,16 @@ entity:
   # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: ctgov
+    # Licence (checked 2026-10-22): the data.ct.gov copy states none,
+    # but the same 2024 collection is published by its producer, the
+    # CT GIS Office (C.G.S. 4d-90 to 4d-92), as ArcGIS item
+    # cf3408dd424e4560aa688d0d2fd49d6b with licenseInfo "CC0". Same
+    # data: 1,290,196 parcels in both, and this layer's fields are a
+    # subset of that service's (which joins the CAMA table). The bulk
+    # file is kept as the download; the licence is the producer's.
+    license: "CC0 (CT GIS Office release of the 2024 parcel and CAMA collection)"
+    terms_url: "https://www.arcgis.com/home/item.html?id=cf3408dd424e4560aa688d0d2fd49d6b"
+    redistribution_restricted: false
     portal_url: "https://data.ct.gov/Local-Government/2024-Connecticut-Parcel-and-CAMA-Data/pqrn-qghw/about_data"
     # URL to download
     download_url: "https://data.ct.gov/api/views/pqrn-qghw/files/04df94a2-ab74-4ca2-9ac0-5ac0938439a6?download=true&filename=2024%20Parcel%20Layer.gdb.zip"
