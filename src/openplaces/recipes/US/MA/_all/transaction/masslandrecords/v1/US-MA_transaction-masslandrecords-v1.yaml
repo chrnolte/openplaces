@@ -8,6 +8,18 @@ entity:
   entity_type: transaction
   source:
     source_id: masslandrecords
+    # HELD (2026-10-22, BU counsel question SRS-3): the site's terms
+    # (Secretary of the Commonwealth) list under "Prohibited Activities"
+    # that "'Scraping' or 'crawling,' whether by automated means or
+    # manually, to access, view, or collect information is prohibited",
+    # prohibit "creating derivative works", and allow use only "to
+    # search individual business records". No crawl may run, and
+    # delivery withholds whatever this source supplied, until counsel
+    # answers. Data already crawled is kept, not deleted.
+    license: >-
+      masslandrecords.com terms of use: scraping, crawling and derivative
+      works prohibited; under review by Boston University counsel.
+    redistribution_restricted: true
     portal_url: "https://www.masslandrecords.com"
   version: v1
 
