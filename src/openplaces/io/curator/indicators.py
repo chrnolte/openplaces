@@ -277,7 +277,15 @@ def score_decisions(
         row's own value of that column, and is eligible only where that
         value is present. For a correction that hands a row back the
         class it held before an earlier vote (a snapshot taken with
-        ``base_output``), which no fixed class could express.
+        ``base_output``), which no fixed class could express. A
+        decision may also name ``insufficient_alone``, a mapping of
+        ``labels`` (indicator labels) and an optional ``where``
+        indicator: on rows where ``where`` holds (every row when it is
+        omitted), the decision is eligible only where at least one
+        indicator outside ``labels`` fired too. The listed indicators
+        still add their weight beside such a partner; they just cannot
+        carry the decision by themselves there. An unlabeled indicator
+        counts as a partner.
     score_classes : set of str, optional
         Classes whose raw weighted score should be returned in *scores*.
         Deliberately ungated by ``min_score`` and by whether the decision
@@ -324,11 +332,25 @@ def score_decisions(
         # carried it, which is what a reader of a `{col}_source` sidecar is
         # asking for.
         fired = pd.Series('', index=curated.index, dtype=object)
+        # Indicators that may only support this decision in some
+        # context, and whether anything else fired beside them. A
+        # helper is a different thing from a lower weight: footprint
+        # shape is strong evidence for a manufactured home where no
+        # source has spoken, and no weight can say "strong, but not
+        # against two sources that name a site-built class". Cutting
+        # its weight everywhere would lose the first; dropping it in
+        # that context would lose its corroborating role. This keeps
+        # both.
+        guard = decision.get('insufficient_alone') or {}
+        helpers = set(guard.get('labels') or ())
+        partner = pd.Series(False, index=curated.index)
         for indicator in decision.get('indicators', []):
             weight = float(indicator.get('weight', 1.0))
             matched = evaluate_indicator(curated, indicator)
             score = score + matched.astype(float) * weight
             label = indicator.get('label')
+            if label not in helpers:
+                partner = partner | matched
             if label:
                 fired = fired + np.where(matched.to_numpy(), f'{label}+', '')
             label_column = indicator.get('label_column')
@@ -348,6 +370,13 @@ def score_decisions(
         eligible = score >= float(decision.get('min_score', 1))
         for req in decision.get('require', []):
             eligible = eligible & evaluate_indicator(curated, req)
+        if helpers:
+            where = (
+                evaluate_indicator(curated, guard['where'])
+                if guard.get('where')
+                else pd.Series(True, index=curated.index)
+            )
+            eligible = eligible & (~where | partner)
         if class_column is not None:
             proposed = (
                 curated[class_column].astype(object)

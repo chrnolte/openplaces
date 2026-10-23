@@ -45,6 +45,8 @@ DEFAULTS = {
     # The roll's structure description; most rolls publish none.
     'building_style_parcel': None,
     'group_parcel': None,
+    # The roll's class as resolve_occupancy writes it before the vote.
+    'occupancy_type_parcel': None,
     'group_footprint_fema': None,
     'occupancy_type_building_nsi': None,
     'land_use_class_parcel': None,
@@ -205,6 +207,9 @@ def test_every_vote_input_is_available(recipe):
             for decision in vote['decisions']:
                 _referenced_columns(decision.get('indicators', []), referenced)
                 _referenced_columns(decision.get('require', []), referenced)
+                guard = decision.get('insufficient_alone') or {}
+                if guard.get('where'):
+                    _referenced_columns([guard['where']], referenced)
 
     derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
     # A vote also provides its own target and any base_output snapshot, which
@@ -265,6 +270,70 @@ def test_manufactured_evidence_claims_a_single_dwelling_building(recipe):
         recipe, [{'n_dwellings_overture': 1, 'length_m': 18.0, 'width_m': 5.0}]
     )
     assert result.iloc[0] == 'Manufactured Home'
+
+
+_ROW_UNIT = {
+    'n_dwellings_overture': 1,
+    'p_manufactured_home': 0.9,
+    'length_m': 18.0,
+    'width_m': 5.0,
+}
+
+
+@pytest.mark.parametrize(
+    ('roll', 'nsi'),
+    [
+        ('Single-Family', 'Single Family, 2 story, with basement'),
+        # Two site-built classes that differ still agree it is not a
+        # manufactured home: a roll's townhouse row as Multi-Family.
+        ('Multi-Family', 'Single Family, 2 story, with basement'),
+    ],
+)
+def test_shape_alone_cannot_overrule_a_roll_and_nsi_naming_site_built(
+    recipe, roll, nsi
+):
+    # Maintainer's rule 2026-10-22: shape is a helper. An attached
+    # row unit drawn as its own narrow outline has a single-wide's
+    # shape; with the roll and NSI both naming a site-built class,
+    # morphology and the shape-trained probability alone stop short.
+    out = _run(
+        recipe,
+        [
+            {
+                **_ROW_UNIT,
+                'occupancy_type_parcel': roll,
+                'occupancy_type_building_nsi': nsi,
+            }
+        ],
+    )
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
+@pytest.mark.parametrize(
+    'context',
+    [
+        # NSI silent: no agreement, shape decides as before.
+        {'occupancy_type_parcel': 'Single-Family'},
+        # Roll silent.
+        {'occupancy_type_building_nsi': 'Single Family, 1 story'},
+        # Both speak, and a non-shape source names a manufactured
+        # home: shape adds its weight beside it.
+        {
+            'occupancy_type_parcel': 'Single-Family',
+            'occupancy_type_building_nsi': 'Single Family, 1 story',
+            'group_footprint_fema': 'Manufactured Home',
+        },
+        {
+            'occupancy_type_parcel': 'Single-Family',
+            'occupancy_type_building_nsi': 'Single Family, 1 story',
+            'improvement_value_parcel': 0.0,
+        },
+    ],
+    ids=['nsi-silent', 'roll-silent', 'fema-partner', 'no-value-partner'],
+)
+def test_shape_still_decides_without_agreement_or_beside_a_partner(recipe, context):
+    out = _run(recipe, [{**_ROW_UNIT, **context}])
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
 
 
 def test_manufactured_home_signals_also_prove_single_dwelling(recipe):
