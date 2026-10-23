@@ -402,6 +402,30 @@ def test_connecticut_non_usable_codes_are_graded_in_both_spellings():
             assert patch['mapping'][bare] == grade, key
 
 
+def test_adams_deed_types_grade_only_what_rules_out_a_market_price():
+    from openplaces.io.curator.inferers import derive_indicators
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe, applied = apply_recipe_patches(
+        get_recipe_by_id('US_transaction-openplaces-2026'), AdminId('US-CO-AD')
+    )
+    assert 'US-CO-AD_transaction-openplaces-2026' in applied
+    wanted = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    specs = [
+        spec
+        for step in recipe['pipeline']
+        for spec in step.get('indicators', [])
+        if spec['output'] in wanted
+    ]
+    df = pd.DataFrame({'doc_type': ['QC', 'PTD', 'DTH', 'WD', 'BLK', None]})
+    out = derive_indicators(_state(df), indicators=specs).curated
+    conf = out['sale_arms_length_confidence']
+    assert conf.tolist()[:3] == [0.0, 0.0, 0.0]
+    # A warranty or blanket deed says nothing about arm's length.
+    assert conf.isna().tolist()[3:] == [True, True, True]
+    assert out['sale_qualification_group'].tolist()[:3] == ['not_a_sale'] * 3
+
+
 def test_a_second_source_fills_only_what_the_first_left_missing():
     from openplaces.io.curator.inferers import derive_indicators
 

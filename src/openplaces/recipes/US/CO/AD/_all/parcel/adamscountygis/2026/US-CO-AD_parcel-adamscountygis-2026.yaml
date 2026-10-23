@@ -1,0 +1,83 @@
+# Recipe: Adams County, CO parcel polygons from the county's own
+# "Parcels" layer.
+#
+# WHY THIS LAYER. The statewide OIT composite (US-CO_parcel-cooit-2026)
+# also draws Adams, but its terms are unknown, so it cannot back an
+# open release; this layer carries an open licence. Item
+# 3309d11bc608475d82ac8b749779a907 (AdamsCO_GIS), service
+# Parcels/FeatureServer/0, 188,868 polygons (2026-10-22), "Updated
+# twice a week ... can be related to the Property Sales, Property
+# Values and Property Improvements tables on the PARCELNB field".
+#
+# SOURCE ID. `adamscountygis`, the county's GIS publisher account,
+# not `adamscounty`: the ingest splits stacked parcels into an
+# implicit property layer named property-<source>-<version>, and
+# `adamscounty` would give it the id of the Assessor's roll
+# (US-CO-AD_property-adamscounty-2026), each shadowing the other.
+#
+# PRIVACY. The layer carries owner names and mailing addresses
+# (OWNERNAME1, OWNERNAMEFULL, OWNERADDRESS and the like). The REST
+# query names an allow-list (`out_fields`), so they are never
+# downloaded; only the parcel numbers and the situs address are.
+#
+# MAPPED. PARCELNB -> parcel_id_assessor (13 digits; the key the Adams
+# roll, US-CO-AD_property-adamscounty-2026, and the sales table,
+# US-CO-AD_transaction-adamscounty-2026, use with the same
+# conversion); PIN -> parcel_id_admin3 (the county's other parcel
+# number); CONCATADDR1 -> address (situs street line); LOCCITY -> city;
+# LOCZIP -> postal_code. Values, use and building fields live in the
+# roll, not here.
+#
+# RECONCILED, ingest of 2026-10-22: 188,868 features written, equal to
+# the service count; the stacked-unit split gives 188,102 lots (272
+# stacks, 1,038 rows moved to the implicit property layer); every lot
+# keyed, 187,794 distinct. No owner column reaches the output.
+#
+# TERMS. The item licence: "This work is licensed under a Creative
+# Commons Attribution 4.0 International License", followed by an
+# as-is disclaimer; the description adds "NOT FOR ENGINEERING
+# PURPOSES". No click-through.
+
+description: >-
+  Adams County, CO parcel polygons with parcel number and situs address,
+  from the county's CC BY parcel layer.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: adamscountygis
+    portal_url: "https://www.arcgis.com/home/item.html?id=3309d11bc608475d82ac8b749779a907"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=3309d11bc608475d82ac8b749779a907"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "adams_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/4PNQOtAivErR7nbT/arcgis/rest/services/Parcels/FeatureServer/0"
+  where: "1=1"
+  out_fields: "PARCELNB,PIN,CONCATADDR1,LOCCITY,LOCZIP"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCELNB
+  parcel_id_admin3: PIN
+  address: CONCATADDR1
+  city: LOCCITY
+  postal_code: LOCZIP
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
