@@ -14,10 +14,13 @@
 # grew over 2014-2017, so the early years are partial: measured
 # 2026-10-19 (SoQL counts by year recorded), 78,372 rows in 2014,
 # 88,572 in 2015, 122,738 in 2016, 171,298 in 2017, then 275,338 in
-# 2018 and 282,631 in 2019. All 102 counties appear across the
-# portal's years; Richland has no 2014-2019 declaration. `download_by`
-# covers 2014-2019, what the request needed; extend `last` for later
-# years.
+# 2018 and 282,631 in 2019; 266,660 in 2020, 368,255 in 2021, 317,457
+# in 2022, 258,362 in 2023, 254,960 in 2024, 259,528 in 2025 and
+# 205,779 in 2026 to date. All 102 counties appear across the portal's
+# years; Richland has no 2014-2019 declaration. `download_by` covers
+# 2014-2026 (extended 2026-10-22: sales of the later years are what
+# reach today's parcel layers, whose PINs retire with splits). The
+# current year is partial and grows weekly; a refresh re-downloads it.
 #
 # THE QUERY. Line 10 of the form is 18 checkboxes describing the sale's
 # conditions (10a installment contract, which the portal stores as a
@@ -77,7 +80,7 @@ entity:
 download_by:
   partition: year
   first: 2014
-  last: 2019
+  last: 2026
 
 uncompressed_file_name: "ptax203_{year}.csv"
 
