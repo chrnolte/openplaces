@@ -1,0 +1,94 @@
+# Patch: Wisconsin transaction curation, grading the RETR answers
+# (US-WI_transaction-widor-2020 and -2026).
+#
+# The national recipe grades no source's vocabulary; each state grades
+# its own here, right after the national grading point. The state
+# assigns no qualification. It asks the parties two things instead:
+# what kind of conveyance this is, and how they are related. Each
+# answer is graded on its own and the confidence is the lower of the
+# two, because a transfer is at arm's length only if it is a sale *and*
+# the parties are unrelated. A row missing either answer is left
+# missing, not graded. Until 2026-10-22 these maps sat in the national
+# recipe and graded any state's `conveyance_type`; they are Wisconsin's
+# form, so a state patch.
+#
+# Conveyance: 1.0 for 'Sale', 0.0 for each of the other 25 types the
+# export uses (gifts, exchanges, transfers into trusts, deeds in
+# satisfaction of a land contract, corrections, ...), whose price is 0
+# or an estimate: measured on 1.16M rows, 95.1% of sales carry a price
+# and no other type of any size does. Listed by `default`, since the
+# vocabulary is open.
+#
+# Relationship: 1.0 for none. 0.7 for 'Other': the parties say they are
+# related and not how, the one genuinely unclear answer. 0.0 for family
+# (the newer export also names spouses, ex-spouses and parent/child),
+# for partners, shareholders or members, and for a financial
+# relationship. An answer not listed here is left missing rather than
+# guessed at.
+#
+# Group: a consumer treats 'the parties are family' differently from
+# 'this was a gift'. A conveyance that is not a sale is `not_a_sale`
+# whoever the parties are; a sale takes its group from the
+# relationship.
+
+admin_id: US-WI
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: _conveyance_grade
+          type: value_map
+          column: [conveyance_type]
+          mapping:
+            "Sale": 1.0
+          default: 0.0
+        - output: _relationship_grade
+          type: value_map
+          column: [sale_party_relationship]
+          mapping:
+            "No relationship": 1.0
+            "Other": 0.7
+            "Family": 0.0
+            "Spouses": 0.0
+            "Ex-spouses": 0.0
+            "Parent/child or grandparent/grandchild": 0.0
+            "Shareholder/partner/member": 0.0
+            "Financial": 0.0
+        # `fill_only`, so a unit holding another source's grades keeps
+        # them. The two scratch columns are unregistered and do not
+        # survive keep_registered_columns.
+        - output: sale_arms_length_confidence
+          type: minimum
+          fill_only: true
+          columns: [_conveyance_grade, _relationship_grade]
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: [conveyance_type]
+          mapping:
+            "Sale": null
+          default: not_a_sale
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: [sale_party_relationship]
+          mapping:
+            "No relationship": qualified
+            "Other": related_parties_unspecified
+            "Family": related_parties_family
+            "Spouses": related_parties_family
+            "Ex-spouses": related_parties_family
+            "Parent/child or grandparent/grandchild": related_parties_family
+            "Shareholder/partner/member": related_parties_business
+            "Financial": related_parties_financial
