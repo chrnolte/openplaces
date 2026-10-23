@@ -105,9 +105,14 @@ transformations:
 columns_to_categorical:
   - sale_qualification_code
 
+# The whole ACCTID, as on US-MD_parcel-mdimap-2026 (see its note).
+# Measured 2026-10-23 on US-MD-PG: the 'simple' keys of this table and
+# of the iMAP layer share one shape per county, 11 digits.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+  instruction:
+    US-MD: {conv: simple}
 
 save_to:
   data_dir: cache

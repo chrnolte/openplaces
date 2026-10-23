@@ -1,0 +1,41 @@
+# Patch: Maryland parcel curation.
+#
+# Placeholder accounts on the MD iMAP parcel layer
+# (US-MD_parcel-mdimap-2026) are kept at ingest and in the parcel
+# geospine, and dropped from the curated parcels, as the national
+# recipe drops WATER and ROW. Each value below repeats on many
+# unrelated polygons, and every row carrying it has no use code, no
+# land value and no improvement value (the signature
+# notebooks/01_setup/06_detect_phantom_parcel_ids.ipynb tests for).
+# A state patch, because these are SDAT's vocabulary on one statewide
+# layer, not the nation's.
+#
+# - 17019999999 and 17019999998: Prince George's all-nines accounts
+#   (county code 17, then nines). Measured 2026-10-23 on US-MD-PG:
+#   1,593 and 25 polygons; no use code, values or sale on any of them.
+#   The account number alone sets them apart, so the notebook's
+#   non-numeric filter does not see them.
+# - GCE and PATH: measured 2026-10-23 on US-MD-MO: 75 and 34 polygons,
+#   every one with the placeholder signature.
+#
+# Other counties use other placeholder words (UNK, NOT LOCATED, NO ID,
+# NOSDAT, CONDO, 9999, empty); each is added here only once the
+# notebook confirms it on that county's ingest. ROW is in the national
+# list already.
+
+admin_id: US-MD
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  # Quoted: an unquoted all-digit value reads as an integer and never
+  # matches the string parcel_id_assessor.
+  - extend: exclude_by_value
+    key: values
+    values: ["17019999999", "17019999998", GCE, PATH]

@@ -191,9 +191,12 @@ aggregation_function:
 # them as rows and joins them onto the roll by parcel_id_local.
 supplements: US-MD_property-mdplanning-2026
 
+# The whole ACCTID, as on the roll it supplements.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+  instruction:
+    US-MD: {conv: simple}
 
 save_to:
   data_dir: core
