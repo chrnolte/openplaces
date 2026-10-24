@@ -180,6 +180,17 @@ share:
   # and a ready-to-symbolize ratio is what the file is for.
   point_columns:
     - structure_value_per_area
+  # Columns computed from others without a `_source` sidecar of their
+  # own: a bundle withholds such a cell wherever it withholds one of its
+  # inputs (io/delivery/redaction.py, rule 7). occupancy_type_parcel is
+  # the roll's use class in occupancy terms (resolve_occupancy below,
+  # its keyword proposal from use_group_combined_parcel, else
+  # group_parcel), so it ships only where the roll's class may
+  # (maintainer, 2026-10-24); occupancy_type_conflict names the
+  # parcel's class beside NSI's and FEMA's.
+  derived_from:
+    occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
+    occupancy_type_conflict: [group_parcel]
   # Which admin units the region-wide bundles cover, and which units feed
   # them. Named in the recipe rather than passed at run time so `snakemake`
   # with no admin_ids builds and ships every region unattended -- and so a

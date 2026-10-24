@@ -100,9 +100,11 @@ def test_withholding_finds_the_restricted_roll(units):
     assert found['cells']['improvement_value'].iloc[0]
 
 
-def test_a_verbatim_units_label_would_have_cleared_it():
+def test_a_verbatim_units_label_no_longer_clears_it():
     # The contrast the normalization exists for: copied as written, the
-    # label reads as a different source and exonerates the cell.
+    # label read as a different source and exonerated the cell. Since
+    # 2026-10-23 only a token naming a declared source id exonerates, so
+    # an unnormalized label is withheld too.
     frame = pd.DataFrame(
         {
             'admin3_id': ['US-NC-EDG'],
@@ -111,7 +113,7 @@ def test_a_verbatim_units_label_would_have_cleared_it():
         }
     )
     found = find_restricted(frame, [EDGECOMBE], 'admin3_id')
-    assert 'improvement_value' not in found['cells']
+    assert found['cells']['improvement_value'].iloc[0]
 
 
 def test_an_upstream_sidecar_still_wins_over_the_row_source(monkeypatch):
