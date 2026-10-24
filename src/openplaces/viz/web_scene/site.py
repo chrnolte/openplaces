@@ -7,6 +7,7 @@ The published counterpart of `local` (maintainer, 2026-10-18)::
     python -m openplaces.viz.web_scene.site landing [--no-thumbs]
     python -m openplaces.viz.web_scene.site refresh
     python -m openplaces.viz.web_scene.site publish --all --go
+    python -m openplaces.viz.web_scene.site access --go
 
 ``build`` writes each place's page (15 km) and phone page (7 km) from
 the delivered bundles into ``<share>/web/values``, or a single page of
@@ -21,7 +22,10 @@ built page without rebuilding data (for a change to the viewer alone).
 word: each phone page before the desktop page that sends phones to it,
 one place every `--gap` seconds (Bluehost blocks bursts of SSH
 connections), then the landing page, so no card links to a page that
-is not up yet. Without ``--go`` it is a dry run.
+is not up yet. Without ``--go`` it is a dry run. Every page goes up
+behind the site's token gate (`web_scene.access_htaccess`); ``access``
+uploads that gate alone to every folder online, after `tokens add` or
+`tokens revoke`.
 
 The places, their order and their centers (or units) are `places.yaml`.
 """
@@ -37,6 +41,7 @@ from pathlib import Path
 from openplaces.config import cfg
 from openplaces.viz.web_scene import (
     build_web_scene,
+    deploy_access,
     deploy_landing,
     deploy_web_scene,
     known_issues,
@@ -153,7 +158,7 @@ def refresh() -> None:
         p for p in site_root().iterdir() if (p / 'scene.json').exists()
     ):
         for item in Path(STATIC_DIR).iterdir():
-            if item.name in ('landing.html', 'methods.html'):
+            if item.name in ('landing.html', 'methods.html', 'access.html'):
                 continue
             target = '.htaccess' if item.name == 'htaccess' else item.name
             (folder / target).write_bytes(item.read_bytes())
@@ -190,7 +195,9 @@ def main(argv=None) -> None:
     config = load_places()
     by_slug = {p['slug']: p for p in config['places']}
     parser = argparse.ArgumentParser(prog='python -m openplaces.viz.web_scene.site')
-    parser.add_argument('action', choices=['build', 'landing', 'refresh', 'publish'])
+    parser.add_argument(
+        'action', choices=['build', 'landing', 'refresh', 'publish', 'access']
+    )
     parser.add_argument('places', nargs='*', help=', '.join(by_slug))
     parser.add_argument('--all', action='store_true', help='every place in places.yaml')
     parser.add_argument('--no-thumbs', action='store_true', help='landing: keep photos')
@@ -212,6 +219,8 @@ def main(argv=None) -> None:
         landing(config, thumbnails=not args.no_thumbs)
     elif args.action == 'refresh':
         refresh()
+    elif args.action == 'access':
+        deploy_access(site_root(), go=args.go)
     else:
         publish(chosen, go=args.go, gap_s=args.gap)
 
