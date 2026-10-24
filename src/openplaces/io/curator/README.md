@@ -185,7 +185,11 @@ Steps are organized by the nature of the transformation:
   hedonic model wants the sale-date values, and where a county renumbered
   its parcels the panel is the only thing that reaches its older sales at
   all (Pasco and Volusia FL went from 0.03 to 0.998 of pre-2017 sales
-  carrying a land value). `require_panel` makes it a no-op where a county
+  carrying a land value). Florida's patch joins on `parcel_id_local` with
+  `normalize_key: false`: both sides mint it by one rule per county and era
+  (the ranged rows of the id-overrides tables), which is what carries a
+  renumbering or a respelling across roll years, and comparing it stripped
+  would merge `1|23` with `12|3`. `require_panel` makes it a no-op where a county
   has no roll or **only one vintage**, which is nearly everywhere: Florida's
   DOR roll keeps 24 yearly vintages and the other 104 assessor sources are
   one each. One vintage is deliberately not a panel, since joining a sale to

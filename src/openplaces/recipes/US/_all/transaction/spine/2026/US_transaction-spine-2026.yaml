@@ -143,6 +143,14 @@ pipeline:
       # on property rows with no parcel key of their own.
       - instrument_number
       - property_id_assessor
+    # Compared without punctuation: Florida's DOR respelled every parcel
+    # number between two adjacent SDF years in 23 counties (dashes in
+    # one file, none in the next), and both copies of each deed then
+    # survived this step and were folded as a deed whose parcels
+    # disagree, losing its parcel number (`no_key` in curate). An exact
+    # comparison of a deterministic rewrite, not a looser match.
+    normalize_columns:
+      - parcel_id_assessor
 
   # The deed behind each row, spelled per source: Florida records a
   # clerk instrument number for newer sales and an official-record book

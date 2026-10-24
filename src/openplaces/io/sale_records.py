@@ -73,7 +73,9 @@ def derive_sale_period(frame: pd.DataFrame, date_column: str = 'recorded_date'):
     return frame
 
 
-def duplicate_document_mask(frame: pd.DataFrame, key_columns: list) -> pd.Series:
+def duplicate_document_mask(
+    frame: pd.DataFrame, key_columns: list, normalize_columns: list | None = None
+) -> pd.Series:
     """True on every row after the first with the same *key_columns* values.
 
     Sale sources published as overlapping rolling windows (FL DOR's SDF)
@@ -85,9 +87,28 @@ def duplicate_document_mask(frame: pd.DataFrame, key_columns: list) -> pd.Series
     strings with one placeholder for missing through the frame's own
     hashed `duplicated`, which is vectorized: a row-wise join of the key
     took 83 of Lake County FL's 111 s transaction curate (2026-09-29).
+
+    *normalize_columns* names key columns compared without punctuation
+    and case (`normalized_text`, upper-cased), so that a number spelled
+    `01-18-24` in one file and `011824` in the next still reads as one.
+    Florida's DOR rewrote the punctuation of every parcel number between
+    two adjacent SDF years in 23 counties while the clerk instrument,
+    price and date stayed the same; compared as spelled, both copies of
+    each deed survived, and the multi-parcel fold then blanked the
+    deed's parcel number because its two copies "disagreed". Measured
+    2026-10-24 on US-FL-BA: in sale year 2024, the raw spelling differed
+    on 9,111 of 9,111 deeds listed in both files, the stripped number on
+    0.2%. The comparison is still exact, on a deterministic rewrite of
+    the string: no tolerance, no similarity score.
     """
-    key = frame.reindex(columns=list(key_columns)).astype('string').fillna('NA')
-    return key.duplicated(keep='first')
+    key = frame.reindex(columns=list(key_columns)).astype('string')
+    for column in normalize_columns or []:
+        if column in key.columns:
+            stated = key[column].notna()
+            key[column] = (
+                normalized_text(key[column]).astype('string').str.upper().where(stated)
+            )
+    return key.fillna('NA').duplicated(keep='first')
 
 
 def derive_document_id(

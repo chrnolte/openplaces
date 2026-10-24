@@ -81,3 +81,43 @@ def test_null_in_key_columns_does_not_collapse_distinct_rows():
     )
     out = dedup_transactions(_state(df), key_columns=key).curated
     assert len(out) == 2
+
+
+def _respelled_pair(second_id: str) -> pd.DataFrame:
+    # One deed in two adjacent SDF year files; the second file writes the
+    # parcel number with other punctuation (fabricated values).
+    return pd.DataFrame(
+        {
+            'parcel_id_assessor': ['12-34-56-0007-000-00080', second_id],
+            'sale_year': [2021, 2021],
+            'sale_month': [6, 6],
+            'price': [250000, 250000],
+            'sale_book': ['100', '100'],
+            'sale_page': ['7', '7'],
+            'source_file': ['2021', '2022'],
+        }
+    )
+
+
+def test_respelled_parcel_number_is_one_document_when_normalized():
+    df = _respelled_pair('123456000700000080')
+    out = dedup_transactions(
+        _state(df), key_columns=KEY, normalize_columns=['parcel_id_assessor']
+    ).curated
+    assert out['source_file'].tolist() == ['2021']
+    # The surviving row keeps its own spelling; nothing is rewritten.
+    assert out['parcel_id_assessor'].iloc[0] == '12-34-56-0007-000-00080'
+
+
+def test_respelled_parcel_number_survives_twice_without_normalization():
+    df = _respelled_pair('123456000700000080')
+    assert len(dedup_transactions(_state(df), key_columns=KEY).curated) == 2
+
+
+def test_normalization_does_not_merge_different_parcels():
+    # Exact after the rewrite: a different number is a different row.
+    df = _respelled_pair('123456000700000081')
+    out = dedup_transactions(
+        _state(df), key_columns=KEY, normalize_columns=['parcel_id_assessor']
+    ).curated
+    assert len(out) == 2

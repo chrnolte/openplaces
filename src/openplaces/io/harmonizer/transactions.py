@@ -71,7 +71,9 @@ def derive_sale_period(
 
 
 @_register('dedup_transactions')
-def dedup_transactions(state: HarmonizeState, key_columns: list) -> HarmonizeState:
+def dedup_transactions(
+    state: HarmonizeState, key_columns: list, normalize_columns: list | None = None
+) -> HarmonizeState:
     """Drop rows that are the same recorded document, kept once.
 
     What it drops is unambiguous, an exact repeat of one document from
@@ -85,11 +87,17 @@ def dedup_transactions(state: HarmonizeState, key_columns: list) -> HarmonizeSta
         Columns whose combination identifies one recorded document. The
         first occurrence of a repeated combination is kept. A column the
         table lacks reads as missing on every row.
+    normalize_columns : list of str, optional
+        Key columns compared without punctuation and case, for a source
+        that respells one number between its files
+        (`io.sale_records.duplicate_document_mask`).
     """
     spine = state.spine
     if spine is None:
         return state
-    repeated = sale_records.duplicate_document_mask(spine, key_columns)
+    repeated = sale_records.duplicate_document_mask(
+        spine, key_columns, normalize_columns
+    )
     state.spine = spine.loc[~repeated.to_numpy()].copy()
     if state.verbose:
         print(f'  dedup_transactions: dropped {int(repeated.sum()):,} duplicate rows')

@@ -640,7 +640,11 @@ The step sub-modules:
   conveyed as link tables, at the end of `US_transaction-spine-2026`, in
   this order: `derive_sale_period`, `dedup_transactions` (exact repeats of
   one document from overlapping source windows; 15.4% of Lake County FL's
-  rows, all deeds, measured 2026-09-29), `derive_document_id`,
+  rows, all deeds, measured 2026-09-29; `normalize_columns` compares named
+  key columns without punctuation, because Florida's DOR respelled every
+  parcel number between two adjacent files in 23 counties, and the two
+  copies of each deed then folded as a deed whose parcels disagree and lost
+  their parcel number), `derive_document_id`,
   `count_parcels_per_document`, `aggregate_multi_parcel_sales` (one row per
   deed, keeping only what every member states alike: price, dates,
   document, kind; a parcel number, address or key the members state for

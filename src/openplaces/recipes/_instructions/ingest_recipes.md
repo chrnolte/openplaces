@@ -197,7 +197,12 @@ bundled table (or the `property` / `transaction` table beside it). A row's
 `partitions` column (`2024-`, `-2023`, `2019-2021`) limits it to those
 download partitions and wins over the county's row without one: Orange
 County FL's DOR roll and sales files reordered the id with the 2024 roll,
-so each era keeps its own conversion. Full treatment of the three failure modes — misfitting pattern,
+so each era keeps its own conversion. An earlier era's row reproduces
+today's key from the old spelling, never the reverse, because today's
+key is what the parcel layer carries: a raw `^...$` regex with fixed
+widths reads a bare old id into today's groups, and `strip_separators: 1`
+lets today's rule read a punctuated old id (seven Florida counties,
+2026-10-24). Full treatment of the three failure modes — misfitting pattern,
 degenerate source column, empty column — is in
 [`acquiring_sources.md`](acquiring_sources.md#phase-5--the-join-key-parcel_id_local).
 

@@ -23,3 +23,10 @@ US-FL-OR,fldor,parcel,Dx,string_lengths: 2 2 2 4 2 3 & switch: 0|2 & skip_empty:
 US-FL-HO,fldor,parcel,,simple,1,,
 US-FL-MR,fldor,parcel,,simple,1,,
 US-FL-LA,fldor,parcel,,simple,1,,
+US-FL-AL,fldor,parcel,^([0-9A-Z]+) ([0-9A-Z]+) ([0-9A-Z]+)$,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,1,,-2014
+US-FL-BK,fldor,parcel,,simple,,,2014-2018
+US-FL-OS,fldor,parcel,Sx,strip_separators: 1 & string_lengths: 1 2 2 2 3 4 4 & skip_empty: 1,1,,-2011
+US-FL-PI,fldor,parcel,^([0-9A-Z]{2})([0-9]{2})([0-9]{2})([0-9]{5})([0-9A-Z]{3})([0-9A-Z]{4})$,switch: 0|2 & skip_empty: 1,,,-2007
+US-FL-PU,fldor,parcel,^([0-9A-Z]{2})([0-9A-Z]{2})([0-9A-Z]{2})([0-9A-Z]{4})([0-9A-Z]{4})([0-9A-Z]{4})$,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1,,,-2008
+US-FL-SA,fldor,parcel,Dx,strip_separators: 1 & split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,1,,-2012
+US-FL-SJ,fldor,parcel,Dx,strip_separators: 1 & string_lengths: 2 5 3 & skip_empty: 1,,,-2006

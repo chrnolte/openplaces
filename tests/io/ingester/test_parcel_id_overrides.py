@@ -14,6 +14,7 @@ the right county's conversion to each row.
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from openplaces.core.schema import AdminId, Entity
 from openplaces.io.ingester.table_ids import partition_in_range
@@ -209,3 +210,71 @@ def test_orange_county_roll_years_from_2024_take_the_parcel_layers_order():
                 'parcel_id_local'
             ].iloc[0]
     assert set(keys.values()) == {'27|20|1|5'}
+
+
+# One fabricated parcel per county, written as each era of the DOR's
+# files writes it, and the roll years those eras cover. Every spelling
+# must mint the key of the newest era, which is the one the parcel layer
+# is keyed on. Measured 2026-10-24 on US-FL: for each of these counties
+# the old era's real ids, read by the ranged row, gave the new era's
+# key on every account present in both years (82,603 to 426,014 each).
+ERA_SPELLINGS = {
+    'US-FL-AL': {'2014': '01234 056 078', '2015': '01234-056-078'},
+    'US-FL-BK': {
+        '2013': '123A04000500060007',
+        '2016': '12-3A-04-0005-0006-0007',
+        '2019': '123A04000500060007',
+    },
+    'US-FL-OS': {'2011': '01-23-45-0006-0070-0800', '2012': '012345000600700800'},
+    'US-FL-PI': {'2007': '012345000060070008', '2008': '01 23 45 00006 007 0008'},
+    'US-FL-PU': {'2008': '012345000600700800', '2009': '01-23-45-0006-0070-0800'},
+    'US-FL-SA': {'2012': '0123-45-0678', '2013': '0123450678'},
+    'US-FL-SJ': {'2006': '012345 0678', '2007': '0123450678'},
+}
+
+
+@pytest.mark.parametrize('admin_id', sorted(ERA_SPELLINGS))
+def test_each_era_of_a_respelled_county_mints_todays_key(admin_id):
+    spellings = ERA_SPELLINGS[admin_id]
+    keys = {}
+    for entity in (
+        Entity('property', 'fldor', '2026'),
+        Entity('transaction', 'fldor', '2026'),
+    ):
+        for year, parcel_id in spellings.items():
+            ti = TableIngester(
+                {
+                    'admin_id': AdminId('US-FL'),
+                    'entity': entity,
+                    'parcel_id_local': {
+                        'source': 'parcel_id_assessor',
+                        'kind': 'parcel',
+                    },
+                },
+                {'partition_id_to_download': year},
+                {'admin_id_to_process': admin_id},
+                Path('.'),
+                None,
+            )
+            frame = pd.DataFrame({'parcel_id_assessor': [parcel_id]})
+            keys[(str(entity.entity_type), year)] = ti._add_parcel_id_local(frame)[
+                'parcel_id_local'
+            ].iloc[0]
+    assert len(set(keys.values())) == 1, keys
+    assert pd.notna(next(iter(keys.values())))
+
+
+def test_strip_separators_reads_an_old_punctuated_spelling():
+    from openplaces.geo.ids import convert_parcel_id
+
+    bare = convert_parcel_id(
+        pd.Series(['012345000600700800']),
+        pattern='Sx',
+        conv_code='string_lengths: 1 2 2 2 3 4 4 & skip_empty: 1',
+    )
+    punctuated = convert_parcel_id(
+        pd.Series(['01-23-45-0006-0070-0800']),
+        pattern='Sx',
+        conv_code='strip_separators: 1 & string_lengths: 1 2 2 2 3 4 4 & skip_empty: 1',
+    )
+    assert bare.iloc[0] == punctuated.iloc[0]

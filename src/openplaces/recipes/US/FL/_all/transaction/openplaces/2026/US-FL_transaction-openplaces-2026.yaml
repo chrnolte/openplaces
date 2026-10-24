@@ -229,7 +229,13 @@ pipeline_patch:
         folded deed rows from aggregate_multi_parcel_sales
       recipe_id: US-FL_property-fldor-2026
       require_panel: true
-      join_key: parcel_id_assessor
+      # The minted key, not the assessor's spelling: both sides mint it
+      # by one rule per county and era (`US_property_id-overrides.csv`,
+      # `US_transaction_id-overrides.csv`), which is what carries a
+      # county's renumbering and respelling across roll years, and a
+      # folded deed keeps it where its copies agree. Compared exactly.
+      join_key: parcel_id_local
+      normalize_key: false
       date_column: sale_year
       vintage_column: tax_year
       direction: backward
@@ -250,7 +256,8 @@ pipeline_patch:
       phase_override: the forward pass of the gather above, same reason
       recipe_id: US-FL_property-fldor-2026
       require_panel: true
-      join_key: parcel_id_assessor
+      join_key: parcel_id_local
+      normalize_key: false
       date_column: sale_year
       vintage_column: tax_year
       direction: forward
