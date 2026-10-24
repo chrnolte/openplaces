@@ -202,6 +202,70 @@ def clean_polygons(gdf):
     return gdf
 
 
+def dissolve_by_key(gdf, key: str):
+    """Fold the rows that share a source key into one row each.
+
+    For a source that draws one record as several polygon rows and
+    repeats the record's values on each (Florida DEP's state-owned lands
+    layer repeats one acquisition's price on every polygon of it). The
+    folded row's geometry is the union of its rows' polygons. Every
+    other column keeps its value only where all rows of the key state
+    the same one, a missing value counting as a value: a column the rows
+    disagree on is left missing, never taken from one of them and never
+    filled from another row of the key.
+
+    Only the source's own key groups rows. Nothing is grouped by
+    location, contiguity or by values the rows happen to share.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Rows to fold.
+    key : str
+        Column naming the record each row belongs to. Rows where it is
+        missing, and rows alone on their key, pass through unchanged.
+
+    Returns
+    -------
+    tuple of (geopandas.GeoDataFrame, int, int, pandas.Series)
+        The frame with one row per key (each folded row keeps the index
+        label of the key's first row, and rows keep their input order),
+        the number of rows folded, the number of rows they became, and
+        per column the number of keys whose rows disagreed, so that the
+        column was left missing on the folded row.
+    """
+    if key not in gdf.columns:
+        raise ValueError(f'dissolve_by_key: no column {key!r} to dissolve by.')
+    geometry = gdf.geometry.name
+    shared = gdf[key].notna() & gdf[key].duplicated(keep=False)
+    if not shared.any():
+        return gdf, 0, 0, pd.Series(dtype='int64')
+    members = gdf.loc[shared]
+    groups = members.groupby(key, sort=False)
+    others = [c for c in members.columns if c not in (key, geometry)]
+    # nunique with dropna=False counts a missing value as a value, so a
+    # key whose rows are half empty does not agree (L25: no filling
+    # from a co-occurring value of the same key).
+    agree = groups[others].nunique(dropna=False).eq(1)
+    first = members.loc[~members[key].duplicated(keep='first')]
+    folded = first[others].set_axis(first[key].to_numpy()).copy()
+    n_disagree = (~agree).sum().astype('int64')
+    for column in others:
+        disagree = ~agree[column].reindex(folded.index).to_numpy()
+        if disagree.any():
+            folded[column] = folded[column].mask(disagree)
+    unions = groups[geometry].agg(lambda s: shapely.union_all(s.to_numpy()))
+    folded[key] = folded.index
+    folded[geometry] = unions.reindex(folded.index).to_numpy()
+    folded.index = pd.Index(first.index, name=gdf.index.name)
+    kept = gdf.loc[~shared]
+    folded = gpd.GeoDataFrame(folded[list(gdf.columns)], geometry=geometry, crs=gdf.crs)
+    result = pd.concat([kept, folded])
+    result = result.loc[gdf.index[gdf.index.isin(result.index)]]
+    result = gpd.GeoDataFrame(result, geometry=geometry, crs=gdf.crs)
+    return result, int(shared.sum()), len(folded), n_disagree
+
+
 def get_areas(gdf, unit='ha', crs='epsg:6933', mask=None):
     """Compute areas of polygons in a GeoDataFrame
 

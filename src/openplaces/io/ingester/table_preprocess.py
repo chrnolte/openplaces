@@ -16,6 +16,7 @@ from openplaces.geo.ids import get_geo_ids
 from openplaces.geo.overlay import overlay_admin_ids, prefer_located_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
+    dissolve_by_key,
     fix_polygons,
     resolve_overlapping_polygons,
 )
@@ -240,6 +241,27 @@ class _TablePreprocessMixin:
                 df = fix_polygons(df)
             self.timer.mark(f'Clean geometries{_suffix}')
 
+            # One row per source record where the source draws a record
+            # as several polygon rows (geo.polygon.dissolve_by_key).
+            # Before the admin overlay, so that a record is placed in
+            # one unit as a whole rather than polygon by polygon.
+            if self.recipe.get('dissolve_by'):
+                df, n_rows, n_records, disagree = dissolve_by_key(
+                    df, self.recipe['dissolve_by']
+                )
+                if self.verbose:
+                    # Only the columns the output keeps: raw source
+                    # columns (a polygon's own area) differ by nature
+                    # and are dropped before saving.
+                    kept = set(self.recipe.get('columns') or {}) | set(cols_added)
+                    disagree = disagree[disagree.index.isin(kept) & disagree.gt(0)]
+                    print(
+                        f'  dissolve_by: {n_rows:,d} rows became {n_records:,d} '
+                        'records; left missing where the rows of a record '
+                        f'disagreed: {disagree.to_dict() or "none"}.'
+                    )
+                self.timer.mark(f'Dissolve by key{_suffix}')
+
             if self.recipe.get('resolve_overlaps', False):
                 df = clean_polygons(df)
                 keep = self.recipe.get('keep_overlapping_polygons', None)
@@ -340,6 +362,18 @@ class _TablePreprocessMixin:
             else:
                 admin_specs = self.recipe['overlay_admin_ids']
                 admin_geometries = self.download_partition['admin_geometries']
+            # The admin polygons are kept in the source file's CRS,
+            # for a spatial mask read; the rows were reprojected to
+            # cfg.crs on read. A source in another CRS (Florida
+            # DEP's layer, EPSG:6439) otherwise joins centroids in
+            # degrees against polygons in meters, and every row
+            # loses its unit.
+            if (
+                isinstance(df, gpd.GeoDataFrame)
+                and df.crs is not None
+                and admin_geometries.crs != df.crs
+            ):
+                admin_geometries = admin_geometries.to_crs(df.crs)
 
             # `admin_specs` is the whole `process_by` block in the
             # spatial-mask case, so it carries chunking keys that are not

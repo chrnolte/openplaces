@@ -116,7 +116,12 @@ def _reaches_schema(recipe: dict) -> bool:
             'address_number',
             'lot_id_local',
         }
-        return bool(columns & conveyed)
+        if columns & conveyed:
+            return True
+        # Or the conveyed land's own outline, placed in its county by
+        # the admin overlay, which reaches parcels by overlay
+        # (`link_transactions_by_overlap`): Florida DEP's acquisitions.
+        return bool(recipe.get('overlay_admin_ids'))
     if columns & KEY_ATTRIBUTES or any(
         c.endswith('_id') or c.endswith('_id_local') for c in columns
     ):

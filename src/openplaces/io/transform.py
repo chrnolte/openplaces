@@ -134,6 +134,32 @@ def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
     return values.where(values >= 100, values + century)
 
 
+def _to_datetime(
+    x: pd.Series, format: str | None = None, latest_year: int | None = None
+) -> pd.Series:
+    """Parse dates; unparseable values become missing.
+
+    Parameters
+    ----------
+    x : pd.Series
+        Values to parse.
+    format : str, optional
+        A strptime format (`'%d-%b-%y'`). Without it pandas infers one.
+    latest_year : int, optional
+        For a two-digit year (`%y`): a date parsed after this year is
+        moved back a century. strptime reads 00-68 as 2000-2068, so a
+        layer of closings since the 1930s written `DD-MON-YY` reads a
+        1950 closing as 2050; with `latest_year` set to the year the
+        layer was extracted it reads 1950. A 1925 closing still reads
+        2025, which no rule on the text alone can tell apart.
+    """
+    parsed = pd.to_datetime(x, format=format, errors='coerce')
+    if latest_year is not None:
+        late = (parsed.dt.year > latest_year).fillna(False)
+        parsed = parsed.mask(late, parsed - pd.DateOffset(years=100))
+    return parsed
+
+
 def _set_null(x: pd.Series) -> pd.Series:
     """Empty a column, keeping its dtype wherever the dtype can hold NA.
 
@@ -169,7 +195,7 @@ UNARY_OPS: dict[str, Callable] = {
     # Rounds away float noise before a code packed into decimals is
     # split (a bath count published as 2.1 for two full and one half).
     'round': lambda x, decimals=0: pd.to_numeric(x, errors='coerce').round(decimals),
-    'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
+    'to_datetime': _to_datetime,
     # Esri serializes a date field as epoch milliseconds in f=geojson,
     # which to_datetime reads as nanoseconds and places in 1970. Dates
     # before 1970 arrive negative and are kept.
