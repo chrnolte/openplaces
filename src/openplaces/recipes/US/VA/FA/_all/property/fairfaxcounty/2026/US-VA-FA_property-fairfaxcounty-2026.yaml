@@ -1,6 +1,8 @@
 # Recipe: Fairfax County, VA real estate parcels roll (Department of
-# Tax Administration), the roll its dwelling, additions and land
-# tables supplement.
+# Tax Administration), the roll its dwelling, additions, land and
+# values tables supplement. This table carries no assessed value:
+# land, improvement and total come from the values table
+# (US-VA-FA_property-fairfaxcounty-2026_values).
 #
 # SOURCE. "Real Estate - Parcels Data" on the County GIS open-data
 # Hub (OpenData_A6 layer 1), bulk CSV export, 370,485 rows, 58.9 MB,
