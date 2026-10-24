@@ -77,3 +77,14 @@ pipeline_patch:
       parcel_id_keys: [parcel_id_admin2]
       property_key: property_id_assessor
       document_key: sale_document_ref
+
+  # The address points a parcel link is checked against: MassGIS's
+  # master address points first (US-MA_dwelling-massgis-2026, the
+  # state's 911 address list), Overture's where a town has none
+  # (Boston, which MassGIS leaves to the city). The first with points
+  # for the town is used, never both.
+  # Measured 2026-10-24 on US-MA: in memory over the 70 towns with a parcel spine, of 764,062 LA3 parcel links 73.5% agree, 18.8% no_point_match, 3.6% other_parcel, 3.0% no_sale_address, 1.1% no_points; 68.8% agree from 2019 on; vacant use codes 40.0% agree, 38.1% no_sale_address, 10.1% no_points.
+  # Measured 2026-10-24 on US-MA: on the same links Overture's points give the same label as MassGIS's on 99.4% (73.3% agree).
+  - set: check_parcel_links_by_address_points
+    params:
+      dwelling_recipe_ids: [US-MA_dwelling-massgis-2026, dwelling-overture-2025]

@@ -840,3 +840,230 @@ def link_transactions_by_overlap(
             f'sales ({spine[output_column].value_counts().to_dict()})'
         )
     return state
+
+
+#: Column `check_parcel_links_by_address_points` writes on each
+#: transaction-to-parcel link row, and its fixed values.
+ADDRESS_POINTS_CHECK = 'address_points_check'
+ADDRESS_POINTS_AGREE = 'agree'
+ADDRESS_POINTS_OTHER_PARCEL = 'other_parcel'
+ADDRESS_POINTS_NO_MATCH = 'no_point_match'
+ADDRESS_POINTS_NONE = 'no_points'
+ADDRESS_POINTS_NO_SALE_ADDRESS = 'no_sale_address'
+
+
+def address_points_check(
+    links: pd.DataFrame,
+    sale_keys: pd.Series,
+    parcel_keys: pd.Series,
+) -> pd.Series:
+    """Label each sale-to-parcel link with what the address points say.
+
+    Parameters
+    ----------
+    links : pandas.DataFrame
+        Link rows with `transaction_id` and `parcel_id`.
+    sale_keys : pandas.Series
+        The sale's address keys, indexed by `transaction_id`; a folded
+        deed has one entry per member row, and any of them may agree.
+    parcel_keys : pandas.Series
+        The keys of the address points inside each parcel, one entry per
+        (parcel, point) pair, indexed by `parcel_id`.
+
+    Returns
+    -------
+    pandas.Series
+        One fixed label per link row, in the order of *links*:
+        `no_sale_address` where the sale has no key, `no_points` where
+        the parcel holds no keyed point, `agree` where a sale key is a
+        key of a point inside the parcel, `other_parcel` where it is
+        only a key of points in other parcels, and `no_point_match`
+        where it is the key of no point at all.
+    """
+    sale = sale_keys.dropna().astype('string')
+    sale_sets: dict = {}
+    for tid, key in zip(sale.index, sale, strict=True):
+        sale_sets.setdefault(str(tid), set()).add(key)
+    keyed = parcel_keys.dropna().astype('string')
+    parcel_sets: dict = {}
+    for pid, key in zip(keyed.index, keyed, strict=True):
+        parcel_sets.setdefault(pid, set()).add(key)
+    any_parcel = set(keyed)
+    labels = []
+    for tid, pid in zip(
+        links[TRANSACTION_ID].astype('string'), links['parcel_id'], strict=True
+    ):
+        keys = sale_sets.get(tid)
+        if not keys:
+            labels.append(ADDRESS_POINTS_NO_SALE_ADDRESS)
+            continue
+        inside = parcel_sets.get(pid)
+        if not inside:
+            labels.append(ADDRESS_POINTS_NONE)
+        elif keys & inside:
+            labels.append(ADDRESS_POINTS_AGREE)
+        elif keys & any_parcel:
+            labels.append(ADDRESS_POINTS_OTHER_PARCEL)
+        else:
+            labels.append(ADDRESS_POINTS_NO_MATCH)
+    return pd.Series(labels, index=links.index, dtype='string')
+
+
+def _parcel_point_keys(points, parcels, admin_id) -> pd.Series:
+    """The address keys of the points inside each parcel's polygon.
+
+    One entry per (parcel, point) pair, indexed by parcel id. Points are
+    keyed as the spine keys a sale (`reconcile_addresses_df`, then
+    `add_address_id_local`), so equal addresses give equal keys.
+    """
+    import geopandas as gpd
+
+    from openplaces.io.harmonizer.addresses import (
+        add_address_id_local,
+        reconcile_addresses_df,
+    )
+
+    # Positional index: only the row order matters here, and a point
+    # table's ids need not be unique (an index that repeated aborted
+    # the address formatting's assignment once, on US-MA-BOS).
+    frame = pd.DataFrame(points[['address_number', 'address_street']]).reset_index(
+        drop=True
+    )
+    frame = reconcile_addresses_df(
+        frame,
+        admin_id,
+        False,
+        sources={
+            'points': {
+                'address_number': 'address_number',
+                'address_street': 'address_street',
+            }
+        },
+        number_output_col='address_number',
+    )
+    add_address_id_local(frame, admin_id, output_column_city=None)
+    keyed = gpd.GeoDataFrame(
+        {'key': frame['address_id_local'].to_numpy()},
+        geometry=points.geometry.to_numpy(),
+        crs=points.crs,
+    )
+    keyed = keyed[keyed['key'].notna()]
+    lots = gpd.GeoDataFrame(geometry=parcels.geometry.to_numpy(), crs=parcels.crs)
+    lots['parcel_id'] = parcels.index.to_numpy()
+    hits = gpd.sjoin(keyed.to_crs(lots.crs), lots, predicate='within')
+    return pd.Series(
+        hits['key'].to_numpy(), index=hits['parcel_id'].to_numpy(), dtype='string'
+    )
+
+
+@_register('check_parcel_links_by_address_points')
+def check_parcel_links_by_address_points(
+    state: HarmonizeState,
+    dwelling_recipe_ids: list[str] | tuple[str, ...] = ('dwelling-overture-2025',),
+    parcel_recipe_id: str = 'US_parcel-spine-2026',
+    address_key: str = 'address_id_local',
+    output_column: str = ADDRESS_POINTS_CHECK,
+) -> HarmonizeState:
+    """State on each parcel link whether the address points confirm it.
+
+    A sale linked to its parcel by a parcel number can also state an
+    address. Each parcel takes the address keys of the address points
+    lying inside its own polygon, and each row of the transaction-to-
+    parcel link table gets one fixed label saying how the sale's
+    address key relates to them (`address_points_check`): the link and
+    the address points agree, the address belongs to another parcel's
+    points, it belongs to no point, the parcel holds no point (most
+    vacant land: an address point marks a building), or the sale states
+    no address.
+
+    Why a label and not a score or a new link: a link is found by one
+    exact rule and keeps that rule's fixed name (`link_method`); a
+    confidence on it, or a link removed when the address disagrees, is
+    what plans/design-limits keeps out (L17, L28). The label is a fact
+    about one pair that a reader may filter on; it enters no combined
+    measure, and the step adds and removes no link. Only points inside
+    the parcel's own polygon count, never a neighbor's (L27), and the
+    point source is the first of *dwelling_recipe_ids* that has points
+    for the unit, in the order given, never a vote between sources
+    (L18).
+
+    Run it after every step that writes the parcel link table: a later
+    step that rebuilds the table drops the column.
+
+    Parameters
+    ----------
+    dwelling_recipe_ids : list of str
+        Address-point recipes, the first with points for the unit wins
+        (a state patch puts its own source first).
+    parcel_recipe_id : str
+        The parcel spine whose link table and polygons are read.
+    address_key : str
+        Spine column holding the sale's address key.
+    output_column : str
+        Link-table column written.
+    """
+    import json
+
+    import pyarrow.parquet as pq
+
+    from openplaces.io.harmonizer.entity_links import ENTITY_LINK_METADATA_KEY
+
+    spine = state.spine
+    if spine is None or spine.empty:
+        return state
+    own_id = get_recipe_id(state.recipe)
+    owner_id = get_link_owner_recipe_id(state.recipe)
+    admin_id = state.admin_id
+    path = get_entity_link_path(owner_id, parcel_recipe_id, admin_id)
+    if not path.exists():
+        return state
+    links = pd.read_parquet(path)
+    if links.empty:
+        return state
+
+    def _load(recipe_id):
+        try:
+            frame = get_entities(recipe_id, admin_id, geom=True, missing='ignore')
+        except (FileNotFoundError, OSError, KeyError, ValueError):
+            return None
+        return frame if frame is not None and len(frame) else None
+
+    points = next((p for p in map(_load, dwelling_recipe_ids) if p is not None), None)
+    parcels = _load(parcel_recipe_id)
+    parcel_keys = pd.Series(dtype='string')
+    if (
+        points is not None
+        and parcels is not None
+        and {'address_number', 'address_street'} <= set(points.columns)
+    ):
+        parcel_keys = _parcel_point_keys(points, parcels, admin_id)
+
+    rows = _rows_to_link(state, [address_key])
+    sale_keys = (
+        rows[address_key] if address_key in rows.columns else pd.Series(dtype='string')
+    )
+    links[output_column] = address_points_check(links, sale_keys, parcel_keys)
+
+    footer = pq.read_schema(path).metadata or {}
+    raw = footer.get(ENTITY_LINK_METADATA_KEY.encode())
+    step_config = dict(json.loads(raw).get('step_config') or {}) if raw else {}
+    step_config[output_column] = {
+        'dwelling_recipe_ids': list(dwelling_recipe_ids),
+        'address_key': address_key,
+    }
+    write_entity_link(
+        path,
+        links,
+        writer_recipe_id=own_id,
+        finer_recipe_id=owner_id,
+        coarser_recipe_id=parcel_recipe_id,
+        admin_id=admin_id,
+        step_config=step_config,
+        stamped_recipe_ids=(parcel_recipe_id,),
+    )
+    if state.verbose:
+        print(
+            '  check_parcel_links_by_address_points: '
+            f'{links[output_column].value_counts().to_dict()}'
+        )
+    return state

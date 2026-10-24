@@ -437,6 +437,52 @@ def test_resolve_where_ands_onto_an_existing_clause(monkeypatch):
     assert resolved == "(LOT_TYPE = 2) AND (countyfips = '05101')"
 
 
+def test_resolve_where_takes_a_crosswalk_code_unquoted(monkeypatch):
+    """A town number from a sidecar, written as a number: a server can
+    reject a quoted value on an integer column."""
+    import openplaces.recipe as recipe_module
+
+    monkeypatch.setattr(
+        recipe_module,
+        'get_recipe_by_id',
+        lambda *a, **k: pd.DataFrame(
+            {'admin3_id': ['US-XX-AAA', 'US-XX-BBB'], 'code': ['7', '12']}
+        ),
+    )
+    resolved = scraper._resolve_where(
+        '1=1',
+        admin_id_to_download='US-XX-BBB',
+        admin_key_column=None,
+        admin_key_transform=None,
+        where_admin_column='TOWN_NUMBER',
+        admin_key_crosswalk='US-XX_fabricated-crosswalk',
+        where_admin_numeric=True,
+    )
+    assert resolved == 'TOWN_NUMBER = 12'
+
+
+def test_resolve_where_numeric_refuses_text(monkeypatch):
+    import openplaces.recipe as recipe_module
+
+    monkeypatch.setattr(
+        recipe_module,
+        'get_recipe_by_id',
+        lambda *a, **k: pd.DataFrame(
+            {'admin3_id': ['US-XX-AAA'], 'code': ['1 OR 1=1']}
+        ),
+    )
+    with pytest.raises(ValueError):
+        scraper._resolve_where(
+            '1=1',
+            admin_id_to_download='US-XX-AAA',
+            admin_key_column=None,
+            admin_key_transform=None,
+            where_admin_column='TOWN_NUMBER',
+            admin_key_crosswalk='US-XX_fabricated-crosswalk',
+            where_admin_numeric=True,
+        )
+
+
 def test_resolve_where_without_column_is_a_no_op():
     assert (
         scraper._resolve_where(

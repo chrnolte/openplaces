@@ -212,3 +212,14 @@ pipeline:
   - step: link_transactions
     parcel_recipe_id: US_parcel-spine-2026
     property_recipe_id: US_property-spine-2026
+
+  # A fact on each parcel link, never a score: does the sale's address
+  # key belong to an address point inside the linked parcel's own
+  # polygon (`address_points_check`: agree, other_parcel,
+  # no_point_match, no_points, no_sale_address)? It adds and removes no
+  # link. Points come from the first recipe listed that has any for the
+  # unit; a state patch puts its own address points first. Last in the
+  # pipeline, after any step that rewrites the link table.
+  - step: check_parcel_links_by_address_points
+    dwelling_recipe_ids: [dwelling-overture-2025]
+    parcel_recipe_id: US_parcel-spine-2026
