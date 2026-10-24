@@ -1,0 +1,147 @@
+# Recipe: PAD-US conservation easement and public land evidence for
+# parcels
+#
+# Overlays each parcel of the parcel spine with two PAD-US 4.1 layers,
+# kept apart: the Easement layer
+# (US_rules-protectedarea-usgs-padus41_easement) and the Fee layer
+# (US_rules-protectedarea-usgs-padus41_fee). Per parcel it writes:
+# - the share under easements and a flag at the threshold below, with
+#   the codes and year established of the easement covering most of it;
+# - the share inside fee land of any owner (protected_area_share), with
+#   the codes and year of the fee polygon covering most of it;
+# - the share inside fee land held by a government owner, and a flag.
+# Written for the valuation lane (openplaces-valuation
+# plans/easement-cost-data-plan.md): the easement sample outside
+# Florida and a protected-land dimension for subgroup tests. Step 1 of
+# plans/land-status-open-space-and-public-land.md. Evidence only: no
+# curate recipe merges it yet.
+#
+# Assignment is a spatial overlay on the parcel geometry alone: no
+# parcel id, address or owner is matched, nothing is scored and no
+# layer votes against another.
+#
+# Overlaps are dissolved (dissolve: true) in all three steps. Both
+# layers overlap themselves: an easement recorded by two sources, a
+# federal tract over a state one. Measured 2026-10-24 on US-NC-TYR
+# (4,250 parcels): summing overlaps instead changes the fee share by
+# more than 0.01 on 146 parcels and puts 164 rather than 150 at or
+# above one half; for easements 5 parcels change, none across one
+# half.
+#
+# Threshold: a parcel is flagged when at least half of its area is
+# covered (min_share 0.5), for easements and public land alike. Why:
+# - PAD-US is compiled from many sources at scales down to about
+#   1:24,000 and is not drawn on the cadastre, so a parcel next to a
+#   preserve picks up a sliver of it. On US-NC-TYR, of 270 parcels
+#   touching an easement, 156 are covered less than 5% and 42 at least
+#   95%; of 554 touching public fee land, 262 less than 5% and 93 at
+#   least 95%. The middle is thin, so the cut sits in a trough.
+# - The count barely depends on where in the trough: easement flags
+#   at 0.25 / 0.5 / 0.75 are 75 / 62 / 53, public land 178 / 144 / 129.
+#   A higher cut would drop partial easements, which commonly leave
+#   out a homestead or building envelope; a lower one starts counting
+#   slivers (95 easement parcels at 0.1).
+# - At one half the attributes written (those of the polygon covering
+#   most of the parcel) describe most of the flagged parcel.
+# The share itself is written, so a test can use another cut.
+#
+# Public land is fee land whose PAD-US owner type is a government:
+# FED, STAT, DIST (regional agency special district), LOC, TERR. Left
+# out: TRIB (American Indian lands, held by sovereign nations, not
+# public agencies), JNT (joint ownership, which can include
+# non-governmental owners), NGO, PVT and UNK. Land trust preserves
+# count in protected_area_share, not in public_land_share.
+#
+# Measured 2026-10-24 on US-NC-TYR (Tyrrell County, 4,250 parcels):
+# 270 touch an easement, 62 flagged (designation of the dominant
+# easement CONE 255 of 270; holder STAT 205); 591 touch fee land, 554
+# public fee land, 144 flagged public land. Year established on 82 of
+# 270 easement parcels (1999 to 2021) and 223 of 591 fee parcels.
+#
+# Coverage: PAD-US is national, so every US county gets values; a
+# unit outside the US gets every column missing.
+#
+# Design limits checked (plans/design-limits/DESIGN_LIMITS.md): L2,
+# L27 (no lots are grouped, merged or made contiguous; each parcel
+# keeps its own row and states what covers it), L3 (no lookup or
+# display keyed by an identifier), L6, L16, L22, L25 (no source is
+# weighted, voted or overwritten, and nothing is filled from another
+# row), L14, L17, L28 (no record matching: a geometric overlay with a
+# fixed threshold, no confidence score, no fuzzy tier), L24 (measured
+# on the parcel itself, not on features within a distance; this
+# recipe fits no value model), L1, L8, L10 (no map, search or
+# database; GeoParquet only). None crossed.
+
+description: >-
+  Parcel share and flag under PAD-US 4.1 conservation easements and
+  public fee land, with the codes of the polygon covering most of it.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: rules-protectedarea
+  source:
+    source_id: usgs
+    license: >-
+      Public domain (ScienceBase item rights: "Public Domain"; FGDC
+      metadata: "These data are in the public domain."). Citation
+      requested via DOI 10.5066/P96WBCHS; no warranty.
+    terms_url: "https://www.sciencebase.gov/catalog/item/652d4fc5d34e44db0e2ee45e"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: padus41
+
+entity_recipe: US_parcel-spine-2026
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: overlay_reference_polygons
+    reference_recipe_id: US_rules-protectedarea-usgs-padus41_easement
+    share_column: conservation_easement_share
+    flag_column: has_conservation_easement
+    min_share: 0.5
+    id_column: conservation_easement_id
+    columns:
+      protected_area_category: conservation_easement_category
+      protected_area_designation_type: conservation_easement_designation_type
+      conservation_easement_holder_type: conservation_easement_holder_type
+      protected_area_manager_type: conservation_easement_manager_type
+      protected_area_gap_status: conservation_easement_gap_status
+      protected_area_public_access: conservation_easement_public_access
+      protected_area_year_established: conservation_easement_year_established
+    suffix: _padus
+    dissolve: true
+    max_vertices: 256
+  - step: overlay_reference_polygons
+    reference_recipe_id: US_rules-protectedarea-usgs-padus41_fee
+    share_column: protected_area_share
+    id_column: protected_area_id
+    columns:
+      protected_area_category: protected_area_category
+      protected_area_designation_type: protected_area_designation_type
+      protected_area_owner_type: protected_area_owner_type
+      protected_area_manager_type: protected_area_manager_type
+      protected_area_gap_status: protected_area_gap_status
+      protected_area_public_access: protected_area_public_access
+      protected_area_year_established: protected_area_year_established
+    suffix: _padus
+    dissolve: true
+    max_vertices: 256
+  - step: overlay_reference_polygons
+    reference_recipe_id: US_rules-protectedarea-usgs-padus41_fee
+    where:
+      column: protected_area_owner_type
+      values: [FED, STAT, DIST, LOC, TERR]
+    share_column: public_land_share
+    flag_column: has_public_land
+    min_share: 0.5
+    suffix: _padus
+    dissolve: true
+    max_vertices: 256

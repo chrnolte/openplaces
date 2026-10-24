@@ -84,6 +84,10 @@ every CAMA field null with a perfectly plausible feature count.
 ## Reading the file
 
 - `layer:` — which layer of a multi-layer gdb/gpkg.
+- `gdb_domain_labels: false` — a File Geodatabase's coded fields are
+  read as their domain labels by default ('Federal'); this keeps the
+  stored codes ('FED'), for a source documented by code or with some
+  coded fields that carry no domain (PAD-US `EHoldTyp`).
 - `encoding:` — set `utf-8-sig` for files with a byte-order mark, or the first
   column name arrives as `﻿OBJECTID`.
 - `csv_dtype:` — `str` for everything, or a `{FIELD: str}` map. **Always set

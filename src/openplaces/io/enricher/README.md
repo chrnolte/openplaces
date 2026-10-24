@@ -48,7 +48,12 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   is read at its own save level (a state file for a town's run); a unit
   outside its scope gets the declared columns all-missing. `withhold`
   leaves a label empty on polygons a recipe names (site names on
-  privately owned land).
+  privately owned land). The share is a sum of overlaps unless the
+  recipe sets `dissolve: true`, which counts land under two overlapping
+  records once (PAD-US easements recorded by two sources); summing such
+  a layer overstates the share. `where` restricts the reference to
+  rows with given codes, and `flag_column` with `min_share` writes a
+  boolean at a threshold the recipe states and justifies.
 - `zonal.py` — `zonal_stats`: per-entity raster statistics over polygon
   geometry, dispatching to one of three backends in `geo/raster.py`
   (`exactextract` for fractional pixel-area weighting, `rasterstats`, or

@@ -98,8 +98,15 @@ class _TableReadMixin:
             self.timer.mark('Read parquet file' + timer_suffix, path=data_path)
         elif suffix == '.gdb':
             try:
+                # `gdb_domain_labels: false` keeps a coded field's codes
+                # (PAD-US 'FED', 'OA'), where the source documents its
+                # vocabulary by code and some fields carry no domain.
                 gdf = read_gdb_with_domains(
-                    data_path, columns=columns, layer=layer, **kwargs
+                    data_path,
+                    columns=columns,
+                    layer=layer,
+                    resolve_domains=self.recipe.get('gdb_domain_labels', True),
+                    **kwargs,
                 )
             except DataSourceError as e:
                 if 'Permission denied' in str(e):
