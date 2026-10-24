@@ -1,0 +1,109 @@
+# Recipe: Fairfax County, VA assessed values (Department of Tax
+# Administration). Supplement of US-VA-FA_property-fairfaxcounty-2026;
+# see that recipe for the terms and the join key.
+#
+# WHY. None of the roll's four other tables carries a value: the
+# parcels table holds PARID, TAXYR, LIVUNIT, LOCATION_DESC,
+# STREET1_DESC, LUC_DESC, UTIL1-3_DESC and ZONING_DESC only, so until
+# this table was added the curated parcels of US-VA-FA had no
+# land_value, improvement_value or total_value column at all.
+#
+# SOURCE. "Tax Administration Real Estate Assessed Values" on the
+# County GIS open-data Hub (ArcGIS Online item
+# 3654d54d471e408cb7ac52799650d832, hosted table, view
+# DTAMGR.PARCEL_GIS_ASMTALL_VIEW, "extracted daily from the DTA
+# system", "one-to-one relationship to parcel data"), bulk CSV export,
+# read 2026-10-23. Fields: PARID, TAXYR, APRLAND, APRBLDG, APRTOT
+# (final appraised land, building and total), PRILAND, PRIBLDG,
+# PRITOT (the prior year's), FLAG4_DESC (tax-exempt code). The older
+# OpenData_A6 layer 2 of the same name is marked "deprecated - do not
+# use" by the County and is not read.
+#
+# DOWNLOAD. The v3 Hub export of this item answers 404 (read
+# 2026-10-23, no cached file there); the v1 download endpoint serves
+# the CSV, with the field aliases as headers ("Parcel Identifier",
+# "Final Appraised Value for Land", ...). While it rebuilds its daily
+# file it answers 202 with a "being generated" JSON: if an ingest
+# fails to parse the CSV, delete that stub and re-ingest.
+#
+# MAPPED. APRLAND land_value, APRBLDG improvement_value, APRTOT
+# total_value, TAXYR tax_year, and the prior year's three as
+# *_prior_year (read by the parcel geospine's roll_values rule only
+# where the current year is empty). NOT MAPPED: FLAG4_DESC (an
+# exemption class; the registry has exempt amounts, not a class).
+#
+# WHAT ONE ROW IS. One PARID, as the roll's: 369,464 rows, 369,464
+# distinct PARIDs. TAXYR is 2026 on every row (the roll's own TAXYR
+# reads 2027), so tax_year here is the year of these values.
+#
+# MEASURED 2026-10-23 on the ingested table: land, improvement and
+# total filled on 100% of rows, > 0 on 97.9%, 94.8% and 97.9%;
+# total = land + improvement on every row; totals sum to 381.5 bn
+# USD (prior year 366.3 bn). 99.97% of its PARIDs are roll PARIDs,
+# and 99.93% of roll PARIDs (99.99% of residential ones) have a row.
+
+description: >-
+  Fairfax County, VA assessed land, building and total values per PARID,
+  current and prior tax year (Tax Administration, Hub CSV).
+
+admin_id: US-VA-FA
+
+entity:
+  entity_type: property
+  source:
+    source_id: fairfaxcounty
+    # Same terms as the roll; see its TERMS note. The item's own
+    # licence field reads "Please review the Fairfax County GIS
+    # Division disclaimer", the page the roll quotes.
+    license: >-
+      Fairfax County copyright: reproduction "for internal or personal use"
+      is granted; "no part of this material may be published or reproduced
+      by any means for commercial sale or use without prior written
+      permission of Fairfax County."
+    terms_url: "https://www.fairfaxcounty.gov/maps/disclaimer"
+    redistribution_restricted: true
+    # Cleared for the research team (maintainer, 2026-10-20): team
+    # bundles keep its values, behind the password-protected team page.
+    team_sharing_permitted: true
+    resale_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=3654d54d471e408cb7ac52799650d832"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/3654d54d471e408cb7ac52799650d832/csv?layers=0"
+  version: 2026
+
+uncompressed_file_name: "fairfax_real_estate_assessed_values.csv"
+
+process_by:
+  admin_level: 3
+
+# The export names its columns by the field aliases (the field each
+# stands for is in the header's SOURCE list).
+csv_dtype:
+  Parcel Identifier: str
+
+columns:
+  parcel_id_assessor: Parcel Identifier
+  land_value: Final Appraised Value for Land
+  improvement_value: Final Appraised Value for Building
+  total_value: Final Appraised Value for Total
+  land_value_prior_year: Prior Year Appraised Value for Land
+  improvement_value_prior_year: Prior Year Appraised Value for Building
+  total_value_prior_year: Prior Year Appraised Value Total
+  tax_year: Tax Year
+
+drop_duplicates: [parcel_id_assessor]
+
+supplements: US-VA-FA_property-fairfaxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion as the roll, so both keys agree.
+  instruction:
+    US-VA-FA:
+      conv: simple
+
+save_to:
+  data_dir: cache
+  filename: values
