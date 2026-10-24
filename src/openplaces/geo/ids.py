@@ -867,8 +867,9 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     replace each run of separator characters with ``|`` instead of deleting
     it), ``no_conv``, ``string_lengths``, ``split_groups``, ``drop_cols``,
     ``keep_length``, ``fill_zeros``, ``switch``, ``merge_after``,
-    ``max_length``, ``join_char``, ``skip_empty``, and ``strip_separators``
-    (remove punctuation before the pattern applies).
+    ``max_length``, ``join_char``, ``skip_empty``, ``strip_separators``
+    (remove punctuation before the pattern applies) and ``pick_chars``
+    (remove punctuation, then take characters by position, in order).
 
     Parameters
     ----------
@@ -930,6 +931,31 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         # read by today's rule, gives today's key on 143,227 of 143,227
         # accounts present in both years.
         s = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+    if 'pick_chars' in p:
+        # Rebuild today's number from an earlier era's, for a source that
+        # reordered or shortened its ids between two roll years: the
+        # punctuation goes, then the characters at the listed positions
+        # (0-based, 'a-b' an inclusive run) are taken in the listed
+        # order. An id too short for the positions has no key. Pasco
+        # County FL's roll moved the first and third pairs of its
+        # 19-character id in 2018 ('4 5 2 3 0 1 6-18'). Accepted only
+        # where the source's own statewide key, STATE_PAR_ID, pairs the
+        # old and new ids one to one and the rule reproduces the new id
+        # on every pair; the measurements sit beside each override row's
+        # test.
+        positions = []
+        for part in p['pick_chars'].split():
+            low, _, high = part.partition('-')
+            positions.extend(range(int(low), int(high or low) + 1))
+        bare = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+        s = bare.map(
+            lambda v: (
+                ''.join(v[i] for i in positions)
+                if isinstance(v, str) and len(v) > max(positions)
+                else pd.NA
+            ),
+            na_action='ignore',
+        ).astype('string')
     if 'no_conv' in p:
         return s.where(s.ne(''), pd.NA)
     if 'simple_clean' in p:

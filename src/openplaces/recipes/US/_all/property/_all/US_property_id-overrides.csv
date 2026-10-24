@@ -30,3 +30,9 @@ US-FL-PI,fldor,parcel,^([0-9A-Z]{2})([0-9]{2})([0-9]{2})([0-9]{5})([0-9A-Z]{3})(
 US-FL-PU,fldor,parcel,^([0-9A-Z]{2})([0-9A-Z]{2})([0-9A-Z]{2})([0-9A-Z]{4})([0-9A-Z]{4})([0-9A-Z]{4})$,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1,,,-2008
 US-FL-SA,fldor,parcel,Dx,strip_separators: 1 & split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,1,,-2012
 US-FL-SJ,fldor,parcel,Dx,strip_separators: 1 & string_lengths: 2 5 3 & skip_empty: 1,,,-2006
+US-FL-PA,fldor,parcel,,pick_chars: 4 5 2 3 0 1 6-18 & string_lengths: 2 2 2 4 5 4 & keep_length: 0 1 2 3 4 5,,,-2017
+US-FL-VO,fldor,parcel,,pick_chars: 3 5 0 1 6-13 & no_conv,,,-2007
+US-FL-VO,fldor,parcel,,pick_chars: 3 1 4-13 & no_conv,,,2008-2017
+US-FL-TA,fldor,parcel,,pick_chars: 6-13 & string_lengths: 5 3 & skip_empty: 1,1,,-2014
+US-FL-CO,fldor,parcel,,pick_chars: 0-10 & no_conv,,,-2003
+US-FL-LV,fldor,parcel,,pick_chars: 6-15 & no_conv,,,-2008

@@ -202,7 +202,11 @@ today's key from the old spelling, never the reverse, because today's
 key is what the parcel layer carries: a raw `^...$` regex with fixed
 widths reads a bare old id into today's groups, and `strip_separators: 1`
 lets today's rule read a punctuated old id (seven Florida counties,
-2026-10-24). Full treatment of the three failure modes — misfitting pattern,
+2026-10-24). Where the source reordered or shortened the number itself,
+`pick_chars: 4 5 2 3 0 1 6-18` takes the old id's characters by position
+into today's order; accept such a row only where a key the source states
+in both eras (Florida's `STATE_PAR_ID`) pairs old and new ids one to one
+and the row reproduces the new id on those pairs. Full treatment of the three failure modes — misfitting pattern,
 degenerate source column, empty column — is in
 [`acquiring_sources.md`](acquiring_sources.md#phase-5--the-join-key-parcel_id_local).
 
