@@ -11,13 +11,11 @@ from openplaces.io.aggregate import (
     _aggregate_to_file,
     _legacy_upgrader,
     aggregate_partitions,
-    read_file_metadata,
     read_partition_coverage,
 )
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 WI_RECIPE_ID = 'US-WI_transaction-widor-2026'
-MA_RECIPE_ID = 'US-MA_transaction-masslandrecords-v1'
 
 
 def _month_df(month: str, n: int = 3) -> pd.DataFrame:
@@ -358,19 +356,21 @@ def test_duplicate_identity_includes_meaningful_index(tmp_path):
 
 
 @pytest.fixture
-def external_to_tmp(tmp_path, monkeypatch):
-    """Redirect the 'external' data dir so MA-style tests stay isolated."""
+def output_dirs_to_tmp(tmp_path, monkeypatch):
+    """Redirect the 'external' and 'cache' data dirs so tests stay isolated."""
     monkeypatch.setitem(cfg.config['directories'], 'external', tmp_path)
+    monkeypatch.setitem(cfg.config['directories'], 'cache', tmp_path)
     return tmp_path
 
 
-TOWN = 'US-MA-SOM'
+TOWN = 'US-WI'
 CKS = ['2021-01_Deed', '2021-02_Deed']
 
 
-def test_aggregate_partitions_discovers_checkpoint_files(external_to_tmp):
+def test_aggregate_partitions_discovers_checkpoint_files(output_dirs_to_tmp):
     """No download_by: partition ids are discovered from files on disk."""
-    recipe = get_recipe_by_id(MA_RECIPE_ID)
+    recipe = dict(get_recipe_by_id(WI_RECIPE_ID))
+    recipe.pop('download_by', None)
     for ck in CKS:
         _write_month(get_output_path(recipe, TOWN, partition_id=ck), ck)
 
@@ -389,61 +389,3 @@ def test_aggregate_partitions_discovers_checkpoint_files(external_to_tmp):
     _write_month(get_output_path(recipe, TOWN, partition_id=ck), ck, n=5)
     aggregate_partitions(recipe, single_file=True, admin_ids=TOWN, keep_original=True)
     assert len(read_parquet(all_path)) == 8
-
-
-def _registry_ingester(recipe):
-    from openplaces.io.ingester.registry_ingester import RegistryIngester
-
-    ing = RegistryIngester.__new__(RegistryIngester)
-    ing.recipe = recipe
-    ing.verbose = False
-    ing._coverage_cache = {}
-    return ing
-
-
-def test_registry_save_stamps_scrape_time(external_to_tmp):
-    """_save records the scrape timestamp in the parquet footer."""
-    recipe = get_recipe_by_id(MA_RECIPE_ID)
-    ing = _registry_ingester(recipe)
-    ing._save([{'book': '1', 'page': '2', 'grantor': 'A'}], TOWN, partition_id=CKS[0])
-    path = get_output_path(recipe, TOWN, partition_id=CKS[0])
-    scraped_at = read_file_metadata(path).get('openplaces:scraped_at')
-    assert scraped_at is not None and scraped_at[:2] == '20'
-
-
-def test_registry_is_done_completeness(external_to_tmp):
-    """Done iff scraped after month end; legacy files and footer coverage count."""
-    recipe = get_recipe_by_id(MA_RECIPE_ID)
-    ing = _registry_ingester(recipe)
-    past, current = '2021-01_Deed', '2099-01_Deed'
-
-    # Missing entirely.
-    assert not ing._is_done(TOWN, past)
-
-    # Scraped after the month closed (real _save stamps today's date).
-    ing._save([{'book': '1', 'page': '2'}], TOWN, partition_id=past)
-    assert ing._is_done(TOWN, past)
-
-    # Scraped while the month was still running (month end in the future).
-    ing._save([{'book': '1', 'page': '2'}], TOWN, partition_id=current)
-    assert not ing._is_done(TOWN, current)
-
-    # Legacy file without the timestamp counts as done.
-    legacy = '2021-03_Deed'
-    save_parquet(
-        _month_df('202103'), get_output_path(recipe, TOWN, partition_id=legacy)
-    )
-    assert ing._is_done(TOWN, legacy)
-
-    # Missing file whose checkpoint is covered by the _all footer. Fresh
-    # instance: the coverage cache is only invalidated by _aggregate_town,
-    # and the earlier _is_done calls cached the then-missing _all as empty.
-    covered = '2021-04_Deed'
-    save_parquet(
-        _month_df('202104'),
-        get_output_path(recipe, TOWN, partition_id='all'),
-        file_metadata={'openplaces:partitions': json.dumps([covered])},
-    )
-    ing = _registry_ingester(recipe)
-    assert ing._is_done(TOWN, covered)
-    assert not ing._is_done(TOWN, '2021-05_Deed')

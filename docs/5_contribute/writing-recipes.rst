@@ -35,8 +35,8 @@ Dataset description and source
    .. code-block:: yaml
 
       description: >-
-        Massachusetts registry of deeds transactions, crawled from
-        masslandrecords.com.
+        Massachusetts Department of Revenue LA3 sales reports, one
+        statewide export per sale year.
 
 .. attribute:: notes
 

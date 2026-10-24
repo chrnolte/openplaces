@@ -1,8 +1,8 @@
 """Tests for the harmonizer `derive_address_id_local` step.
 
 Companion matching key to `parcel_id_local` for entities with no shared
-parcel id to join on (e.g. MA masslandrecords transactions, which carry no
-parcel identifier at all). `address_id_local` is scoped by `admin4_id` (a
+parcel id to join on (e.g. deed records that carry no parcel identifier
+at all). `address_id_local` is scoped by `admin4_id` (a
 town), not `city`, since a town can contain several villages that each use
 their own name as a street address's city (e.g. Newton, MA contains Newton
 Centre, Waban, ...) -- two real, distinct streets of the same name in two

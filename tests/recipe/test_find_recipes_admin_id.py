@@ -2,9 +2,9 @@
 
 A recipe missing the field was previously reported with an empty `admin_id`
 by `find_recipes`, silently dropping it from `_expand_auto_discover`'s
-discovery -- a real bug found while building the transaction spine (MA's
-masslandrecords was never being discovered, because
-US-MA_transaction-masslandrecords-v1.yaml had no `admin_id:` field). Rather
+discovery -- a real bug found while building the transaction spine (a
+state's transaction recipe was never being discovered, because its YAML
+had no `admin_id:` field). Rather
 than papering over that in `find_recipes`, every recipe is required to state
 its scope explicitly (global recipes use `admin_id: NULL`).
 """
@@ -54,9 +54,7 @@ def _unit(admin_id):
 
 def test_explicit_admin_id_recipes_resolve():
     df = find_recipes('transaction', stage='ingest')
-    masslandrecords = df[df['source_id'] == 'masslandrecords']
     nhcgov = df[df['source_id'] == 'nhcgov']
     widor = df[df['source_id'] == 'widor']
-    assert _unit(masslandrecords['admin_id'].iloc[0]) == ('Massachusetts', '25')
     assert _unit(nhcgov['admin_id'].iloc[0]) == ('New Hanover', '37129')
     assert _unit(widor['admin_id'].iloc[0]) == ('Wisconsin', '55')

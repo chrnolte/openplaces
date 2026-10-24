@@ -701,41 +701,27 @@ def ingest(
     verbose : bool
         Print progress messages.
     years : int, list of int, or None
-        Four-digit calendar years to process. Registry recipes receive this
-        filter directly. For standard recipes partitioned by year or
-        year-month, it is converted to ``partition_ids``.
+        Four-digit calendar years to process, for recipes partitioned by
+        year or year-month; converted to ``partition_ids``.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
     if years and partition_ids:
         raise ValueError('Pass either partition_ids or years, not both.')
 
-    # A `scraper` block names a dedicated ingester orchestrator (the scraper
-    # crawls records directly rather than producing a downloadable file, so it
-    # cannot use the standard download->TableIngester flow). The value of
-    # `scraper.ingester` (or a bare `scraper` scalar) selects which one. This
-    # is distinct from `source.download_url_scraper`, which is a file-producing
-    # browser scraper handled inside the standard Ingester.
+    # A `scraper` block names a dedicated ingester for a source that is
+    # read record by record rather than downloaded as a file; the value
+    # of `scraper.ingester` (or a bare scalar) selects it. None is
+    # installed now. The Massachusetts registries' crawler was removed
+    # because their site's terms prohibit crawling (maintainer,
+    # 2026-10-23), and a test keeps it out. A block naming no installed
+    # ingester stops here rather than falling through to a download.
     scraper = recipe.get('scraper')
     if scraper is not None:
         ingester_name = (
             scraper.get('ingester') if isinstance(scraper, dict) else scraper
         )
-        if ingester_name == 'registry':
-            from openplaces.io.ingester.registry_ingester import RegistryIngester
-
-            RegistryIngester(
-                recipe,
-                admin_ids=admin_ids,
-                partition_ids=partition_ids,
-                years=years,
-                reprocess=reprocess,
-                verbose=verbose,
-            ).ingest()
-            return
-        raise ValueError(
-            f"Unknown scraper ingester '{ingester_name}'. Supported: 'registry'."
-        )
+        raise ValueError(f"Unknown scraper ingester '{ingester_name}'.")
 
     if years:
         partition = (recipe.get('download_by') or {}).get('partition')
