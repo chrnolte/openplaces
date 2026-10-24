@@ -723,10 +723,13 @@ const TOUR = {
   highHold: 9,
   focusZoom: 14.3,
   focusPitch: 42,
+  // Downtown is seen closer, so that building heights read plainly
+  // when they are explained (maintainer, 2026-10-24).
+  downtownZoom: 15,
   contrastZoom: 13.5,
   contrastPitch: 36,
-  contrastOrbit: 46,
-  downtownOrbit: 34,
+  contrastOrbit: 54,
+  downtownOrbit: 40,
   slowFlight: 1.6,
   // Share of the descent in which the center reaches the first stop.
   centerShare: 0.35,
@@ -764,13 +767,16 @@ const TOUR = {
 // can now see (an insight, naming no figures from the map). A bubble
 // above the switching button keeps the definition (`tip`) and the
 // countdown.
-// The descent, once the autopilot line has gone: what the map shows
-// and how to read heights, in the maintainer's words (2026-10-24):
-// three short lines, one at a time, each coming in slowly (`gentle`)
-// after a pause, little enough to read while watching. The lots'
-// thickness waits until the buildings are off (downtown, below). The
-// last line ends before downtown's first hint, 4 s into the orbit
-// that follows the descent's `TOUR.descent` (30 s).
+// Each explanation or conclusion appears when what it names is plain
+// on screen, never earlier (maintainer, 2026-10-24: the building
+// heights were explained while the camera was still too high to see
+// them).
+// The descent, once the autopilot line has gone, in the maintainer's
+// words (2026-10-24): short lines, one at a time, each coming in
+// slowly (`gentle`) after a pause, little enough to read while
+// watching. What the map is, from high up; volume as value once the
+// camera is low enough for volumes to show (at 21 s of the descent's
+// 30, it is five sixths of the way down). Heights wait for downtown.
 const TOUR_DESCENT_ACTIONS = [
   {
     at: 1,
@@ -781,21 +787,23 @@ const TOUR_DESCENT_ACTIONS = [
     },
   },
   {
-    at: 10,
+    at: 21,
     hint: {text: 'In our representation, volume is equal to value.', linger: 7, gentle: true},
   },
-  {
-    at: 19,
-    hint: {text: 'Higher buildings pack more value onto their footprint.', linger: 7, gentle: true},
-  },
 ];
-// Downtown, the first stop: the buildings go, and land speaks alone,
-// its thickness explained only now that it is all there is to see
-// (maintainer, 2026-10-24). The last line ends at 30 s, within
-// `TOUR.downtownOrbit` (34 s).
+// Downtown, the first stop, seen closer than the others
+// (`TOUR.downtownZoom`) and tilted: building heights first, while
+// they stand in view; then the buildings go, and the lots' thickness
+// is explained once land is all there is to see, and then what land
+// value tells. The last line ends at 37 s, within
+// `TOUR.downtownOrbit` (40 s).
 const TOUR_DOWNTOWN_ACTIONS = [
   {
-    at: 4,
+    at: 1,
+    hint: {text: 'Higher buildings pack more value onto their footprint.', linger: 7, gentle: true},
+  },
+  {
+    at: 10,
     hint: {
       target: 'buildings',
       text: 'Hiding the buildings to show land value alone',
@@ -803,15 +811,16 @@ const TOUR_DOWNTOWN_ACTIONS = [
       linger: 9,
     },
   },
-  {at: 9, buildings: false},
-  {at: 13, hint: {text: 'The thicker a lot, the more its land is worth.', linger: 6, gentle: true}},
+  {at: 15, buildings: false},
+  // Two seconds for the lots to settle into view alone.
+  {at: 17, hint: {text: 'The thicker a lot, the more its land is worth.', linger: 6, gentle: true}},
   {
-    at: 20,
+    at: 25,
     hint: {
       // Maintainer's wording, 2026-10-19.
       text: 'Land value per area gives you an idea of where humans most want to ' +
         'secure land rights to govern, do commerce, and to live and sleep.',
-      linger: 10,
+      linger: 12,
     },
   },
 ];
@@ -819,14 +828,14 @@ const TOUR_DOWNTOWN_ACTIONS = [
 // left.
 const TOUR_DOWNTOWN_ONLY_ACTIONS = [
   ...TOUR_DOWNTOWN_ACTIONS,
-  {at: 31, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
-  {at: 33, buildings: true},
+  {at: 37, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
+  {at: 39, buildings: true},
 ];
 // Leaving downtown for the contrast: the switch to value per home
 // comes 6 s after leaving (maintainer, 2026-10-18: no more than about
 // 7 s), while the camera glides on: one second for the message, then
-// the countdown from five. The flight lasts at least 22 s
-// (`flightBase` x `slowFlight`), so the insight at 10 s always runs.
+// the countdown from five. What the switch shows is told only on
+// arrival (below), where the contrast fills the view.
 const TOUR_TO_CONTRAST_ACTIONS = [
   {
     at: 0,
@@ -840,25 +849,27 @@ const TOUR_TO_CONTRAST_ACTIONS = [
     },
   },
   {at: 6, view: 'dwelling'},
-  {
-    at: 10,
-    hint: {
-      text: 'This gives you a first idea of where the rich and the poor tend to live.',
-      linger: 10,
-    },
-  },
 ];
-// At the contrast: each view once (maintainer, 2026-10-19). After
-// value per home, the buildings come back, then the type view; once
+// At the contrast: each view once (maintainer, 2026-10-19). First what
+// value per home shows, now that the costly and the modest homes are
+// both in view; then the buildings come back, then the type view; once
 // its text has run, and a few seconds more, back to value per ground
 // area, which the tour keeps from there on (maintainer, 2026-10-23).
-// The contrast orbit lasts `TOUR.contrastOrbit` (46 s), so the last
-// switch, at 44 s, still happens there.
+// The contrast orbit lasts `TOUR.contrastOrbit` (54 s), so the last
+// switch, at 51 s, still happens there.
 const TOUR_CONTRAST_ACTIONS = [
-  {at: 4, hint: {target: 'buildings', text: 'Buildings back', countdown: 5, linger: 7}},
-  {at: 9, buildings: true},
   {
-    at: 14,
+    at: 1,
+    hint: {
+      text: 'This gives you a first idea of where the rich and the poor tend to live.',
+      linger: 9,
+      gentle: true,
+    },
+  },
+  {at: 11, hint: {target: 'buildings', text: 'Buildings back', countdown: 5, linger: 7}},
+  {at: 16, buildings: true},
+  {
+    at: 21,
     hint: {
       target: 'type',
       text: 'You can also color land and buildings by their type.',
@@ -868,16 +879,16 @@ const TOUR_CONTRAST_ACTIONS = [
       linger: 9,
     },
   },
-  {at: 20, view: 'type'},
+  {at: 27, view: 'type'},
   {
-    at: 24,
+    at: 31,
     hint: {text: 'Homes, shops, industry, and public land, each in its own color.', linger: 10},
   },
   {
-    at: 39,
+    at: 46,
     hint: {target: 'area', text: 'Back to value per ground area', countdown: 5, linger: 7},
   },
-  {at: 44, view: 'area'},
+  {at: 51, view: 'area'},
 ];
 // Leaving the contrast: the view the tour last showed stays.
 const TOUR_LEAVE_ACTIONS = [];
@@ -960,9 +971,10 @@ function buildTour(view, foci, contrast, downtown = null) {
   // Downtown first, always (maintainer, 2026-10-18); without a
   // downtown, the densest stop, or the area's center.
   const stops = (foci || []).map((f) => stop(f));
-  const first = downtown
-    ? stop(downtown)
-    : stops.shift() || stop({longitude: view.longitude, latitude: view.latitude});
+  const first = stop(
+    downtown || stops.shift() || {longitude: view.longitude, latitude: view.latitude},
+    TOUR.downtownZoom,
+  );
   const loop = [];
   let at = first;
   if (contrast) {
