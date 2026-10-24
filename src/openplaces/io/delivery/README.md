@@ -104,6 +104,46 @@ written, never because a source merely feeds the recipe, so one county's
 terms cannot hold the rest of a bundle hostage. The rules over-withhold where
 a layer's sidecar cannot say which source filled it; that costs values, not
 a leak. A no-resale clause withholds nothing; the notice reports it.
+
+**Share-alike is shipped only when it is one family** (maintainer's rule,
+2026-10-23). `terms.share_alike_family` groups share-alike licences into
+families that one release can satisfy: ODbL; CC BY-SA 2.0 to 4.0 (each
+allows a later version); GPL; OGL-SA. The comment above it cites each
+licence's own compatibility clause. A bundle whose remaining geometry or
+cells, after withholding, come from two families (Overture's ODbL
+outlines beside Pitt County's CC-BY-SA-4.0 parcels) cannot be published
+under either, so `export_delivery` raises `ShareAlikeConflictError`, naming
+each source with its licence, geometry share and cells, and writes
+nothing. **What a share-alike source left in the bundle is found by the
+withholding rules above**, applied to `terms.share_alike_inputs` (every
+share-alike input, walked per unit like `restricted_inputs`): its
+outlines, cells whose `_source` names it, and inside its scope the
+columns named after what it maps. A county roll's values in a sales
+bundle carry no sidecar of their own and are found the third way. A
+source that feeds the recipe but left nothing in the bundle passes no
+licence on. `check_share_alike(recipe, region)` gives the same verdict
+without writing; with `allow_missing=True` it checks the members that
+have a curated file and lists the rest.
+
+**A region can resolve a conflict by withholding one family**, declared
+under `share: delivery: withhold_share_alike:` as a map from region id to
+families (`{greenville-nc: [odbl]}`; a plain list applies to every
+region of the recipe). The family's sources are withheld exactly as a
+restricted source is, their sidecars read `withheld`, and the notice
+lists their counts under "Withheld to keep one share-alike licence".
+`greenville-nc` in the transaction recipe withholds ODbL: Pitt County's
+CC BY-SA sales, without the ODbL footprint values Pitt's spines keep for
+internal use and CHEER (decision 29(b)). `cheer-eastern-nc` in the
+footprint recipe withholds CC BY-SA: its public bundle ships ODbL
+outlines without Pitt's values.
+
+**Share-alike binds only on publication** (maintainer, 2026-10-23), so a
+team bundle, never published, is exempt from both: it may carry two
+families, `export_delivery` does not refuse it, and it does not inherit
+its region's `withhold_share_alike`. The CHEER team bundle carries
+Edgecombe and Pitt together (2026-10-22, option A). Its notice still
+names the families, and `check_share_alike` reports them under
+`mixed_families` with `conflict` False.
 **Team bundles are the one exception, published only behind a password.** A
 team bundle is shared within the research team, and reaches a web page only
 as a team value page (`viz.web_scene`, `team: true` in its `places.yaml`),

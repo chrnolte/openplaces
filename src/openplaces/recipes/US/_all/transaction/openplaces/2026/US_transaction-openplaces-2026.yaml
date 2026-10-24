@@ -346,6 +346,15 @@ share:
       # of its own beside the state's bundle.
       - lakeland-fl
       - eau-claire-wi
+      - greenville-nc
+    # Pitt County's parcels and sales are CC-BY-SA-4.0, and its parcel
+    # spine also carries values drawn from ODbL footprints (OBM,
+    # Microsoft), kept there for internal use and CHEER (decision
+    # 29(b)). A bundle cannot carry both families, so greenville-nc
+    # withholds the ODbL values the way a restricted source's are
+    # withheld, and ships under CC BY-SA (maintainer, 2026-10-23).
+    withhold_share_alike:
+      greenville-nc: [odbl]
     # Each of these is its whole state, so its bundle is filed as the
     # state's own (US-WI_transaction-openplaces-2026.parquet); every
     # other region gets a folder named after it beside that file

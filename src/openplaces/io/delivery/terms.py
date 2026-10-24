@@ -19,6 +19,7 @@ the way in. This governs what it tells you on the way out.
 
 from __future__ import annotations
 
+import re
 from functools import cache
 
 from openplaces.core.schema import admin_scope_covers
@@ -30,12 +31,22 @@ from openplaces.recipe import (
     source_id_from_recipe_id,
 )
 
-__all__ = ['bundle_terms', 'format_notice', 'SHARE_ALIKE_LICENSES']
+__all__ = [
+    'bundle_terms',
+    'format_notice',
+    'share_alike_family',
+    'share_alike_family_named',
+    'share_alike_conflict_text',
+    'share_alike_inputs',
+    'SHARE_ALIKE_FAMILIES',
+    'SHARE_ALIKE_LICENSES',
+]
 
 # Licence identifiers whose terms follow a derivative database and require
 # the derivative itself to carry the same licence. Matched against the
 # recorded `license` string case-insensitively by prefix, so 'ODbL-1.0' and
-# 'ODbL-1.0 (with local amendment)' both count.
+# 'ODbL-1.0 (with local amendment)' both count. Spaces count as hyphens,
+# so 'CC BY-SA 4.0' is 'cc-by-sa-4.0'.
 SHARE_ALIKE_LICENSES = ('odbl', 'cc-by-sa', 'gpl', 'ogl-sa')
 
 # Licences that ask only to be credited. Prefix-matched as above.
@@ -44,12 +55,276 @@ ATTRIBUTION_LICENSES = ('cc-by', 'odbl', 'mixed-permissive', 'ogl')
 _UNRECORDED = 'not recorded'
 
 
+def _normalized(license_text) -> str:
+    """A recorded licence, lower case, spaces and underscores as hyphens."""
+    return re.sub(r'[\s_]+', '-', str(license_text).strip().lower())
+
+
 def _is(license_text: str | None, prefixes: tuple[str, ...]) -> bool:
     """True when a recorded licence starts with one of *prefixes*."""
     if not license_text:
         return False
-    text = str(license_text).strip().lower()
+    text = _normalized(license_text)
     return any(text.startswith(prefix) for prefix in prefixes)
+
+
+# Share-alike licences fall into families whose members can be released
+# together under one of them. Every pair from two families conflicts,
+# because each licence requires the whole derivative to carry it (or a
+# licence it names as compatible) and neither names the other. Only
+# compatibilities a licence states itself are used here:
+#
+# - ODbL 1.0, section 4.4: a Derivative Database must be under "this
+#   License", "a later version of this License similar in spirit", or
+#   "a compatible license" the licensor names. No later version exists
+#   and the Open Data Commons names no compatible licence, so ODbL is a
+#   family of its own (https://opendatacommons.org/licenses/odbl/1-0/).
+# - CC BY-SA 4.0, section 3(b)(1), allows an adaptation under a "BY-SA
+#   Compatible License", which includes later versions of BY-SA; 3.0,
+#   2.5 and 2.0 (section 4(b)) allow "a later version of this License
+#   with the same License Elements". 2.0 to 4.0 can therefore all be
+#   released under 4.0. 1.0 has no such clause and stands alone
+#   (https://creativecommons.org/compatiblelicenses/). Creative Commons
+#   also declares BY-SA 4.0 one-way compatible with GPLv3; that is a
+#   software licence, and the maintainer's rule (2026-10-23) is one
+#   share-alike family per bundle, so it is not applied.
+# - GPL: the FSF states that GPLv2-only and GPLv3 are incompatible,
+#   while "v2 or later" may be used under v3
+#   (https://www.gnu.org/licenses/gpl-faq.html#v2v3Compatibility).
+#   Version 2 only is therefore its own family. A "v2 or later" source
+#   beside a "v2 only" one is reported as a conflict although both
+#   could be released under v2: a false alarm, never a false clearance.
+# - OGL-SA: no compatibility recorded, a family of its own.
+def share_alike_family(license_text: str | None) -> str | None:
+    """The share-alike family a recorded licence belongs to, or None.
+
+    Licences of one family can be combined in a single release; any two
+    families cannot (the comment above this function gives the source
+    of each rule).
+
+    Parameters
+    ----------
+    license_text : str or None
+        A licence as a source recipe records it, such as 'ODbL-1.0' or
+        'CC BY-SA 4.0 (open data portal)'.
+
+    Returns
+    -------
+    str or None
+        'ODbL', 'CC BY-SA', 'CC BY-SA 1.0', 'GPL', 'GPL-2.0-only' or
+        'OGL-SA'; None for a licence that is not share-alike.
+    """
+    if not _is(license_text, SHARE_ALIKE_LICENSES):
+        return None
+    text = _normalized(license_text)
+    if text.startswith('odbl'):
+        return 'ODbL'
+    if text.startswith('cc-by-sa'):
+        version = re.match(r'cc-by-sa-?(\d+(?:\.\d+)?)', text)
+        if version and float(version.group(1)) < 2:
+            return 'CC BY-SA 1.0'
+        return 'CC BY-SA'
+    if text.startswith('gpl'):
+        version = re.match(r'gpl-?v?(\d+)', text)
+        later = '+' in text or 'or-later' in text
+        if version and version.group(1) == '2' and not later:
+            return 'GPL-2.0-only'
+        return 'GPL'
+    return 'OGL-SA'
+
+
+# Every name `share_alike_family` returns, in the order a notice lists
+# them.
+SHARE_ALIKE_FAMILIES = (
+    'ODbL',
+    'CC BY-SA',
+    'CC BY-SA 1.0',
+    'GPL',
+    'GPL-2.0-only',
+    'OGL-SA',
+)
+
+
+def share_alike_family_named(name) -> str:
+    """The family a recipe names under `withhold_share_alike`.
+
+    Matched like a recorded licence (case-insensitive, spaces as
+    hyphens), so 'odbl', 'ODbL' and 'cc-by-sa' all resolve.
+
+    Raises
+    ------
+    ValueError
+        When *name* is not one of `SHARE_ALIKE_FAMILIES`.
+    """
+    wanted = _normalized(name)
+    for family in SHARE_ALIKE_FAMILIES:
+        if _normalized(family) == wanted:
+            return family
+    raise ValueError(
+        f'{name!r} is not a share-alike family; expected one of '
+        f'{", ".join(SHARE_ALIKE_FAMILIES)}.'
+    )
+
+
+def share_alike_inputs(recipe, admin_ids=None) -> list[dict]:
+    """Upstream sources under a share-alike licence, each with its family.
+
+    The share-alike counterpart of `restricted_inputs`, returning entries
+    of the same shape, so `io.delivery.redaction` finds what each one
+    supplied (and can withhold it) by the same four rules. Walked per
+    unit like `restricted_inputs`. A source the walk does not reach but
+    the catalog records for one of the units (an outline source a spine
+    auto-discovered) is added with no attributes and `layer_source`
+    False, so only the rows and cells whose `_source` names it count.
+    A source of national or global scope keeps its layer but no
+    attributes: what it filled is found by the tokens alone.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        The recipe whose inputs are checked, usually a curation recipe.
+    admin_ids : list of str, optional
+        Admin units the output covers.
+
+    Returns
+    -------
+    list of dict
+        One entry per share-alike recipe, with `family` beside the keys
+        `restricted_inputs` gives.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    found = []
+    seen: set[tuple] = set()
+    per_recipe = _source_terms(recipe, admin_ids, key=lambda e: e['recipe_id'])
+    for entry in per_recipe.values():
+        family = share_alike_family(entry.get('license'))
+        if family is None:
+            continue
+        seen.add((entry['source_id'], str(entry['license'])))
+        # Inside a county the roll is the parcel layer, so a column
+        # named after what it maps is its value (redaction rule 3).
+        # Nationally several sources share a layer and its names: OBM
+        # maps `occupancy`, `source_date` and (its tiles) `n_buildings`,
+        # and by name took FEMA's `occupancy_type_footprint_fema`, a
+        # parcel's own `source_date` and `n_buildings_nsi` (measured
+        # 2026-10-23 on US-MA-NTC: 37,719 parcel cells, none named obm).
+        # The layer-only token rule stays: a value whose `_source`
+        # says only `footprint` still counts for every footprint source.
+        scope = str(entry.get('admin_id') or '')
+        national = '-' not in scope
+        found.append(
+            {
+                'source_id': entry['source_id'],
+                'recipe_id': entry['recipe_id'],
+                'license': entry['license'],
+                'terms_url': entry.get('terms_url'),
+                'family': family,
+                'entity_type': entry.get('entity_type'),
+                'admin_id': entry.get('admin_id'),
+                'attributes': [] if national else entry.get('attributes') or [],
+                'layer_source': entry.get('layer_source', True),
+            }
+        )
+    for source_id, entries in _catalog_terms().items():
+        for entry in entries:
+            family = share_alike_family(entry.get('license'))
+            key = (source_id, str(entry.get('license')))
+            if family is None or key in seen or not _applies_to(entry, admin_ids):
+                continue
+            seen.add(key)
+            found.append(
+                {
+                    'source_id': source_id,
+                    'recipe_id': entry.get('recipe_id'),
+                    'license': entry.get('license'),
+                    'terms_url': entry.get('terms_url'),
+                    'family': family,
+                    'entity_type': None,
+                    'admin_id': entry.get('admin_id'),
+                    'attributes': [],
+                    'layer_source': False,
+                }
+            )
+    return sorted(
+        found, key=lambda e: (e['family'], e['source_id'], e['recipe_id'] or '')
+    )
+
+
+def _share_alike_families(entries, cells_by_source, evidence, reach=None) -> dict:
+    """Group contributing share-alike sources by family.
+
+    With *evidence* (the bundle's geometry or value cells were given),
+    a source counts only where it drew geometry, filled cells its
+    `_source` names, or, with *reach*, left rows or cells the redaction
+    rules attribute to it: a source that feeds the recipe and left
+    nothing in the bundle passes no licence on, as in the rest of
+    `bundle_terms`. Without evidence, every listed source counts.
+    """
+    reach = reach or {}
+    total_cells = sum(cells_by_source.values())
+    families: dict[str, list[dict]] = {}
+    seen: set[tuple] = set()
+    for entry in entries:
+        family = share_alike_family(entry.get('license'))
+        if family is None:
+            continue
+        key = (entry['source_id'], str(entry['license']))
+        if key in seen:
+            continue
+        reached = reach.get(entry['source_id']) or {}
+        # The redaction rules count every cell a `_source` names too,
+        # so the larger of the two counts is the source's reach.
+        cells = max(cells_by_source.get(entry['source_id'], 0), reached.get('cells', 0))
+        rows = reached.get('rows', 0)
+        share = entry.get('share')
+        if evidence and not (share or cells or rows):
+            continue
+        seen.add(key)
+        families.setdefault(family, []).append(
+            {
+                'source_id': entry['source_id'],
+                'recipe_id': entry.get('recipe_id'),
+                'license': entry['license'],
+                'share': share,
+                'rows': rows,
+                'cells': cells,
+                'cell_share': (
+                    cells_by_source.get(entry['source_id'], 0) / total_cells
+                    if total_cells
+                    else None
+                ),
+            }
+        )
+    for members in families.values():
+        members.sort(key=lambda e: (-(e['share'] or 0), -e['cells'], e['source_id']))
+    return families
+
+
+def share_alike_conflict_text(terms: dict) -> str:
+    """Name each share-alike family of *terms* with its sources.
+
+    One line per source: its licence, its share of the geometry and the
+    cells it filled, as `bundle_terms` measured them.
+    """
+    lines = []
+    for family, members in sorted(terms.get('share_alike_families', {}).items()):
+        lines.append(f'  {family}:')
+        for entry in members:
+            parts = []
+            if entry['share']:
+                parts.append(f'{entry["share"]:.1%} of geometry')
+            if entry.get('rows') and not entry['share']:
+                parts.append(f'{entry["rows"]:,} rows')
+            if entry['cells']:
+                cell_share = entry.get('cell_share')
+                share_text = (
+                    f' ({cell_share:.1%} of sourced cells)' if cell_share else ''
+                )
+                parts.append(f'{entry["cells"]:,} cells{share_text}')
+            reach = ', '.join(parts) or 'no measured share'
+            lines.append(f'    {entry["source_id"]} ({entry["license"]}): {reach}')
+    return '\n'.join(lines)
 
 
 def _terms_key(entry: dict) -> tuple:
@@ -430,7 +705,11 @@ def _catalog_terms() -> dict[str, list[dict]]:
 
 
 def bundle_terms(
-    recipe, geometry_source=None, admin_ids=None, value_cells=None
+    recipe,
+    geometry_source=None,
+    admin_ids=None,
+    value_cells=None,
+    share_alike_reach=None,
 ) -> dict:
     """Describe the licence obligations a bundle inherits.
 
@@ -459,6 +738,14 @@ def bundle_terms(
         token counts only where the walk reached its source or a recipe
         of that source covers one of the units: a token a step wrote
         under another state's name is not that state's source.
+    share_alike_reach : dict of str to dict, optional
+        Rows and cells each share-alike source left in the bundle, as
+        `io.delivery.redaction.find_restricted` counts them for the
+        entries of `share_alike_inputs` (source id to `{'rows': n,
+        'cells': n}`). A source counts toward its family where it drew
+        geometry, a `_source` names it, or it reaches rows or cells
+        here; a county roll whose values carry no sidecar of their own
+        is found only this way.
 
     Returns
     -------
@@ -468,6 +755,14 @@ def bundle_terms(
         known) geometry share, sorted by share descending.
         ``share_alike`` -- licences requiring the bundle itself to carry
         them, with the combined share they reach.
+        ``share_alike_families`` -- the share-alike sources that drew
+        geometry or filled cells, grouped by `share_alike_family`, each
+        with its ``share`` of the geometry, ``rows`` and ``cells`` it
+        reaches, and ``cell_share`` (of all cells whose sidecar names a
+        source).
+        ``share_alike_conflict`` -- True when more than one family is
+        present: no single release can satisfy them, and
+        `export_delivery` refuses the bundle.
         ``attribution`` -- sources that must be credited.
         ``restricted`` -- sources whose recipe records
         `redistribution_restricted`.
@@ -603,9 +898,22 @@ def bundle_terms(
         if _is(license_text, ATTRIBUTION_LICENSES):
             attribution.append(entry)
 
+    evidence = bool(shares) or bool(value_cells) or share_alike_reach is not None
+    # The walk's own entries are offered too: a source that reaches the
+    # bundle only through columns without a sidecar of their own is in
+    # neither `sources` (geometry) nor `values` (named cells).
+    families = _share_alike_families(
+        [*sources, *values, *known.values()],
+        value_counts,
+        evidence,
+        share_alike_reach,
+    )
+
     return {
         'sources': sources,
         'share_alike': share_alike,
+        'share_alike_families': families,
+        'share_alike_conflict': len(families) > 1,
         'attribution': attribution,
         'restricted': restricted,
         'resale_restricted': resale_restricted,
@@ -676,6 +984,19 @@ def _resolve_source_id(value: str, known_ids: set[str]) -> str:
         if token in known_ids or token in catalog:
             return token
     return value
+
+
+def _withheld_lines(entries) -> list[str]:
+    """Two notice lines per withheld source: its counts and its terms."""
+    lines = []
+    for entry in entries:
+        lines.append(
+            f'  {entry["source_id"]}: {entry["rows"]:,} rows left out, '
+            f'{entry["cells"]:,} values emptied'
+        )
+        license_text = entry.get('license') or _UNRECORDED
+        lines.append(f'    {license_text}  {entry.get("terms_url") or ""}')
+    return lines
 
 
 def format_notice(recipe, terms: dict, admin_id=None) -> str:
@@ -778,7 +1099,10 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         distribution = record.get('distribution') or record['provider']
         lines.append(f'{distribution} {version}')
     lines.append('')
-    if terms.get('withheld'):
+    withheld = terms.get('withheld') or []
+    restricted_withheld = [e for e in withheld if not e.get('share_alike_family')]
+    family_withheld = [e for e in withheld if e.get('share_alike_family')]
+    if restricted_withheld:
         lines += [
             'Withheld',
             '-' * 70,
@@ -787,13 +1111,21 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             "are left out; values they filled are empty, with their '_source'",
             "column set to 'withheld'.",
         ]
-        for entry in terms['withheld']:
-            lines.append(
-                f'  {entry["source_id"]}: {entry["rows"]:,} rows left out, '
-                f'{entry["cells"]:,} values emptied'
-            )
-            license_text = entry.get('license') or _UNRECORDED
-            lines.append(f'    {license_text}  {entry.get("terms_url") or ""}')
+        lines += _withheld_lines(restricted_withheld)
+        lines.append('')
+    if family_withheld:
+        names = ', '.join(sorted({e['share_alike_family'] for e in family_withheld}))
+        lines += [
+            'Withheld to keep one share-alike licence',
+            '-' * 70,
+            f'This bundle leaves out what sources licensed under {names}',
+            'supplied, because their share-alike terms cannot be satisfied',
+            "together with the share-alike licence of the bundle's other",
+            'sources. Rows whose outline came from them are left out; values',
+            "they filled are empty, with their '_source' column set to",
+            "'withheld'.",
+        ]
+        lines += _withheld_lines(family_withheld)
         lines.append('')
     if terms.get('restricted'):
         lines += [
@@ -825,15 +1157,32 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             lines.append(f'  {entry["source_id"]}: {license_text}  {url}')
         lines.append('')
 
-    if terms['share_alike']:
+    share_alike = terms['share_alike']
+    present = terms.get('share_alike_families')
+    if present is not None:
+        # Only the licences of sources whose data is in the bundle: a
+        # source that feeds the recipe, or whose values were withheld,
+        # passes no share-alike obligation on.
+        carried = {
+            str(entry['license']) for members in present.values() for entry in members
+        }
+        share_alike = {k: v for k, v in share_alike.items() if k in carried}
+        for license_text in sorted(carried - set(share_alike)):
+            share_alike[license_text] = 0.0
+    if share_alike:
         lines += ['Share-alike', '-' * 70]
         for license_text, share in sorted(
-            terms['share_alike'].items(), key=lambda item: -item[1]
+            share_alike.items(), key=lambda item: -item[1]
         ):
-            lines.append(
-                f'{share:.1%} of the geometry in this bundle is licensed '
-                f'{license_text},'
-            )
+            if share:
+                lines.append(
+                    f'{share:.1%} of the geometry in this bundle is licensed '
+                    f'{license_text},'
+                )
+            else:
+                lines.append(
+                    f'Values in this bundle come from a source licensed {license_text},'
+                )
             lines.append(
                 'which is a share-alike licence: publishing this bundle, or anything'
             )
@@ -841,8 +1190,13 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
                 f'derived from it that is still a database, requires '
                 f'releasing it under {license_text} as well.'
             )
-        if len(terms['share_alike']) > 1:
-            names = ', '.join(sorted(terms['share_alike']))
+        # Two versions of one family (CC BY-SA 3.0 and 4.0) are one
+        # release under the later version, so only families conflict.
+        families = terms.get('share_alike_families')
+        if families is None:
+            families = {share_alike_family(text) for text in terms['share_alike']}
+        if len(families) > 1:
+            names = ', '.join(sorted(families))
             lines += [
                 '',
                 'THESE CANNOT ALL BE SATISFIED AT ONCE. A share-alike licence',
