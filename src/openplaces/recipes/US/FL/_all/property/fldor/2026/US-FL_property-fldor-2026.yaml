@@ -67,6 +67,11 @@ process_by:
 # book/page references are identifiers, and some counties issue
 # instrument numbers too large for int64 (pyarrow overflows at
 # parquet write when pandas has upcast them to Python ints).
+# ALT_KEY is a county account number whose shape changes between
+# years: Indian River ships 21 digits in 2009-2016 (beyond int64,
+# so the year file failed to write) and 5 to 6 digits from 2018,
+# and a year where it is empty reads as float. Read as text, every
+# county and year writes the same column type to the roll-up.
 csv_dtype:
   PARCEL_ID: str
   OR_BOOK1: str
@@ -79,6 +84,7 @@ csv_dtype:
   PARCEL_ID_PRV_HMSTD: str
   MP_ID: str
   STATE_PAR_ID: str
+  ALT_KEY: str
 
 columns:
   parcel_id_assessor: PARCEL_ID
