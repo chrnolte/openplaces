@@ -248,6 +248,10 @@ def _to_id_list(ids):
     return [str(a) for a in ids]
 
 
+# pyarrow's default maximum row group length for `pq.write_table`.
+_STREAM_ROW_GROUP_ROWS = 1024 * 1024
+
+
 class _NotStreamable(Exception):
     """Raised when a streamed aggregate cannot establish one schema."""
 
@@ -263,26 +267,71 @@ def _unified_input_schema(inputs, columns):
     that. `unify_schemas` promotes the other way, and null casts to
     anything.
 
+    A column that is text in one input and numeric in another has no
+    arrow promotion, and is written as text (the second return value
+    names those columns). Every Florida roll has such a column: a CSV
+    vintage whose `address` cells are all empty is read as float, and
+    columns with no empty cell in a vintage come out as integers there.
+    Returning None for them sent every county to the in-memory path,
+    which is what held all of US-FL-LA's 23 vintages in one frame. The
+    in-memory path ends with the same text column: `pd.concat` makes
+    the column object, and `coerce_mixed_object_columns` casts a mixed
+    one to pandas 'string'; the caller applies that cast input by input,
+    which yields the same text (a float 1.0 is '1.0' either way).
+
+    Measured 2026-10-23 on US-FL-SA: 24 vintages, 6,539,606 rows, ingest peak 2.7 GB.
+
     Returns None when the post-transform columns are not the ones on
     disk (a transform derived or renamed some), since their types
     cannot be read from a footer; the caller then falls back.
+
+    Returns
+    -------
+    tuple of (pyarrow.Schema, set of str) or None
+        The schema, in the order of *columns*, and the columns to cast
+        to text before writing.
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    try:
-        schemas = [pq.read_schema(p) for _, p in inputs]
+    def unify(schemas):
         try:
-            unified = pa.unify_schemas(schemas, promote_options='permissive')
+            return pa.unify_schemas(schemas, promote_options='permissive')
         except TypeError:
             # pyarrow < 14 has no promote_options.
-            unified = pa.unify_schemas(schemas)
+            return pa.unify_schemas(schemas)
+
+    def textlike(t):
+        return (
+            pa.types.is_null(t)
+            or pa.types.is_string(t)
+            or pa.types.is_large_string(t)
+            or pa.types.is_integer(t)
+            or pa.types.is_floating(t)
+            or pa.types.is_boolean(t)
+        )
+
+    try:
+        schemas = [pq.read_schema(p) for _, p in inputs]
     except Exception:  # noqa: BLE001
         return None
-
-    if set(columns) != set(unified.names):
+    present = {name for s in schemas for name in s.names}
+    if set(columns) != present:
         return None
-    return pa.schema([unified.field(name) for name in columns])
+
+    fields = []
+    text_columns = set()
+    for name in columns:
+        column_fields = [s.field(name) for s in schemas if name in s.names]
+        try:
+            fields.append(unify([pa.schema([f]) for f in column_fields]).field(name))
+        except (pa.ArrowTypeError, pa.ArrowInvalid, TypeError):
+            if not all(textlike(f.type) for f in column_fields):
+                return None
+            fields.append(pa.field(name, pa.large_string()))
+            text_columns.add(name)
+    # The first input's footer metadata, as `unify_schemas` keeps it.
+    return pa.schema(fields, metadata=schemas[0].metadata), text_columns
 
 
 def _streamable_columns(inputs, transform):
@@ -346,7 +395,8 @@ def _stream_aggregate_to_file(
 
     Same result as the in-memory path for the cases
     `_can_stream_aggregate` allows, at the memory cost of a single
-    input rather than all of them.
+    input (plus at most one buffered row group of smaller ones) rather
+    than all of them.
 
     Duplicate detection is by 64-bit row hash rather than by holding the
     rows: a hash collision would raise a spurious duplicate error, never
@@ -389,15 +439,47 @@ def _stream_aggregate_to_file(
     # vintage's `large_string` down to it, which arrow rightly refuses.
     # Unifying the parquet footers promotes null to the real type
     # instead, and a null-to-anything cast is always available.
-    target_schema = _unified_input_schema(inputs, columns)
-    if target_schema is None:
+    unified = _unified_input_schema(inputs, columns)
+    if unified is None:
         raise _NotStreamable(final_path.name)
+    target_schema, text_columns = unified
+
+    # The recipe-roots stamp every attribute table carries
+    # (`io.tables._write_parquet`). The streaming writer bypasses that
+    # function, so without this a streamed roll-up was the one
+    # attribute table that could not say which recipes built it. An
+    # explicit key in *file_metadata* wins, as it does there.
+    from openplaces.path import RECIPE_ROOTS_METADATA_KEY, recipe_roots_footer
+
+    file_metadata = {
+        RECIPE_ROOTS_METADATA_KEY: recipe_roots_footer(),
+        **(file_metadata or {}),
+    }
 
     tmp_path = final_path.with_name(final_path.name + '.building')
     writer = None
     schema = None
     hashes = []
     n_rows = 0
+    # Small inputs are buffered into row groups of the size a single
+    # `pq.write_table` call writes, which the in-memory path does. One
+    # row group per input doubled a small county's file (US-FL-LF:
+    # 23 vintages of about 7,000 rows, 12 MB in one group, 23 MB in
+    # 23). The buffer is flushed before it would pass one group, so it
+    # never holds more than one group or one input; `concat_tables`
+    # only chains the buffered tables, it copies nothing.
+    pending = []
+    pending_rows = 0
+
+    def _flush():
+        nonlocal pending_rows
+        if pending:
+            writer.write_table(
+                pa.concat_tables(pending), row_group_size=_STREAM_ROW_GROUP_ROWS
+            )
+            pending.clear()
+            pending_rows = 0
+
     try:
         for _input_id, p in inputs:
             df = read_parquet(p, geom=False)
@@ -406,7 +488,16 @@ def _stream_aggregate_to_file(
             df = df.reset_index(drop=True)
             df = df.reindex(columns=columns)
             df = coerce_mixed_object_columns(df)
+            for col in text_columns:
+                df[col] = df[col].astype('string')
             hashes.append(pd.util.hash_pandas_object(df, index=False).to_numpy())
+            if '_join_id' in df.columns:
+                # `read_parquet` drops the inputs' `_join_id`, so the
+                # reindex above left it empty. `save_parquet`, which
+                # the in-memory path writes through, numbers the rows
+                # 1..n; numbering them here, after the duplicate
+                # hash, writes the same column.
+                df['_join_id'] = np.arange(n_rows + 1, n_rows + len(df) + 1)
             n_rows += len(df)
             table = pa.Table.from_pandas(df, preserve_index=False)
             if not table.schema.equals(target_schema, check_metadata=False):
@@ -415,24 +506,25 @@ def _stream_aggregate_to_file(
                 # The footer metadata goes on the schema up front: setting
                 # it afterwards would mean reading the finished file back
                 # in full, which is the thing this path exists to avoid.
-                schema = target_schema
-                if file_metadata:
-                    merged_meta = dict(table.schema.metadata or {})
-                    merged_meta.update(
-                        {
-                            (k.encode() if isinstance(k, str) else k): (
-                                v.encode() if isinstance(v, str) else v
-                            )
-                            for k, v in file_metadata.items()
-                        }
-                    )
-                    schema = target_schema.with_metadata(merged_meta)
+                merged_meta = dict(table.schema.metadata or {})
+                merged_meta.update(
+                    {
+                        (k.encode() if isinstance(k, str) else k): (
+                            v.encode() if isinstance(v, str) else v
+                        )
+                        for k, v in file_metadata.items()
+                    }
+                )
+                schema = target_schema.with_metadata(merged_meta)
                 writer = pq.ParquetWriter(tmp_path, schema)
-            table = table.replace_schema_metadata(schema.metadata)
-            writer.write_table(table)
+            if pending_rows + len(table) > _STREAM_ROW_GROUP_ROWS:
+                _flush()
+            pending.append(table.replace_schema_metadata(schema.metadata))
+            pending_rows += len(table)
             del df, table
         if writer is None:
             raise ValueError(f'No inputs to aggregate into {final_path.name}')
+        _flush()
 
         all_hashes = np.concatenate(hashes) if hashes else np.empty(0, dtype=np.uint64)
         hashes.clear()
@@ -473,6 +565,211 @@ def _stream_aggregate_to_file(
         print(
             f'Aggregated {len(inputs)} chunk(s) -> {final_path.name} '
             f'({n_rows:,} rows, streamed)'
+        )
+
+
+def _partition_keys(column):
+    """The partition id each value of an arrow *column* names, as text.
+
+    A year partition is the id '2021' while its rows carry the year as
+    an integer (or as a float, where a missing value forced one), so
+    numbers are compared through their integer text. A fractional value
+    raises rather than rounding into a neighboring partition.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    if isinstance(column, pa.ChunkedArray):
+        column = column.combine_chunks()
+    if pa.types.is_dictionary(column.type):
+        column = column.dictionary_decode()
+    if pa.types.is_floating(column.type) or pa.types.is_decimal(column.type):
+        column = pc.cast(column, pa.int64())
+    return pc.cast(column, pa.string())
+
+
+def _check_partition_column(inputs, partition_column):
+    """Raise unless every input's rows all name that input's partition.
+
+    Replacing a partition's rows in the combined file is exact only if
+    the column says which partition each row came from; a vintage
+    holding a row of another year would otherwise be dropped with the
+    wrong partition or survive a re-run beside its replacement.
+    """
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    for input_id, p in inputs:
+        if partition_column not in parquet_columns(p):
+            raise ValueError(
+                f'{Path(p).name} has no {partition_column!r} column, so its '
+                'rows cannot be matched to their partition in the combined file.'
+            )
+        keys = _partition_keys(
+            pq.read_table(p, columns=[partition_column])[partition_column]
+        )
+        foreign = set(pc.unique(keys).to_pylist()) - {str(input_id)}
+        if foreign:
+            raise ValueError(
+                f'Partition {input_id} ({Path(p).name}) has rows whose '
+                f'{partition_column!r} names another partition or is missing '
+                f'({len(foreign)} distinct value(s)); refusing to replace '
+                'partitions by that column.'
+            )
+
+
+def _split_existing_by_partition(path, partition_column, drop_ids, work_dir):
+    """Write the rows of *path* into one file per partition, batch by batch.
+
+    Rows of the partitions in *drop_ids* are not written. Holds one
+    record batch at a time, so splitting Miami-Dade's 19.1 million row
+    file costs a batch, not the file. Row order inside each partition is
+    the file's own.
+
+    Returns
+    -------
+    dict of str to pathlib.Path
+        Partition id to the file holding its kept rows.
+
+    Raises
+    ------
+    ValueError
+        If a row's partition column is missing or names no partition
+        id, since such a row could be neither replaced nor kept with
+        certainty.
+    """
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    pf = pq.ParquetFile(path)
+    if partition_column not in pf.schema_arrow.names:
+        raise ValueError(
+            f'{Path(path).name} has no {partition_column!r} column; its rows '
+            'cannot be assigned to partitions.'
+        )
+    work_dir.mkdir(parents=True, exist_ok=True)
+    writers = {}
+    pieces = {}
+    try:
+        for batch in pf.iter_batches(batch_size=200_000):
+            keys = _partition_keys(batch.column(partition_column))
+            if keys.null_count:
+                raise ValueError(
+                    f'{Path(path).name}: {keys.null_count} row(s) have no '
+                    f'{partition_column!r}; refusing to replace partitions.'
+                )
+            for key in pc.unique(keys).to_pylist():
+                if key in drop_ids:
+                    continue
+                part = batch.filter(pc.equal(keys, key))
+                if key not in writers:
+                    pieces[key] = work_dir / f'{key}.parquet'
+                    writers[key] = pq.ParquetWriter(pieces[key], pf.schema_arrow)
+                writers[key].write_batch(part)
+    finally:
+        for writer in writers.values():
+            writer.close()
+    return pieces
+
+
+def _replace_partitions_in_file(
+    final_path,
+    inputs,
+    *,
+    partition_column,
+    keep_original=False,
+    file_metadata=None,
+    transform=None,
+    verbose=False,
+):
+    """Replace the rows of some partitions in a combined file, streamed.
+
+    The existing file is split into one file per partition (rows of the
+    partitions in *inputs* left out), and those pieces and the new
+    inputs are streamed back into *final_path* in partition order. The
+    result is the file a run of every partition would have written:
+    same rows, same order, the replaced partitions holding only their
+    new rows.
+
+    This replaces the two choices `aggregate_partitions` had for a
+    partial re-run, both wrong: a full-row `union` kept every old row
+    the new vintage changed beside its new version, and `replace`
+    dropped every other partition. Selecting rows by the partition
+    column is what makes the replacement exact, which is why it is
+    only offered when the recipe names that column. The split costs a
+    second write of the file on disk, which buys holding one batch in
+    memory rather than the file: the in-memory union of Miami-Dade's
+    19.1 million rows held them beside a reloaded copy.
+
+    Parameters
+    ----------
+    final_path : pathlib.Path
+        The combined file. Must exist.
+    inputs : list of (str, pathlib.Path)
+        New partition files, each paired with its partition id.
+    partition_column : str
+        Column whose value names each row's partition.
+    keep_original : bool
+        If False, delete the new partition files afterward.
+    file_metadata : dict of str to str, optional
+        Footer metadata of the result (the merged coverage).
+    transform : callable, optional
+        Applied to every frame after reading, as in `_aggregate_to_file`.
+    verbose : bool
+        Print a one-line summary.
+
+    Raises
+    ------
+    ValueError
+        If a row of the existing file or of an input does not name its
+        partition, or the combined rows contain full-row duplicates.
+        The existing file is left as it was.
+    """
+    import shutil
+
+    # Rows are split and rewritten as attribute tables; a `_geo` sidecar
+    # would no longer line up with them.
+    if any(_has_geometry(p) for p in [final_path, *(p for _, p in inputs)]):
+        raise ValueError(
+            f'{final_path.name}: replacing partitions by column is only '
+            'supported for tables without geometry.'
+        )
+    _check_partition_column(inputs, partition_column)
+    new_ids = {str(pid) for pid, _ in inputs}
+    work_dir = final_path.with_name(final_path.name + '.split')
+    if work_dir.exists():
+        # A previous run killed mid-split; its pieces are incomplete.
+        shutil.rmtree(work_dir)
+    try:
+        pieces = _split_existing_by_partition(
+            final_path, partition_column, new_ids, work_dir
+        )
+        combined = dict(pieces)
+        combined.update({str(pid): p for pid, p in inputs})
+        # Partition ids are fixed-width (years, year-months), so text
+        # order is time order and matches the order a full run reads
+        # them in.
+        ordered = [(pid, combined[pid]) for pid in sorted(combined)]
+        _aggregate_to_file(
+            final_path,
+            ordered,
+            how='replace',
+            keep_original=True,
+            reset_index=True,
+            file_metadata=file_metadata,
+            transform=transform,
+            verbose=False,
+        )
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+    if not keep_original:
+        for _pid, p in inputs:
+            _delete_parquet_pair(p)
+    if verbose:
+        print(
+            f'Replaced partition(s) {", ".join(sorted(new_ids))} in '
+            f'{final_path.name} ({len(pieces)} kept from the existing file)'
         )
 
 
@@ -1190,6 +1487,7 @@ def aggregate_partitions(
     partition_ids=None,
     keep_original=False,
     combined=False,
+    partition_column=None,
     verbose=False,
 ):
     """Roll up per-partition output files into a coarser-grained file.
@@ -1236,6 +1534,14 @@ def aggregate_partitions(
         re-run rebuilds them. Deletion happens last, after the file is written.
     combined : bool
         Passed to `save_parquet` (single geoparquet vs. split layout).
+    partition_column : str, optional
+        Column whose value names the partition a row came from (the
+        Florida rolls' `tax_year`, whose partitions are years). Given,
+        a 'union' into an existing file replaces the rows of the
+        partitions in this run and keeps every other partition's, one
+        partition in memory at a time, so a re-run of some years is
+        exact. Every row must name a partition id, or it raises.
+        Without it, 'union' de-duplicates by full row in memory.
     verbose : bool
         Print a summary line per written file.
     """
@@ -1267,6 +1573,17 @@ def aggregate_partitions(
         out_path = get_output_path(recipe, admin_id, partition_id=out_partition_id)
         existing = read_partition_coverage(out_path) if how == 'union' else set()
         coverage = sorted(existing | {pid for pid, _ in group_inputs})
+        if partition_column and how == 'union' and out_path.exists():
+            _replace_partitions_in_file(
+                out_path,
+                group_inputs,
+                partition_column=partition_column,
+                keep_original=keep_original,
+                file_metadata={'openplaces:partitions': json.dumps(coverage)},
+                transform=upgrade_legacy,
+                verbose=verbose,
+            )
+            return
         _aggregate_to_file(
             out_path,
             group_inputs,

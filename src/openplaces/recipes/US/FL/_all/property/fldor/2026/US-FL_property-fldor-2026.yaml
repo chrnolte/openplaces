@@ -239,6 +239,15 @@ parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
 
+# The state's yearly NAL files repeat a few records verbatim (Union 2
+# rows in 2022, Bay 1 in 2025, Charlotte 2 in 2009 and 10 in 2024;
+# measured 2026-10-23). The roll-up refuses full-row duplicates, and
+# the batch ingest would stop every county after the first one hit.
+# Only rows identical in every column are dropped (maintainer,
+# 2026-10-24); the transaction recipe drops on a column subset because
+# its pairs differ in a decoded label.
+drop_duplicates: true
+
 # Integrate each county's per-year files into one dataset-wide _all.parquet
 # and delete them; the file's footer records the ingested years so re-runs
 # skip them. Matches US-FL_transaction-fldor-2026's convention: each row
@@ -248,3 +257,7 @@ parcel_id_local:
 # with a plain get_entities() call (no explicit partition_id).
 aggregate_by:
   single_file: true
+  # Each year file's rows carry that year as `tax_year` (ASMNT_YR), so a
+  # re-run of some years replaces exactly their rows in the county file,
+  # one year in memory at a time.
+  partition_column: tax_year
