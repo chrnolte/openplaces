@@ -429,7 +429,51 @@ def _explicit_outputs(recipe: dict, upstream_id: str) -> set[str] | None:
     a spine source, an auto-discovered layer) can carry every attribute
     the upstream maps, which None reports.
     """
-    specs = _referencing_specs(recipe.get('pipeline'), upstream_id)
+    return _spec_outputs(_referencing_specs(recipe.get('pipeline'), upstream_id))
+
+
+def _discovered_outputs(recipe: dict, edge, entity_type: str) -> set[str] | None:
+    """Column names an auto-discovering step takes, or None for a layer.
+
+    The parcel spine's `link_by_id` finds every transaction source of
+    its unit by entity type and keeps only `last_sale_price`,
+    `last_sale_date` and a count. Matched by `recipe_id` alone, the step
+    was invisible, so a sales source reached only that way counted as a
+    layer, and the redaction rules withheld every parcel column a
+    footprint takes. Every discovering mapping of the edge's step and
+    *entity_type* is read, a step's `sources` entries included, and one
+    without a column list makes the source a layer.
+
+    Measured 2026-10-24 on boston-inner-core: 2,754,940 LA3 cells before, 0 after.
+    """
+    if getattr(edge, 'kind', None) != 'auto_discover' or not entity_type:
+        return None
+    step_name = getattr(edge, 'step', None)
+    entity = recipe.get('entity')
+    default = str(getattr(entity, 'entity_type', '') or '') or None
+
+    def discovers(node) -> bool:
+        return (
+            isinstance(node, dict)
+            and not node.get('recipe_id')
+            and bool(node.get('auto_discover') or node.get('entity_type'))
+            and str(node.get('entity_type') or default) == entity_type
+        )
+
+    specs = []
+    for step in recipe.get('pipeline') or []:
+        if not isinstance(step, dict) or step.get('step') != step_name:
+            continue
+        sources = step.get('sources')
+        if isinstance(sources, list):
+            specs.extend(source for source in sources if discovers(source))
+        elif discovers(step):
+            specs.append(step)
+    return _spec_outputs(specs)
+
+
+def _spec_outputs(specs: list[dict]) -> set[str] | None:
+    """Outputs of mappings that name their columns, or None if one does not."""
     if not specs:
         return None
     outputs: set[str] = set()
@@ -464,6 +508,17 @@ def _as_run(recipe: dict, admin_id) -> dict:
     except Exception:  # noqa: BLE001 - as in get_recipe_dependencies
         return recipe
     return patched
+
+
+def _recipe_entity_type(recipe_id: str) -> str | None:
+    """Entity type of a recipe, or None where it cannot be read."""
+    try:
+        entity = get_recipe_by_id(recipe_id).get('entity')
+    except Exception:  # noqa: BLE001 - as in _walk_source_terms
+        return None
+    if isinstance(entity, dict):
+        return str(entity.get('entity_type') or '') or None
+    return str(getattr(entity, 'entity_type', '') or '') or None
 
 
 def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
@@ -503,6 +558,10 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
                 # Unresolved auto-discovery cannot be attributed.
                 continue
             explicit = _explicit_outputs(as_run, upstream_id)
+            if explicit is None and getattr(edge, 'kind', None) == 'auto_discover':
+                explicit = _discovered_outputs(
+                    as_run, edge, _recipe_entity_type(upstream_id)
+                )
             if explicit is not None:
                 reach = explicit if cap is None else explicit & cap
             else:

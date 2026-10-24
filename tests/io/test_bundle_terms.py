@@ -390,6 +390,121 @@ def test_a_source_linked_for_named_columns_reaches_only_those(monkeypatch):
     ]
 
 
+def _sales_graph(monkeypatch, link_step):
+    """A curated footprint and parcel over a spine that discovers sales."""
+    from types import SimpleNamespace
+
+    import openplaces.io.delivery.terms as module
+
+    sales = _restricted_recipe(
+        'US-XX_transaction-closedvendor-2026',
+        'transaction',
+        {'price': 'PRICE', 'recorded_date': 'DATE', 'land_use_class': 'USE'},
+    )
+    spine = {
+        'id': 'US_parcel-spine-2026',
+        'entity': SimpleNamespace(entity_type='parcel', source=None),
+        'pipeline': [link_step],
+    }
+    parcel = {'id': 'US_parcel-openplaces-2026', 'entity_recipe': spine['id']}
+    footprint = {
+        'id': 'US_footprint-openplaces-2026',
+        'pipeline': [
+            {
+                'step': 'link_by_id',
+                'recipe_id': parcel['id'],
+                'columns': {'land_use_class': 'land_use_class_parcel'},
+            }
+        ],
+    }
+    recipes = {r['id']: r for r in (sales, spine, parcel, footprint)}
+    edges = {
+        footprint['id']: [SimpleNamespace(upstream_recipe_id=parcel['id'])],
+        parcel['id']: [SimpleNamespace(upstream_recipe_id=spine['id'])],
+        spine['id']: [
+            SimpleNamespace(
+                upstream_recipe_id=sales['id'],
+                kind='auto_discover',
+                step=link_step['step'],
+            )
+        ],
+    }
+    monkeypatch.setattr(module, 'get_recipe_by_id', lambda rid: recipes[rid])
+    monkeypatch.setattr(
+        module,
+        'get_recipe_dependencies',
+        lambda recipe, admin_id=None: edges.get(recipe['id'], []),
+    )
+    monkeypatch.setattr(module, '_catalog_terms', lambda: {})
+    return parcel, footprint
+
+
+SALES_LINK = {
+    'step': 'link_by_id',
+    'auto_discover': True,
+    'entity_type': 'transaction',
+    'mode': 'aggregate',
+    'columns': {'price': 'last_sale_price', 'recorded_date': 'last_sale_date'},
+    'count_as': 'n_transactions',
+}
+
+
+def test_a_discovered_source_reaches_only_the_columns_its_step_takes(monkeypatch):
+    from openplaces.io.delivery.terms import restricted_inputs
+
+    parcel, footprint = _sales_graph(monkeypatch, SALES_LINK)
+
+    (on_parcels,) = restricted_inputs(parcel)
+    (on_footprints,) = restricted_inputs(footprint)
+
+    assert on_parcels['layer_source'] is False
+    assert on_parcels['attributes'] == [
+        'last_sale_date',
+        'last_sale_price',
+        'n_transactions',
+    ]
+    # The footprint takes none of them.
+    assert on_footprints['layer_source'] is False
+    assert on_footprints['attributes'] == []
+
+
+def test_a_discovering_step_without_columns_still_reads_a_layer(monkeypatch):
+    from openplaces.io.delivery.terms import restricted_inputs
+
+    step = {key: v for key, v in SALES_LINK.items() if key != 'columns'}
+    step.pop('count_as')
+    parcel, _ = _sales_graph(monkeypatch, step)
+
+    (entry,) = restricted_inputs(parcel)
+
+    assert entry['layer_source'] is True
+
+
+def test_discovered_sales_withhold_the_sale_not_the_parcel(monkeypatch):
+    from openplaces.io.delivery.redaction import withhold
+    from openplaces.io.delivery.terms import restricted_inputs
+
+    parcel, _ = _sales_graph(monkeypatch, SALES_LINK)
+    entries = [{**e, 'admin_id': 'US-XX'} for e in restricted_inputs(parcel)]
+    # Fabricated rows in a unit inside the source's scope.
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['US-XX-AAA', 'US-XX-AAA'],
+            'last_sale_price': [100000.0, 250000.0],
+            'land_use_class_parcel': ['101', '104'],
+            'land_value_parcel': [50000.0, 80000.0],
+            'land_value_parcel_source': ['parcel', 'parcel'],
+        }
+    )
+
+    out, counts = withhold(frame, entries, 'admin3_id', known_sources={'closedvendor'})
+
+    assert out['last_sale_price'].isna().all()
+    assert out['land_use_class_parcel'].tolist() == ['101', '104']
+    assert out['land_value_parcel'].tolist() == [50000.0, 80000.0]
+    assert counts == {'closedvendor': {'rows': 0, 'cells': 2}}
+
+
 def test_a_source_read_as_a_layer_reaches_everything_it_maps(monkeypatch):
     from openplaces.io.delivery.terms import restricted_inputs
 
