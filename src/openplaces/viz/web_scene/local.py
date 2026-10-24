@@ -159,14 +159,25 @@ def place_extent(place, radius_km, slug):
         built, regions, missing = units_and_regions(
             place['state'], admin_ids=place['admin_ids']
         )
+    if place.get('only_units'):
+        # Units of the circle a page may show (`only_units`), e.g. those
+        # whose sources allow a public page; the rest stay out, and the
+        # place's `notes` say so in Sources.
+        left_out = [a for a in built if a not in place['only_units']]
+        built = [a for a in built if a in place['only_units']]
+        if left_out:
+            print(f'{slug}: {", ".join(left_out)} left out (only_units).')
     if not built:
         raise SystemExit(f'{slug}: no delivered bundles cover this place.')
     if missing:
         print(f'{slug}: no bundles for {", ".join(missing)}; left out.')
-    if place.get('team') and not place.get('model_files'):
+    if place.get('team') and (
+        not place.get('model_files') or place.get('team_bundles')
+    ):
         # The team twin of each region; the scene is then marked a team
         # page, published only behind a password. A page of model files
-        # reads the public bundles and is a team page by its models.
+        # reads the public bundles and is a team page by its models,
+        # unless it asks for the team bundles (`team_bundles`).
         regions = [f'{r}{TEAM_SUFFIX}' for r in regions]
     return circle, built, regions
 
@@ -240,6 +251,8 @@ def build_place(place, radius_km, slug, phone_scene=None) -> Path:
         place_title=place['title'],
         model_files=models,
         lots_file=place_lots_file(place, built),
+        models_public=bool(place.get('models_public')),
+        notes=place.get('notes'),
         verbose=False,
     )
     return output

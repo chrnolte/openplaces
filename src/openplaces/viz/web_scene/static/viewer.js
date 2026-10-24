@@ -276,6 +276,19 @@ function renderSources(container, scene) {
       container.appendChild(el('p', 'src-note', 'None known for this place at the moment.'));
     }
   }
+  // What the page shows, where a place says more (`page_notes`, e.g.
+  // which counties of its circle are left out and why).
+  if (scene.page_notes && scene.page_notes.length) {
+    container.appendChild(el('h3', 'src-layer', 'This page'));
+    const notes = el('ul', 'src-list');
+    for (const note of scene.page_notes) {
+      const item = el('li', 'src-item');
+      item.appendChild(el('div', 'src-head')).appendChild(el('span', 'src-name', note.name));
+      item.appendChild(el('div', 'src-credit', note.credit));
+      notes.appendChild(item);
+    }
+    container.appendChild(notes);
+  }
   // Values a model filled in (the building imputation): what it is,
   // where its code lives, and that "Tax assessor" leaves it out.
   if (scene.value_notes && scene.value_notes.length) {
@@ -323,7 +336,7 @@ function renderSources(container, scene) {
       container.appendChild(el('h4', 'src-group', 'Values'));
       const values = el('ul', 'src-list');
       for (const source of section.values) {
-        const item = el('li', 'src-item');
+        const item = el('li', source.withheld ? 'src-item src-withheld' : 'src-item');
         const head = el('div', 'src-head');
         head.append(el('span', 'src-name', source.name), ...shareOf(source));
         item.appendChild(head);
@@ -333,6 +346,29 @@ function renderSources(container, scene) {
         values.appendChild(item);
       }
       container.appendChild(values);
+      // Each unit's own sources, where the scene spans several, so a
+      // county whose values are withheld (or come from another source)
+      // shows apart from its neighbors (maintainer, 2026-10-24).
+      const byUnit = section.values_by_unit || [];
+      const differs = byUnit.some((u) => u.values.length > 1 ||
+        u.values[0].name !== byUnit[0].values[0].name);
+      if (byUnit.length > 1 && differs) {
+        container.appendChild(el('h4', 'src-group', 'Values by county'));
+        const units = el('ul', 'src-list');
+        for (const unit of byUnit) {
+          const item = el('li', 'src-item src-unit');
+          item.appendChild(el('div', 'src-name', unit.unit));
+          for (const source of unit.values) {
+            const row = el('div', source.withheld || source.missing
+              ? 'src-head src-withheld'
+              : 'src-head');
+            row.append(el('span', 'src-name', source.name), ...shareOf(source));
+            item.appendChild(row);
+          }
+          units.appendChild(item);
+        }
+        container.appendChild(units);
+      }
       container.appendChild(el('h4', 'src-group', 'Outlines'));
     }
     const list = el('ul', 'src-list');

@@ -816,6 +816,27 @@ def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
         site.main(['build'])
 
 
+def test_value_sources_by_unit_set_withheld_values_apart():
+    # Fabricated: one county's values from the roll, another's withheld.
+    provenance = pd.Series(['parcel.massgis'] * 3 + ['withheld'] * 2)
+    units = pd.Series(['US-XX-A'] * 3 + ['US-XX-B'] * 2)
+    by_unit = web_scene.value_sources_by_unit(
+        provenance, units, {'US-XX-A': 'County A', 'US-XX-B': 'County B'}
+    )
+    assert [u['unit'] for u in by_unit] == ['County A', 'County B']
+    assert by_unit[0]['values'][0]['name'] == 'MassGIS'
+    withheld = by_unit[1]['values'][0]
+    assert withheld['name'] == web_scene.WITHHELD_BY_TERMS and withheld['withheld']
+    assert 'withheld' not in by_unit[0]['values'][0]
+    # A unit with features but no value at all says so.
+    provenance = pd.Series(['parcel.massgis', None])
+    units = pd.Series(['US-XX-A', 'US-XX-C'])
+    by_unit = web_scene.value_sources_by_unit(
+        provenance, units, {'US-XX-A': 'County A', 'US-XX-C': 'County C'}
+    )
+    assert by_unit[1]['values'][0]['name'] == web_scene.NO_VALUES_IN_BUNDLE
+
+
 def test_value_sources_are_counted_apart_from_outline_sources():
     provenance = pd.Series(
         ['parcel.massgis'] * 6
@@ -1197,6 +1218,16 @@ def test_model_files_pool_counties_and_keep_their_views(tmp_path):
     assert models.credits == ({'name': 'A', 'credit': 'Model A, fabricated.'},)
     assert models.data_credits == ()
     assert web_scene.read_model_files([tmp_path / 'none.parquet']) is None
+    # Training sales per unit, named in one line of the model's credit.
+    models = web_scene.ModelFiles(
+        table=models.table,
+        views=models.views,
+        year=2025,
+        credits=({'name': 'A', 'credit': 'Model A'},),
+        training_sales={'A': [('X-1', 1200), ('X-2', 30)]},
+    )
+    credit = web_scene.model_credits(models, {'X-1': 'County One'})[0]['credit']
+    assert credit == 'Model A. Trained on sales: County One 1,200; X-2 30.'
 
 
 def test_lots_from_a_model_file_refuse_personal_columns(tmp_path):

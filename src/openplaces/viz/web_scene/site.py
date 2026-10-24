@@ -82,6 +82,8 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
         place_title=place['title'],
         model_files=models,
         lots_file=place_lots_file(place, built),
+        models_public=bool(place.get('models_public')),
+        notes=place.get('notes'),
         verbose=False,
     )
     print(
@@ -139,8 +141,9 @@ def landing(config, thumbnails=True) -> None:
         )
         for p in config['places']
         # A team page is never listed: it is reached by its address,
-        # with the password.
-        if not p.get('team') and (root / p['slug'] / 'scene.json').exists()
+        # with the password; nor is an `unlisted` page (a greeting).
+        if not (p.get('team') or p.get('unlisted'))
+        and (root / p['slug'] / 'scene.json').exists()
     ]
     # Most parcels first (maintainer, 2026-10-20), as each page's build
     # counted them; the landing cards and every page's places menu
@@ -207,9 +210,9 @@ def main(argv=None) -> None:
     unknown = sorted(set(args.places) - set(by_slug))
     if unknown:
         raise SystemExit(f'Not in places.yaml: {", ".join(unknown)}.')
-    # `--all` is the public pages; a team page is built and published
-    # only when named.
-    public = [p for p in config['places'] if not p.get('team')]
+    # `--all` is the listed public pages; a team or `unlisted` page is
+    # built and published only when named.
+    public = [p for p in config['places'] if not (p.get('team') or p.get('unlisted'))]
     chosen = public if args.all else [by_slug[s] for s in args.places]
     if args.action in ('build', 'publish') and not chosen:
         raise SystemExit('Name the places, or pass --all.')
