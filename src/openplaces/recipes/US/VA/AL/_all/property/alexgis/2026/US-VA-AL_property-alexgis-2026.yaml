@@ -109,6 +109,10 @@ entity:
       "for personal or nonprofit use". Not yet read by a person.
     terms_url: "https://www.alexandriava.gov/Legal"
     redistribution_restricted: true
+    # Cleared for the research team (maintainer, 2026-10-24), as its
+    # values supplement is; whether the item's CC0 governs is still open
+    # (plans/findings/northern-virginia-roll-terms.md).
+    team_sharing_permitted: true
     resale_restricted: true
     portal_url: "https://www.arcgis.com/home/item.html?id=ab8f3a147ddc47deb6d82c5afda65708"
     download_url: "https://hub.arcgis.com/api/v3/datasets/ab8f3a147ddc47deb6d82c5afda65708_0/downloads/data?format=csv&spatialRefId=4326"
