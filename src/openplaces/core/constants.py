@@ -362,6 +362,7 @@ RECIPE_PER_TABLE_KEYS = (
     'columns_to_categorical',
     'drop_columns',
     'encoding',
+    'gdb_domain_labels',
     'save_to',
     'overlay_admin_ids',
     'entity_links',

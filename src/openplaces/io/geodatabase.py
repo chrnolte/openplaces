@@ -79,12 +79,21 @@ def get_gdb_field_domain_map(gdb_path: str, layer: str) -> dict[str, dict]:
 
 
 def read_gdb_with_domains(
-    gdb_path: str, columns: list = None, layer: str = None, **kwargs
+    gdb_path: str,
+    columns: list = None,
+    layer: str = None,
+    resolve_domains: bool = True,
+    **kwargs,
 ) -> gpd.GeoDataFrame:
-    """Read a Geodatabase while resolving categorical label mappings"""
+    """Read a Geodatabase while resolving categorical label mappings.
+
+    With *resolve_domains* False, coded fields keep their stored codes.
+    """
     gdf = gpd.read_file(
         gdb_path, columns=columns, layer=layer, engine='pyogrio', **kwargs
     )
+    if not resolve_domains:
+        return gdf
     field_domains = get_gdb_field_domain_map(gdb_path, layer)
 
     for col, mapping in field_domains.items():

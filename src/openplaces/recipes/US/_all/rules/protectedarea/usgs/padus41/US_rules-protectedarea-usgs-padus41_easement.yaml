@@ -1,0 +1,93 @@
+# Recipe: PAD-US 4.1 Easement feature class
+#
+# Same source, terms and download as
+# US_rules-protectedarea-usgs-padus41_fee (read its header): USGS
+# PAD-US 4.1, public domain, national File Geodatabase, DOI
+# 10.5066/P96WBCHS. This is the layer of easement interests, which
+# since the retirement of the National Conservation Easement Database
+# (January 2025) carries NCED's records; kept apart from the Fee layer
+# so that "under an easement" and "owned outright" stay distinct.
+#
+# Measured 2026-10-24 on the 4.1 release: 341,954 polygons, all
+# Category Easement. Des_Tp CONE 182,708, AGRE 68,183, UNKE 49,244,
+# FORE 20,314, OTHE 11,869, RECE 6,912, HCAE 1,929, RANE 772, PCON 23.
+# EHoldTyp LOC 111,924, STAT 81,824, NGO 80,244, FED 46,641, JNT
+# 8,216, DIST 4,116, empty 3,711, UNK 2,947, PVT 2,296, REG 29, TRIB
+# 6. Own_Type is PVT on 245,480 and UNK on 50,927 (the land under an
+# easement is mostly private), so it is not mapped; the holder type
+# says who holds the interest. GAP_Sts 4: 196,274, 3: 78,762, 2:
+# 60,492, 1: 6,426. Pub_Access XA 216,908, UK 73,503, OA 31,556, RA
+# 19,987. Date_Est is four characters on 250,182, empty or one space
+# on 91,772 (missing after conversion).
+#
+# Easement records overlap one another (one easement recorded by two
+# sources, or an easement and a later amendment); the parcel overlay
+# therefore dissolves overlaps (dissolve: true) before measuring a
+# share.
+#
+# Codes, not labels, and the row-position index: as in the Fee recipe
+# (0 to 341,953, stable within this release only).
+#
+# Unmapped on purpose: EsmtHldr (holder name: organizations, but free
+# text), Own_Name, Loc_Own, Loc_Mang, Unit_Nm, Loc_Nm, Loc_Ds (free
+# text names, which for an easement on private land can name the
+# grantor), Term and Duration (sparse), and the fields left out of the
+# Fee recipe.
+
+description: >-
+  USGS PAD-US 4.1 Easement polygons (conservation and other easements):
+  category, holder and manager type, designation, GAP status, public
+  access, year established.
+
+admin_id: US
+
+dataset:
+  theme: rules-protectedarea
+  source:
+    source_id: usgs
+    license: >-
+      Public domain (ScienceBase item rights: "Public Domain"; FGDC
+      metadata: "These data are in the public domain."). Citation
+      requested via DOI 10.5066/P96WBCHS; no warranty.
+    terms_url: "https://www.sciencebase.gov/catalog/item/652d4fc5d34e44db0e2ee45e"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-download"
+    download_url: "https://www.sciencebase.gov/catalog/file/get/652d4fc5d34e44db0e2ee45e?name=PADUS4_1Geodatabase.zip"
+  version: padus41
+
+compressed_file_name: "PADUS4_1Geodatabase.zip"
+uncompressed_file_name: "PADUS4_1Geodatabase.gdb"
+layer: PADUS4_1Easement
+gdb_domain_labels: false
+
+columns:
+  protected_area_category: Category
+  conservation_easement_holder_type: EHoldTyp
+  protected_area_manager_type: Mang_Type
+  protected_area_designation_type: Des_Tp
+  protected_area_gap_status: GAP_Sts
+  protected_area_public_access: Pub_Access
+  protected_area_year_established: Date_Est
+  source_date: Src_Date
+
+# EHoldTyp is empty on 3,711 records: missing, not a code.
+# Date_Est is text: four digits, or empty or one space when unknown.
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: conservation_easement_holder_type
+    args: {value: ""}
+    output: conservation_easement_holder_type
+  - type: unary
+    operation: to_numeric
+    input: protected_area_year_established
+    output: protected_area_year_established
+
+force_2d: true
+
+save_to:
+  data_dir: core
+  # A dataset's output path follows the dataset, not the recipe id;
+  # the filename keeps the Fee and Easement layers in two files.
+  filename: easement

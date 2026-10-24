@@ -22,7 +22,16 @@ to merge.
 The dominant polygon is the one with the largest intersection area;
 the share is the summed intersection area over the entity's own area,
 capped at 1. Summing is exact only where reference polygons do not
-overlap; the recipe states what was measured on its layer.
+overlap; the recipe states what was measured on its layer. A layer
+whose polygons overlap one another (PAD-US easements, where one
+easement can be recorded by two sources) sets ``dissolve: true``, and
+the share is then the area of the union of the entity's intersections,
+so that land under two records counts once.
+
+A recipe can also restrict the reference to rows with given codes
+(``where``) and turn the share into a flag at a stated threshold
+(``flag_column``, ``min_share``). The flag is a fixed cut on one
+measured share: no score, no vote between layers.
 """
 
 from __future__ import annotations
@@ -73,10 +82,39 @@ def _reference_admin_id(reference_recipe: dict, admin_id: AdminId) -> AdminId | 
     return AdminId(*admin_id.levels[:level]) if level else scope
 
 
+def _dissolved_cover(
+    covered: pd.Series,
+    pairs: pd.DataFrame,
+    entity_ids: np.ndarray,
+    shared: np.ndarray,
+) -> pd.Series:
+    """Covered area per entity with overlapping reference land counted once.
+
+    *covered* is the summed area per entity; *pairs* the per (entity,
+    reference) areas. An entity touched by one reference polygon keeps
+    its sum: the pieces of one polygon do not overlap. An entity touched
+    by two or more gets the area of the union of its intersection
+    pieces (*shared*, aligned with *entity_ids*).
+    """
+    n_refs = pairs.groupby('entity')['ref'].nunique()
+    several = n_refs.index[n_refs > 1]
+    if len(several) == 0:
+        return covered
+    covered = covered.copy()
+    keep = pd.Index(entity_ids).isin(several) & ~shapely.is_empty(shared)
+    groups = pd.Series(np.flatnonzero(keep)).groupby(entity_ids[keep])
+    for entity, rows in groups:
+        covered.loc[entity] = shapely.area(
+            shapely.union_all(shapely.make_valid(shared[rows.to_numpy()]))
+        )
+    return covered
+
+
 def overlay_shares(
     entities: gpd.GeoSeries,
     reference: gpd.GeoDataFrame,
     max_vertices: int = 256,
+    dissolve: bool = False,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Covered share and dominant reference polygon per entity.
 
@@ -91,12 +129,17 @@ def overlay_shares(
         coordinates (`openplaces.geo.polygon.subdivide_polygons`) before
         the overlay, so that a large site is not scanned once per
         entity it touches.
+    dissolve : bool
+        Measure the covered area as the union of the entity's
+        intersections with all reference polygons, not their sum, for
+        a reference whose polygons overlap one another.
 
     Returns
     -------
     share : pandas.Series
-        Summed intersection area over the entity's area, capped at 1;
-        0.0 for an entity no reference polygon touches.
+        Covered area (summed, or dissolved with *dissolve*) over the
+        entity's area, capped at 1; 0.0 for an entity no reference
+        polygon touches.
     dominant : pandas.Series
         Index label of the reference polygon with the largest
         intersection area; missing where none intersects.
@@ -119,7 +162,8 @@ def overlay_shares(
     i_e, i_p = shapely.STRtree(pieces.values).query(geoms, predicate='intersects')
     if len(i_e) == 0:
         return share, dominant, dominant_share
-    area = shapely.area(shapely.intersection(geoms[i_e], pieces.values[i_p]))
+    shared = shapely.intersection(geoms[i_e], pieces.values[i_p])
+    area = shapely.area(shared)
     pairs = (
         pd.DataFrame(
             {
@@ -136,6 +180,10 @@ def overlay_shares(
     own = pd.Series(shapely.area(geoms), index=entities.index)
     own = own.where(own > 0)
     covered = pairs.groupby('entity')['area'].sum()
+    if dissolve:
+        covered = _dissolved_cover(
+            covered, pairs, entities.index.to_numpy()[i_e], shared
+        )
     share.loc[covered.index] = (covered / own.reindex(covered.index)).clip(upper=1)
     # Largest overlap first; a tie goes to the smaller reference id so
     # that a rerun picks the same polygon.
@@ -156,6 +204,10 @@ def overlay_reference_polygons(
     suffix: str | None = None,
     withhold: dict | None = None,
     max_vertices: int = 256,
+    where: dict | None = None,
+    dissolve: bool = False,
+    flag_column: str | None = None,
+    min_share: float | None = None,
 ) -> EnrichState:
     """Write covered share and dominant-polygon attributes for each entity.
 
@@ -189,13 +241,29 @@ def overlay_reference_polygons(
         are still written.
     max_vertices : int
         Passed to :func:`overlay_shares`.
+    where : dict, optional
+        ``{column, values}``: overlay only the reference polygons whose
+        *column* is one of *values* (fee land held by a public owner,
+        say). The dominant polygon is chosen among those too.
+    dissolve : bool
+        Passed to :func:`overlay_shares`; set it for a reference whose
+        polygons overlap one another.
+    flag_column : str, optional
+        Boolean evidence column, true where the share is at least
+        *min_share*. Missing where the reference does not cover the
+        admin unit, like the share.
+    min_share : float, optional
+        Threshold for *flag_column*, required with it. The recipe
+        states why its value fits its layer.
 
     Returns
     -------
     EnrichState
-        With the share, id and attribute evidence columns added.
+        With the share, flag, id and attribute evidence columns added.
     """
     columns = dict(columns or {})
+    if flag_column and min_share is None:
+        raise ValueError("overlay_reference_polygons: 'flag_column' needs 'min_share'.")
     spine = state.spine
     if 'geometry' not in getattr(spine, 'columns', ()):
         raise ValueError(
@@ -205,11 +273,20 @@ def overlay_reference_polygons(
     if suffix is None:
         dataset = reference_recipe.get('dataset') or reference_recipe.get('entity')
         suffix = f'_{dataset.source.source_id}'
-    outputs = [share_column, *([id_column] if id_column else []), *columns.values()]
+    outputs = [
+        share_column,
+        *([flag_column] if flag_column else []),
+        *([id_column] if id_column else []),
+        *columns.values(),
+    ]
     evidence = pd.DataFrame(index=spine.index, columns=outputs, dtype=object)
 
     def _finish():
         evidence[share_column] = pd.to_numeric(evidence[share_column], errors='coerce')
+        if flag_column:
+            share = evidence[share_column]
+            evidence[flag_column] = share.ge(min_share).astype('boolean')
+            evidence.loc[share.isna(), flag_column] = pd.NA
         for column in outputs:
             state.evidence[f'{column}{suffix}'] = evidence[column].reindex(
                 state.evidence.index
@@ -234,15 +311,26 @@ def overlay_reference_polygons(
     nearby = reference.iloc[
         reference.sindex.query(window, predicate='intersects')
     ].to_crs(crs)
+    if where:
+        if where['column'] not in nearby.columns:
+            raise ValueError(
+                f"overlay_reference_polygons: 'where' column {where['column']!r} "
+                f'is not in {reference_recipe_id}.'
+            )
+        nearby = nearby[nearby[where['column']].isin(list(where['values']))]
     if state.timer:
         state.timer.mark('load reference polygons')
 
-    share, dominant, _ = overlay_shares(entities, nearby, max_vertices=max_vertices)
+    share, dominant, _ = overlay_shares(
+        entities, nearby, max_vertices=max_vertices, dissolve=dissolve
+    )
     evidence[share_column] = share.reindex(evidence.index)
     has = dominant.notna()
     hit = dominant[has]
     if id_column:
-        evidence.loc[hit.index, id_column] = hit.to_numpy()
+        # As text, as the registry types an id: an integer row id
+        # would otherwise turn float wherever an entity has none.
+        evidence.loc[hit.index, id_column] = hit.astype(str).to_numpy()
     withheld = pd.Series(False, index=hit.index)
     if withhold:
         gate = withhold['column']
