@@ -332,6 +332,46 @@ occupancy:
             - type: in_set
               column: occupancy_type_nsi_class
               values: *site_built_residential
+      # A second context for the same rule, read off the outline itself:
+      # where it shares a wall of at least 3 m with another outline, the
+      # shape is a slice of a row, not a box that was towed, and the
+      # parcel's missing improvement value says nothing either (a row
+      # unit on a condominium or unvalued lot). The guard above needs
+      # the roll and NSI to speak; this one also holds where NSI is
+      # absent (Alexandria, Arlington) or silent (5,299 DC rows).
+      # Measured 2026-10-24 (plans/findings/dc-rowhouses-classed-
+      # manufactured.md): 35,114 of DC's 36,858 Manufactured Homes
+      # share such a wall (median run 14.1 m), against 14 of 9,755 in
+      # Pender and 3 of 15,555 in Robeson.
+      #
+      # Why 3 m. A party wall runs the depth of a house, 8 m and more;
+      # a corner touch or a digitizing sliver is well under 1 m. A
+      # manufactured home with a porch or addition drawn as a second
+      # polygon shares a short run (median 5-6 m in Liberty and Pender),
+      # so 3 m does catch those homes, which is why this is a guard and
+      # not a require: any partner that is not shape or value (NSI,
+      # FEMA, the roll's keyword, parcel_park, parcel_community) keeps
+      # the class, and in the curate runs below Liberty's 28 of 46 and
+      # Pender's 18 of 31 wall-sharing Manufactured Homes carry one. A
+      # require ("shares no wall") would remove those too, and no
+      # require on the parcel can replace it: rural park homes sit on
+      # parcels the roll codes Commercial (Pender 1,099 of 9,755).
+      #
+      # Measured 2026-10-24 on US-DC-DC: Manufactured Home 9,585 (site-
+      # built guard alone) to 1,154 with this guard; US-VA-AL 449 to 55,
+      # US-VA-AR 211 to 60, US-NC-PEN 9,755 to 9,742, US-NC-HAL 5,572
+      # to 5,520, US-TX-LIB 12,338 to 12,320, US-NC-ROB 14,694 to
+      # 14,691, US-TX-CHA 2,318 to 2,317. Against the CHEER survey (10
+      # counties, 1,372 linked points; 8 share a wall) Manufactured
+      # Home precision 0.873 to 0.872, recall 0.789 to 0.784 (two
+      # surveyed Halifax homes lost). Against strong-tier permits (NC,
+      # 54,461 primaries) precision 0.869 to 0.870, recall 0.885 to
+      # 0.884; Chambers and Liberty permits unchanged. Cutoffs from 0.5
+      # to 8 m move these rates by at most 0.005; 3 m was kept from the
+      # DC and baseline distributions, not tuned on labels.
+      wall_insufficient_alone: &mh_wall_insufficient_alone
+        labels: [morphology, shape_band, keyword_probability, no_improvement_value]
+        where: {type: numeric_at_least, column: shared_wall_m, min: 3}
     manufactured_home_value:
       review_max_ratio: &mh_value_share_max 0.025
       class: Manufactured Home
@@ -723,6 +763,18 @@ pipeline:
       - output: width_m
         type: shape_metric
         metric: width
+
+      # The longest run of the outline's boundary lying on another
+      # outline of at least 20 m2, in meters, by strict intersection (no
+      # buffer, no tolerance, nothing grouped). A rowhouse drawn one unit
+      # per outline shares a party wall as long as the house is deep; a
+      # manufactured home is towed in on a chassis and shares none, or a
+      # short run where a porch or carport was drawn as its own polygon.
+      # The 20 m2 floor keeps a stoop or a sliver from counting as a
+      # neighbor; the cutoff on the run itself lives in the vote's guard.
+      - output: shared_wall_m
+        type: shared_wall
+        partner_min_m2: 20
 
       # Each occupancy source coerced to the canonical class vocabulary, kept
       # as its own column rather than pooled: per-class reliability differs
@@ -1213,8 +1265,11 @@ pipeline:
           - {type: equals, column: dwelling_multiplicity, value: single}
           - {type: numeric_at_least, column: area_m2, min: 20}
         # Shape needs a partner where the roll and NSI both name a
-        # site-built class; see the occupancy block above.
-        insufficient_alone: *mh_shape_insufficient_alone
+        # site-built class, and shape and value need one where the
+        # outline shares a wall; see the occupancy block above.
+        insufficient_alone:
+          - *mh_shape_insufficient_alone
+          - *mh_wall_insufficient_alone
         indicators:
           # 90% precise within the single-dwelling population; the strongest
           # evidence for this class by a wide margin, hence sufficient alone.
