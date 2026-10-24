@@ -20,6 +20,7 @@ the way in. This governs what it tells you on the way out.
 from __future__ import annotations
 
 import re
+import textwrap
 from functools import cache
 
 from openplaces.core.schema import admin_scope_covers
@@ -1208,9 +1209,9 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         lines += [
             'Withheld',
             '-' * 70,
-            'These sources restrict passing their data on, so the values they',
-            'supplied are not in this bundle. Rows whose outline came from them',
-            "are left out; values they filled are empty, with their '_source'",
+            'The values these sources supplied are not in this bundle, for the',
+            'reason given under each. Rows whose outline came from them are',
+            "left out; values they filled are empty, with their '_source'",
             "column set to 'withheld'.",
         ]
         lines += _withheld_lines(restricted_withheld)
@@ -1228,6 +1229,44 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             "'withheld'.",
         ]
         lines += _withheld_lines(family_withheld)
+        lines.append('')
+    if terms.get('imputation'):
+        imputation = terms['imputation']
+        lines += [
+            'Imputed values',
+            '-' * 70,
+            "Cells openplaces filled say so: their '_source' column reads",
+            f"'{imputation['version']}+imputed'. No year built or structure",
+            'value comes from NSI. structure_value_adjusted is structure_value',
+            f"moved from the roll's appraisal_year to {imputation['common_year']}",
+            'with the FHFA county house price index. Cells filled:',
+        ]
+        for column, count in imputation['filled'].items():
+            if count:
+                lines.append(f'  {column}: {count:,}')
+        lines += [
+            'A manufactured home the roll does not list as real property',
+            '(personal property, or a home in a park) is valued from the',
+            "county's listed manufactured homes of the same size and age.",
+        ]
+        if imputation.get('park_factor') not in (None, 1.0):
+            lines += [
+                'Homes in parks are scaled by '
+                f'{imputation["park_factor"]:.2f}, the ratio at which the',
+                'assessors value park homes they list to other listed homes.',
+            ]
+        if imputation.get('credit'):
+            lines += [
+                '',
+                *textwrap.wrap(' '.join(str(imputation['credit']).split()), 70),
+            ]
+        code = imputation.get('code')
+        if code:
+            state = ', with uncommitted changes' if code.get('dirty') else ''
+            lines.append(
+                f'Model code: openplaces branch {code.get("branch")}, '
+                f'commit {code.get("commit")}{state}.'
+            )
         lines.append('')
     if terms.get('restricted'):
         lines += [

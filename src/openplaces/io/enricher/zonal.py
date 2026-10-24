@@ -161,6 +161,55 @@ def sample_raster(
     return state
 
 
+@_register('sample_raster_at_centroids')
+def sample_raster_at_centroids(
+    state: EnrichState,
+    raster_recipe_id: str,
+    column: str,
+    admin_id: str = 'US',
+) -> EnrichState:
+    """Write the raster value under each entity's centroid as *column*.
+
+    For entities far smaller than a raster cell (building footprints on a
+    480 m grid), the cell under the centroid is the zonal mean, without
+    the cost of a polygon overlay per entity.
+
+    Parameters
+    ----------
+    raster_recipe_id : str
+        Dataset recipe of the raster (`is_raster: true`).
+    column : str
+        Evidence column name.
+    admin_id : str
+        Admin unit the raster recipe is stored under.
+    """
+    import numpy as np
+
+    spine = state.spine
+    if not isinstance(spine, gpd.GeoDataFrame):
+        raise ValueError(
+            "This step requires spine geometry; set 'spine_geom: true' on "
+            'the enrich recipe.'
+        )
+    raster_path = get_dataset(raster_recipe_id, admin_id)
+    with rasterio.open(raster_path) as src:
+        points = spine.to_crs(src.crs).geometry.centroid
+        rows, cols = rasterio.transform.rowcol(
+            src.transform, points.x.to_numpy(), points.y.to_numpy()
+        )
+        rows, cols = np.asarray(rows), np.asarray(cols)
+        inside = (rows >= 0) & (rows < src.height) & (cols >= 0) & (cols < src.width)
+        values = np.full(len(points), np.nan)
+        band = src.read(1)
+        values[inside] = band[rows[inside], cols[inside]]
+        if src.nodata is not None:
+            values[values == src.nodata] = np.nan
+    state.evidence[column] = pd.Series(values, index=points.index).reindex(
+        state.evidence.index
+    )
+    return state
+
+
 @_register('zonal_stats')
 def zonal_stats(
     state: EnrichState,

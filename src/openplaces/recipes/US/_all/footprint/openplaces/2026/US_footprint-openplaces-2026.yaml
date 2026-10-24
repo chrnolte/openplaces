@@ -242,11 +242,9 @@ share:
     # Pitt's share-alike values the way a restricted source's are
     # withheld. The team bundle keeps them: share-alike binds only on
     # publication, and a team bundle is never published (maintainer,
-    # 2026-10-22 option A and 2026-10-23).
-    # The building-imputation branch carries its own public-only
-    # withhold of pittcounty (`share: delivery: impute:
-    # withhold_sources`, applied when the audience is not 'team'). When
-    # that branch merges, drop it in favour of this declaration.
+    # 2026-10-22 option A and 2026-10-23). The values are withheld
+    # before the imputation reads the bundle, so no model of a public
+    # bundle sees them.
     withhold_share_alike:
       cheer-eastern-nc: [cc-by-sa]
     # An outline two units both curated is cut at the line between
@@ -254,6 +252,51 @@ share:
     # (io/delivery/slicing.py; maintainer, 2026-10-17). Curated files
     # are unchanged; only the bundle is.
     slice_at_unit_lines: true
+    # Fill the primary columns of these regions' bundles at delivery
+    # (io/building_imputation.py; plans/building-attribute-imputation.md,
+    # section 11). Filled cells' `_source` reads `<version>+imputed`, and
+    # `<version>+clipped+imputed` for a structure value held to its
+    # occupancy's value per m2 bound; no
+    # year built or structure value ships from NSI; structure value is
+    # also given in `common_year` dollars (structure_value_adjusted) using
+    # `price_index` and the sidecar `..._appraisal-years.csv`.
+    impute:
+      regions:
+        - cheer-eastern-nc
+        - cheer-coastal-tx
+      version: building-imputation-v0.5
+      common_year: 2025
+      price_index: US_built-prices-fhfa-2025
+      # Land-market inputs per footprint (region type, distance to the
+      # region's core, 2010 land value), read at delivery as model
+      # inputs; the bundle does not carry them.
+      location_recipe: US_footprint_land-regions-placeslab-fmvc0003
+      # Census levels (public domain), read at delivery as model inputs;
+      # the bundle does not carry them: ACS median home value, year
+      # built, income and population, and the Gazetteer's land areas
+      # and place locations for density and settlement distances.
+      census_recipe: US_population-acs-2024
+      gazetteer_recipe: US_population-gazetteer-2024
+      # The land-market region type and distance to its core rest on a
+      # population raster built partly from ZTRAX land use. Leaving
+      # them out cost nothing in leave-county-out on cheer-eastern-nc
+      # (2026-10-21: typical county miss 13.7% without, 14.3% with),
+      # so the delivered values do not depend on them.
+      exclude_inputs: [region_type, distance_to_core_km]
+      # Printed in the licence notice's imputation section.
+      credit: >-
+        Method: the choice of gradient-boosted trees, spatially blocked
+        testing and treating NSI-assigned years as area lookups follow
+        Mohammad Askari (UCLA), "Imputation Model Selection for
+        CoPe-CHEER: North Carolina" (2026-09-10) and "Imputing All Nine
+        Building Attributes in CHEER Places North Carolina"
+        (2026-10-15). The production pipeline (donor counties,
+        common-year values, census inputs and price anchor, residual
+        draws) is openplaces' own.
+      donors:
+        mode: km
+        bandwidth_km: 100
+        similarity_bandwidth: 1.0
 
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:

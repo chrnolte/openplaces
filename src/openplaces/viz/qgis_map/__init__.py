@@ -116,6 +116,7 @@ def export_qgis_map(
     template_path=None,
     filter_existing: bool = True,
     include_inputs: bool = True,
+    split_imputed: bool = False,
     verbose: bool = False,
 ):
     """Generate a standardized QGIS project (.qgz) for *recipe* at *admin_id*.
@@ -144,6 +145,11 @@ def export_qgis_map(
         Include the ingest-stage source layers (default True). Pass False
         for a map of the delivered product alone: the curated output and
         its admin context.
+    split_imputed : bool, optional
+        Let a viewer toggle observed and imputed values on and off in
+        every classified layer whose data carries a `{col}_source`
+        column (default False). See
+        :func:`~openplaces.viz.qgis_map.generator.generate_qgz`.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
 
@@ -192,5 +198,6 @@ def export_qgis_map(
         template_path=template_path,
         output_path=output_path,
         title=title,
+        split_imputed=split_imputed,
         verbose=verbose,
     )

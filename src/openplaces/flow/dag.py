@@ -403,6 +403,18 @@ class RecipeDAG:
                 # _node_admins re-expands it to its save level here
                 _add(node_id, node_recipe, target_admin)
 
+        # A delivery that imputes building attributes reads two inputs
+        # no curate step names: the price index and the land-value
+        # region enrichment of each member county. Added here, before
+        # the closure below, so that their own upstreams join the graph.
+        # A member's enrichment is added only where its curate job is in
+        # the graph, the same rule the member edges below follow.
+        for spec, bundle_admin in self._regions_in_scope(deliver):
+            for upstream_id, walk_admin, member in self._imputation_upstreams(
+                spec, bundle_admin
+            ):
+                if not member or (target_recipe_id, walk_admin, None) in seen:
+                    _add(upstream_id, self._recipe(upstream_id), AdminId(walk_admin))
         # A state fork of a national ingest recipe writes to the same
         # entity-keyed path, so that consumers naming the national id
         # find its files (US-MA_footprint-fema-2023 beside
@@ -529,6 +541,25 @@ class RecipeDAG:
                 member_key = (target_recipe_id, str(member), None)
                 if member_key in seen:
                     self._edges.append((member_key, consumer_key))
+            for upstream_id, walk_admin, _ in self._imputation_upstreams(
+                spec, node.admin_id
+            ):
+                upstream_admin = self._node_admin(upstream_id, walk_admin)
+                key = (
+                    upstream_id,
+                    str(upstream_admin) if upstream_admin is not None else None,
+                    None,
+                )
+                if key in seen:
+                    self._edges.append((key, consumer_key))
+        # A team bundle reuses its public twin's imputation (written to
+        # the cache when the public bundle is exported), so it ships
+        # after that twin.
+        delivered_keys = {node_key(node) for node, _ in self.delivery_nodes}
+        for node, spec in self.delivery_nodes:
+            twin = self._public_twin_key(node, spec)
+            if twin is not None and twin in delivered_keys:
+                self._edges.append((twin, node_key(node)))
 
         self.validation_nodes = self._build_validation_nodes(
             deliver if validate is None else validate
@@ -645,6 +676,41 @@ class RecipeDAG:
             )
             for spec, admin_id in self._regions_in_scope(deliver)
         ]
+
+    def _imputation_upstreams(
+        self, spec: dict, bundle_admin, recipe_id: str | None = None
+    ) -> list[tuple[str, str, bool]]:
+        """(recipe, walk admin unit, is a member) a region's imputation reads.
+
+        Empty when the delivering recipe (the target unless *recipe_id*
+        names another) does not impute for the region. A team twin reads
+        its public twin's imputation, not these inputs.
+        """
+        from openplaces.io.delivery import imputation_spec
+
+        if spec.get('audience') == 'team':
+            return []
+        recipe = self._recipe(recipe_id or self.target_recipe_id)
+        impute = imputation_spec(recipe, spec['region_id'])
+        if not impute:
+            return []
+        upstreams = []
+        for key in ('price_index', 'census_recipe', 'gazetteer_recipe'):
+            if impute.get(key):
+                upstreams.append((impute[key], str(bundle_admin), False))
+        if impute.get('location_recipe'):
+            upstreams.extend(
+                (impute['location_recipe'], str(member), True)
+                for member in spec['admin_ids']
+            )
+        return [u for u in upstreams if u[0] not in self.exclude_recipe_ids]
+
+    def _public_twin_key(self, node: StageNode, spec: dict) -> tuple | None:
+        """Node key of the public delivery a team delivery builds on."""
+        base = spec.get('base_region_id')
+        if spec.get('audience') != 'team' or not base:
+            return None
+        return (node.recipe_id, node.admin_id, base)
 
     def _build_validation_nodes(
         self, validate: bool | None
@@ -1172,14 +1238,28 @@ class RecipeDAG:
             # Every member county's curated file, so the bundle rebuilds
             # whenever any one of them does. Scoped to this bundle's own
             # region: a Texas bundle must not wait on Carolina counties.
-            from openplaces.io.delivery import delivery_members
+            from openplaces.io.delivery import delivery_members, delivery_spec
 
-            return [
+            region = self._delivery_region(recipe_id, admin_id, region)
+            paths = [
                 get_output_path(recipe, admin_id=member)
-                for member in delivery_members(
-                    recipe, region=self._delivery_region(recipe_id, admin_id, region)
-                )
+                for member in delivery_members(recipe, region=region)
             ]
+            spec = delivery_spec(recipe, region)
+            for upstream_id, walk_admin, _ in self._imputation_upstreams(
+                spec, admin_id, recipe_id
+            ):
+                paths.append(
+                    primary_output_path(
+                        self._recipe(upstream_id),
+                        admin_id=self._node_admin(upstream_id, walk_admin),
+                    )
+                )
+            node = StageNode('deliver', recipe_id, admin_id, region)
+            twin = self._public_twin_key(node, spec)
+            if twin is not None:
+                paths.append(self._delivery_paths(*twin)['canonical'])
+            return paths
         node_admin = self._node_admin(recipe_id, admin_id)
         paths: list[Path] = []
         try:

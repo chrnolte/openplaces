@@ -1,0 +1,52 @@
+# Census Gazetteer files, 2024: one row per place or census tract with
+# its land area and internal point. Used by the building imputation for
+# tract population density (ACS population over land area) and the
+# distance to, and gravity of, Census places weighted by their ACS
+# population. The Gazetteer is the one national file carrying both
+# land areas and internal points without downloading the TIGER
+# polygons. Water area and the square-mile copies are left unmapped.
+description: >-
+  Census Gazetteer: land area and internal point of every place and
+  census tract, 2024.
+
+admin_id: US
+
+dataset:
+  theme: population
+  source:
+    source_id: gazetteer
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html"
+    download_url: "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_{table}_national.zip"
+  version: 2024
+
+download_by:
+  partition: table
+  table_names:
+    - place
+    - tracts
+
+compressed_file_name: "2024_Gaz_{table}_national.zip"
+uncompressed_file_name: "2024_Gaz_{table}_national.txt"
+delimiter: "\t"
+# The last header (INTPTLONG) is padded with spaces.
+strip_column_names: true
+csv_dtype:
+  GEOID: str
+
+columns:
+  census_geo_id: GEOID
+  land_area_m2: ALAND
+  lat: INTPTLAT
+  long: INTPTLONG
+
+keep_unnamed_columns: false
+
+set_index: census_geo_id
+
+save_to:
+  data_dir: cache

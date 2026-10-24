@@ -28,6 +28,15 @@ and a narrower debug run stops at curate so a one-county rebuild cannot
 overwrite a shipped regional file. `--config deliver=true|false` overrides
 either way, `true` still limited to the regions the run touches.
 
+A delivery's inputs are its members' curated files and, for a region the
+recipe imputes building attributes for (`share: delivery: impute:`), the
+inputs the imputation reads and no curate step names: the price index, the
+`census_recipe` and `gazetteer_recipe` tables and each member's
+`location_recipe` enrichment. These are added to the
+graph before its closure, so their own upstreams get jobs too. A team twin
+reuses its public region's imputation, so its delivery depends on the
+public delivery instead.
+
 A **`validate`** job follows each delivery, one per shipped region whose
 recipe lists notebooks for it (`validation: notebooks:`, each naming the
 reference it scores; `ground_truth` or a sidecar `references:` key resolves to

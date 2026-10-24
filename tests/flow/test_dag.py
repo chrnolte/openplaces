@@ -234,12 +234,29 @@ def test_delivery_outputs_match_the_writer(shipping_dag):
     ]
 
 
+PRICE_INDEX = 'US_built-prices-fhfa-2025'
+CENSUS = 'US_population-acs-2024'
+GAZETTEER = 'US_population-gazetteer-2024'
+LOCATION = 'US_footprint_land-regions-placeslab-fmvc0003'
+
+
 def test_delivery_inputs_are_every_member_county(shipping_dag):
+    # Each member's curated file, then what the building imputation
+    # reads: the price index, the census tables and each member's
+    # region enrichment.
     members = delivery_members(TARGET, region=REGION)
     assert len(members) == 44
-    assert shipping_dag.input_paths('deliver', TARGET, 'US-NC') == [
-        get_output_path(TARGET, admin_id=member) for member in members
+    inputs = shipping_dag.input_paths('deliver', TARGET, 'US-NC')
+    assert inputs[: len(members) + 1] == [
+        *(get_output_path(TARGET, admin_id=member) for member in members),
+        get_output_path(PRICE_INDEX, admin_id='US'),
     ]
+    assert inputs[-len(members) :] == [
+        get_output_path(LOCATION, admin_id=member) for member in members
+    ]
+    census = inputs[len(members) + 1 : -len(members)]
+    assert census
+    assert all(CENSUS in str(path) or GAZETTEER in str(path) for path in census)
 
 
 def test_delivery_edges_let_plan_propagate(shipping_dag):
@@ -247,18 +264,32 @@ def test_delivery_edges_let_plan_propagate(shipping_dag):
 
     Restricted to members this run actually built: a forced ship from one
     county still declares the whole region as members, and an edge to a
-    job the graph does not contain is a KeyError in `to_mermaid`.
+    job the graph does not contain is a KeyError in `to_mermaid`. The
+    imputation's inputs follow the same rule.
     """
     consumer = (TARGET, 'US-NC', REGION)
     upstreams = {up for up, down in shipping_dag._edges if down == consumer}
     node_keys = {node_key(node) for node in shipping_dag.nodes()}
     members = set(delivery_members(TARGET, region=REGION))
+    built = {m for m in members if (TARGET, m, None) in node_keys}
     assert upstreams == {
-        (TARGET, member, None)
-        for member in members
-        if (TARGET, member, None) in node_keys
+        *((TARGET, member, None) for member in built),
+        *((LOCATION, member, None) for member in built),
+        (PRICE_INDEX, 'US', None),
+        (CENSUS, 'US', None),
+        (GAZETTEER, 'US', None),
     }
-    assert upstreams
+    assert built
+
+
+def test_the_team_twin_ships_after_its_public_region(shipping_dag):
+    # It reuses the public bundle's imputation instead of fitting its own.
+    public = (TARGET, 'US-NC', REGION)
+    team = (TARGET, 'US-NC', TEAM_REGION)
+    assert (public, team) in shipping_dag._edges
+    assert delivery_paths(TARGET, region=REGION)['canonical'] in (
+        shipping_dag.input_paths('deliver', TARGET, 'US-NC', TEAM_REGION)
+    )
 
 
 def test_every_edge_names_a_node_in_the_graph(shipping_dag):
