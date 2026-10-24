@@ -1,0 +1,107 @@
+# Recipe: MassGIS Master Address Data (MAD) address points for
+# Massachusetts, as dwelling points with street addresses.
+#
+# SOURCE. MassGIS maintains the Commonwealth's master address database
+# for Next Generation 911. Its address points are published as the
+# ArcGIS item "MassGIS Master Address Points"
+# (https://massgis.maps.arcgis.com/home/item.html?id=a0049ad319674c439516b2df1173d8f5,
+# a map service) and as a feature service of the same layer (item
+# c33281538f854507a90351760c3468fc). One row is one address record;
+# where several addresses share a location (the units of one building)
+# the points are stacked. Points sit mostly on building centroids, some
+# on assessor parcel centroids. The item's description says Boston is
+# not included (the city publishes its own SAM addresses), yet the
+# service answered 450,443 points for Boston's town id on 2026-10-24,
+# and they are ingested like any town's.
+#
+# WHY THE SERVICE AND NOT A FILE. Checked 2026-10-24: neither item lists
+# an export, a Hub CSV or GeoJSON, or a file geodatabase, and the layer
+# advertises only Query (no Extract). MassGIS's per-town downloads are
+# served through an interactive ArcGIS web app, which this project does
+# not drive, and its statewide geocoding file is sent by email after a
+# request form, which this project does not fill in. So the feature
+# service is paged, one town at a time: the layer filters on
+# GEOGRAPHIC_TOWN_ID, MassGIS's town number (1 to 351, the TOWN_ID of
+# its parcels), read from the MassGIS parcel crosswalk, and written
+# unquoted because the server rejects a quoted number. maxRecordCount
+# is 2,000. MassGIS reloads the layer weekly, and during a reload the
+# counts move by the minute (Somerville read 49,460, then 43,825,
+# then 43,876 on the morning of 2026-10-24, the state 3.05M against
+# 3.72M before and after): ingest when two counts ten minutes apart
+# agree, or a town comes out short.
+# Measured 2026-10-24 on US-MA: 3,716,164 points ingested in 351 towns, equal to the service's count in every town; 277 points carry no town id and are not read.
+#
+# MAPPED. dwelling_id (index): OBJECTID, the layer's row id, unique in
+# the service; MASTER_ADDRESS_ID repeats in Boston, so it cannot be
+# the index, and it has no registry home. address_number:
+# FULL_NUMBER_STANDARDIZED, the whole number with its prefix and
+# suffix ('12A', '12-14'). address_street: STREET_NAME, the full street
+# name with type and direction. address_unit: UNIT. postal_code:
+# POSTCODE. city: PC_NAME, the postal village (Overture's postal_city
+# is the same notion). Not mapped: the parsed street parts (PRE_DIR,
+# STR_NAME_BASE, POST_TYPE, ...), FLOOR, BUILDING_NAME, the MSAG
+# community, and POINT_TYPE, which have no registry home.
+#
+# LICENCE. From the item page, read by the maintainer 2026-10-24: "This
+# GIS web service is a public resource and may be used by anyone for
+# their purposes. The data are public records ... MassGIS, EOTSS and
+# the Commonwealth of Massachusetts are not liable for errors ... When
+# using MassGIS data on maps or in digital applications, source credit
+# should be stated as 'MassGIS (Bureau of Geographic Information),
+# Commonwealth of Massachusetts EOTSS'." Open, attribution required.
+
+description: >-
+  MassGIS Master Address Data address points for Massachusetts towns
+  (number, street, unit, ZIP code), paged per town from the feature service.
+
+admin_id: US-MA
+
+entity:
+  entity_type: dwelling
+  source:
+    source_id: massgis
+    portal_url: "https://massgis.maps.arcgis.com/home/item.html?id=a0049ad319674c439516b2df1173d8f5"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      Public resource, may be used by anyone; public records; credit
+      "MassGIS (Bureau of Geographic Information), Commonwealth of
+      Massachusetts EOTSS".
+    terms_url: "https://massgis.maps.arcgis.com/home/item.html?id=a0049ad319674c439516b2df1173d8f5"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "mad_points_{admin3_id_admin1}.geojson"
+
+scraper_options:
+  layer_url: "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassGIS_Master_Address_Points/FeatureServer/0"
+  out_fields: "OBJECTID,FULL_NUMBER_STANDARDIZED,STREET_NAME,UNIT,POSTCODE,PC_NAME,GEOGRAPHIC_TOWN_ID"
+  where_admin_column: GEOGRAPHIC_TOWN_ID
+  where_admin_numeric: true
+  admin_key_crosswalk: "US-MA_parcel-massgis-2025_admin3-crosswalk"
+
+download_by:
+  admin_level: 3
+
+process_by:
+  admin_level: 3
+
+columns:
+  dwelling_id: OBJECTID
+  address_number: FULL_NUMBER_STANDARDIZED
+  address_street: STREET_NAME
+  address_unit: UNIT
+  postal_code: POSTCODE
+  city: PC_NAME
+
+csv_dtype: str
+
+columns_to_categorical:
+  - postal_code
+  - city
+
+set_index: dwelling_id
+
+save_to:
+  data_dir: cache
+  admin_level: 3

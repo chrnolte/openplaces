@@ -662,7 +662,14 @@ The step sub-modules:
   `share` of the deed (`apportion_shares`); the property link is the
   record's own number against the property spine's. `parcel_link_method` on
   the spine summarizes the parcel table (`+`-joined where several rules
-  linked one sale). Until 2026-10-01 five `link_by_id` passes stamped use
+  linked one sale). Last, **`check_parcel_links_by_address_points`** adds
+  `address_points_check` to each parcel link row: whether the sale's
+  address key is that of an address point inside the parcel's own polygon
+  (`agree`, `other_parcel`, `no_point_match`, `no_points`,
+  `no_sale_address`), from the first listed dwelling recipe with points
+  for the unit. A fact on the pair, never a score; it adds and removes no
+  link, and a step that rewrites the table after it drops the column.
+  Until 2026-10-01 five `link_by_id` passes stamped use
   group, values and area onto every sale row and the fold took them from
   the largest parcel; the curate's `aggregate_from_entities` gathers them
   through the links now (slice b4 of the review plan). The curate stage

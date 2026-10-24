@@ -172,7 +172,9 @@ def test_the_recipes_divide_the_steps_between_spine_and_curate():
         'assign_transaction_ids',
         'link_transactions',
     ]
-    assert spine_steps_listed[-7:] == moved
+    # The address-points check labels the link table the last step
+    # wrote; it moved nothing from curate.
+    assert spine_steps_listed[-8:] == [*moved, 'check_parcel_links_by_address_points']
     for step in moved:
         assert step not in curate_steps_listed
     # The fold precedes the ids, so a deed's id carries no suffix; the

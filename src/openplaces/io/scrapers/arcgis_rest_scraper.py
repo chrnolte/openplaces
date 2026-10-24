@@ -111,10 +111,32 @@ def _log(message: str) -> None:
     print(f'  {message}')
 
 
+def _crosswalk_key(admin_id_to_download: str, admin_key_crosswalk: str):
+    """Look up an admin unit's source code in a recipe's crosswalk sidecar.
+
+    The sidecar's first column is the admin id and its second the code
+    the source uses for that unit, the shape of the `admin_id_crosswalk`
+    sidecars `process_by` reads. For a source whose own unit code is in
+    no admin table: MassGIS numbers the Massachusetts towns 1 to 351,
+    and its address service filters on that number.
+    """
+    from openplaces.recipe import get_recipe_by_id
+
+    table = get_recipe_by_id(admin_key_crosswalk, dtype=str)
+    match = table[table.iloc[:, 0] == str(admin_id_to_download)]
+    if match.empty:
+        raise ValueError(
+            f'{admin_id_to_download} has no row in admin_key_crosswalk '
+            f'{admin_key_crosswalk!r}.'
+        )
+    return match.iloc[0, 1]
+
+
 def _resolve_admin_key(
     admin_id_to_download: str,
-    admin_key_column: str,
+    admin_key_column: str | None,
     admin_key_transform: str | None,
+    admin_key_crosswalk: str | None = None,
 ):
     """Look up one admin unit's own value of `admin_key_column`.
 
@@ -123,12 +145,18 @@ def _resolve_admin_key(
     "what is this admin unit called/coded in the source" lookup, just to
     plug the result into a different place (a URL segment vs. a SQL
     `where` clause). Mirrors `Ingester._get_admin_partition_key`'s own
-    `{adminN_name}`-style resolution rather than reimplementing it.
+    `{adminN_name}`-style resolution rather than reimplementing it. With
+    *admin_key_crosswalk*, the code comes from that sidecar instead.
     """
     from openplaces.core.schema import AdminId
 
-    admin_id = AdminId(admin_id_to_download)
-    key = get_admin(admin_id, admin_id.get_level(), columns=admin_key_column).iloc[0, 0]
+    if admin_key_crosswalk:
+        key = _crosswalk_key(admin_id_to_download, admin_key_crosswalk)
+    else:
+        admin_id = AdminId(admin_id_to_download)
+        key = get_admin(admin_id, admin_id.get_level(), columns=admin_key_column).iloc[
+            0, 0
+        ]
     if admin_key_transform == 'remove_spaces':
         return key.replace(' ', '')
     if admin_key_transform:
@@ -172,6 +200,8 @@ def _resolve_where(
     admin_key_column: str | None,
     admin_key_transform: str | None,
     where_admin_column: str | None,
+    admin_key_crosswalk: str | None = None,
+    where_admin_numeric: bool = False,
 ) -> str:
     """Fold an admin unit's own filter value into `where`, if configured.
 
@@ -185,22 +215,36 @@ def _resolve_where(
     with `AND` rather than replaced, so a source-side row filter (e.g.
     excluding a bad `LOT_TYPE`) still applies alongside the admin-unit
     filter.
+
+    *where_admin_numeric* writes the value unquoted, for an integer
+    filter column: some servers reject a quoted number (MassGIS's
+    address service answers `GEOGRAPHIC_TOWN_ID = '274'` with an error
+    and `GEOGRAPHIC_TOWN_ID = 274` with the town's points). The value is
+    then checked to be an integer, so no text reaches the clause
+    unquoted.
     """
     if not where_admin_column:
         return where
-    if not (admin_id_to_download and admin_key_column):
+    if not (admin_id_to_download and (admin_key_column or admin_key_crosswalk)):
         raise ValueError(
-            "'where_admin_column' requires both admin_id_to_download and "
-            'scraper_options.admin_key_column.'
+            "'where_admin_column' requires admin_id_to_download and "
+            'scraper_options.admin_key_column or admin_key_crosswalk.'
         )
     key = _resolve_admin_key(
-        admin_id_to_download, admin_key_column, admin_key_transform
+        admin_id_to_download,
+        admin_key_column,
+        admin_key_transform,
+        admin_key_crosswalk,
     )
-    # A county named "Prince George's" or "O'Brien" closes the string
-    # literal early and aborts that unit's download. SQL escapes a quote
-    # by doubling it, which every ArcGIS backend accepts.
-    escaped = str(key).replace("'", "''")
-    admin_clause = f"{where_admin_column} = '{escaped}'"
+    if where_admin_numeric:
+        admin_clause = f'{where_admin_column} = {int(str(key).strip())}'
+    else:
+        # A county named "Prince George's" or "O'Brien" closes the
+        # string literal early and aborts that unit's download. SQL
+        # escapes a quote by doubling it, which every ArcGIS backend
+        # accepts.
+        escaped = str(key).replace("'", "''")
+        admin_clause = f"{where_admin_column} = '{escaped}'"
     if where and where != '1=1':
         return f'({where}) AND ({admin_clause})'
     return admin_clause
@@ -793,6 +837,8 @@ def fetch(
     admin_key_column=None,
     admin_key_transform=None,
     where_admin_column=None,
+    admin_key_crosswalk=None,
+    where_admin_numeric=False,
 ) -> Path:
     """Download every feature of one ArcGIS REST layer to a GeoJSON file.
 
@@ -890,6 +936,13 @@ def fetch(
         current `admin_id_to_download` (via `admin_key_column`) and
         ANDs it onto `where`, rather than requiring one recipe per
         admin unit to hand-write its own `where` string.
+    admin_key_crosswalk : str, optional
+        Recipe id of a two-column sidecar (admin id, source code) to
+        take the key from instead of `admin_key_column`, for a source
+        whose unit codes are in no admin table.
+    where_admin_numeric : bool, default False
+        Write the `where_admin_column` value unquoted, for an integer
+        column; the value must then parse as an integer.
 
     Raises
     ------
@@ -926,6 +979,8 @@ def fetch(
         admin_key_column=admin_key_column,
         admin_key_transform=admin_key_transform,
         where_admin_column=where_admin_column,
+        admin_key_crosswalk=admin_key_crosswalk,
+        where_admin_numeric=where_admin_numeric,
     )
     target_path = Path(target_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
