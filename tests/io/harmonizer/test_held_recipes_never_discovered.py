@@ -7,6 +7,8 @@ reached parcel values. The graph had never scheduled it: its dependency
 scan skips recipes at the consumer's own scope, the runtime join does
 not. `core.held_recipes` now keeps held recipes out of every discovery
 path, and the run's `exclude_recipe_ids` out of the job's discovery.
+An explicit `recipe_id:` still names a held recipe, but the workflow
+graph gives it no job (`flow.dag.is_upstream_job`).
 
 Every recipe here is fabricated, in a temporary recipe root: no record
 or schema of a real restricted source is read.
@@ -170,6 +172,47 @@ def test_the_graph_never_schedules_a_held_recipe(held_root):
     upstream = {e.upstream_recipe_id for e in edges}
     assert OPEN_ID in upstream
     assert not upstream & {HELD_BY_KEY_ID, HELD_BY_SOURCE_ID}
+
+
+def test_an_explicit_reference_does_not_schedule_a_held_ingest(held_root):
+    """A held recipe named by `recipe_id:` keeps its edge, never a job.
+
+    The building spine names the permit table explicitly, and the graph
+    planned its ingest for every unit in scope (Lake County FL,
+    2026-10-24), which marked the unit's spines for a rerun.
+    """
+    from openplaces.flow.dag import RecipeDAG
+
+    spine_id = 'US-NC_property-spinetest-2026'
+    spine = _recipe('US-NC', 'spinetest', '2026')
+    spine['stage'] = 'harmonize'
+    spine['pipeline'] = [
+        {'step': 'link_by_id', 'recipe_id': rid}
+        for rid in (OPEN_ID, HELD_BY_KEY_ID, HELD_BY_SOURCE_ID)
+    ]
+    target = recipe_path('US-NC', 'property-spinetest-2026', root=held_root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(yaml.safe_dump(spine), encoding='utf-8')
+    _clear_caches()
+
+    held = {HELD_BY_KEY_ID, HELD_BY_SOURCE_ID}
+    # The recipe still names them: an explicit read stays possible.
+    edges = recipe_module.get_recipe_dependencies(spine_id, admin_id=UNIT)
+    assert held <= {e.upstream_recipe_id for e in edges}
+
+    dag = RecipeDAG(spine_id, [UNIT], deliver=False, validate=False)
+    scheduled = {node.recipe_id for node in dag.nodes()}
+    assert OPEN_ID in scheduled
+    assert not scheduled & held
+
+    # Output files carry the unit's id, not the recipe's scope.
+    inputs = {p.name for p in dag.input_paths('harmonize', spine_id, UNIT)}
+    assert f'{UNIT}_property-opentest-2026.parquet' in inputs
+    assert not any('heldtest' in n or 'shovels' in n for n in inputs)
+
+    # Asked for by name, a held recipe is still a job of its own.
+    own = RecipeDAG(HELD_BY_SOURCE_ID, [UNIT], deliver=False, validate=False)
+    assert {node.recipe_id for node in own.nodes()} == {HELD_BY_SOURCE_ID}
 
 
 def test_the_admin_style_scan_skips_held_recipes(held_root):
