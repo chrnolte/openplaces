@@ -235,6 +235,11 @@ pipeline_patch:
       direction: backward
       prefix: at_sale_
       match_type_column: property_match_type
+      # Each at-sale value says where it came from: `fldor` where the
+      # roll of the sale's own year supplied it, `fldor+imputed` where a
+      # neighboring year's roll did (the maintainer's decision of
+      # 2026-10-24: keep the fallbacks, marked).
+      source_token: fldor
       columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
                 market_value, land_value, n_dwellings, n_buildings]
   # A sale before the roll's first vintage has no earlier year to take;
@@ -259,5 +264,6 @@ pipeline_patch:
       prefix: at_sale_
       match_type_column: property_match_type
       mark_unmatched: not_in_panel
+      source_token: fldor
       columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
                 market_value, land_value, n_dwellings, n_buildings]

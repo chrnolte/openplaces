@@ -210,3 +210,51 @@ def test_join_key_normalized_across_dash_format_boundary(data_root):
         columns=['tax_year', 'year_built'],
     ).curated
     assert out['tax_year'].iloc[0] == 2020
+
+
+def test_source_token_marks_neighboring_years_imputed(data_root):
+    # Fabricated: A has a roll in its sale year, B only an earlier one.
+    _write_property_snapshots(
+        [
+            {'parcel_id_assessor': 'A', 'tax_year': 2020, 'year_built': 1990},
+            {'parcel_id_assessor': 'B', 'tax_year': 2018, 'year_built': 1975},
+        ]
+    )
+    tx = pd.DataFrame(
+        {'parcel_id_assessor': ['A', 'B', 'C'], 'sale_year': [2020, 2020, 2020]}
+    )
+    out = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key='parcel_id_assessor',
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        prefix='at_sale_',
+        match_type_column='property_match_type',
+        columns=['tax_year', 'year_built'],
+        source_token='fldor',
+    ).curated
+    source = out.set_index('parcel_id_assessor')['at_sale_year_built_source']
+    assert source['A'] == 'fldor'
+    assert source['B'] == 'fldor+imputed'
+    assert pd.isna(source['C'])
+    # Which roll was read is stated either way, so it carries no sidecar.
+    assert 'at_sale_tax_year_source' not in out.columns
+
+
+def test_no_source_token_writes_no_sidecar(data_root):
+    _write_property_snapshots(
+        [{'parcel_id_assessor': 'A', 'tax_year': 2018, 'year_built': 1990}]
+    )
+    tx = pd.DataFrame({'parcel_id_assessor': ['A'], 'sale_year': [2020]})
+    out = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key='parcel_id_assessor',
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        columns=['tax_year', 'year_built'],
+    ).curated
+    assert not [c for c in out.columns if c.endswith('_source')]

@@ -252,6 +252,16 @@ pipeline:
       - at_sale_land_value
       - at_sale_n_dwellings
       - at_sale_n_buildings
+      # Their provenance: the roll's own year, or a neighboring year's
+      # roll marked imputed (a state patch's `source_token`). A delivery
+      # adds the sidecar of each shared column by itself.
+      - at_sale_year_built_source
+      - at_sale_living_area_sqft_source
+      - at_sale_land_area_sqft_source
+      - at_sale_market_value_source
+      - at_sale_land_value_source
+      - at_sale_n_dwellings_source
+      - at_sale_n_buildings_source
       - n_records_per_key
       - parcel_id_alnum
       # Florida SDF
