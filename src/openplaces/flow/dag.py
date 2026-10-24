@@ -5,7 +5,8 @@ Wraps get_recipe_dependencies and get_output_path so the recipes stay the
 single source of truth: adding an enrichment recipe to a curation pipeline
 automatically adds its jobs. An image recipe it names is configuration
 only (the imagery is fetched in memory and never written), so it is a
-dependency edge, never a job (see writes_nothing). Consumed by
+dependency edge, never a job (see writes_nothing); so is a held recipe
+another one names (see is_upstream_job). Consumed by
 workflow/Snakefile; imports nothing from snakemake, so the library works
 without it.
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from openplaces.core.constants import RECIPE_STAGES
+from openplaces.core.held_recipes import is_held
 from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.cleanup import _relative_posix, _walk_dag
@@ -130,6 +132,33 @@ def writes_nothing(recipe) -> bool:
         entity_type = getattr(entity, 'entity_type', None)
         entity_type = getattr(entity_type, 'entity_type', entity_type)
     return entity_type == 'image'
+
+
+def is_upstream_job(recipe_id: str, recipe) -> bool:
+    """True when a recipe another recipe names gets a job of its own.
+
+    False for a recipe that writes nothing (`writes_nothing`) and for a
+    held one (`openplaces.core.held_recipes`). A held recipe may still
+    be named by an explicit `recipe_id:`, and the step reading it uses
+    whatever output a person ingested by hand (or skips the unit when
+    there is none), but the graph never schedules its ingest or
+    declares its output as an input. Before this check the building
+    spine's explicit permit join made the Shovels ingest a job for
+    every unit in scope, Lake County FL included, and through it marked
+    the unit's spines and curated transactions for a rerun.
+
+    Parameters
+    ----------
+    recipe_id : str
+        The named recipe's id.
+    recipe : dict
+        The named recipe, loaded.
+
+    Returns
+    -------
+    bool
+    """
+    return not (writes_nothing(recipe) or is_held(recipe_id, recipe))
 
 
 def node_key(node: StageNode) -> tuple:
@@ -295,6 +324,12 @@ class RecipeDAG:
                 target_admin,
                 exclude_recipe_ids=self.exclude_recipe_ids,
             ):
+                # A held upstream gets no job; the target itself is
+                # asked for by name and keeps its own.
+                if isinstance(node_recipe, dict) and not is_upstream_job(
+                    node_id, node_recipe
+                ):
+                    continue
                 # _walk_dag keeps a finer-saving recipe at the walk
                 # admin (expand_finer is off, so no disk is read);
                 # _node_admins re-expands it to its save level here
@@ -375,7 +410,7 @@ class RecipeDAG:
                     upstream_admins = self._node_admins(upstream_id, request_admin)
                 except Exception:  # noqa: BLE001
                     continue
-                if writes_nothing(upstream):
+                if not is_upstream_job(upstream_id, upstream):
                     continue
                 for upstream_admin in upstream_admins:
                     admin_str = (
@@ -1067,7 +1102,7 @@ class RecipeDAG:
             seen.add(upstream_id)
             try:
                 upstream = self._recipe(upstream_id)
-                if writes_nothing(upstream):
+                if not is_upstream_job(upstream_id, upstream):
                     continue
                 for upstream_admin in self._node_admins(upstream_id, node_admin):
                     paths.append(primary_output_path(upstream, admin_id=upstream_admin))
