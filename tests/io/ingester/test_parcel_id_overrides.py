@@ -230,6 +230,20 @@ ERA_SPELLINGS = {
     'US-FL-PU': {'2008': '012345000600700800', '2009': '01-23-45-0006-0070-0800'},
     'US-FL-SA': {'2012': '0123-45-0678', '2013': '0123450678'},
     'US-FL-SJ': {'2006': '012345 0678', '2007': '0123450678'},
+    # Source reformats (fix C1): the old era wrote the same account with
+    # its characters in another order or with a prefix, which the ranged
+    # row reorders. Measured 2026-10-24 on US-FL: every old-era roll year
+    # of these five counties gives the new era's key on every account
+    # the DOR's STATE_PAR_ID pairs across the break (15,801 to 283,756).
+    'US-FL-PA': {'2017': '5634120789012345678', '2018': '12-34-56-0789-01234-5678'},
+    'US-FL-VO': {
+        '2007': '45230167890123',
+        '2010': '01234567890123',
+        '2018': '314567890123',
+    },
+    'US-FL-TA': {'2014': '99999901234056', '2015': '01234-056'},
+    'US-FL-CO': {'2003': '123456789019876543210', '2004': '12345678901'},
+    'US-FL-LV': {'2008': '9876541234567890', '2009': '1234567890'},
 }
 
 
@@ -262,6 +276,17 @@ def test_each_era_of_a_respelled_county_mints_todays_key(admin_id):
             ].iloc[0]
     assert len(set(keys.values())) == 1, keys
     assert pd.notna(next(iter(keys.values())))
+
+
+def test_pick_chars_takes_positions_in_order_and_refuses_short_ids():
+    from openplaces.geo.ids import convert_parcel_id
+
+    out = convert_parcel_id(
+        pd.Series(['AB-CD-EFGH', 'ABC']),
+        conv_code='pick_chars: 2 3 0 1 4-7 & no_conv',
+    )
+    assert out.iloc[0] == 'CDABEFGH'
+    assert pd.isna(out.iloc[1])
 
 
 def test_strip_separators_reads_an_old_punctuated_spelling():
