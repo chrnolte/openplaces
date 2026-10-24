@@ -52,6 +52,20 @@ pipeline_patch:
         - [sale_book, sale_page]
       strip_leading_zeros: true
 
+  # The DLS LA3 sales (US-MA_transaction-mador-2026) state the street
+  # number and street of the sale, and no city: the town is the file's
+  # admin unit, which scopes the address key (Massachusetts has no
+  # level 4), so no city output is written. Set for Massachusetts
+  # units only, replacing the national list, whose other entries name
+  # sources outside the state and the former registry entry.
+  # Measured 2026-10-23 on US-MA: over the 70 towns with a parcel spine, 96.2% of LA3 rows get address_id_local, and 47.2% of rows no id reaches find a parcel by it (46.7% exactly one).
+  - set: reconcile_addresses
+    params:
+      sources:
+        mador:
+          address_number: address_number
+          address_street: address_street
+
   # A last sale is a MassGIS assessor row: it names its parcel by the
   # statewide id (`parcel_id_admin2`, LOC_ID) and its account by
   # MAP_PAR_ID (`property_id_assessor`), and has no `parcel_id_local`,

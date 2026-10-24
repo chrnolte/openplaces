@@ -1,14 +1,77 @@
-# Patch: Massachusetts transaction curation, a roll row that repeats a
-# registry deed.
+# Patch: Massachusetts transaction curation: a roll row that repeats a
+# registry deed, and the grading of the DLS LA3 sales
+# (US-MA_transaction-mador-2026).
 #
-# The national recipe's second `flag_sales_matching_other_kind` pass
-# keys on [book, page], which a deed carries and a MassGIS last-sale row
-# does not (it carries `sale_book` and `sale_page`), and the two pad
-# them differently: every Massachusetts last-sale row was left
-# unflagged. The spine patch writes `sale_document_ref`, the book and
-# page without the record kind's scope and without leading zeros, on
-# both kinds; the flag keys on it here. The test stays exact on four
-# values (the reference, year, month and price).
+# A ROLL ROW THAT REPEATS A DEED. The national recipe's second
+# `flag_sales_matching_other_kind` pass keys on [book, page], which a
+# deed carries and a MassGIS last-sale row does not (it carries
+# `sale_book` and `sale_page`), and the two pad them differently: every
+# Massachusetts last-sale row was left unflagged. The spine patch
+# writes `sale_document_ref`, the book and page without the record
+# kind's scope and without leading zeros, on both kinds; the flag keys
+# on it here. The test stays exact on four values (the reference, year,
+# month and price).
+#
+# GRADING THE LA3 NON-ARM'S-LENGTH CODE. Every assessor reports its
+# sales over 1,000 USD to the Division of Local Services on the LA3,
+# with a non-arm's-length (NAL) code that DLS says "should be left
+# blank for all valid sales" (Property Type Classification Codes,
+# Non-Arm's Length Codes and Sales Report Spreadsheet Specifications,
+# revised June 2008; the 2019 revision could not be read, see the
+# ingest recipe). The ingest keeps the code as received in
+# `sale_qualification_code`; this patch grades it, right after the
+# national grading point, like the Florida, Illinois and Wisconsin
+# patches. A state's vocabulary, so a state patch.
+#
+# Only LA3 rows are graded: both maps are keyed on the row's `source`
+# ('mador') with the code, so a MassGIS last-sale row, which has no
+# code, stays missing instead of reading as a blank, valid sale.
+#
+# A helper first spells the code as DLS's letter: the letters A to W as
+# received, the same letters in lower case, and N followed by a
+# number (N1 to N28, mostly 2014 to 2024 in a few towns), which towns
+# use to number their N explanations. A blank reads 'blank'. Anything
+# else stays missing and so ungraded: X (DLS dropped it in its 2016
+# revision; the 2008 list has none), Y, Z, digit-led codes of 2002 to
+# 2004 (1A, 1N), letter-digit codes of 2004 (A1, O1, R1), LA, MW, and
+# combinations (G,R; O/R).
+# Measured 2026-10-23 on US-MA: of 2,852,305 ingested rows, 1,668,867 are blank, 1,175,935 a letter, 70 a lower-case letter, 2,762 an N-number and 4,671 ungraded.
+#
+# The scale is 0, 0.7 and 1, as Florida's: the codes are kinds, not
+# degrees.
+#
+# 1.0, qualified: blank.
+#
+# 0.0, the price is not a market price, in DLS's words: A "sale
+# between members of the same family" (related_parties_family); B "an
+# intra-corporation sale" (related_parties_business); F "transfer of
+# convenience, e.g., correcting defects in a title" (not_a_sale); and,
+# disqualified, C a sale "which includes machinery, equipment,
+# inventories or 'good will'", E "to / from federal, state, or local
+# government", H "resulting from a court order, e.g., a divorce
+# settlement, estate sale", I "in proceedings of bankruptcy", J "of an
+# undivided interest", K "to / from an educational, charitable, or
+# religious organization", L "repossession or sale of a foreclosed
+# property", S "sale of a foreclosed property" (merged into L by DLS's
+# 2016 revision), N "other, when a non-arm's length sale does not fall
+# into any other category", Q "includes both a trade of property and
+# cash", W "affected by deed restriction, e.g., 40B housing".
+#
+# 0.7, a market sale the assessor could not compare with the
+# assessment: the property changed (qualified_parcel_changed): D
+# "substantially changed after the assessment date but before the
+# sale" (replaced by O from FY2017), G "only a portion of the assessed
+# unit", M "value ... materially influenced by zoning changes", O
+# "substantial physical change after the sale", P "change in use
+# after the sale"; or the price covers several parcels
+# (qualified_multi_parcel): V "sale of multiple parcels". And 0.7 with
+# no group, the code describing the buyer, the exposure or the timing
+# rather than the price, as Illinois's 0.7 codes: R "sold more than
+# once in the same year", T "property sold to an abutter", U "private
+# sale not put on the market".
+#
+# Design limits L7 and L29 checked: no price index, sales ratio (the
+# LA3's A/S Ratio is not read) or price threshold enters any grade.
 
 admin_id: US-MA
 stage: curate
@@ -25,3 +88,82 @@ pipeline_patch:
     occurrence: 2
     params:
       key_column: sale_document_ref
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        # Scratch columns are unregistered and do not survive
+        # keep_registered_columns.
+        - output: _nal_letter
+          type: value_map
+          column: sale_qualification_code
+          missing: blank
+          mapping:
+            {A: A, B: B, C: C, D: D, E: E, F: F, G: G, H: H, I: I, J: J,
+             K: K, L: L, M: M, N: N, O: O, P: P, Q: Q, R: R, S: S, T: T,
+             U: U, V: V, W: W,
+             a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J,
+             k: K, l: L, m: M, n: N, o: O, p: P, q: Q, r: R, s: S, t: T,
+             u: U, v: V, w: W,
+             N1: N, N2: N, N3: N, N4: N, N5: N, N6: N, N7: N, N8: N,
+             N9: N, N10: N, N11: N, N12: N, N13: N, N14: N, N15: N,
+             N16: N, N17: N, N18: N, N19: N, N20: N, N21: N, N22: N,
+             N23: N, N24: N, N25: N, N26: N, N27: N, N28: N}
+        # `fill_only`, so a unit holding another source's grades keeps
+        # them.
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: [source, _nal_letter]
+          mapping:
+            "mador|blank": 1.0
+            "mador|A": 0.0
+            "mador|B": 0.0
+            "mador|C": 0.0
+            "mador|D": 0.7
+            "mador|E": 0.0
+            "mador|F": 0.0
+            "mador|G": 0.7
+            "mador|H": 0.0
+            "mador|I": 0.0
+            "mador|J": 0.0
+            "mador|K": 0.0
+            "mador|L": 0.0
+            "mador|M": 0.7
+            "mador|N": 0.0
+            "mador|O": 0.7
+            "mador|P": 0.7
+            "mador|Q": 0.0
+            "mador|R": 0.7
+            "mador|S": 0.0
+            "mador|T": 0.7
+            "mador|U": 0.7
+            "mador|V": 0.7
+            "mador|W": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: [source, _nal_letter]
+          mapping:
+            "mador|blank": qualified
+            "mador|A": related_parties_family
+            "mador|B": related_parties_business
+            "mador|C": disqualified
+            "mador|D": qualified_parcel_changed
+            "mador|E": disqualified
+            "mador|F": not_a_sale
+            "mador|G": qualified_parcel_changed
+            "mador|H": disqualified
+            "mador|I": disqualified
+            "mador|J": disqualified
+            "mador|K": disqualified
+            "mador|L": disqualified
+            "mador|M": qualified_parcel_changed
+            "mador|N": disqualified
+            "mador|O": qualified_parcel_changed
+            "mador|P": qualified_parcel_changed
+            "mador|Q": disqualified
+            "mador|S": disqualified
+            "mador|V": qualified_multi_parcel
+            "mador|W": disqualified

@@ -271,12 +271,16 @@ def _grading_specs(outputs, admin_id=None):
 
 def test_national_recipe_grades_no_state_vocabulary():
     # A grade is a statement about one source's vocabulary, so it lives
-    # in that state's patch. A state with no patch (Massachusetts) runs
-    # no grading map at all, and Florida's and Wisconsin's maps never
-    # reach each other's rows.
+    # in that state's patch. A state with no patch (North Carolina) runs
+    # no grading map at all, and Florida's, Wisconsin's and
+    # Massachusetts's maps never reach each other's rows.
     graded = {'sale_arms_length_confidence', 'sale_qualification_group'}
     assert _grading_specs(graded) == []
-    assert _grading_specs(graded, 'US-MA-NTC') == []
+    assert _grading_specs(graded, 'US-NC-CUR') == []
+    massachusetts = _grading_specs(graded, 'US-MA-NTC')
+    assert {str(spec['column']) for spec in massachusetts} == {
+        str(['source', '_nal_letter'])
+    }
     columns = {
         str(spec.get('column', spec.get('columns')))
         for spec in _grading_specs(graded, 'US-WI')
