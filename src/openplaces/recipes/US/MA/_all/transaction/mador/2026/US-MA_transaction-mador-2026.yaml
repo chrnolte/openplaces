@@ -1,0 +1,290 @@
+# Recipe: Massachusetts property sales from the Division of Local
+# Services (DLS, Department of Revenue) LA3 sales reports, exported
+# from the DLS Gateway's public LA3 Parcel Search.
+#
+# SOURCE. Every board of assessors reports its sales over 1,000 USD to
+# DLS each year on the LA3, for the assessment/sales ratio studies DLS
+# runs before certifying values. The Gateway's LA3 Parcel Search
+# (https://dlsgateway.dor.state.ma.us/gateway/DLSPublic/ParcelSearch)
+# searches them by municipality, sale date, price, property type and
+# NAL code and offers "Search and Export". One statewide export per
+# sale year, 2000 to 2026, was saved by hand as `LA3ParcelSearch_{year}.xlsx` into this recipe's external
+# folder. There is no download_url: the Gateway answers a script with
+# an AWS WAF challenge (a JavaScript check), and this project neither
+# automates a browser for a source nor works around a challenge. A
+# year without a file is skipped with a warning.
+#
+# LAYOUT. One sheet; four title rows (three of one cell each, then a
+# blank row), a header row, and one row per reported sale, 17
+# columns: City/ Town, Fiscal Year, Process, Sale Date, Parcel Id,
+# Seller, Buyer, St Num, St Alpha, St Name, Use Code, NAL Code, Sale
+# Price, Prior Assessed Value, Current Assessed Value, A/S Ratio,
+# Location Id. Every cell is read as text.
+#
+# COMPLETENESS PER YEAR. A sale is reported in the LA3 of the fiscal
+# year it is tested against, mostly sale year + 2 (2,455,313 of
+# 2,929,914 rows; + 3 on 400,947, + 1 on 72,539), so the latest years
+# fill in late. Measured 2026-10-23 on US-MA (rows read, towns): 2000
+# 1 row, 1 town; 2001 4,725, 129; 2002 55,713, 263; 2003 56,459, 231;
+# 2004 178,327, 347; 2005 66,362, 286; 2006 177,743, 352; 2007 51,420,
+# 349; 2008 to 2024 between 101,371 and 154,221 rows and 351 to 353
+# names a year; 2025 44,845, 230; 2026 513, 28 (to 2026-06-30). By the
+# MA sales session's count (towns short of their usual volume), the
+# complete years are 2004, 2006 and 2008 to 2024 (2019 lacks
+# Gosnold), and 2008 to 2024 is the first complete continuous panel;
+# 2000 to 2003, 2005, 2007 (its main fiscal year only 51% reported),
+# 2025 and 2026 are partial. Every year is ingested; a consumer
+# filters on `recorded_date`.
+#
+# PRICE. Against the crawled registry deeds of five towns (Boston,
+# Cambridge, Medford, Natick and Somerville; 17,954 pairs matched on
+# address and date, never on price), 99.1% of the deeds' prices are
+# identical to LA3's and 96% fall on the same day (MA sales session,
+# 2026-10-23).
+#
+# MAPPED.
+# - recorded_date: Sale Date (mm/dd/yyyy). DLS's specification calls
+#   it "date of sale"; against registry deeds it is the recording day
+#   on 96% of pairs, which is why it is the registry's recorded date
+#   here. The spine derives the sale period from it.
+# - tax_year: Fiscal Year, the LA3 the sale was reported in (as
+#   Florida's SDF maps its roll year).
+# - parcel_id_assessor: Parcel Id, the assessor's own number
+#   ("community identification", up to 30 characters). Its spelling
+#   differs from MassGIS's MAP_PAR_ID by town and by year: the export
+#   joins the map, block, lot and sub-lot fields with '_' and keeps the
+#   empty ones ('99_A_99_' against '99-A-99'). See PARCEL KEY.
+# - parcel_id_admin2: Location Id, MassGIS's statewide LOC_ID for the
+#   parcel (M_999999_9999999), on 0% of rows before 2014, 2.6% in
+#   2014, 30% to 75% in 2015 to 2018, 94% in 2019 and 98% to 99.8%
+#   from 2020. The MA spine patch links on it exactly (pass 1a of
+#   link_transactions), before any address.
+# - address_number: St Num with St Alpha appended ('12' and 'A' give
+#   '12A'); St Num is '0' on 5.0% of rows, a parcel without a street
+#   number, and is emptied.
+# - address_street: St Name, the street with its type ('MAIN ST').
+# - use_group_code: Use Code, the DLS property type classification
+#   code (3 digits, leading zeros kept, as in '013') as of the
+#   assessment date, not the sale (DLS: "should reflect the
+#   property's class code as of the proposed assessment date").
+# - sale_qualification_code: NAL Code, the non-arm's-length code, as
+#   received; blank on 1,668,867 of the 2,852,305 ingested rows
+#   (58.5%), which DLS reserves for valid sales. The curate patch
+#   US-MA_transaction-openplaces-2026 grades it.
+# - price_raw / price: Sale Price, every row; 1 row of the 2.93M is 0
+#   and 2 are at or below 100 USD (the report lists sales over 1,000).
+# - grantor, grantee: Seller, Buyer, the parties' names. Registered
+#   personal attributes: ingested, kept past the curate's
+#   keep_registered_columns only on an installation whose user chose
+#   to keep personal columns (the maintainer's, for screening sales
+#   within a family, one sale at a time, never by linking names across
+#   sales: design limit L11), and withheld from every delivery by
+#   export_delivery.
+#
+# NOT MAPPED. Process (I on 1,750,015 rows, C on 909,895, E on
+# 270,004; the 2008 specification has no such column, and the years
+# suggest interim year, certification and the biennial EQV study, E
+# being 265,675 rows of 2004 and 2006 and 4,329 of 2000 to 2009).
+# Prior and Current Assessed Value: the roll's values belong on the
+# property spine, not copied onto each sale. A/S Ratio: their
+# quotient with the price, kept out so that no step can use a sales
+# ratio in a decision (design limits L7 and L29).
+#
+# TOWNS. City/ Town is the town's name; the sidecar
+# `_admin3-crosswalk` maps the 351 names to MA's level-3 ids (towns:
+# US-MA-SOM) from the admin spine's own names (13 drop a ' Town'
+# suffix; Manchester-by-the-Sea is spelled 'Manchester By The Sea').
+# Two names are not towns and have no admin unit, so their rows are
+# not ingested: Devens (a regional enterprise zone in Ayer, Harvard and
+# Shirley) and Southfield Redevelopment Authority (in Weymouth,
+# Abington and Rockland).
+#
+# DUPLICATES. A year's export repeats some rows verbatim (470 in 2024,
+# 1,165 in all). It also reports 75,532 sales of 2003 to 2007 twice,
+# identical in every column but Process (one report E, the other C or
+# I; 37 of them also differ in Current Assessed Value): 23,565 in 2004
+# and 49,971 in 2006, the EQV years, so those years' row counts above
+# overstate their sales by 13% and 28%. Measured 2026-10-23 on US-MA:
+# 76,697 rows repeat another in every column this recipe keeps, and
+# only those are dropped, within a town and year; Process and the
+# assessed values are not kept, so the pair is one sale here.
+#
+# PARCEL KEY. parcel_id_local is computed per town from Parcel Id, as
+# MassGIS's is from MAP_PAR_ID (US-MA_parcel-massgis-2025, also per
+# town, so neither carries a town prefix), and has to equal that key
+# exactly. The town's bundled conversion fits LA3's spelling poorly:
+# 23.4% of all rows find a MassGIS key with it. So the 63 rows for
+# source `mador` in the transaction id-overrides table
+# (US/_all/transaction/_all/) name, for each town where it does better by at least 2 points of
+# rows, the conversion from the shared library whose keys are MassGIS
+# parcel keys most often (exact set membership; the MassGIS side is
+# not touched): 'pipe' in 41 towns, 'simple' in 2, a pattern rule in
+# 20; 288 towns keep the bundled rule. A row's tolerance is what the
+# ingest's duplicate guard measures for that conversion in the town's
+# worst year, plus 0.005 (at most 0.024): one parcel written with and
+# without its empty trailing segments ('9_A_9_', '9_A_9'). A
+# conversion that merged more than 2.5% of a year's rows was rejected
+# (148 towns), because a key that joins distinct ids would link a
+# sale to the wrong parcel; those towns keep the bundled rule. Simulated
+# 2026-10-23 on US-MA before the ingest: 43.6% of rows find a MassGIS
+# key (49.4% had the rejected conversions been kept). A Parcel Id is the
+# assessor's account, so a condominium unit's id names the unit and
+# finds no lot key; and some towns' LA3 ids follow a numbering
+# MassGIS does not carry at all (Lowell, Concord: 0%). Location Id is
+# not a source for this key, because MassGIS's key is built from
+# MAP_PAR_ID, not from LOC_ID; it reaches the parcel through
+# parcel_id_admin2 instead.
+#
+# RECONCILED, measured 2026-10-23 on US-MA, all 27 years against an
+# independent read of every export: 2,929,914 rows read, 912 in the
+# two names with no town (Devens 544, Southfield 368), 76,697
+# repeats dropped, 2,852,305 written; read less repeats equals written
+# in every year and in every one of the 351 towns (104 to 213,529 rows
+# a town, median 5,285). Price, Parcel Id and St Name on every row,
+# address_number on 95.0%, a parcel_id_local on 91% to 100% a year.
+#
+# PARCEL LINKS, same measurement, against the ingested MassGIS 2025
+# parcels of the sale's own town (exact keys): parcel_id_local is a
+# MassGIS parcel key for 43.7% of sales; Location Id is a MassGIS
+# LOC_ID for 35.6% (91% of the 39.3% of sales that carry one); either
+# for 60.9% overall, 65.4% in 2008 to 2024, 96.2% from 2019 on. By
+# year, either: 34% to 52% in 2001 to 2014, 56.5% in 2015, 67% to 79%
+# in 2016 to 2018, 90.0% in 2019, 95% to 98.5% from 2020. By town,
+# median 61.5%, lowest 19.5%, highest 97.6%. The spine tries the
+# key, then parcel_id_admin2, then the address.
+#
+# LICENCE. The DLS Gateway links to the general Mass.gov Terms of Use
+# (https://www.mass.gov/massgov-terms-of-use) and states no terms of
+# its own; the text was read in a browser by the maintainer on
+# 2026-10-23 (mass.gov answers 403 to scripted requests). It says:
+#   - material "available to the public without use of an
+#     authenticating and authorizing mechanism (such as a 'PIN' or
+#     password) is public record. Most of the public record posted on
+#     Commonwealth websites can be copied and used for any purpose."
+#   - "The Commonwealth holds a copyright interest in most of the
+#     material posted on Mass.gov ... the Commonwealth forbids any
+#     copying or use other than 'fair use' under the Copyright Act.
+#     'Fair use' includes activities such as criticism, comment, news
+#     reporting, teaching, research, and other related activities."
+#   - "If you want to make use other than 'fair use' of any
+#     information on this website, you must seek permission directly
+#     from Mass.gov", through the contact the page names.
+#   - Agencies "may also adopt additional terms of use that apply to
+#     ... data posted on their websites"; DLS has posted none found.
+# The two clauses pull apart: the page does not say whether the LA3
+# export is public record usable "for any purpose" or material under
+# the Commonwealth's copyright. Research use is fair use either way.
+# Publishing data derived from it waits for BU counsel (SRS-6) and,
+# if needed, Mass.gov's written permission. Until then the source is
+# redistribution-restricted and an MA bundle built from it is for
+# research only, not public.
+
+description: >-
+  Massachusetts sales reported to DLS on the LA3: sale date, price,
+  parcel and MassGIS location ids, use code, non-arm's-length code.
+
+admin_id: US-MA
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: mador
+    portal_url: "https://dlsgateway.dor.state.ma.us/gateway/DLSPublic/ParcelSearch"
+    license: >-
+      Mass.gov Terms of Use: public record, "most ... can be copied and
+      used for any purpose", but Commonwealth-copyright material is
+      limited to fair use (research included) without Mass.gov's
+      permission; publication of derived data held for BU counsel.
+    terms_url: "https://www.mass.gov/massgov-terms-of-use"
+    redistribution_restricted: true
+  version: "2026"
+
+download_by:
+  partition: year
+  first: 2000
+  last: 2026
+
+uncompressed_file_name: "LA3ParcelSearch_{year}.xlsx"
+# 0-based: the header sits below the four title rows.
+header: 4
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: "City/ Town"
+  admin_id_crosswalk:
+    recipe_id: "US-MA_transaction-mador-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  recorded_date: Sale Date
+  tax_year: Fiscal Year
+  parcel_id_assessor: Parcel Id
+  parcel_id_admin2: Location Id
+  address_number: St Num
+  address_street: St Name
+  use_group_code: Use Code
+  sale_qualification_code: NAL Code
+  price_raw: Sale Price
+  grantor: Seller
+  grantee: Buyer
+
+# Rows identical in every column kept (see DUPLICATES), within a town
+# and year.
+drop_duplicates:
+  - recorded_date
+  - tax_year
+  - parcel_id_assessor
+  - parcel_id_admin2
+  - address_number
+  - St Alpha
+  - address_street
+  - use_group_code
+  - sale_qualification_code
+  - price_raw
+  - grantor
+  - grantee
+
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: address_number
+    args: {value: "0"}
+    output: address_number
+  - type: string
+    operation: concat
+    inputs: [address_number, St Alpha]
+    output: address_number
+  - type: unary
+    operation: null_if_equal
+    input: address_number
+    args: {value: ""}
+    output: address_number
+  - type: unary
+    operation: to_numeric
+    input: price_raw
+    output: price
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_datetime
+    input: recorded_date
+    output: recorded_date
+
+columns_to_categorical:
+  - use_group_code
+  - sale_qualification_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+
+# The per-year files become one file per town; the footer records the
+# years ingested, so a re-run skips them.
+aggregate_by:
+  single_file: true

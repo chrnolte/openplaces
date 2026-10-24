@@ -288,6 +288,13 @@ def _derive_value_map(state: CurateState, spec: dict) -> pd.Series | None:
     and how the parties say they are related). The mapping is then keyed
     on the values joined by ``|``, and a row missing any of them has no
     key and stays missing: half an answer is not graded.
+
+    ``missing`` (single column only) is the value for a row whose column
+    is empty, for a source whose blank is itself an answer: Massachusetts
+    assessors leave the LA3 non-arm's-length code blank on a valid sale.
+    It is separate from ``default`` so that a blank and a code the
+    mapping does not know can be graded apart (the blank 1.0, the
+    unknown code missing).
     """
     curated = state.curated
     column = spec['column']
@@ -313,6 +320,9 @@ def _derive_value_map(state: CurateState, spec: dict) -> pd.Series | None:
     default = spec.get('default')
     if default is not None:
         mapped = mapped.where(values.isin(list(mapping)), default)
+    missing = spec.get('missing')
+    if missing is not None:
+        mapped = mapped.where(values.notna(), missing)
     return mapped
 
 
@@ -495,6 +505,8 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       ``column`` may be a list: the mapping is then keyed on the values
       joined by ``|``, a row missing any of them stays missing, and
       ``default`` applies only to a complete key the mapping lacks.
+      ``missing`` (single column) is the value for an empty cell, where
+      a source's blank is an answer (a sale its assessor left uncoded).
     - ``minimum``: the row-wise minimum of several graded ``columns``,
       missing where any is; for a grade that holds only if each of its
       components does.
