@@ -726,26 +726,28 @@ const TOUR = {
   contrastZoom: 13.5,
   contrastPitch: 36,
   contrastOrbit: 46,
-  downtownOrbit: 26,
+  downtownOrbit: 34,
   slowFlight: 1.6,
   // Share of the descent in which the center reaches the first stop.
   centerShare: 0.35,
   // A contrast farther than this from downtown is shown from higher up
   // rather than flown to (maintainer, 2026-10-18: zoom out instead).
   nearKm: 4,
-  degreesPerSecond: 2.5,
-  descent: 22,
-  orbit: 18,
+  // Slow turns, descents and flights (maintainer, 2026-10-24: slower
+  // movements, calm enough to read by).
+  degreesPerSecond: 1.5,
+  descent: 30,
+  orbit: 24,
   // A flight takes longer and rises a little higher the farther it
   // goes.
-  flightBase: 10,
-  flightPerKm: 3,
-  flightMax: 28,
+  flightBase: 14,
+  flightPerKm: 4,
+  flightMax: 38,
   climbPerKm: 0.25,
   climbMax: 1.4,
   pitchDip: 8,
   // Time constant of each smoothing stage.
-  smoothing: 1.2,
+  smoothing: 1.6,
 };
 
 // What the tour does at each stop, by seconds into the segment: a
@@ -763,40 +765,34 @@ const TOUR = {
 // above the switching button keeps the definition (`tip`) and the
 // countdown.
 // The descent, once the autopilot line has gone: what the map shows
-// and how to read heights (maintainer, 2026-10-24), as three messages
-// one after another, each of two lines at most, each coming in slowly
-// (`gentle`) after a pause, so the descent reads calm rather than
-// busy. The last one ends before downtown's first hint, 4 s into the
-// orbit that follows the descent's `TOUR.descent` (22 s).
+// and how to read heights, in the maintainer's words (2026-10-24):
+// three short lines, one at a time, each coming in slowly (`gentle`)
+// after a pause, little enough to read while watching. The lots'
+// thickness waits until the buildings are off (downtown, below). The
+// last line ends before downtown's first hint, 4 s into the orbit
+// that follows the descent's `TOUR.descent` (30 s).
 const TOUR_DESCENT_ACTIONS = [
   {
     at: 1,
     hint: {
-      text: [
-        'What you see here is *property value assessed for taxation purposes*:',
-        'how the official tax assessment “sees” value.',
-      ],
-      linger: 8,
-      gentle: true,
-    },
-  },
-  {
-    at: 10,
-    hint: {
-      text: [
-        '*Volume is value.*',
-        'The taller a building, the more value it packs onto its land.',
-      ],
+      text: 'These are the property values of land and buildings as seen by the tax assessor.',
       linger: 7,
       gentle: true,
     },
   },
   {
-    at: 18.5,
-    hint: {text: 'The thicker a lot, the more its land is worth.', linger: 6.5, gentle: true},
+    at: 10,
+    hint: {text: 'In our representation, volume is equal to value.', linger: 7, gentle: true},
+  },
+  {
+    at: 19,
+    hint: {text: 'Higher buildings pack more value onto their footprint.', linger: 7, gentle: true},
   },
 ];
-// Downtown, the first stop: the buildings go, and land speaks alone.
+// Downtown, the first stop: the buildings go, and land speaks alone,
+// its thickness explained only now that it is all there is to see
+// (maintainer, 2026-10-24). The last line ends at 30 s, within
+// `TOUR.downtownOrbit` (34 s).
 const TOUR_DOWNTOWN_ACTIONS = [
   {
     at: 4,
@@ -808,8 +804,9 @@ const TOUR_DOWNTOWN_ACTIONS = [
     },
   },
   {at: 9, buildings: false},
+  {at: 13, hint: {text: 'The thicker a lot, the more its land is worth.', linger: 6, gentle: true}},
   {
-    at: 13,
+    at: 20,
     hint: {
       // Maintainer's wording, 2026-10-19.
       text: 'Land value per area gives you an idea of where humans most want to ' +
@@ -822,20 +819,20 @@ const TOUR_DOWNTOWN_ACTIONS = [
 // left.
 const TOUR_DOWNTOWN_ONLY_ACTIONS = [
   ...TOUR_DOWNTOWN_ACTIONS,
-  {at: 23, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
-  {at: 25, buildings: true},
+  {at: 31, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
+  {at: 33, buildings: true},
 ];
 // Leaving downtown for the contrast: the switch to value per home
 // comes 6 s after leaving (maintainer, 2026-10-18: no more than about
 // 7 s), while the camera glides on: one second for the message, then
-// the countdown from five. The flight lasts at least 16 s
+// the countdown from five. The flight lasts at least 22 s
 // (`flightBase` x `slowFlight`), so the insight at 10 s always runs.
 const TOUR_TO_CONTRAST_ACTIONS = [
   {
     at: 0,
     hint: {
       target: 'dwelling',
-      text: 'You can visualize wealth distributions by switching to value *per home*.',
+      text: 'You can visualize wealth distributions by switching to value per home.',
       tip: 'A home is one apartment, house, or condo.',
       countdown: 5,
       countdownAfter: 1,
@@ -864,7 +861,7 @@ const TOUR_CONTRAST_ACTIONS = [
     at: 14,
     hint: {
       target: 'type',
-      text: 'You can also color land and buildings by their *type*.',
+      text: 'You can also color land and buildings by their type.',
       tip: 'Single-family, multi-family, commercial, industrial, and more.',
       countdown: 5,
       countdownAfter: 1,
