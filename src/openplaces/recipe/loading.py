@@ -28,6 +28,9 @@ from openplaces.core.schema import (
 )
 from openplaces.path import OpenPlacesReference, recipe_path
 
+# The bucket other people receive, which no recipe saves into.
+SHARE_DIR = 'share'
+
 
 def get_recipe(*args, **kwargs):
     """Load recipe (.yaml, .csv or .xlsx)
@@ -193,6 +196,16 @@ def get_recipe_dict(filepath, *args, **kwargs):
                     f"Recipe 'save_to.data_dir' is '{data_dir}', which is not a "
                     'known openplaces directory. Valid options:\n- '
                     + '\n- '.join(sorted(STANDARD_DIRS))
+                )
+            if data_dir == SHARE_DIR:
+                # The share bucket is what other people receive; a
+                # stage output there skips the redaction that
+                # io.delivery.export_delivery applies to every bundle.
+                raise ValueError(
+                    f"Recipe 'save_to.data_dir' is '{SHARE_DIR}', which takes "
+                    'only the redacted bundles io.delivery.export_delivery '
+                    "writes. Save to a private bucket ('core', 'cache') and "
+                    'declare a `share: delivery:` block.'
                 )
         retention = recipe_dict['save_to'].get('retention')
         if retention is not None and retention not in RETENTION_CLASSES:

@@ -4,6 +4,8 @@ project relies on, plus CSV, GeoPackage and KMZ writers and the
 geometry-sidecar convention behind save_parquet and read_parquet.
 """
 
+import contextlib
+import contextvars
 import json
 import os
 import time
@@ -14,6 +16,84 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import geopandas as gpd
 import pandas as pd
 import pyarrow
+
+
+class UnredactedShareWriteError(PermissionError):
+    """A table write into the share bucket that no redaction preceded."""
+
+
+# Set only while `io.delivery.export_delivery` writes a bundle it has
+# redacted. A context variable rather than a flag argument, so no
+# caller can pass its way past the check by keyword.
+_REDACTED_SHARE_WRITE = contextvars.ContextVar(
+    'openplaces_redacted_share_write', default=False
+)
+
+
+@contextlib.contextmanager
+def redacted_share_writes():
+    """Allow table writes into the share bucket inside this block.
+
+    For `io.delivery.export_delivery` alone, around the writes of a
+    bundle it has already redacted (restricted sources withheld,
+    personal columns refused). Any other writer reaching the share
+    bucket is refused by `refuse_unredacted_share_write`.
+    """
+    token = _REDACTED_SHARE_WRITE.set(True)
+    try:
+        yield
+    finally:
+        _REDACTED_SHARE_WRITE.reset(token)
+
+
+def _share_root() -> Path | None:
+    """The configured share bucket, resolved, or None without one."""
+    from openplaces.config import cfg
+
+    try:
+        return Path(cfg.get_dir('share')).resolve()
+    except KeyError:
+        return None
+
+
+def refuse_unredacted_share_write(filepath: str | Path) -> None:
+    """Raise when *filepath* lies in the share bucket outside a delivery.
+
+    The share bucket is the folder other people receive (`shared` in
+    `STANDARD_DIRS`), so a table reaches it only as a bundle that
+    `export_delivery` has redacted. A team folder is no exception: a
+    team bundle withholds every source not cleared for the team, which
+    only `export_delivery` does.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        The file about to be written.
+
+    Raises
+    ------
+    UnredactedShareWriteError
+        When the file is inside the share bucket and the write is not
+        inside `redacted_share_writes`.
+    """
+    # Curated per-county files used to be saved into the share bucket
+    # directly, and one carried a restricted county roll's attributes
+    # unredacted (Fairfax VA, 2026-10-21): nothing between the curate
+    # step and the folder applied the withholding rules.
+    if _REDACTED_SHARE_WRITE.get():
+        return
+    root = _share_root()
+    if root is None:
+        return
+    target = Path(filepath).resolve()
+    if target == root or root in target.parents:
+        raise UnredactedShareWriteError(
+            f'Refusing to write {target}: it is in the share bucket ({root}), '
+            'which receives only bundles io.delivery.export_delivery has '
+            'redacted. Write curated or intermediate tables to a private '
+            "bucket ('core', 'cache', 'out') and ship them with "
+            'export_delivery.'
+        )
 
 
 def _remove_if_exists(filepath: Path) -> None:
@@ -94,6 +174,7 @@ def _replace(temp: Path, target: Path) -> None:
 
 def _write_to_temp(df, filepath: Path, **kwargs) -> Path:
     """Write *df* to *filepath*'s temp path and return it."""
+    refuse_unredacted_share_write(filepath)
     temp = _temp_path(filepath)
     try:
         _write_parquet(df, temp, **kwargs)
@@ -231,6 +312,7 @@ def to_csv(
     if isinstance(filepath, str):
         filepath = Path(filepath)
 
+    refuse_unredacted_share_write(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
     # Drop geometry if present. The active geometry column is not
@@ -264,6 +346,7 @@ def to_gpkg(
     if isinstance(filepath, str):
         filepath = Path(filepath)
 
+    refuse_unredacted_share_write(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     _remove_if_exists(filepath)
 
@@ -286,6 +369,7 @@ def to_kmz(gdf: gpd.GeoDataFrame, filepath: str | Path) -> None:
     if isinstance(filepath, str):
         filepath = Path(filepath)
 
+    refuse_unredacted_share_write(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     _remove_if_exists(filepath)
 

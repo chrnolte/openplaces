@@ -18,7 +18,7 @@ entity:
   source: {source_id: openplaces}
   version: 2026
 entity_recipe: US_parcel-spine-2026     # the harmonized input
-save_to: {data_dir: share}
+save_to: {data_dir: core, retention: keep}
 
 pipeline:
   - step: merge_enrichments
@@ -80,10 +80,13 @@ Curated outputs are consumed by other curated outputs.
 `link_curated_entity`. **Re-curating parcels makes curated footprints stale**,
 so the parcel lane runs first and the footprint lane follows.
 
-Note that curated deliverables write to `data_dir: share`, not `core`. Resolve
-paths with `get_output_path(recipe, admin_id)` rather than assuming — stale
-intermediates with the same filename can sit in `core` and quietly answer the
-wrong question.
+Curated per-unit files write to `data_dir: core`, never `share`. A curated
+county carries what restricted sources supplied, and only
+`io.delivery.export_delivery` withholds it; the share bucket, which other
+people receive, takes those redacted bundles alone. Loading a recipe that
+saves to `share` raises, and a table write into the share bucket outside
+`export_delivery` raises `UnredactedShareWriteError`. Resolve paths with
+`get_output_path(recipe, admin_id)` rather than assuming.
 
 ## Verifying
 

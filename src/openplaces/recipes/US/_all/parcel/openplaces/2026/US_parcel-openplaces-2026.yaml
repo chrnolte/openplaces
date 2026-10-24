@@ -33,10 +33,11 @@ process_by:
   admin_level: 3
 
 save_to:
-  # Canonical curated output: shipped self-contained (attributes +
-  # geometry) in the share bucket, like US_footprint-openplaces-2026. The
-  # core bucket is the normalized store for intermediates.
-  data_dir: share
+  # Private: a curated county carries what restricted sources supplied,
+  # which only export_delivery withholds. The share bucket takes the
+  # redacted bundles alone (io.tables.refuse_unredacted_share_write).
+  data_dir: core
+  retention: keep
 
 pipeline:
   # Reference evidence that may legitimately be absent in a region: NSI

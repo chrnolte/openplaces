@@ -185,7 +185,8 @@ def test_retention_classes(dag):
     assert dag.retention('harmonize', 'US_footprint-spine-2026') == 'keep'
     assert dag.retention('ingest', 'image-googlestreetview-2026') == ('until_consumed')
     assert dag.retention('curate', TARGET) == 'keep'
-    assert dag.bucket(TARGET) == 'share'
+    # Curated files are private; only their bundles go to share.
+    assert dag.bucket(TARGET) == 'core'
 
 
 def test_target_paths(dag):

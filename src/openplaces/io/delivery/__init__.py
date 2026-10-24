@@ -59,6 +59,7 @@ from openplaces.io.delivery.terms import (
     value_source_cells,
 )
 from openplaces.io.readers import get_admin
+from openplaces.io.tables import redacted_share_writes
 from openplaces.recipe import (
     get_output_path,
     get_process_admin_level,
@@ -82,6 +83,11 @@ COORDINATE_COLUMNS = ('long', 'lat')
 # its files sit in this subdirectory beside the base region's bundle.
 TEAM_SUFFIX = '.team'
 TEAM_DIR = 'team'
+
+# Where bundles are filed. Curated per-unit files stay in their recipe's
+# own, private bucket: they carry restricted sources' values, which
+# only the bundle withholds.
+DELIVERY_DIR = 'share'
 
 
 def delivery_regions(recipe) -> list[dict]:
@@ -1196,7 +1202,7 @@ def delivery_paths(
         declared `share: delivery: admin_level:`, then 2.
     output_dir : str, optional
         Directory to write into, as named in STANDARD_DIRS. Defaults to the
-        recipe's declared value, then the recipe's own `save_to: data_dir:`.
+        recipe's declared value, then `share`.
     region : str, optional
         Which declared region to resolve; see :func:`delivery_regions`.
 
@@ -1219,7 +1225,7 @@ def delivery_paths(
     if admin_level is None:
         admin_level = spec.get('admin_level', 2)
     if output_dir is None:
-        output_dir = spec.get('output_dir')
+        output_dir = spec.get('output_dir') or DELIVERY_DIR
     if admin_id is None:
         admin_id = delivery_admin_id(recipe, admin_level, region)
     admin_id = AdminId(str(admin_id))
@@ -1384,7 +1390,7 @@ def export_delivery(
         value, then 2 (state/region).
     output_dir : str, optional
         Directory the bundle is written to, as named in ``STANDARD_DIRS``.
-        Defaults to the recipe's declared value, then its own output bucket.
+        Defaults to the recipe's declared value, then ``share``.
     region : str, optional
         Which declared region to ship, by ``region_id``. Required when the
         recipe declares more than one; see :func:`delivery_regions`.
@@ -1562,7 +1568,10 @@ def export_delivery(
     # Sources trail the values they explain, so the table opens on
     # the attributes and the provenance block stays out of the way.
     canonical = pd.DataFrame(pooled[[*canonical_columns, *source_columns]])
-    to_parquet(canonical, staged['canonical'])
+    # The one writer allowed into the share bucket, and only here,
+    # after the withholding above (io.tables.redacted_share_writes).
+    with redacted_share_writes():
+        to_parquet(canonical, staged['canonical'])
 
     point = None
     if spatial:
@@ -1576,9 +1585,9 @@ def export_delivery(
                 ]
             ]
         )
-        to_parquet(point, staged['point'], schema_version='1.1.0')
-
-        to_parquet(pooled[['geometry']], staged['geo'], schema_version='1.1.0')
+        with redacted_share_writes():
+            to_parquet(point, staged['point'], schema_version='1.1.0')
+            to_parquet(pooled[['geometry']], staged['geo'], schema_version='1.1.0')
 
     # Which copy of each entity survived deduplication, so pass two
     # keeps the matching evidence row rather than an arbitrary one.
@@ -1653,7 +1662,8 @@ def export_delivery(
     # written. The canonical columns are registry-typed and so agree;
     # the evidence file takes whatever a source carried.
     evidence = coerce_mixed_object_columns(evidence)
-    to_parquet(evidence, staged['evidence'])
+    with redacted_share_writes():
+        to_parquet(evidence, staged['evidence'])
 
     # Counted on the evidence after withholding: it carries every
     # shipped '_source' column, the canonical table's included, so a
