@@ -17,6 +17,7 @@ import pandas as pd
 
 from openplaces.io import sale_records
 from openplaces.io.curator import CurateState, _register
+from openplaces.io.curator.provenance import record_source
 from openplaces.io.readers import get_entities
 from openplaces.io.sale_records import (  # noqa: F401  (kept importable)
     REPEATED_DOCUMENT_SHARE,
@@ -278,6 +279,7 @@ def join_temporal_snapshot(
     no_key_value: str = 'no_key',
     mark_unmatched: str | None = None,
     normalize_key: bool = True,
+    source_token: str | None = None,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
 
@@ -353,6 +355,18 @@ def join_temporal_snapshot(
         sides already minted by one rule: stripped, its segment
         separators go and `1|23` meets `12|3`, the collision the `pipe`
         conversion exists to prevent.
+    source_token : str, optional
+        Write a `{column}_source` sidecar for every attached column
+        except *vintage_column*: *source_token* where the row's own year
+        matched, and *source_token* marked `imputed` where a neighboring
+        year supplied the values (`backward_fallback`,
+        `forward_fallback`; in 'exact' mode every match is the asked-for
+        year). A neighboring year's roll states the
+        property as it was in that year, not at the sale, so openplaces
+        chose to fill the cell with it and the cell says so
+        (`provenance.mark_imputed`). The attached *vintage_column* is
+        left unmarked: which roll was read is stated either way. Without
+        *source_token* no sidecar is written.
     """
     # Validate the request before reading the reference, so a recipe
     # error is reported as one rather than as a missing data file.
@@ -531,6 +545,25 @@ def join_temporal_snapshot(
             # ambiguity this parameter exists to remove.
             curated.loc[curated[match_type_column].isna(), match_type_column] = (
                 mark_unmatched
+            )
+
+    if source_token is not None:
+        # In 'exact' mode every match is the year the recipe asked for;
+        # only the as-of passes can land on a neighboring one.
+        same_year = matched & (
+            (merged[date_column] == merged[vintage_column])
+            if direction != 'exact'
+            else True
+        )
+        own_year = merged.index[same_year]
+        other_year = merged.index[matched & ~same_year]
+        for source_column in columns:
+            if source_column == vintage_column:
+                continue
+            dest_column = f'{prefix}{source_column}'
+            curated = record_source(curated, dest_column, own_year, source_token)
+            curated = record_source(
+                curated, dest_column, other_year, source_token, imputed=True
             )
 
     state.curated = curated
