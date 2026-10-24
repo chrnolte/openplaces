@@ -1703,6 +1703,7 @@ async function main() {
   let placePin = () => {};
   let turnCompass = () => {};
   let fadeEdges = () => {};
+  let watchFrames = () => {};
   // One sun fixed in the world, from the southwest, plus even ambient
   // light: every building has one bright side (facing the sun), the
   // opposite side darkest, and the two between at mid shade. Two lights
@@ -1739,7 +1740,11 @@ async function main() {
       placePin();
       turnCompass();
       fadeEdges();
+      watchFrames();
     },
+    // A page that arrived lightened (`light=1`, `lighten`) draws at one
+    // pixel per CSS pixel from the start.
+    ...(params.get('light') === '1' ? {useDevicePixels: 1} : {}),
   });
 
   // The hover tooltip, steady while the camera moves (maintainer,
@@ -2735,6 +2740,10 @@ async function main() {
   const EDGE_FAR_ZOOM = 12;
   let edgeZoom = Math.round(scene.view.zoom * 4) / 4;
   const styleEdges = (layer) => {
+    // A lightened page (`lighten`, last step) draws no edges at all.
+    if (lightEdges && (layer.id.endsWith('-edges') || layer.id.endsWith('-imputed'))) {
+      return layer.clone({visible: false});
+    }
     if (layer.id.endsWith('-imputed')) {
       // The imputed values' dotted edges fade out entirely as the
       // camera pulls back: from afar, thousands of them piled up into
@@ -2754,6 +2763,61 @@ async function main() {
       style.widthScale = 0.4 + 0.6 * t;
     }
     return layer.clone(style);
+  };
+  // The page scales down to the machine (maintainer, 2026-10-24: Boston
+  // moved in steps about once a second on a MacBook Air in Firefox,
+  // which reports no device memory, so `lowCapacity` let it in). The
+  // frame rate, not a guess at the hardware, decides: once the files
+  // have loaded, while the view moves, a median frame of more than
+  // `SLOW_FRAME_MS` over `FRAME_SAMPLE` frames steps quality down:
+  // 1. one pixel per CSS pixel instead of the screen's (a Retina
+  //    screen draws four times as many);
+  // 2. the place's lighter page (`phone_scene`, a smaller circle), or
+  //    where there is none, no edges.
+  // ?slow=1 in the address takes each step as if frames were slow (for
+  // testing); ?full=1 keeps the full page, as for phones.
+  const SLOW_FRAME_MS = 60;
+  const FRAME_SAMPLE = 30;
+  let lightEdges = false;
+  let lightStep = params.get('light') === '1' ? 1 : 0;
+  let lastFrame = null;
+  let frameGaps = [];
+  const lighten = () => {
+    lightStep += 1;
+    if (lightStep === 1 && (window.devicePixelRatio || 1) > 1) {
+      deckgl.setProps({useDevicePixels: 1});
+      return;
+    }
+    lightStep = Math.max(lightStep, 2);
+    if (scene.phone_scene && params.get('full') !== '1') {
+      const query = new URLSearchParams(location.search);
+      query.set('light', '1');
+      location.replace(`${scene.phone_scene}?${query}${location.hash}`);
+      return;
+    }
+    if (!lightEdges) {
+      lightEdges = true;
+      redraw();
+    }
+  };
+  watchFrames = () => {
+    if (lightStep >= 2 || !window.openplacesScene || !window.openplacesScene.loaded) {
+      return;
+    }
+    const now = performance.now();
+    // Only frames of a moving view count: a gap of a second or more is
+    // the page at rest, not a slow frame.
+    if (lastFrame !== null && now - lastFrame < 1000) {
+      frameGaps.push(params.get('slow') === '1' ? SLOW_FRAME_MS + 1 : now - lastFrame);
+    }
+    lastFrame = now;
+    if (frameGaps.length >= FRAME_SAMPLE) {
+      const sorted = [...frameGaps].sort((a, b) => a - b);
+      frameGaps = [];
+      if (sorted[Math.floor(sorted.length / 2)] > SLOW_FRAME_MS) {
+        lighten();
+      }
+    }
   };
   fadeEdges = () => {
     let viewport = null;
