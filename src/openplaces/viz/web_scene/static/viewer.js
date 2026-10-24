@@ -54,6 +54,18 @@ async function fetchGzip(url) {
 const TYPED = {f4: Float32Array, u4: Uint32Array, u1: Uint8Array};
 // Opacity of an outline drawn too tall for what is mapped there.
 const GHOST_ALPHA = 56;
+// The dotted top edge of a feature whose value openplaces imputed: a
+// dot one line width long, a gap three (deck.gl's dash units are line
+// widths), dark on light pages and light on dark ones. Full strength
+// from zoom 16.5 in, fading out to nothing at zoom 14.5 and beyond
+// (`styleEdges`), so they never stand out over a whole county
+// (maintainer, 2026-10-23).
+const IMPUTED_DASH = [1, 3];
+const IMPUTED_LINE_WIDTH = 1.5;
+const IMPUTED_FULL_ZOOM = 16.5;
+const IMPUTED_FAR_ZOOM = 14.5;
+const IMPUTED_LINE_LIGHT = [40, 44, 56, 230];
+const IMPUTED_LINE_DARK = [235, 238, 245, 230];
 
 // The layout is described in the openplaces.viz.web_scene docstring.
 function decodeScene(buffer) {
@@ -763,12 +775,18 @@ const TOUR_TO_CONTRAST_ACTIONS = [
   {at: 6, view: 'dwelling'},
   {
     at: 10,
-    hint: {text: 'This shows you where the rich and the poor tend to live.', linger: 10},
+    hint: {
+      text: 'This gives you a first idea of where the rich and the poor tend to live.',
+      linger: 10,
+    },
   },
 ];
 // At the contrast: each view once (maintainer, 2026-10-19). After
-// value per home, the buildings come back, and the tour ends its
-// switching on the type view, which it keeps from there on.
+// value per home, the buildings come back, then the type view; once
+// its text has run, and a few seconds more, back to value per ground
+// area, which the tour keeps from there on (maintainer, 2026-10-23).
+// The contrast orbit lasts `TOUR.contrastOrbit` (46 s), so the last
+// switch, at 44 s, still happens there.
 const TOUR_CONTRAST_ACTIONS = [
   {at: 4, hint: {target: 'buildings', text: 'Buildings back', countdown: 5, linger: 7}},
   {at: 9, buildings: true},
@@ -788,6 +806,11 @@ const TOUR_CONTRAST_ACTIONS = [
     at: 24,
     hint: {text: 'Homes, shops, industry, and public land, each in its own color.', linger: 10},
   },
+  {
+    at: 39,
+    hint: {target: 'area', text: 'Back to value per ground area', countdown: 5, linger: 7},
+  },
+  {at: 44, view: 'area'},
 ];
 // Leaving the contrast: the view the tour last showed stays.
 const TOUR_LEAVE_ACTIONS = [];
@@ -1574,6 +1597,18 @@ async function main() {
     return values;
   };
 
+  // Under the legend, while imputed values are drawn: what the dotted
+  // top edges mean (`IMPUTED_DASH`).
+  const drawImputedNote = () => {
+    if (!withEstimates || isModel(valueView) || !scene.layers.some((l) => l.n_estimated > 0)) {
+      return;
+    }
+    const note = document.createElement('div');
+    note.className = 'legend-imputed';
+    const sample = document.createElement('span');
+    note.append(sample, 'Dotted edge: value imputed by openplaces');
+    legends.appendChild(note);
+  };
   const drawLegends = () => {
     legends.replaceChildren();
     // Which values the bars show, named small behind each title.
@@ -1585,6 +1620,7 @@ async function main() {
     }
     if (valueView === 'type' && hasTypeView) {
       drawTypeLegend(legends, scene.types);
+      drawImputedNote();
       placeControls();
       return;
     }
@@ -1623,6 +1659,7 @@ async function main() {
     }
     // No row for features without a value (maintainer, 2026-10-17).
     // A third bar changes the legend's height.
+    drawImputedNote();
     placeControls();
   };
   document.body.style.background = palette.background;
@@ -1632,7 +1669,7 @@ async function main() {
   await loadScript(scene.deck_gl_url);
   const {Deck, SolidPolygonLayer, PathLayer, COORDINATE_SYSTEM} = deck;
   const {LightingEffect, AmbientLight, DirectionalLight} = deck;
-  const {ScatterplotLayer, TextLayer, DataFilterExtension} = deck;
+  const {ScatterplotLayer, TextLayer, DataFilterExtension, PathStyleExtension} = deck;
 
   // The tour runs while the files load, so the layers rise into a
   // moving view; ?tour=0 in the address, or a system setting for
@@ -2571,6 +2608,41 @@ async function main() {
       ...ghostFilter('solid'),
     });
     const out = outline ? [faces, outline] : [faces];
+    // Values openplaces imputed (`estimated`), shown with "+ imputed":
+    // a dotted line along the feature's top edge, more gap than dot
+    // (maintainer, 2026-10-21), so a county with many imputed building
+    // values does not read as if its assessor had valued them all. Not
+    // a translucent fill: translucent walls blend with whatever was
+    // drawn before them and showed blocks' back walls through their
+    // fronts (Soden St, Cambridge, 2026-10-16).
+    const estimated = entry.decoded.arrays.estimated;
+    // Under a model's view the colors are the model's own, so the
+    // assessor's gaps are not marked there.
+    if (withEstimates && !isModel(valueView) && estimated && estimated.some((v) => v)) {
+      const light = palette.theme === 'light';
+      out.push(new PathLayer({
+        id: `${entry.id}-imputed`,
+        data: topOutlines(entry),
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
+        coordinateOrigin: entry.origin,
+        positionFormat: 'XYZ',
+        _pathType: 'loop',
+        getColor: light ? IMPUTED_LINE_LIGHT : IMPUTED_LINE_DARK,
+        getWidth: IMPUTED_LINE_WIDTH,
+        widthUnits: 'pixels',
+        getDashArray: IMPUTED_DASH,
+        dashJustified: true,
+        visible: shown[entry.spec.name],
+        pickable: false,
+        extensions: [
+          new PathStyleExtension({dash: true}),
+          new DataFilterExtension({filterSize: 1}),
+        ],
+        getFilterValue: (_, {index}) => estimated[entry.objectFeature[index]],
+        filterRange: [1, 1],
+        updateTriggers: {getColor: palette.id},
+      }));
+    }
     if (ghosts) {
       out.push(new SolidPolygonLayer({
         ...shared,
@@ -2663,6 +2735,15 @@ async function main() {
   const EDGE_FAR_ZOOM = 12;
   let edgeZoom = Math.round(scene.view.zoom * 4) / 4;
   const styleEdges = (layer) => {
+    if (layer.id.endsWith('-imputed')) {
+      // The imputed values' dotted edges fade out entirely as the
+      // camera pulls back: from afar, thousands of them piled up into
+      // dark blotches (maintainer, 2026-10-23), even at sub-pixel
+      // widths, which WebGL still draws as at least a pixel.
+      const t = Math.max(0, Math.min(1,
+        (edgeZoom - IMPUTED_FAR_ZOOM) / (IMPUTED_FULL_ZOOM - IMPUTED_FAR_ZOOM)));
+      return layer.clone({opacity: t, visible: layer.props.visible && t > 0});
+    }
     if (!layer.id.endsWith('-edges')) {
       return layer;
     }

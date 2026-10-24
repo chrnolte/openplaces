@@ -245,6 +245,9 @@
   .type-swatches { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 11px; margin-top: 4px; }
   .type-swatches span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .type-swatches i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  /* What the dotted top edges of imputed values mean: a dotted sample. */
+  .legend-imputed { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .legend-imputed span { width: 22px; flex: none; border-top: 2px dotted currentColor; }
   .legend-ticks { position: relative; height: 16px; color: var(--muted); font-size: 11px; }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   /* "Sources" stays a chip in the bar; opened, its document pops up
