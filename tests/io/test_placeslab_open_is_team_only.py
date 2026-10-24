@@ -82,7 +82,6 @@ def test_merged_open_columns_are_withheld_unless_the_bundle_is_a_team_bundle():
 # open evidence into the national parcel curate for that unit only.
 UNIT = 'US-MA-NTC'
 PARCEL = 'US_parcel-openplaces-2026'
-AOA = 'area_of_applicability_region_nb_bare'
 FAMILY = 'land_value_per_ha_log_region_nb'
 
 
@@ -95,7 +94,6 @@ def _bundle(audience):
         {
             'admin3_id': [UNIT, UNIT],
             COLUMN: [1.0, 2.0],
-            AOA: [0.5, 1.5],
             FAMILY: [3.0, 4.0],
             'land_use_class': ['Vacant', 'Vacant'],
             'land_use_class_source': ['parcel', 'parcel'],
@@ -115,15 +113,15 @@ def test_a_patch_merging_open_evidence_is_read_by_its_columns():
     # these columns through and emptied land_use_class instead.
     assert entry['layer_source'] is False
     assert COLUMN in entry['attributes']
-    assert AOA in entry['attributes']
-    assert len(entry['attributes']) == 14
+    # The seven land values only; their area of applicability is not
+    # merged (test_aoa_never_shipped).
+    assert len(entry['attributes']) == 7
     assert not entries[RESTRICTED]['team_sharing_permitted']
 
 
 def test_the_public_bundle_withholds_both_placeslab_sources():
     redacted = _bundle('public')
     assert redacted[COLUMN].isna().all()
-    assert redacted[AOA].isna().all()
     assert redacted[FAMILY].isna().all()
     assert redacted['land_use_class'].notna().all()
 
@@ -131,7 +129,6 @@ def test_the_public_bundle_withholds_both_placeslab_sources():
 def test_the_team_bundle_keeps_only_the_open_source():
     redacted = _bundle('team')
     assert redacted[COLUMN].notna().all()
-    assert redacted[AOA].notna().all()
     assert redacted[FAMILY].isna().all()
     assert redacted['land_use_class'].notna().all()
 

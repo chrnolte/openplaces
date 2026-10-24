@@ -3,9 +3,11 @@
 # Adds the seven Fathom-free model variants of the PLACES lab land value
 # predictions (US_parcel_parcel-placeslab-fmv2026open) to the national
 # parcel curate's evidence merge: per variant, the predicted land value
-# (ln real USD per hectare, 2010 market) and its area of applicability
-# from cross-validation folds blocked by census block group (at most 1
-# is inside). For the Nantucket team value page (2026-10-18).
+# (ln real USD per hectare, 2010 market). For the Nantucket team value
+# page (2026-10-18). The source's area of applicability columns are not
+# merged: PLACES-FMV computed them over building footprint covariates
+# (design limit L4), so they reach no curated file and no bundle
+# (maintainer, 2026-10-24).
 #
 # Why Nantucket's scope and not the state's: the source is published
 # for Nantucket only (its Drive folder holds this one unit). A patch
@@ -42,10 +44,3 @@ pipeline_patch:
           land_value_per_ha_log_region_nb_peoplewealth_2010_fmv2026open: land_value_per_ha_log_region_nb_peoplewealth
           land_value_per_ha_log_region_nb_peoplebuildings_2010_fmv2026open: land_value_per_ha_log_region_nb_peoplebuildings
           land_value_per_ha_log_region_nb_popbldwealth_2010_fmv2026open: land_value_per_ha_log_region_nb_popbldwealth
-          aoa_region_nb_bare_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_bare
-          aoa_region_nb_people_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_people
-          aoa_region_nb_buildings_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_buildings
-          aoa_region_nb_wealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_wealth
-          aoa_region_nb_peoplewealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_peoplewealth
-          aoa_region_nb_peoplebuildings_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_peoplebuildings
-          aoa_region_nb_popbldwealth_2010_blockgroup_fmv2026open: area_of_applicability_region_nb_popbldwealth
