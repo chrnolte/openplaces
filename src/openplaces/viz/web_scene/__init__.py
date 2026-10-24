@@ -3103,6 +3103,13 @@ def model_view_arrays(
     2026-10-18): the lot's scaled model land value over its homes,
     on the same lots and scale as the layer's own per-home view.
 
+    Model values are shown per feature only: no page shows a mean,
+    median or total of a model's values over a named area (tract, ZIP,
+    town, region, the page itself), nor any summary of a model's
+    per-home values (legal review, 2026-10-22; design-limits register,
+    US8676680B2). The scale above is applied, never displayed.
+    Aggregates of the assessor's recorded values are not affected.
+
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
