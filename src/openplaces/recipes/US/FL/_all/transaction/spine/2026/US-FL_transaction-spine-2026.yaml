@@ -1,0 +1,31 @@
+# Patch: Florida counts a deed's parcels by the DOR's statewide parcel id.
+#
+# The DOR's sales file of year t and of year t+1 both list a sale of
+# late t, each under the county parcel number of its own year. Where a
+# county renumbered between the two, the national count (on the minted
+# county key) read the deed as two parcels, folded it, and blanked its
+# parcel number. STATE_PAR_ID (`parcel_id_admin2`) is stated on every
+# roll and sales row, is unique within a roll year, keeps one spelling
+# statewide, and no renumbering changed it, so counted on it first the
+# two listings are one parcel. Measured 2026-10-24 on US-FL: for Duval,
+# Hillsborough, Charlotte and Escambia, STATE_PAR_ID pairs every
+# account's old and new number one to one, while no conversion of the
+# county number reproduces the new one. The county key and the
+# assessor's spelling follow for a row without it. An exact count, as
+# before; only the order of the keys changes (the maintainer's option
+# ii, 2026-10-24: key on what both sides state, fill nothing).
+
+admin_id: US-FL
+stage: harmonize
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_transaction-spine-2026
+pipeline_patch:
+  - set: count_parcels_per_document
+    params:
+      parcel_column: [parcel_id_admin2, parcel_id_local, parcel_id_assessor]

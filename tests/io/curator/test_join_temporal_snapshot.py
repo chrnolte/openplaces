@@ -239,6 +239,86 @@ def test_minted_key_compared_exactly_when_not_normalized(data_root):
     assert out['parcel_id_local'].iloc[0] == '12|3'
 
 
+def test_join_keys_are_tried_in_order_each_exact(data_root):
+    # Fabricated: the roll states both keys; the sales state one or both.
+    _write_property_snapshots(
+        [
+            {
+                'parcel_id_admin2': 'S1',
+                'parcel_id_local': 'NEW1',
+                'tax_year': 2020,
+                'year_built': 1990,
+            },
+            {
+                'parcel_id_admin2': 'S2',
+                'parcel_id_local': 'L2',
+                'tax_year': 2020,
+                'year_built': 1985,
+            },
+            {
+                'parcel_id_admin2': 'S3',
+                'parcel_id_local': 'L3',
+                'tax_year': 2020,
+                'year_built': 2001,
+            },
+        ]
+    )
+    tx = pd.DataFrame(
+        {
+            'sale': ['renumbered', 'county_key_only', 'state_key_unknown', 'none'],
+            # The first sale names its parcel by an old county number.
+            'parcel_id_admin2': ['S1', None, 'S9', None],
+            'parcel_id_local': ['OLD1', 'L2', 'L3', None],
+            'sale_year': [2020, 2020, 2020, 2020],
+        }
+    )
+    out = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key=['parcel_id_admin2', 'parcel_id_local'],
+        normalize_key=False,
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        match_type_column='property_match_type',
+        columns=['tax_year', 'year_built'],
+    ).curated.set_index('sale')
+    assert out.loc['renumbered', 'year_built'] == 1990
+    assert out.loc['county_key_only', 'year_built'] == 1985
+    assert out.loc['state_key_unknown', 'year_built'] == 2001
+    assert out.loc['none', 'property_match_type'] == 'no_key'
+    assert pd.isna(out.loc['none', 'year_built'])
+
+
+def test_a_missing_key_never_meets_another_missing_key(data_root):
+    # A roll row and a sale both missing the first key must not match on
+    # it; the sale here has no second key either, so it has no key.
+    _write_property_snapshots(
+        [
+            {
+                'parcel_id_admin2': None,
+                'parcel_id_local': 'L1',
+                'tax_year': 2020,
+                'year_built': 1990,
+            }
+        ]
+    )
+    tx = pd.DataFrame(
+        {'parcel_id_admin2': ['S1'], 'parcel_id_local': [None], 'sale_year': [2020]}
+    )
+    out = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key=['parcel_id_admin2', 'parcel_id_local'],
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        match_type_column='property_match_type',
+        columns=['tax_year', 'year_built'],
+    ).curated
+    assert pd.isna(out['year_built'].iloc[0])
+
+
 def test_source_token_marks_neighboring_years_imputed(data_root):
     # Fabricated: A has a roll in its sale year, B only an earlier one.
     _write_property_snapshots(
