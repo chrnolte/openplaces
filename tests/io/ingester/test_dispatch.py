@@ -55,17 +55,12 @@ def test_wi_transaction_year_uses_standard_ingester(monkeypatch):
     assert init_kwargs['partition_ids'] == ['202601']
 
 
-def test_ingest_refuses_a_scraper_recipe(monkeypatch):
-    """A recipe that asks for a crawler is refused before any download.
-
-    The registry crawler was removed because the site it served
-    prohibits crawling; a recipe naming one must not fall through to
-    the standard ingester either.
-    """
+def test_ingest_stops_on_an_unknown_scraper_ingester(monkeypatch):
+    """A scraper block naming no installed ingester never reaches a download."""
     FakeIngester.calls = []
     monkeypatch.setattr(ingester_module, 'Ingester', FakeIngester)
 
-    with pytest.raises(ValueError, match='does not crawl'):
+    with pytest.raises(ValueError, match="Unknown scraper ingester 'registry'"):
         ingester_module.ingest({'scraper': {'ingester': 'registry'}})
     assert FakeIngester.calls == []
 

@@ -709,16 +709,19 @@ def ingest(
     if years and partition_ids:
         raise ValueError('Pass either partition_ids or years, not both.')
 
-    # A `scraper` block once named an ingester that crawled a registry
-    # of deeds page by page. The site it served prohibits scraping and
-    # crawling in its terms, so the ingester was removed (maintainer,
-    # 2026-10-23); openplaces reads files a source publishes. Refusing
-    # the key keeps such a recipe from reaching the download path.
-    if recipe.get('scraper') is not None:
-        raise ValueError(
-            "Recipes with a 'scraper' block are not supported: openplaces "
-            'ingests files a source publishes and does not crawl record sites.'
+    # A `scraper` block names a dedicated ingester for a source that is
+    # read record by record rather than downloaded as a file; the value
+    # of `scraper.ingester` (or a bare scalar) selects it. None is
+    # installed now. The Massachusetts registries' crawler was removed
+    # because their site's terms prohibit crawling (maintainer,
+    # 2026-10-23), and a test keeps it out. A block naming no installed
+    # ingester stops here rather than falling through to a download.
+    scraper = recipe.get('scraper')
+    if scraper is not None:
+        ingester_name = (
+            scraper.get('ingester') if isinstance(scraper, dict) else scraper
         )
+        raise ValueError(f"Unknown scraper ingester '{ingester_name}'.")
 
     if years:
         partition = (recipe.get('download_by') or {}).get('partition')

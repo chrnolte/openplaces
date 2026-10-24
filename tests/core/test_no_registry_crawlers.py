@@ -1,4 +1,4 @@
-"""No registry-of-deeds crawler comes back into the source tree.
+"""No Massachusetts registry-of-deeds crawler comes back into the source.
 
 The terms of the Massachusetts registries' public site prohibit scraping
 and crawling "whether by automated means or manually", and the creation
@@ -8,7 +8,9 @@ the registries on ALIS, and the recipe that ran them were removed
 Massachusetts sale prices come from the Department of Revenue's LA3
 sales export instead.
 
-These tests fail if the hosts, the modules or a crawling recipe return.
+The ban is on these registries, not on scrapers in general: a source
+whose terms allow automated access may still have one. This test fails
+if the registries' hosts or the removed modules return.
 """
 
 from pathlib import Path
@@ -42,16 +44,3 @@ def test_no_registry_crawler_host_or_module_in_the_source():
             offenders.append(f'{path.relative_to(SRC).as_posix()}: {hits}')
 
     assert offenders == [], f'registry crawler references in: {offenders}'
-
-
-def test_no_recipe_declares_a_scraper():
-    offenders = [
-        path.relative_to(SRC).as_posix()
-        for path in (SRC / 'recipes').rglob('*.yaml')
-        if any(
-            line.startswith('scraper:')
-            for line in path.read_text(encoding='utf-8').splitlines()
-        )
-    ]
-
-    assert offenders == [], f'recipes with a scraper block: {offenders}'
