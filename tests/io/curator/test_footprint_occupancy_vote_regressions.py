@@ -733,6 +733,63 @@ def test_triple_wide_is_not_rounded_down_to_a_double(recipe):
     assert out['n_sections'].astype(object).iloc[0] == 3
 
 
+def _section_rows(recipe):
+    """A roll-stated double-wide, then a shape-only single-wide."""
+    return _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': 'DOUBLE WIDE MOHO',
+                'length_m': 20.0,
+                'width_m': 4.5,
+            },
+            {
+                'use_group_combined_parcel': _MH_NO_SECTION,
+                'length_m': 20.0,
+                'width_m': 4.5,
+            },
+        ],
+    )
+
+
+def test_section_source_says_whether_the_roll_or_the_shape_decided(recipe):
+    out = _section_rows(recipe)
+    tokens = out['n_sections_source'].astype(str).tolist()
+    assert tokens[0].split('+')[0] == 'parcel.keyword'
+    assert tokens[1] == 'shape_width+shape_aspect'
+
+
+def test_a_restricted_rolls_section_count_is_withheld_and_shape_ships(recipe):
+    from openplaces.io.delivery.redaction import withhold
+
+    out = _section_rows(recipe)[['n_sections', 'n_sections_source']].copy()
+    out['admin2_id'] = 'US-XX-AAA'
+    # A fabricated restricted roll, reached through the curated
+    # parcels the way a county roll reaches the footprints.
+    roll = {
+        'source_id': 'closedroll',
+        'entity_type': 'property',
+        'admin_id': 'US-XX-AAA',
+        'attributes': ['use_group_combined_labeled_parcel'],
+        'layer_source': False,
+        'via_entities': ['parcel'],
+        'reasons': ['redistribution restricted'],
+    }
+
+    shipped, counts = withhold(
+        out,
+        [roll],
+        'admin2_id',
+        known_sources={'closedroll'},
+        supplied={'closedroll': {'US-XX-AAA'}},
+    )
+
+    assert pd.isna(shipped['n_sections'].iloc[0])
+    assert shipped['n_sections_source'].iloc[0] == 'withheld'
+    assert shipped['n_sections'].astype(object).iloc[1] == 1
+    assert counts == {'closedroll': {'rows': 0, 'cells': 1}}
+
+
 def test_site_built_house_gets_no_section_count(recipe):
     """The question is only asked of manufactured homes.
 

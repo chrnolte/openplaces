@@ -1695,6 +1695,14 @@ pipeline:
   # and must agree with one another to reach min_score. A footprint whose
   # width and elongation contradict each other therefore records no section
   # count at all.
+  #
+  # The labels make n_sections_source say which evidence decided:
+  # `parcel.keyword` where the roll's own words did (the token names
+  # the parcel layer the roll arrives through, so a restricted roll's
+  # count is withheld with its other values), `shape_width` and
+  # `shape_aspect` where the outline alone did, which ships wherever
+  # the outline does. Until 2026-10-24 the token named the decision
+  # (single_wide), which could not tell the two apart.
   - step: resolve_by_vote
     target: n_sections
     # This vote *is* the classification, not a correction to one: a footprint
@@ -1728,8 +1736,11 @@ pipeline:
             column: section_keyword_class
             value: '2'
             weight: 3
-          - {type: numeric_at_least, column: width_m, min: &mh_section_width_m 7.0}
-          - {type: numeric_at_most, column: aspect_ratio, max: *mh_aspect_min}
+            label: parcel.keyword
+          - {type: numeric_at_least, column: width_m, min: &mh_section_width_m 7.0,
+             label: shape_width}
+          - {type: numeric_at_most, column: aspect_ratio, max: *mh_aspect_min,
+             label: shape_aspect}
 
       - class: 1
         source: single_wide
@@ -1741,8 +1752,11 @@ pipeline:
             column: section_keyword_class
             value: '1'
             weight: 3
-          - {type: numeric_at_most, column: width_m, max: *mh_section_width_m}
-          - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
+            label: parcel.keyword
+          - {type: numeric_at_most, column: width_m, max: *mh_section_width_m,
+             label: shape_width}
+          - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min,
+             label: shape_aspect}
 
       # Triple-wides are 0.4% of the Texas title registry and, at a median
       # aspect of 1.48 and 238 m2, geometrically indistinguishable from an
@@ -1760,6 +1774,7 @@ pipeline:
             column: section_keyword_class
             value: '3'
             weight: 3
+            label: parcel.keyword
 
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
