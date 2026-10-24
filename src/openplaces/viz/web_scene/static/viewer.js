@@ -762,6 +762,40 @@ const TOUR = {
 // can now see (an insight, naming no figures from the map). A bubble
 // above the switching button keeps the definition (`tip`) and the
 // countdown.
+// The descent, once the autopilot line has gone: what the map shows
+// and how to read heights (maintainer, 2026-10-24), as three messages
+// one after another, each of two lines at most, each coming in slowly
+// (`gentle`) after a pause, so the descent reads calm rather than
+// busy. The last one ends before downtown's first hint, 4 s into the
+// orbit that follows the descent's `TOUR.descent` (22 s).
+const TOUR_DESCENT_ACTIONS = [
+  {
+    at: 1,
+    hint: {
+      text: [
+        'What you see here is *property value assessed for taxation purposes*:',
+        'how the official tax assessment “sees” value.',
+      ],
+      linger: 8,
+      gentle: true,
+    },
+  },
+  {
+    at: 10,
+    hint: {
+      text: [
+        '*Volume is value.*',
+        'The taller a building, the more value it packs onto its land.',
+      ],
+      linger: 7,
+      gentle: true,
+    },
+  },
+  {
+    at: 18.5,
+    hint: {text: 'The thicker a lot, the more its land is worth.', linger: 6.5, gentle: true},
+  },
+];
 // Downtown, the first stop: the buildings go, and land speaks alone.
 const TOUR_DOWNTOWN_ACTIONS = [
   {
@@ -963,7 +997,7 @@ function buildTour(view, foci, contrast, downtown = null) {
   if (at !== first) {
     loop.push(fly(at, first));
   }
-  return {hold, intro: [hold, descend(first)], loop};
+  return {hold, intro: [hold, {...descend(first), actions: TOUR_DESCENT_ACTIONS}], loop};
 }
 
 // `onAction` carries out a segment's timed `actions` (hints and
@@ -996,6 +1030,9 @@ function startTour(
   // tour opens without a jump.
   let stage1 = null;
   let stage2 = null;
+  let bearing0 = from ? from.bearing : 0;
+  // When the visitor stopped the tour, for `resume`.
+  let pausedAt = null;
   function frame(now) {
     if (!running) {
       return;
@@ -1024,8 +1061,7 @@ function startTour(
     const target = segments[index].view(t);
     // The turn is continuous for the whole tour, so it needs no
     // smoothing: it never changes speed.
-    const bearing =
-      (from ? from.bearing : 0) + (TOUR.degreesPerSecond * (now - start)) / 1000;
+    const bearing = bearing0 + (TOUR.degreesPerSecond * (now - start)) / 1000;
     if (stage1 === null) {
       const first = from || target;
       stage1 = Object.fromEntries(keys.map((key) => [key, first[key]]));
@@ -1045,16 +1081,36 @@ function startTour(
   const stop = () => {
     if (running) {
       running = false;
+      pausedAt = performance.now();
       onStop();
     }
   };
   for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
-    (type === 'keydown' ? window : element).addEventListener(type, stop, {
-      once: true,
-      passive: true,
-    });
+    (type === 'keydown' ? window : element).addEventListener(type, stop, {passive: true});
   }
   requestAnimationFrame(frame);
+  // Goes on where the visitor stopped it (maintainer, 2026-10-24: a
+  // click on a building to read its value need not end the tour): the
+  // segment's clock skips the pause, and the camera glides back onto
+  // the path from `camera`, where the visitor left it, turning on from
+  // its bearing.
+  const resume = (camera) => {
+    if (running || pausedAt === null) {
+      return;
+    }
+    const now = performance.now();
+    const paused = now - pausedAt;
+    start = start === null ? now : start + paused;
+    if (segmentStart !== null) {
+      segmentStart += paused;
+    }
+    bearing0 = camera.bearing - (TOUR.degreesPerSecond * (now - start)) / 1000;
+    stage1 = Object.fromEntries(keys.map((key) => [key, camera[key]]));
+    stage2 = {...stage1};
+    last = null;
+    running = true;
+    requestAnimationFrame(frame);
+  };
   // Ends the hold where it stands, so the descent starts from there.
   const ready = () => {
     if (hold.duration === Infinity) {
@@ -1067,7 +1123,7 @@ function startTour(
       );
     }
   };
-  return {stop, ready};
+  return {stop, ready, resume};
 }
 
 // A back link to the site's landing page and a small menu of the other
@@ -1171,8 +1227,11 @@ async function main() {
   const params = new URLSearchParams(location.search);
   const scene = await (await fetch('scene.json', {cache: 'no-cache'})).json();
   // A phone gets the place's lighter page (`phone_scene`, a smaller
-  // circle) with the same address parameters; ?full=1 stays here.
-  if (scene.phone_scene && params.get('full') !== '1' && lowCapacity()) {
+  // circle) with the same address parameters, and so does a machine
+  // this browser found slow on an earlier visit (`machineSpeed`);
+  // ?full=1 stays here. The switch happens before anything is drawn.
+  const slowHere = lowCapacity() || machineSpeed() === 'slow';
+  if (scene.phone_scene && params.get('full') !== '1' && slowHere) {
     location.replace(`${scene.phone_scene}${location.search}${location.hash}`);
     return;
   }
@@ -1740,6 +1799,8 @@ async function main() {
   let turnCompass = () => {};
   let fadeEdges = () => {};
   let watchFrames = () => {};
+  let machineIsFast = () => {};
+  const startLight = params.get('light') === '1' || machineSpeed() === 'slow';
   // One sun fixed in the world, from the southwest, plus even ambient
   // light: every building has one bright side (facing the sun), the
   // opposite side darkest, and the two between at mid shade. Two lights
@@ -1778,9 +1839,9 @@ async function main() {
       fadeEdges();
       watchFrames();
     },
-    // A page that arrived lightened (`light=1`, `lighten`) draws at one
-    // pixel per CSS pixel from the start.
-    ...(params.get('light') === '1' ? {useDevicePixels: 1} : {}),
+    // On a machine found slow before (`lighten`), or with `light=1` in
+    // the address, one pixel per CSS pixel from the start.
+    ...(startLight ? {useDevicePixels: 1} : {}),
   });
 
   // The hover tooltip, steady while the camera moves (maintainer,
@@ -2097,11 +2158,21 @@ async function main() {
   // `text` goes in the main message, `tip` (the definition) and the
   // countdown in the bubble above `target`'s button; the bubble shows
   // only when it has something to say.
-  const showHint = ({target, text, tip: definition, countdown, countdownAfter = 0, linger = 5}) => {
+  const showHint = ({
+    target,
+    text,
+    tip: definition,
+    countdown,
+    countdownAfter = 0,
+    linger = 5,
+    gentle = false,
+  }) => {
     hideHint();
     // Texts appear steadily; only the bubble's arrow flickers once,
-    // pointing out the button (maintainer, 2026-10-18).
+    // pointing out the button (maintainer, 2026-10-18). A `gentle`
+    // message comes in slowly instead.
     banner.classList.remove('fading');
+    banner.classList.toggle('gentle', gentle);
     tip.classList.remove('fading', 'flick');
     showLines(text);
     tipAnchor = controlFor(target);
@@ -2144,6 +2215,8 @@ async function main() {
   // Buildings the tour switched off come back when the visitor takes
   // over; the coloring the tour chose stays.
   let tourHidBuildings = false;
+  // Whether they were off when the tour stopped, for its continuation.
+  let hiddenAtStop = false;
   const tourAction = (action) => {
     // A page without the view a step names (no type view, no per-home
     // view) skips that step and its hint.
@@ -2165,6 +2238,7 @@ async function main() {
   const tourStopped = () => {
     banner.hidden = true;
     hideHint();
+    hiddenAtStop = tourHidBuildings && !shown.buildings;
     if (tourHidBuildings && !shown.buildings) {
       toggleLayer('buildings');
     }
@@ -2181,7 +2255,9 @@ async function main() {
     scene.tour_downtown,
     from,
   );
-  let tourControl = tour ? launchTour() : {stop: () => {}, ready: () => {}};
+  let tourControl = tour
+    ? launchTour()
+    : {stop: () => {}, ready: () => {}, resume: () => {}};
   // The place's name at the top as the page opens, tour or not, for
   // about eight seconds (maintainer, 2026-10-18).
   if (scene.place_title) {
@@ -2212,31 +2288,75 @@ async function main() {
   window.openplacesScene = {deck: deckgl, loaded: false, stopTour: () => tourControl.stop()};
 
   // Whether the tour still runs; it stops on the visitor's first touch,
-  // and the replay button appears (maintainer, 2026-10-18).
+  // and the replay button appears (maintainer, 2026-10-18), a circular
+  // arrow, beside a button that continues the stopped tour where it
+  // was (maintainer, 2026-10-24).
   let touring = tour;
   const replayButton = document.createElement('button');
   replayButton.type = 'button';
   replayButton.id = 'replay-chip';
   replayButton.className = 'panel';
   replayButton.dataset.replay = 'tour';
-  replayButton.textContent = '▶ Replay tour';
-  replayButton.title = 'Start the guided flight again';
+  replayButton.textContent = '↻';
+  replayButton.title = 'Replay the tour from the start';
+  replayButton.setAttribute('aria-label', 'Replay the tour from the start');
   replayButton.hidden = tour || !(scene.tour && scene.tour.length);
+  const continueButton = document.createElement('button');
+  continueButton.type = 'button';
+  continueButton.id = 'continue-chip';
+  continueButton.className = 'panel';
+  continueButton.dataset.replay = 'continue';
+  continueButton.textContent = '▶ Continue tour';
+  continueButton.title = 'Go on with the guided flight where it stopped';
+  continueButton.hidden = true;
+  // Both buttons show once the tour has stopped; only a tour that ran
+  // on this page can continue.
+  let tourStarted = tour;
+  const tourEnded = () => {
+    touring = false;
+    replayButton.hidden = false;
+    continueButton.hidden = !tourStarted;
+  };
   const watchForTakeover = () => {
     for (const type of ['pointerdown', 'wheel', 'touchstart', 'keydown']) {
       (type === 'keydown' ? window : document.getElementById('scene')).addEventListener(
         type,
         () => {
-          touring = false;
-          replayButton.hidden = false;
+          if (touring) {
+            tourEnded();
+          }
         },
-        {once: true, passive: true},
+        {passive: true},
       );
     }
   };
-  if (tour) {
-    watchForTakeover();
-  }
+  // Once for the page: the listeners act only while a tour runs, this
+  // one, a continuation or a replay.
+  watchForTakeover();
+  continueButton.addEventListener('click', () => {
+    if (touring) {
+      return;
+    }
+    replayButton.hidden = true;
+    continueButton.hidden = true;
+    if (pin) {
+      unpin();
+    }
+    // Buildings the tour had switched off go off again.
+    if (hiddenAtStop && shown.buildings) {
+      toggleLayer('buildings');
+      tourHidBuildings = true;
+    }
+    const v = deckgl.getViewports()[0];
+    tourControl.resume({
+      longitude: v.longitude,
+      latitude: v.latitude,
+      zoom: v.zoom,
+      pitch: v.pitch,
+      bearing: v.bearing,
+    });
+    touring = true;
+  });
   // A replay starts from where the visitor left the camera, with value
   // per ground area and every layer as the tour expects them.
   replayButton.addEventListener('click', () => {
@@ -2244,6 +2364,8 @@ async function main() {
       return;
     }
     replayButton.hidden = true;
+    continueButton.hidden = true;
+    tourStarted = true;
     if (pin) {
       unpin();
     }
@@ -2264,7 +2386,6 @@ async function main() {
     // Everything is loaded: the overview needs no wait beyond its own.
     tourControl.ready();
     touring = true;
-    watchForTakeover();
   });
   buildPlaceNav(places, deckgl, () => touring, shown, () => ({
     view: valueView,
@@ -2320,8 +2441,7 @@ async function main() {
         tilt.decided = 'tilt';
         if (touring) {
           tourControl.stop();
-          touring = false;
-          replayButton.hidden = false;
+          tourEnded();
         }
       } else if (change > 20) {
         tilt.decided = 'other';
@@ -2365,6 +2485,7 @@ async function main() {
   shareButton.setAttribute('aria-label', 'Share a link to this view');
   bar.insertBefore(shareButton, document.getElementById('about-panel'));
   bar.insertBefore(replayButton, shareButton);
+  bar.insertBefore(continueButton, replayButton);
 
   // Compass: its needle points north as the view turns; a click turns
   // the view back to north up (the tilt stays).
@@ -2395,8 +2516,7 @@ async function main() {
   compass.addEventListener('click', () => {
     if (touring) {
       tourControl.stop();
-      touring = false;
-      replayButton.hidden = false;
+      tourEnded();
     }
     const v = deckgl.getViewports()[0];
     deckgl.setProps({
@@ -2803,34 +2923,39 @@ async function main() {
   // The page scales down to the machine (maintainer, 2026-10-24: Boston
   // moved in steps about once a second on a MacBook Air in Firefox,
   // which reports no device memory, so `lowCapacity` let it in). The
-  // frame rate, not a guess at the hardware, decides: once the files
-  // have loaded, while the view moves, a median frame of more than
-  // `SLOW_FRAME_MS` over `FRAME_SAMPLE` frames steps quality down:
-  // 1. one pixel per CSS pixel instead of the screen's (a Retina
-  //    screen draws four times as many);
-  // 2. the place's lighter page (`phone_scene`, a smaller circle), or
-  //    where there is none, no edges.
-  // ?slow=1 in the address takes each step as if frames were slow (for
-  // testing); ?full=1 keeps the full page, as for phones.
+  // frame rate, not a guess at the hardware, decides: while the view
+  // moves, the median frame over `FRAME_SAMPLE` frames.
+  // A machine not yet known (`machineSpeed`) starts small: the first
+  // stop's unit and its nearest neighbors (`TRIAL_UNITS`, loading
+  // below). `FAST_SAMPLES` fast samples in a row (median at most
+  // `FAST_FRAME_MS`) bring in the rest of the place, and the browser
+  // remembers the machine as fast. The maintainer rejected the
+  // opposite order (2026-10-24): the whole place first, then a switch
+  // to the phone page once it stuttered, which rebuilt the scene in
+  // view of the visitor.
+  // A slow sample (median above `SLOW_FRAME_MS`), at any time, steps
+  // quality down in place, never by switching pages: first one pixel
+  // per CSS pixel instead of the screen's (a Retina screen draws four
+  // times as many), then no edges. The browser remembers the machine
+  // as slow, and its next visit opens the phone page from the start.
+  // ?slow=1 in the address takes every sample as slow (for testing).
   const SLOW_FRAME_MS = 60;
+  const FAST_FRAME_MS = 20;
   const FRAME_SAMPLE = 30;
+  const FAST_SAMPLES = 4;
   let lightEdges = false;
-  let lightStep = params.get('light') === '1' ? 1 : 0;
+  let lightStep = startLight ? 1 : 0;
+  let fastSamples = 0;
   let lastFrame = null;
   let frameGaps = [];
   const lighten = () => {
+    rememberMachineSpeed('slow');
     lightStep += 1;
     if (lightStep === 1 && (window.devicePixelRatio || 1) > 1) {
       deckgl.setProps({useDevicePixels: 1});
       return;
     }
-    lightStep = Math.max(lightStep, 2);
-    if (scene.phone_scene && params.get('full') !== '1') {
-      const query = new URLSearchParams(location.search);
-      query.set('light', '1');
-      location.replace(`${scene.phone_scene}?${query}${location.hash}`);
-      return;
-    }
+    lightStep = 2;
     if (!lightEdges) {
       lightEdges = true;
       redraw();
@@ -2850,8 +2975,18 @@ async function main() {
     if (frameGaps.length >= FRAME_SAMPLE) {
       const sorted = [...frameGaps].sort((a, b) => a - b);
       frameGaps = [];
-      if (sorted[Math.floor(sorted.length / 2)] > SLOW_FRAME_MS) {
+      const median = sorted[Math.floor(sorted.length / 2)];
+      if (median > SLOW_FRAME_MS) {
+        fastSamples = 0;
         lighten();
+      } else if (median <= FAST_FRAME_MS && lightStep === 0) {
+        fastSamples += 1;
+        if (fastSamples === FAST_SAMPLES) {
+          rememberMachineSpeed('fast');
+          machineIsFast();
+        }
+      } else {
+        fastSamples = 0;
       }
     }
   };
@@ -3039,6 +3174,8 @@ async function main() {
     tourControl.ready();
   }
   let done = 0;
+  // Files the page loads now: all of them, or the trial's (below).
+  let expected = jobs.length;
   setStatus(`Loading 0 of ${jobs.length} files...`);
   // Units dropped while their files were loading; their layers are
   // discarded when the files arrive.
@@ -3082,17 +3219,34 @@ async function main() {
       tourControl.ready();
     }
     done += 1;
-    setStatus(done < jobs.length ? `Loading ${done} of ${jobs.length} files...` : '');
+    setStatus(done < expected ? `Loading ${done} of ${expected} files...` : '');
   };
   // The first file (the first stop's ground) loads alone, with all the
   // bandwidth, so something is on screen as early as possible.
   const queue = [...first, ...rest];
   if (!constrained(scene)) {
-    if (queue.length) {
-      await load(queue.shift());
+    // A machine not yet known to be fast starts with the first stop's
+    // unit and its `TRIAL_UNITS - 1` nearest neighbors (the trial, see
+    // `watchFrames`); the rest of the place loads once frames prove
+    // fast, and never on a machine that stays slow.
+    const trial = trialUnits(scene, firstUnit);
+    const remaining = trial ? queue.filter((j) => !trial.has(j.unit)) : [];
+    const now = trial ? queue.filter((j) => trial.has(j.unit)) : queue;
+    expected = now.length;
+    setStatus(`Loading 0 of ${expected} files...`);
+    if (now.length) {
+      await load(now.shift());
     }
-    await inBatches(queue, load);
+    await inBatches(now, load);
     window.openplacesScene.loaded = true;
+    if (remaining.length) {
+      await new Promise((resolve) => {
+        machineIsFast = resolve;
+      });
+      expected += remaining.length;
+      await inBatches(remaining, load);
+    }
+    window.openplacesScene.complete = true;
     return;
   }
 
@@ -3214,11 +3368,90 @@ function constrained(scene) {
   return lowCapacity();
 }
 
+// Units a machine not yet known to be fast loads first: every unit the
+// tour stops in, filled up to `TRIAL_UNITS` with the first stop's
+// nearest neighbors, so the tour never flies over bare ground.
+// Measured 2026-10-24 on boston: the tour's six units hold 43% of the
+// page's bytes, the city itself 26%.
+const TRIAL_UNITS = 4;
+
+// The trial's units (a Set), or null when the whole place loads at
+// once: a machine known to be fast, ?all=1, or a place whose trial
+// would be the whole place.
+function trialUnits(scene, firstUnit) {
+  const bounds = scene.unit_bounds;
+  const flag = new URLSearchParams(location.search).get('all');
+  if (!bounds || flag === '1' || machineSpeed() === 'fast') {
+    return null;
+  }
+  const units = Object.keys(bounds);
+  const trial = new Set(
+    [firstUnit, ...(scene.tour || []).map((stop) => stop.admin3_id)].filter(
+      (unit) => unit && unit in bounds,
+    ),
+  );
+  // The contrast names no unit: the units whose box holds it.
+  const contrast = scene.tour_contrast;
+  if (contrast) {
+    for (const [unit, [w, s, e, n]] of Object.entries(bounds)) {
+      if (w <= contrast.longitude && contrast.longitude <= e &&
+        s <= contrast.latitude && contrast.latitude <= n) {
+        trial.add(unit);
+      }
+    }
+  }
+  // Distance from the first stop (or the page's center) to each unit's
+  // box, in degrees: 0 for the unit it lies in.
+  const at = scene.tour_downtown || scene.view;
+  const distance = (unit) => {
+    const [w, s, e, n] = bounds[unit];
+    return Math.hypot(
+      Math.max(w - at.longitude, 0, at.longitude - e),
+      Math.max(s - at.latitude, 0, at.latitude - n),
+    );
+  };
+  units.sort((a, b) => distance(a) - distance(b));
+  for (const unit of units) {
+    if (trial.size >= TRIAL_UNITS) {
+      break;
+    }
+    trial.add(unit);
+  }
+  return trial.size < units.length ? trial : null;
+}
+
 // Little memory reported, or a touch screen of phone size.
 function lowCapacity() {
   const memory = navigator.deviceMemory;
   const phone = window.matchMedia('(pointer: coarse)').matches && screen.width < 900;
   return (memory !== undefined && memory <= 4) || phone;
+}
+
+// How fast this browser drew an earlier page of the site: 'fast',
+// 'slow', or null when it never has (or storage is unavailable). The
+// memory lasts `SPEED_DAYS`, so a new machine or browser update is
+// measured again.
+const SPEED_KEY = 'openplaces-machine-speed';
+const SPEED_DAYS = 30;
+
+function machineSpeed() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SPEED_KEY) || 'null');
+    if (stored && Date.now() - stored.at < SPEED_DAYS * 86400000) {
+      return stored.speed;
+    }
+  } catch (error) {
+    // No storage (a private window, blocked site data): unknown.
+  }
+  return null;
+}
+
+function rememberMachineSpeed(speed) {
+  try {
+    localStorage.setItem(SPEED_KEY, JSON.stringify({speed, at: Date.now()}));
+  } catch (error) {
+    // Measured again on the next visit.
+  }
 }
 
 main().catch((error) => {

@@ -277,9 +277,11 @@
   }
   /* Folded controls: the panel hides; the chip stays in the bar. */
   .controls-min #legend-panel { display: none; }
-  /* "Replay tour": shown once the visitor has taken over. */
-  #replay-chip[hidden] { display: none; }
-  #controls-chip, #share-chip, #replay-chip {
+  /* "Continue tour" and the replay arrow: shown once the visitor has
+     taken over. */
+  #replay-chip[hidden], #continue-chip[hidden] { display: none; }
+  button#replay-chip { font-size: 18px; line-height: 19px; }
+  #controls-chip, #share-chip, #replay-chip, #continue-chip {
     position: static;
     flex: none;
     font: inherit;
@@ -365,6 +367,14 @@
     transition: opacity 1.2s ease;
   }
   #tour-tip { max-width: min(260px, calc(100vw - 32px)); font-size: 12px; }
+  /* Room for a line of the opening messages without a break. */
+  #autopilot { max-width: min(540px, calc(100vw - 32px)); }
+  /* The opening messages come in slowly, one after another. */
+  #autopilot.gentle { animation: tour-in 1.6s ease backwards; }
+  @keyframes tour-in {
+    from { opacity: 0; translate: 0 6px; }
+    to { opacity: 1; translate: 0 0; }
+  }
   #tour-tip::after {
     content: "";
     position: absolute;
@@ -542,7 +552,7 @@
     #legend-box .legend-label { font-size: 12px; margin-bottom: 2px; }
     #about-panel { flex: 1; padding: 6px 10px; }
     #notices { max-height: 55vh; }
-    #controls-chip, #share-chip, #replay-chip { padding: 6px 10px; }
+    #controls-chip, #share-chip, #continue-chip { padding: 6px 10px; }
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }

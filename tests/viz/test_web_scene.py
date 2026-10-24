@@ -114,9 +114,10 @@ def test_page_has_no_input_control_and_no_background_map():
     # eighth turns the view north up; the ninth, in the menu under
     # "Modeled" on a team page, picks which model colors the lots; the
     # tenth, beside it, the models' scale (to the assessments, or in
-    # today's dollars); the eleventh replays the guided tour; the
-    # twelfth sets the color bounds (local, or nationwide).
-    assert len(re.findall(r"createElement\('button'\)", script)) == 12
+    # today's dollars); the eleventh replays the guided tour, and the
+    # twelfth continues it; the thirteenth sets the color bounds (local,
+    # or nationwide).
+    assert len(re.findall(r"createElement\('button'\)", script)) == 13
     for kind in (
         'dataset.palette',
         'dataset.layer',
