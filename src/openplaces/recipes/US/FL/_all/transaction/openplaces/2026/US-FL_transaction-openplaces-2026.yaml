@@ -164,7 +164,13 @@ pipeline_patch:
             "Disqualified - reservation of occupancy over 90 days (life estate)": disqualified
             "Disqualified - conveys less than 100% undivided interest": disqualified
             "Disqualified - transfer to/from religious/charitable/benevolent entity": disqualified
-            "Disqualified - transfer to/from government agency": disqualified
+            # Its own group, a label that drops no row: a consumer can
+            # keep these sales out of a market model and still study
+            # them (land bought for conservation or easements). The
+            # code also covers road right-of-way takings and any other
+            # agency purchase, so the group names the party, not the
+            # purpose.
+            "Disqualified - transfer to/from government agency": government_transfer
             "Disqualified - transfer to/from bankruptcy trustee/administrator/executor/guardian/receiver": disqualified
             "Disqualified - transfer to/from utility company": disqualified
             "Disqualified - contract or agreement for deed": disqualified
@@ -201,7 +207,7 @@ pipeline_patch:
             "15": removed
             "16": disqualified
             "17": disqualified
-            "18": disqualified
+            "18": government_transfer
             "19": disqualified
             "20": disqualified
             "21": disqualified
