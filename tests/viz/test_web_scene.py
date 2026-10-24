@@ -1408,6 +1408,50 @@ def test_access_gate_lets_tokens_in_and_sends_others_to_the_access_page():
         web_scene.access_htaccess([FAKE_TOKEN], '/values', 'bad host"')
 
 
+def test_access_gate_goes_up_in_three_connections(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    # Fabricated site: a public page built here, a team page built
+    # elsewhere (its .htaccess online asks for a password), an old
+    # address that only redirects.
+    site = tmp_path / 'site'
+    (site / 'town').mkdir(parents=True)
+    (site / 'town' / 'scene.json').write_text(
+        '{"audience": "public"}', encoding='utf-8'
+    )
+    calls = _fake_host(monkeypatch, '/p', on_host=set())
+    monkeypatch.setattr(
+        web_scene,
+        '_rclone_output',
+        lambda env, *args: 'town/\nelsewhere-team/\nold/\nthumbs/\n',
+    )
+    uploaded = {}
+
+    def fake_rclone(env, *args):
+        calls.append(args)
+        source, destination = args[1], args[2]
+        if destination.startswith('bh:'):
+            for path in Path(source).rglob('.htaccess'):
+                uploaded[path.parent.name] = path.read_text(encoding='utf-8')
+            return
+        current = Path(destination)
+        (current / 'elsewhere-team').mkdir(parents=True)
+        (current / 'elsewhere-team' / '.htaccess').write_text(
+            'AuthUserFile "/p"\n', encoding='utf-8'
+        )
+        (current / 'old').mkdir()
+        (current / 'old' / '.htaccess').write_text('RedirectMatch 301 ^.*$ x\n')
+
+    monkeypatch.setattr(web_scene, '_rclone', fake_rclone)
+    written = web_scene.deploy_access(site, go=True)
+    assert written == ['', 'elsewhere-team', 'town']
+    # One listing (patched above), one copy down, one copy up.
+    assert [c[0] for c in calls] == ['copy', 'copy']
+    assert 'AuthUserFile' in uploaded['elsewhere-team']
+    assert 'AuthUserFile' not in uploaded['town'] and FAKE_TOKEN in uploaded['town']
+    assert 'old' not in uploaded
+
+
 def test_access_tokens_file_needs_a_token(tmp_path):
     path = tmp_path / 'tokens.tsv'
     with pytest.raises(ValueError, match='No access tokens'):
