@@ -62,7 +62,10 @@ def test_the_national_transaction_lane_never_reads_them(recipe_id):
         for edge in get_recipe_dependencies(recipe_id, admin_id=COUNTY)
     }
     assert INGEST not in upstream and DEALS not in upstream
-    assert not restricted_inputs(recipe_id, [COUNTY])
+    # Only this source's ids: a held recipe present on one machine
+    # (Shovels, git-ignored) is reported here too, by design.
+    found = {row['recipe_id'] for row in restricted_inputs(recipe_id, [COUNTY])}
+    assert not found & {INGEST, DEALS}
 
 
 def test_the_deals_read_only_their_own_ingest():
