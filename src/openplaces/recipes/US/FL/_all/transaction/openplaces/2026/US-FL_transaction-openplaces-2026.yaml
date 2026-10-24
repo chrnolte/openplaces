@@ -229,12 +229,17 @@ pipeline_patch:
         folded deed rows from aggregate_multi_parcel_sales
       recipe_id: US-FL_property-fldor-2026
       require_panel: true
-      # The minted key, not the assessor's spelling: both sides mint it
-      # by one rule per county and era (`US_property_id-overrides.csv`,
-      # `US_transaction_id-overrides.csv`), which is what carries a
-      # county's renumbering and respelling across roll years, and a
-      # folded deed keeps it where its copies agree. Compared exactly.
-      join_key: parcel_id_local
+      # Two stated keys, in order, each compared exactly. First the DOR's
+      # statewide STATE_PAR_ID (`parcel_id_admin2`), which the roll and
+      # the sales file both state on every row and no county
+      # renumbering changed: it reaches the sales of Duval, Hillsborough,
+      # Charlotte and Escambia across a change no conversion of the
+      # county number reproduces (the maintainer's option ii,
+      # 2026-10-24: join on what both sides state, fill nothing). Then
+      # the minted county key, which both sides mint by one rule per
+      # county and era (the id-overrides tables), for a row the first
+      # key is missing on.
+      join_key: [parcel_id_admin2, parcel_id_local]
       normalize_key: false
       date_column: sale_year
       vintage_column: tax_year
@@ -261,7 +266,7 @@ pipeline_patch:
       phase_override: the forward pass of the gather above, same reason
       recipe_id: US-FL_property-fldor-2026
       require_panel: true
-      join_key: parcel_id_local
+      join_key: [parcel_id_admin2, parcel_id_local]
       normalize_key: false
       date_column: sale_year
       vintage_column: tax_year

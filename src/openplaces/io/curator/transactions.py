@@ -263,7 +263,7 @@ def collapse_double_closings(
 def join_temporal_snapshot(
     state: CurateState,
     recipe_id: str,
-    join_key: str,
+    join_key: str | list[str],
     date_column: str,
     vintage_column: str,
     columns: list,
@@ -295,9 +295,12 @@ def join_temporal_snapshot(
     ----------
     recipe_id : str
         Recipe whose output supplies the snapshot (e.g. a property roll).
-    join_key : str
+    join_key : str or list of str
         Column present on both the entity and the reference, identifying
-        what the snapshot is *of* (e.g. a parcel id).
+        what the snapshot is *of* (e.g. a parcel id). A list is tried in
+        order, each key an exact comparison and each only for rows no
+        earlier key placed in the reference; a row missing every key is
+        *no_key_value*.
     date_column : str
         Entity-side column giving the date to match (e.g. a sale year).
     vintage_column : str
@@ -398,11 +401,13 @@ def join_temporal_snapshot(
     # still says why; without it the missing column is a recipe error.
     # Before 2026-09-29 this raised KeyError and Somerville's transaction
     # curate died here.
-    if join_key not in curated.columns or date_column not in curated.columns:
+    keys = [join_key] if isinstance(join_key, str) else list(join_key)
+    present = [k for k in keys if k in curated.columns]
+    if not present or date_column not in curated.columns:
         if not require_panel:
             raise KeyError(
-                f'join_temporal_snapshot: {join_key!r} or {date_column!r} is not '
-                'a column of the curated table.'
+                f'join_temporal_snapshot: none of {keys!r}, or {date_column!r}, '
+                'is a column of the curated table.'
             )
         if match_type_column:
             if match_type_column not in curated.columns:
@@ -410,12 +415,14 @@ def join_temporal_snapshot(
             curated.loc[active_mask, match_type_column] = no_panel_value
         state.curated = curated
         return state
+    keys = present
 
-    # A row without a join key cannot reach any panel row, and since the
-    # spine's fold (2026-10-01) a multi-parcel deed has none: its parcels
-    # are link rows, not a cell. Say so, rather than let `mark_unmatched`
-    # below call it "the panel was read and did not have this property".
-    no_key = active_mask & curated[join_key].isna()
+    # A row without any join key cannot reach any panel row, and since
+    # the spine's fold (2026-10-01) a multi-parcel deed has none: its
+    # parcels are link rows, not a cell. Say so, rather than let
+    # `mark_unmatched` below call it "the panel was read and did not
+    # have this property".
+    no_key = active_mask & curated[keys].isna().all(axis=1)
     if no_key.any() and match_type_column:
         if match_type_column not in curated.columns:
             curated[match_type_column] = pd.NA
@@ -425,9 +432,15 @@ def join_temporal_snapshot(
             state.curated = curated
             return state
 
-    key_form = _normalized if normalize_key else (lambda s: s.astype('string'))
-    active = curated.loc[active_mask, [join_key, date_column]].copy()
-    active[join_key] = key_form(active[join_key])
+    def key_form(values: pd.Series) -> pd.Series:
+        # A missing key stays missing: stringified, it would read 'NA'
+        # and meet every other row missing that key.
+        text = _normalized(values) if normalize_key else values.astype('string')
+        return text.astype('string').where(values.notna())
+
+    active = curated.loc[active_mask, [*keys, date_column]].copy()
+    for key in keys:
+        active[key] = key_form(active[key])
     # Both sides to one float dtype: merge_asof refuses keys of
     # different types, and a sale year with any missing value parses to
     # float64 while a complete tax_year column parses to int64, so the
@@ -470,14 +483,15 @@ def join_temporal_snapshot(
     available = [c for c in columns if c != vintage_column and c in ref.columns]
     if not available:
         return _mark_all(no_panel_value) if require_panel else state
-    ref_columns = [join_key, vintage_column] + available
-    ref = ref[ref_columns].copy()
+    ref_keys = [k for k in keys if k in ref.columns]
+    ref = ref[[*ref_keys, vintage_column, *available]].copy()
     columns = [c for c in columns if c == vintage_column or c in available]
-    ref[join_key] = key_form(ref[join_key])
+    for key in ref_keys:
+        ref[key] = key_form(ref[key])
     ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce').astype(
         'float64'
     )
-    ref = ref.dropna(subset=[join_key, vintage_column])
+    ref = ref.dropna(subset=[vintage_column])
 
     # A sale with no year cannot be placed in time at all, and
     # merge_asof refuses a null key outright. Set them aside under their
@@ -494,28 +508,57 @@ def join_temporal_snapshot(
         state.curated = curated
         return state
 
-    if direction == 'exact':
-        ref = ref.drop_duplicates(subset=[join_key, vintage_column])
-        active['_target_year'] = active[date_column] + offset_years
-        merged = active.merge(
-            ref,
-            left_on=[join_key, '_target_year'],
-            right_on=[join_key, vintage_column],
-            how='left',
-        )
-        merged.index = active.index
-    elif direction in ('backward', 'forward'):
-        active_sorted = active.sort_values(date_column)
-        ref_sorted = ref.sort_values(vintage_column)
-        merged = pd.merge_asof(
-            active_sorted,
-            ref_sorted,
+    def _match(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+        """One exact-key pass of the as-of (or exact-year) merge."""
+        if direction == 'exact':
+            right = right.drop_duplicates(subset=['_key', vintage_column])
+            left = left.assign(_target_year=left[date_column] + offset_years)
+            out = left.merge(
+                right,
+                left_on=['_key', '_target_year'],
+                right_on=['_key', vintage_column],
+                how='left',
+            )
+            out.index = left.index
+            return out
+        left_sorted = left.sort_values(date_column)
+        out = pd.merge_asof(
+            left_sorted,
+            right.sort_values(vintage_column),
             left_on=date_column,
             right_on=vintage_column,
-            by=join_key,
+            by='_key',
             direction=direction,
         )
-        merged.index = active_sorted.index
+        out.index = left_sorted.index
+        return out
+
+    # The keys in the order given, each an exact comparison, each only
+    # for rows no earlier key placed in the panel. Florida's sales name
+    # their parcel by the DOR's statewide STATE_PAR_ID, which no county
+    # renumbering changed, and by the county number: the first reaches
+    # a sale across a renumbering, the second a row the first is
+    # missing on. Neither is a score or a looser match of the other.
+    pieces = []
+    remaining = active
+    for key in ref_keys:
+        left = remaining.loc[remaining[key].notna(), [key, date_column]]
+        if left.empty:
+            continue
+        right = ref[[key, vintage_column, *available]].dropna(subset=[key])
+        found = _match(
+            left.rename(columns={key: '_key'}), right.rename(columns={key: '_key'})
+        )
+        hit = found[vintage_column].notna()
+        pieces.append(found.loc[hit])
+        remaining = remaining.drop(index=found.index[hit])
+    merged = (
+        pd.concat(pieces).reindex(active.index)
+        if pieces
+        else pd.DataFrame(
+            index=active.index, columns=[date_column, vintage_column, *available]
+        )
+    )
 
     matched = merged[vintage_column].notna()
     matched_index = merged.index[matched]
