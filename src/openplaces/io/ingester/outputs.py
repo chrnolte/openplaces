@@ -284,10 +284,15 @@ class _OutputMixin:
         exactly, so a reprocess that changed a value (a re-keyed
         ``parcel_id_local``) appended a second copy of every row: Orange
         County FL's sales file doubled to 3.1M rows on 2026-09-12, and
-        the curate step's dedup then kept the stale first copies. A
-        reprocess of only some partitions cannot be merged safely either
-        way and is refused, since ``replace`` would narrow the file to
-        those partitions and ``union`` would duplicate them.
+        the curate step's dedup then kept the stale first copies.
+
+        A reprocess of only some partitions is exact when the recipe
+        names the column that says which partition a row came from
+        (`aggregate_by: partition_column`): those partitions' rows
+        are replaced and every other partition's kept, streamed one
+        partition at a time. Without that column it is refused, since
+        'replace' would narrow the file to those partitions and
+        'union' would duplicate them.
         """
         agg = self.recipe.get('aggregate_by')
         if not agg or not (agg.get('single_file') or 'partition' in agg):
@@ -296,15 +301,18 @@ class _OutputMixin:
         from openplaces.io.aggregate import aggregate_partitions
 
         how = agg.get('how', 'union')
+        partition_column = agg.get('partition_column')
         if reprocess:
             if getattr(self, 'partition_ids', None) is None:
                 how = 'replace'
-            elif how == 'union':
+            elif how == 'union' and not partition_column:
                 raise ValueError(
                     f'{get_recipe_id(self.recipe)}: reprocessing some partitions '
                     'of a recipe that aggregates them into one file would leave '
                     'stale rows beside the new ones (union) or drop the other '
-                    'partitions (replace). Reprocess every partition instead.'
+                    'partitions (replace). Reprocess every partition instead, '
+                    'or name the column that holds the partition id under '
+                    '`aggregate_by: partition_column`.'
                 )
 
         aggregate_partitions(
@@ -313,5 +321,6 @@ class _OutputMixin:
             single_file=agg.get('single_file', False),
             how=how,
             keep_original=agg.get('keep_partitions', False),
+            partition_column=partition_column,
             verbose=self.verbose,
         )

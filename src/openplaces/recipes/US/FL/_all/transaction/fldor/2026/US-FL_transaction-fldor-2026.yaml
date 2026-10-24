@@ -163,3 +163,7 @@ parcel_id_local:
 # full history with a plain get_entities() call (no explicit partition_id).
 aggregate_by:
   single_file: true
+  # Each year file's rows carry that year as `tax_year` (ASMNT_YR), so a
+  # re-run of some years replaces exactly their rows in the county file,
+  # one year in memory at a time.
+  partition_column: tax_year
