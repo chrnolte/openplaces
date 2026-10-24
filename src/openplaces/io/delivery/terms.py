@@ -484,11 +484,18 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
     # layer. A recipe met again on a wider path (a layer path after a
     # column path) is walked again so its own inputs widen too; met
     # again on another column path, the columns are merged in place.
-    reached: dict[str, set[str] | None] = {}
-    frontier: list[tuple[dict, set[str] | None]] = [(recipe, None)]
+    #
+    # Each path also carries the entity of the recipe the bundle's own
+    # recipe reads it through (`via`): a county roll reaches the
+    # footprint bundle inside the curated parcels, so a footprint cell
+    # whose sidecar says only `parcel` may be the roll's, while a source
+    # the recipe reads directly arrives under its own name.
+    # io.delivery.redaction reads it for values derived from a source.
+    reached: dict[str, tuple[set[str] | None, frozenset]] = {}
+    frontier: list[tuple[dict, set[str] | None, str | None]] = [(recipe, None, None)]
 
     while frontier:
-        current, cap = frontier.pop()
+        current, cap, via = frontier.pop()
         as_run = _as_run(current, admin_id)
         for edge in get_recipe_dependencies(current, admin_id=admin_id):
             upstream_id = getattr(edge, 'upstream_recipe_id', None)
@@ -500,20 +507,34 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
                 reach = explicit if cap is None else explicit & cap
             else:
                 reach = cap
+            vias = frozenset({via}) if via else frozenset()
             if upstream_id in reached:
-                prior = reached[upstream_id]
-                if prior is None or reach == prior:
+                prior, prior_vias = reached[upstream_id]
+                widened = prior is not None and reach != prior
+                if not widened and vias <= prior_vias:
                     continue
-                if reach is not None:
+                if prior is None:
+                    reach = None
+                elif reach is not None:
                     reach = prior | reach
-            reached[upstream_id] = reach
+                vias = vias | prior_vias
+            reached[upstream_id] = (reach, vias)
             try:
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            frontier.append((upstream, reach))
 
             entity = upstream.get('entity') or upstream.get('dataset') or {}
+            upstream_entity = str(
+                getattr(entity, 'entity_type', '')
+                or (entity.get('entity_type') if isinstance(entity, dict) else '')
+                or ''
+            )
+            # The first recipe below the bundle's names the layer for
+            # everything beneath it; the bundle's recipe reads that
+            # recipe itself directly.
+            frontier.append((upstream, reach, via or upstream_entity or None))
+
             source = getattr(entity, 'source', None) or (
                 entity.get('source') if isinstance(entity, dict) else None
             )
@@ -541,6 +562,9 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
                     _mapped_attributes(upstream) if reach is None else sorted(reach)
                 ),
                 'layer_source': reach is None,
+                # Entities of the layers it reaches the bundle through;
+                # empty where the bundle's recipe reads it directly.
+                'via_entities': sorted(vias),
                 'team_sharing_permitted': getattr(
                     source, 'team_sharing_permitted', None
                 ),
@@ -548,7 +572,11 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
             existing = terms.get(key(entry))
             if existing is None:
                 terms[key(entry)] = entry
-            elif entry['layer_source'] or not existing['layer_source']:
+                continue
+            existing['via_entities'] = sorted(
+                set(existing.get('via_entities') or ()) | vias
+            )
+            if entry['layer_source'] or not existing['layer_source']:
                 # Reached again by a wider or another column path: it
                 # can land whatever either path lets through.
                 existing['attributes'] = sorted(
@@ -599,8 +627,10 @@ def restricted_inputs(recipe, admin_ids=None) -> list[dict]:
     list of dict
         One entry per restricted recipe, with `source_id`, `recipe_id`,
         `license`, `terms_url`, `reasons`, and where its data can land:
-        `entity_type`, `admin_id` (the recipe's scope) and `attributes`
-        (what it maps). Empty when no input is restricted.
+        `entity_type`, `admin_id` (the recipe's scope), `attributes`
+        (what it maps), `layer_source` and `via_entities` (the entities
+        of the layers it reaches the recipe through, empty where the
+        recipe reads it directly). Empty when no input is restricted.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -626,10 +656,23 @@ def restricted_inputs(recipe, admin_ids=None) -> list[dict]:
                     'admin_id': entry.get('admin_id'),
                     'attributes': entry.get('attributes') or [],
                     'layer_source': entry.get('layer_source', True),
+                    'via_entities': entry.get('via_entities') or [],
                     'team_sharing_permitted': entry.get('team_sharing_permitted'),
                 }
             )
     return sorted(blocked, key=lambda e: (e['source_id'], e['recipe_id'] or ''))
+
+
+def known_source_ids() -> frozenset:
+    """Every source id a recipe in the catalog declares.
+
+    What tells a provenance token that names a source (`fairfaxcounty`,
+    `nsi`) from one that names a method or a peer group
+    (`city__is_residential`, `total_minus_improvement`, `rule`): only the
+    first kind can say which source filled a cell. Redaction reads it so
+    that an estimate's tier name is never mistaken for another source.
+    """
+    return frozenset(_catalog_terms())
 
 
 @cache

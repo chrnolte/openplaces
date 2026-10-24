@@ -264,7 +264,9 @@ def test_the_gate_refuses_values_redaction_missed(
     _county(['a', 'b'], admin3_id='US-NC-AL')
     restricted(_source('closedcounty', 'US-NC-AL', ['year_built']))
     monkeypatch.setattr(
-        delivery_module, 'withhold', lambda frame, sources, column: (frame, {})
+        delivery_module,
+        'withhold',
+        lambda frame, sources, column, **_kw: (frame, {}),
     )
 
     with pytest.raises(RestrictedInputError, match='closedcounty'):

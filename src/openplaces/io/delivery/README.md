@@ -98,7 +98,35 @@ passes: a row whose `geometry_source` names it is left out, a cell whose
 named after an attribute its recipe maps (or with its entity suffix), or whose
 sidecar names only its layer (`parcel`), are emptied unless a sidecar names
 another specific source. Emptied cells' sidecars read `withheld`, and the
-notice lists each source's counts. `RestrictedInputError` is only the
+notice lists each source's counts.
+
+**What openplaces derived from a withheld source goes with it, within
+the unit** (maintainer's decisions, 2026-10-23 and 2026-10-24). In a
+unit where a restricted source supplied values, a cell whose sidecar is
+marked `imputed`, or names only the layer it came through (`parcel`: a
+structure value apportioned from the roll, the roll's year copied onto
+a footprint), is withheld too. An estimate looked up from a place
+reference (a city from its ZIP code, `zipcodes+imputed`) is tied to a
+place, not to the roll's values, and stays. A `{col}_per_area` ratio
+goes with its `{col}`, since times the shipped area it is the value,
+and a column the recipe declares under `share: derived_from:` (the
+footprint's `occupancy_type_parcel`, the roll's use class in occupancy
+terms) goes on the rows where one of its inputs goes. Which unit a
+source supplied is read from the bundle itself (its own token on a
+column it reaches, or its being the layer in scope), not from the
+tokens' wording, which names an estimate's peer group
+(`parcel.city__is_residential+imputed`) rather than its inputs, and not
+from the dependency walk alone, under which a statewide source reached
+through the curated parcels reaches every value column of every unit.
+An open county's estimates ship. A token counts as naming a source only
+where a recipe declares that source id (`terms.known_source_ids`); a
+tier name used to pass for one and exonerate an estimate inside the
+restricted county. The walk records, per source, the entity of the
+layer it reaches the recipe through (`via_entities`, `parcel` for a
+county roll reaching footprints). A withheld structure value stays
+empty in a public bundle: no other source stands in for it, since
+NSI's is not right at the building level (maintainer, 2026-10-24).
+`RestrictedInputError` is only the
 backstop: it fires if restricted values are still in the frames about to be
 written, never because a source merely feeds the recipe, so one county's
 terms cannot hold the rest of a bundle hostage. The rules over-withhold where

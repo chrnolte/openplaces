@@ -44,12 +44,14 @@ from openplaces.io.delivery.redaction import (
     _names_attribute,
     find_restricted,
     merge_counts,
+    units_supplied,
     withhold,
 )
 from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
 from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
+    known_source_ids,
     restricted_inputs,
     share_alike_conflict_text,
     share_alike_family_named,
@@ -430,11 +432,91 @@ def share_is_spatial(recipe) -> bool:
     return bool((recipe.get('share') or {}).get('geometry', True))
 
 
+def share_derived_from(recipe) -> dict[str, list[str]]:
+    """Return the recipe's `share: derived_from:` block, validated.
+
+    Names columns a curate step computes from other columns without
+    writing a `_source` sidecar, so redaction cannot tell from the cell
+    whose values it holds:
+
+    .. code-block:: yaml
+
+        share:
+          derived_from:
+            occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
+
+    A cell of such a column is withheld on every row where one of its
+    inputs is (`io.delivery.redaction`, rule 7): the footprint's
+    `occupancy_type_parcel` is the roll's use class in occupancy terms,
+    and ships only where the roll's class may. Declared in the recipe,
+    beside the step that computes the column, because nothing in the
+    curated file records the dependency.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe.
+
+    Returns
+    -------
+    dict of str to list of str
+        Column to the columns it is computed from; empty when the recipe
+        declares none.
+    """
+    block = (recipe.get('share') or {}).get('derived_from') or {}
+    recipe_id = recipe.get('recipe_id', recipe)
+    derived = {}
+    for column, inputs in block.items():
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        if not isinstance(inputs, list | tuple) or not inputs:
+            raise ValueError(
+                f'Recipe {recipe_id!r}: `share: derived_from: {column}:` needs '
+                'a list of the columns it is computed from.'
+            )
+        derived[str(column)] = [str(name) for name in inputs]
+    return derived
+
+
+def _units_supplied(inputs, sources, admin_id_column) -> dict[str, set]:
+    """Units each restricted source supplied values in, over every file.
+
+    Read once, before either pass, from the sidecars of the columns the
+    sources can reach: the canonical pass and the evidence pass each see
+    only some of them, and a footprint's estimate in one file can be
+    derived from a roll whose token is only in the other.
+    """
+    supplied: dict[str, set] = {}
+    wanted = {
+        f'{column}{SOURCE_SUFFIX}'
+        for source in sources
+        for column in source.get('attributes') or ()
+    }
+    for process_id, path in inputs:
+        columns = [c for c in parquet_columns(path) if c in wanted]
+        if not columns:
+            continue
+        part = read_parquet(path, geom=False, columns=columns)
+        part[admin_id_column] = process_id
+        for source_id, units in units_supplied(
+            pd.DataFrame(part), sources, admin_id_column
+        ).items():
+            supplied.setdefault(source_id, set()).update(units)
+    return supplied
+
+
 class RestrictedInputError(RuntimeError):
     """A delivery would pass on data whose terms forbid passing it on."""
 
 
-def _refuse_restricted_cells(frame, sources, admin_id_column):
+def _refuse_restricted_cells(
+    frame,
+    sources,
+    admin_id_column,
+    known_sources=None,
+    supplied=None,
+    derived_from=None,
+):
     """Raise if any value a restricted source supplied is still in *frame*.
 
     The backstop behind `io.redaction.withhold`. It runs on what is about
@@ -443,7 +525,9 @@ def _refuse_restricted_cells(frame, sources, admin_id_column):
     does not stop the delivery. There is no override; shipping such
     values is a decision for the licensor, not for a flag.
     """
-    found = find_restricted(frame, sources, admin_id_column)
+    found = find_restricted(
+        frame, sources, admin_id_column, known_sources, supplied, derived_from
+    )
     if not found['counts']:
         return
     lines = [
@@ -677,6 +761,10 @@ def check_share_alike(
     process_ids = [process_id for process_id, _ in inputs]
     sources = _bundle_sources(recipe, region, process_ids)
     tested = [*sources['withhold'], *sources['share_alike']]
+    # As the export redacts: the same source ids name sources, and the
+    # same declared derivations follow their inputs.
+    known = known_source_ids()
+    derived_from = share_derived_from(recipe)
 
     unit_column = f'admin{process_level}_id'
     geometry_parts = []
@@ -689,7 +777,13 @@ def check_share_alike(
             continue
         part = read_parquet(path, geom=False, columns=wanted)
         part[unit_column] = process_id
-        part, counts = withhold(part, sources['withhold'], unit_column)
+        part, counts = withhold(
+            part,
+            sources['withhold'],
+            unit_column,
+            known_sources=known,
+            derived_from=derived_from,
+        )
         # Units hold different rows, so their counts add up.
         for into, tally in (
             (withheld, counts),
@@ -1333,6 +1427,20 @@ def export_delivery(
     sources = _bundle_sources(recipe, region, [process_id for process_id, _ in inputs])
     restricted = sources['restricted']
     admin_id_column = f'admin{process_level}_id'
+    # What tells a token naming a source from a method's name, and in
+    # which units each restricted source's values are present: the two
+    # things the rule on values derived from a source reads
+    # (io.delivery.redaction, rule 5).
+    known = known_source_ids()
+    supplied = (
+        _units_supplied(inputs, restricted, admin_id_column) if restricted else {}
+    )
+    derived_from = share_derived_from(recipe)
+    redaction = {
+        'known_sources': known,
+        'supplied': supplied,
+        'derived_from': derived_from,
+    }
     # Unlocked up front because the finished files are moved onto these
     # names, which Windows refuses for a read-only destination.
     for path in paths.values():
@@ -1439,8 +1547,10 @@ def export_delivery(
     # A share-alike family the region declares withheld goes the same
     # way; what is left of every share-alike source is then measured for
     # the family check below.
-    pooled, withheld_first = withhold(pooled, sources['withhold'], admin_id_column)
-    _refuse_restricted_cells(pooled, restricted, admin_id_column)
+    pooled, withheld_first = withhold(
+        pooled, sources['withhold'], admin_id_column, **redaction
+    )
+    _refuse_restricted_cells(pooled, restricted, admin_id_column, **redaction)
     reach_first = _share_alike_reach(pooled, sources['share_alike'], admin_id_column)
     if n_dropped and verbose:
         print(
@@ -1528,8 +1638,10 @@ def export_delivery(
     # it is borrowed from pass one under a name no curated column uses.
     unit_column = '_delivery_unit'
     evidence[unit_column] = kept.reindex(evidence.index)
-    evidence, withheld_second = withhold(evidence, sources['withhold'], unit_column)
-    _refuse_restricted_cells(evidence, restricted, unit_column)
+    evidence, withheld_second = withhold(
+        evidence, sources['withhold'], unit_column, **redaction
+    )
+    _refuse_restricted_cells(evidence, restricted, unit_column, **redaction)
     reach_second = _share_alike_reach(evidence, sources['share_alike'], unit_column)
     evidence = evidence.drop(columns=unit_column)
     # Counties disagree about a column's type more often than a single
