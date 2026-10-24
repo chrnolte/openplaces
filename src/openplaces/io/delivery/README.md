@@ -91,7 +91,11 @@ walked per pooled unit because county parcel and property recipes reach a
 spine only through auto-discovery, which resolves per admin unit (an unscoped
 walk never saw Edgecombe's parcels feeding the NC bundle), and read with the
 unit's patch recipes applied, so a source a patch merges by named columns is
-withheld by those columns.
+withheld by those columns. A step that finds its sources by entity type and
+names its columns (the parcel spine's `link_by_id` keeping
+`last_sale_price`, `last_sale_date` and `n_transactions` from every
+transaction source of the unit) is read the same way, so a statewide sales
+table reaches those three columns and no other parcel value.
 `io.delivery.redaction.withhold` then removes that source's values from both read
 passes: a row whose `geometry_source` names it is left out, a cell whose
 `{col}_source` names it is emptied, and inside the source's county, columns
