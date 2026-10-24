@@ -40,12 +40,20 @@ from openplaces.io import (
     read_parquet,
     to_parquet,
 )
-from openplaces.io.delivery.redaction import find_restricted, merge_counts, withhold
+from openplaces.io.delivery.redaction import (
+    _names_attribute,
+    find_restricted,
+    merge_counts,
+    withhold,
+)
 from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
 from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
     restricted_inputs,
+    share_alike_conflict_text,
+    share_alike_family_named,
+    share_alike_inputs,
     value_source_cells,
 )
 from openplaces.io.readers import get_admin
@@ -99,9 +107,12 @@ def delivery_regions(recipe) -> list[dict]:
     list of dict
         Each with ``region_id`` (None when declared inline), ``admin_level``,
         ``admin_ids``, ``admin_id`` (the bundle's own unit, None when it
-        should be derived from the members) and `whole_unit` (True for a
+        should be derived from the members), `whole_unit` (True for a
         region listed under `whole_unit_regions`, whose bundle is filed
-        as its unit's own; see :func:`delivery_paths`).
+        as its unit's own; see :func:`delivery_paths`) and
+        `withhold_share_alike` (the share-alike families whose values the
+        bundle leaves out, from `withhold_share_alike`; always empty for
+        a team bundle, which is never published).
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -124,6 +135,7 @@ def delivery_regions(recipe) -> list[dict]:
                 # `delivery_paths` files it as its unit, and refuses one
                 # that would land on a curated output.
                 'whole_unit': False,
+                'withhold_share_alike': _withheld_families(block, None),
             }
         ]
 
@@ -138,6 +150,14 @@ def delivery_regions(recipe) -> list[dict]:
             f'whole_unit_regions names {", ".join(map(repr, undeclared))}, '
             'which is not one of the declared delivery regions.'
         )
+    withheld = block.get('withhold_share_alike')
+    if isinstance(withheld, dict):
+        undeclared = sorted({str(n) for n in withheld} - {str(n) for n in names})
+        if undeclared:
+            raise KeyError(
+                f'withhold_share_alike names {", ".join(map(repr, undeclared))}, '
+                'which is not one of the declared delivery regions.'
+            )
     # One registry read for the whole block, not one per named region:
     # the CSV was re-parsed for each of the seven declared regions, and
     # `delivery_paths` resolves regions repeatedly.
@@ -159,6 +179,7 @@ def delivery_regions(recipe) -> list[dict]:
                 'admin_id': str(anchor.iat[0]) if len(anchor) else None,
                 'audience': 'public',
                 'whole_unit': str(name) in whole_units,
+                'withhold_share_alike': _withheld_families(block, str(name)),
             }
         )
     # A team bundle is a second delivery of a declared region, for the
@@ -179,9 +200,31 @@ def delivery_regions(recipe) -> list[dict]:
                 'region_id': f'{name}{TEAM_SUFFIX}',
                 'audience': 'team',
                 'base_region_id': str(name),
+                # Share-alike binds on publication, and a team bundle is
+                # never published (maintainer, 2026-10-23), so it keeps
+                # every family its region's public bundle withholds.
+                'withhold_share_alike': [],
             }
         )
     return regions
+
+
+def _withheld_families(block, region_id) -> list[str]:
+    """The share-alike families a region's bundle leaves out.
+
+    `share: delivery: withhold_share_alike:` maps a region id to the
+    families its bundle withholds (`{greenville-nc: [odbl]}`); a plain
+    list applies to every region the recipe declares, an inline
+    `admin_ids` grouping included. Names resolve through
+    `share_alike_family_named`, so a misspelt family raises here rather
+    than withholding nothing.
+    """
+    declared = block.get('withhold_share_alike') or []
+    if isinstance(declared, dict):
+        declared = (declared.get(region_id) or []) if region_id else []
+    if isinstance(declared, str):
+        declared = [declared]
+    return list(dict.fromkeys(share_alike_family_named(name) for name in declared))
 
 
 def _select_region(recipe, region=None) -> dict:
@@ -413,6 +456,286 @@ def _refuse_restricted_cells(frame, sources, admin_id_column):
         + '\n'.join(lines)
         + '\nThe delivery was not written.'
     )
+
+
+class ShareAlikeConflictError(RuntimeError):
+    """A delivery would carry share-alike licences of two families."""
+
+
+def _refuse_share_alike_conflict(
+    terms, recipe, admin_id, region=None, audience='public'
+) -> None:
+    """Raise if a published bundle carries two share-alike families.
+
+    Maintainer's rule (2026-10-23): a bundle may carry share-alike data
+    as long as it is internally compatible, so ODbL or CC BY-SA, never
+    both. Each family requires the whole release to carry its licence,
+    so a bundle holding two cannot be published under either, and a
+    notice saying so is not enough once the files exist. There is no
+    override flag: the remedies are a declaration that the region
+    withholds one family (`share: delivery: withhold_share_alike:`),
+    leaving one family's sources out of the recipe, or a licensor's
+    permission to relicense.
+
+    A team bundle is exempt: share-alike binds only on publication, and
+    a team bundle is never published (maintainer, 2026-10-23; the CHEER
+    team bundle carries Edgecombe and Pitt together, decision of
+    2026-10-22, option A). Its notice still names the families.
+    """
+    if audience == 'team' or not terms.get('share_alike_conflict'):
+        return
+    name = region or str(admin_id)
+    raise ShareAlikeConflictError(
+        f'{name} ({recipe.get("recipe_id", "")}) would carry share-alike '
+        'licences of more than one family, which no single release can '
+        'satisfy:\n'
+        + share_alike_conflict_text(terms)
+        + '\nDeclare that the region withholds one family '
+        f'(share: delivery: withhold_share_alike: {{{name}: [odbl]}}), leave '
+        "one family's sources out of the recipe, or obtain permission to "
+        'relicense them. The delivery was not written.'
+    )
+
+
+def _bundle_sources(recipe, region, process_ids) -> dict:
+    """Who a bundle is for and which sources' values it withholds.
+
+    Returns
+    -------
+    dict
+        ``audience`` ('public' or 'team'); ``restricted``, the restricted
+        sources to withhold; ``team_shared``, the sources a team bundle
+        keeps; ``share_alike``, every share-alike input (with its
+        ``family``); ``withheld_share_alike``, those of a family the
+        region declares withheld; and ``withhold``, the entries
+        `io.delivery.redaction.withhold` is given.
+    """
+    # Walked per pooled unit, so the county sources the pipeline
+    # auto-discovered there are found too. Only candidates: whether any
+    # of their data is in the bundle is decided on the rows.
+    restricted = restricted_inputs(recipe, list(process_ids))
+    spec = delivery_spec(recipe, region)
+    # A team bundle keeps what a person cleared for team sharing; every
+    # other bundle, and every other restricted source, is withheld.
+    audience = spec.get('audience', 'public')
+    team_shared = [
+        entry
+        for entry in restricted
+        if audience == 'team' and entry.get('team_sharing_permitted')
+    ]
+    restricted = [entry for entry in restricted if entry not in team_shared]
+    # A region declared to leave one share-alike family out has that
+    # family's values withheld by the same rules as a restricted
+    # source's, so what counts as "its values" is defined once.
+    share_alike = share_alike_inputs(recipe, list(process_ids))
+    # Never in a team bundle, which is not published, and share-alike
+    # binds only on publication.
+    families = set(spec.get('withhold_share_alike') or [])
+    if audience == 'team':
+        families = set()
+    withheld_share_alike = [
+        {**entry, 'share_alike_family': entry['family']}
+        for entry in share_alike
+        if entry['family'] in families
+    ]
+    return {
+        'audience': audience,
+        'restricted': restricted,
+        'team_shared': team_shared,
+        'share_alike': share_alike,
+        'withheld_share_alike': withheld_share_alike,
+        'withhold': [*restricted, *withheld_share_alike],
+    }
+
+
+def _share_alike_reach(frame, entries, admin_id_column) -> dict:
+    """Rows and cells each share-alike source still has in *frame*.
+
+    Counted by the redaction rules (`find_restricted`), one source id at
+    a time, so a source two recipes record (a county's roll and its
+    sales table) is counted once over the union of what both reach.
+    """
+    by_source: dict[str, list[dict]] = {}
+    for entry in entries:
+        by_source.setdefault(entry['source_id'], []).append(entry)
+    reach = {}
+    for source_id, group in by_source.items():
+        found = find_restricted(frame, group, admin_id_column)
+        if not found['counts']:
+            continue
+        rows = found['rows']
+        cells = sum(int((mask & ~rows).sum()) for mask in found['cells'].values())
+        reach[source_id] = {'rows': int(rows.sum()), 'cells': cells}
+    return reach
+
+
+def _withheld_report(withheld, entries) -> list[dict]:
+    """The notice's withheld list: each source's counts and its terms."""
+    by_source = {entry['source_id']: entry for entry in entries}
+    return [
+        {
+            'source_id': source_id,
+            'license': by_source[source_id]['license'],
+            'terms_url': by_source[source_id].get('terms_url'),
+            'share_alike_family': by_source[source_id].get('share_alike_family'),
+            **count,
+        }
+        for source_id, count in sorted(withheld.items())
+    ]
+
+
+def _check_columns(available, entries) -> list[str]:
+    """Columns the dry check reads: what the redaction rules test.
+
+    Every `_source` sidecar with the value beside it (redaction empties
+    a cell, and rewrites its sidecar, only where the value is), and every
+    column named after an attribute one of *entries* maps, which rules 3
+    and 4 test inside the source's scope. Never a personal column, as
+    the export never reads one.
+    """
+    sidecars = [
+        c for c in available if c.endswith(SOURCE_SUFFIX) and not _is_personal_column(c)
+    ]
+    wanted = {c[: -len(SOURCE_SUFFIX)] for c in sidecars}
+    for entry in entries:
+        for attribute in entry.get('attributes') or ():
+            for column in available:
+                if _names_attribute(column, attribute, entry.get('entity_type')):
+                    wanted.add(column)
+    values = [
+        c
+        for c in available
+        if c in wanted and c != 'geometry' and not _is_personal_column(c)
+    ]
+    return list(dict.fromkeys([*values, *sidecars]))
+
+
+def check_share_alike(
+    recipe, region=None, admin_id=None, admin_ids=None, allow_missing=False
+) -> dict:
+    """Report a bundle's share-alike families without writing anything.
+
+    Reads the curated files `export_delivery` would pool (their `_source`
+    sidecars and the columns the redaction rules test), withholds what
+    restricted sources supplied and, where the region declares it, what
+    one share-alike family supplied, as the export does, and asks
+    `bundle_terms` which share-alike licences the remaining geometry and
+    cells carry. Call it on a recipe and region before exporting: the
+    export raises `ShareAlikeConflictError` exactly when this reports
+    ``conflict``.
+
+    The counts are taken before entities curated by two neighboring
+    units are resolved to one copy, so a share can differ slightly from
+    the exported bundle's; the families do not.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Curation recipe ID or loaded recipe.
+    region : str, optional
+        Which declared region to check; required when the recipe
+        declares more than one.
+    admin_id : str or `AdminId`, optional
+        Admin unit the bundle covers. Defaults to `delivery_admin_id`.
+    admin_ids : list of str, optional
+        Process-level units to pool, overriding the declared members.
+    allow_missing : bool, optional
+        Check the members that have a curated file and list the others
+        under ``missing``, rather than raising as the export does.
+
+    Returns
+    -------
+    dict
+        ``region``, ``admin_id``, ``audience``, ``units`` (members read),
+        ``missing`` (members without a curated file),
+        ``withhold_share_alike`` (the families the region withholds),
+        ``withheld`` (each withheld source's rows and cells, as the
+        notice lists them), ``families`` (family to its sources, each
+        with ``share``, ``rows``, ``cells`` and ``cell_share``),
+        ``mixed_families`` (True when more than one family is present),
+        ``conflict`` (True when the export would refuse: mixed families
+        in a bundle that is not a team bundle), ``message`` (the
+        export's refusal text, or None) and ``terms`` (the full
+        `bundle_terms`).
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if admin_id is None:
+        admin_id = delivery_admin_id(recipe, region=region)
+    missing = []
+    if allow_missing:
+        inputs = []
+        process_level = get_process_admin_level(recipe)
+        for process_id in delivery_members(recipe, admin_id, admin_ids, region):
+            path = get_output_path(recipe, process_id)
+            if path.exists():
+                inputs.append((process_id, path))
+            else:
+                missing.append(process_id)
+    else:
+        process_level, inputs = _resolve_inputs(recipe, admin_id, admin_ids, region)
+    process_ids = [process_id for process_id, _ in inputs]
+    sources = _bundle_sources(recipe, region, process_ids)
+    tested = [*sources['withhold'], *sources['share_alike']]
+
+    unit_column = f'admin{process_level}_id'
+    geometry_parts = []
+    cells: dict[str, int] = {}
+    reach: dict[str, dict] = {}
+    withheld: dict[str, dict] = {}
+    for process_id, path in inputs:
+        wanted = _check_columns(parquet_columns(path), tested)
+        if not wanted:
+            continue
+        part = read_parquet(path, geom=False, columns=wanted)
+        part[unit_column] = process_id
+        part, counts = withhold(part, sources['withhold'], unit_column)
+        # Units hold different rows, so their counts add up.
+        for into, tally in (
+            (withheld, counts),
+            (reach, _share_alike_reach(part, sources['share_alike'], unit_column)),
+        ):
+            for source_id, count in tally.items():
+                total = into.setdefault(source_id, {'rows': 0, 'cells': 0})
+                total['rows'] += count['rows']
+                total['cells'] += count['cells']
+        if 'geometry_source' in part.columns:
+            geometry_parts.append(part['geometry_source'].astype('string'))
+        for token, count in value_source_cells(part).items():
+            cells[token] = cells.get(token, 0) + count
+        del part
+
+    geometry_source = pd.concat(geometry_parts) if geometry_parts else None
+    terms = bundle_terms(
+        recipe,
+        geometry_source,
+        process_ids,
+        value_cells=cells,
+        share_alike_reach=reach,
+    )
+    message = None
+    try:
+        _refuse_share_alike_conflict(
+            terms, recipe, admin_id, region, sources['audience']
+        )
+    except ShareAlikeConflictError as error:
+        message = str(error)
+    return {
+        'region': region,
+        'admin_id': str(admin_id),
+        'audience': sources['audience'],
+        'units': process_ids,
+        'missing': missing,
+        'withhold_share_alike': delivery_spec(recipe, region).get(
+            'withhold_share_alike', []
+        ),
+        'withheld': _withheld_report(withheld, sources['withhold']),
+        'families': terms['share_alike_families'],
+        'mixed_families': terms['share_alike_conflict'],
+        'conflict': message is not None,
+        'message': message,
+        'terms': terms,
+    }
 
 
 def _share_spec(recipe):
@@ -979,6 +1302,14 @@ def export_delivery(
     dict of str to pathlib.Path
         The written paths, keyed `'canonical'`, `'point'`, `'geo'`,
         `'evidence'` and `'terms'` (the licence notice).
+
+    Raises
+    ------
+    ShareAlikeConflictError
+        When the geometry and cells left after withholding carry
+        share-alike licences of more than one family (ODbL and CC BY-SA,
+        say), naming each source, its licence and its shares. Nothing is
+        written. `check_share_alike` reports the same without exporting.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -999,19 +1330,8 @@ def export_delivery(
             f'No curated output found under {admin_id} for '
             f'{recipe.get("recipe_id", recipe)!r}; nothing to deliver.'
         )
-    # Walked per pooled unit, so the county sources the pipeline
-    # auto-discovered there are found too. Only candidates: whether any
-    # of their data is in the bundle is decided on the rows below.
-    restricted = restricted_inputs(recipe, [process_id for process_id, _ in inputs])
-    # A team bundle keeps what a person cleared for team sharing; every
-    # other bundle, and every other restricted source, is withheld.
-    audience = delivery_spec(recipe, region).get('audience', 'public')
-    team_shared = [
-        entry
-        for entry in restricted
-        if audience == 'team' and entry.get('team_sharing_permitted')
-    ]
-    restricted = [entry for entry in restricted if entry not in team_shared]
+    sources = _bundle_sources(recipe, region, [process_id for process_id, _ in inputs])
+    restricted = sources['restricted']
     admin_id_column = f'admin{process_level}_id'
     # Unlocked up front because the finished files are moved onto these
     # names, which Windows refuses for a read-only destination.
@@ -1116,8 +1436,12 @@ def export_delivery(
     # A restricted source's values are withheld, not the delivery: one
     # county's terms must not hold every other county's rows back. The
     # check after it is the backstop, and fires only on values present.
-    pooled, withheld_first = withhold(pooled, restricted, admin_id_column)
+    # A share-alike family the region declares withheld goes the same
+    # way; what is left of every share-alike source is then measured for
+    # the family check below.
+    pooled, withheld_first = withhold(pooled, sources['withhold'], admin_id_column)
     _refuse_restricted_cells(pooled, restricted, admin_id_column)
+    reach_first = _share_alike_reach(pooled, sources['share_alike'], admin_id_column)
     if n_dropped and verbose:
         print(
             f'Resolved {n_dropped} entity id(s) curated by two adjacent '
@@ -1204,8 +1528,9 @@ def export_delivery(
     # it is borrowed from pass one under a name no curated column uses.
     unit_column = '_delivery_unit'
     evidence[unit_column] = kept.reindex(evidence.index)
-    evidence, withheld_second = withhold(evidence, restricted, unit_column)
+    evidence, withheld_second = withhold(evidence, sources['withhold'], unit_column)
     _refuse_restricted_cells(evidence, restricted, unit_column)
+    reach_second = _share_alike_reach(evidence, sources['share_alike'], unit_column)
     evidence = evidence.drop(columns=unit_column)
     # Counties disagree about a column's type more often than a single
     # county's file does, and pooling is where that surfaces: Florida's
@@ -1226,20 +1551,24 @@ def export_delivery(
         geometry_source,
         [process_id for process_id, _ in inputs],
         value_cells=value_source_cells(evidence),
+        share_alike_reach=merge_counts(reach_first, reach_second),
     )
+    # Decided on what is about to ship, after withholding, so a
+    # withheld source's licence no longer counts once its values are
+    # out. The staged files are removed: a refusal is not a crash with
+    # output to inspect, and the shipped bundle stays as it was.
+    try:
+        _refuse_share_alike_conflict(
+            terms, recipe, admin_id, region, sources['audience']
+        )
+    except ShareAlikeConflictError:
+        for path in staged.values():
+            path.unlink(missing_ok=True)
+        raise
     withheld = merge_counts(withheld_first, withheld_second)
-    by_source = {entry['source_id']: entry for entry in restricted}
-    terms['withheld'] = [
-        {
-            'source_id': source_id,
-            'license': by_source[source_id]['license'],
-            'terms_url': by_source[source_id]['terms_url'],
-            **count,
-        }
-        for source_id, count in sorted(withheld.items())
-    ]
-    terms['audience'] = audience
-    terms['team_shared'] = team_shared
+    terms['withheld'] = _withheld_report(withheld, sources['withhold'])
+    terms['audience'] = sources['audience']
+    terms['team_shared'] = sources['team_shared']
     staged['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
 
     # Every file exists; only now does the shipped bundle change.

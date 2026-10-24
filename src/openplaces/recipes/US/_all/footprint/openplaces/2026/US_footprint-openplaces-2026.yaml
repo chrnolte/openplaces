@@ -221,6 +221,19 @@ share:
       - cheer-eastern-nc
       # Fairfax County values, cleared for the team (2026-10-20).
       - washington-dc
+    # The outlines are ODbL (OBM, Microsoft, Overture), and Pitt
+    # County's parcel values are CC-BY-SA-4.0; one published bundle
+    # cannot carry both, so the public cheer-eastern-nc bundle withholds
+    # Pitt's share-alike values the way a restricted source's are
+    # withheld. The team bundle keeps them: share-alike binds only on
+    # publication, and a team bundle is never published (maintainer,
+    # 2026-10-22 option A and 2026-10-23).
+    # The building-imputation branch carries its own public-only
+    # withhold of pittcounty (`share: delivery: impute:
+    # withhold_sources`, applied when the audience is not 'team'). When
+    # that branch merges, drop it in favour of this declaration.
+    withhold_share_alike:
+      cheer-eastern-nc: [cc-by-sa]
     # An outline two units both curated is cut at the line between
     # them and each piece keeps its own unit's assessed values
     # (io/delivery/slicing.py; maintainer, 2026-10-17). Curated files
