@@ -302,12 +302,14 @@ class ModelView:
 # The PLACES-FMV region-with-neighbors variants cleared for the
 # research team (maintainer, 2026-10-18; source
 # `US_parcel-placeslab-fmv2026open`), in the order of their buttons.
+# They carry no area of applicability: PLACES-FMV computed it over
+# building footprint covariates (design limit L4), so no bundle ships
+# it (maintainer, 2026-10-24).
 TEAM_MODEL_VIEWS = tuple(
     ModelView(
         f'model_{variant}',
         label,
         f'land_value_per_ha_log_region_nb_{variant}',
-        f'area_of_applicability_region_nb_{variant}',
     )
     for variant, label in (
         ('bare', 'Base'),

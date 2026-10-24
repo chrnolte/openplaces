@@ -196,8 +196,8 @@ pipeline:
           population_hispanic_share_block_group_2012_2016_fmv2026: population_hispanic_share_block_group_2012_2016
           land_value_per_ha_log_region_nb_2010_fmv2026: land_value_per_ha_log_region_nb
           land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
-          aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
-          aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
+          # PLACES-FMV's area-of-applicability columns are not merged:
+          # their distance used footprint covariates (design limit L4).
 
   # An assessed value is never negative. NC OneMap computes improvement
   # as total minus land, which goes negative wherever assessed land
@@ -833,11 +833,13 @@ share:
     - protected_open_space_share
     - protected_open_space_level
     # The seven Fathom-free placeslab land value variants (ln real USD
-    # per hectare, 2010 market) and each one's area of applicability
-    # (at most 1 inside), for the Nantucket team value page
+    # per hectare, 2010 market), for the Nantucket team value page
     # (2026-10-18). Filled in Nantucket by the US-MA-NTC patch of this
     # recipe; empty elsewhere. Their source is cleared for team bundles
-    # only, so every other bundle withholds them (io.delivery).
+    # only, so every other bundle withholds them (io.delivery). Their
+    # area of applicability is not shipped, in any bundle: PLACES-FMV
+    # computed it over building footprint covariates (design limit L4;
+    # maintainer, 2026-10-24).
     - land_value_per_ha_log_region_nb_bare
     - land_value_per_ha_log_region_nb_people
     - land_value_per_ha_log_region_nb_buildings
@@ -845,13 +847,6 @@ share:
     - land_value_per_ha_log_region_nb_peoplewealth
     - land_value_per_ha_log_region_nb_peoplebuildings
     - land_value_per_ha_log_region_nb_popbldwealth
-    - area_of_applicability_region_nb_bare
-    - area_of_applicability_region_nb_people
-    - area_of_applicability_region_nb_buildings
-    - area_of_applicability_region_nb_wealth
-    - area_of_applicability_region_nb_peoplewealth
-    - area_of_applicability_region_nb_peoplebuildings
-    - area_of_applicability_region_nb_popbldwealth
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:
