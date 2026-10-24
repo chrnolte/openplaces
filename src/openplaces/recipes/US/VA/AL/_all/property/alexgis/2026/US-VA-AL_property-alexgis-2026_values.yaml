@@ -38,10 +38,12 @@
 # personal or nonprofit use, any original content on a site produced
 # by the City". Read as covering this service, distribution is
 # granted for personal or nonprofit use only, so
-# redistribution_restricted and resale_restricted are true. Whether
-# the website terms govern the map service at all, and any
-# usage requirement, are for a person to decide; none is set, and the
-# restriction flags stand until that person has read the terms.
+# redistribution_restricted and resale_restricted are true. The map
+# service states no licence of its own, so the website terms govern
+# it; a password-protected team page is nonprofit distribution within
+# them, and the maintainer cleared team sharing on 2026-10-24
+# (plans/findings/northern-virginia-roll-terms.md). Public release is
+# not covered: it would allow the commercial reuse the terms withhold.
 
 description: >-
   City of Alexandria, VA current-year land, improvement and total assessed
@@ -59,6 +61,9 @@ entity:
       site produced by the City"; the map service adds an "as is" disclaimer.
     terms_url: "https://www.alexandriava.gov/Legal"
     redistribution_restricted: true
+    # Cleared for the research team (maintainer, 2026-10-24): team
+    # bundles keep its values, behind the password-protected team page.
+    team_sharing_permitted: true
     resale_restricted: true
     portal_url: "https://maps.alexandriava.gov/arcgis/rest/services/alxParcelsWm/MapServer/0"
     download_url_scraper: arcgis_rest_scraper
