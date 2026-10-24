@@ -54,7 +54,12 @@ Steps are organized by the nature of the transformation:
   where a context indicator holds: the footprint recipe's Manufactured
   Home decision needs a partner for footprint shape and
   `p_manufactured_home` where the roll and NSI both name Single-Family
-  or Multi-Family (maintainer, 2026-10-22).
+  or Multi-Family (maintainer, 2026-10-22). It may be a list of guards,
+  each with its own labels and context, all applied: the same decision
+  also needs a partner for shape and `no_improvement_value` where the
+  outline shares a wall of at least 3 m (`shared_wall_m`, a
+  `derive_indicators` value measured by strict intersection only;
+  maintainer, 2026-10-24).
 - `reconcilers.py` — resolve conflicts between competing source columns
   (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
   `resolve_by_vote`, the single voting seam every curate classification

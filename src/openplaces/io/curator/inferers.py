@@ -203,6 +203,70 @@ def _derive_shape_metric(state: CurateState, spec: dict) -> pd.Series | None:
     )
 
 
+def _derive_shared_wall(state: CurateState, spec: dict) -> pd.Series | None:
+    """Longest run of each outline's boundary lying on another outline."""
+    import geopandas as gpd
+    import shapely
+
+    from openplaces.core.schema import is_synthetic_geometry
+    from openplaces.geo.polygon import local_metric_crs
+
+    curated = state.curated
+    if 'geometry' not in curated.columns or curated.empty:
+        return None
+    partner_min_m2 = float(spec.get('partner_min_m2', 20.0))
+
+    # Pairs and runs are found in the coordinates as drawn and only
+    # measured in meters: reprojecting first would bend a porch's
+    # corner off the wall it was drawn on.
+    geoms = curated.geometry.to_numpy()
+    # A synthetic row's geometry is its parcel's boundary standing in
+    # for an outline nobody drew, so it neither has a wall nor lends
+    # one; an empty geometry has nothing to measure.
+    real = ~is_synthetic_geometry(curated, state.recipe.get('entity')).to_numpy()
+    real &= ~(shapely.is_missing(geoms) | shapely.is_empty(geoms))
+    # Repairing an invalid outline only lets GEOS intersect it; the
+    # repaired shape lies on the drawn one, so no wall is gained.
+    invalid = real & ~shapely.is_valid(geoms)
+    if invalid.any():
+        geoms = geoms.copy()
+        geoms[invalid] = shapely.make_valid(geoms[invalid])
+
+    out = np.full(len(curated), np.nan)
+    out[real] = 0.0
+    idx = np.flatnonzero(real)
+    if len(idx) < 2:
+        return pd.Series(out, index=curated.index)
+    metric_crs = local_metric_crs(curated)
+
+    def in_meters(values: np.ndarray) -> gpd.GeoSeries:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            return gpd.GeoSeries(values, crs=curated.crs).to_crs(metric_crs)
+
+    # Strict intersects only: an outline touching or overlapping this
+    # one. No buffer and no distance tolerance, so two outlines a
+    # hair apart share no wall (design limit L27 rules out replacing
+    # strict contiguity with a tolerance). Nothing is grouped or
+    # unioned; each row gets one number about its own boundary.
+    tree = shapely.STRtree(geoms[idx])
+    left, right = tree.query(geoms[idx], predicate='intersects')
+    keep = left != right
+    left, right = idx[left[keep]], idx[right[keep]]
+    if not len(left):
+        return pd.Series(out, index=curated.index)
+    partners = np.unique(right)
+    area = pd.Series(in_meters(geoms[partners]).area.to_numpy(), index=partners)
+    big = (area.reindex(right) >= partner_min_m2).to_numpy()
+    left, right = left[big], right[big]
+    if len(left):
+        shared = shapely.intersection(shapely.boundary(geoms[left]), geoms[right])
+        run = in_meters(shared).length.to_numpy()
+        longest = pd.Series(run).groupby(left).max()
+        out[longest.index.to_numpy()] = longest.to_numpy()
+    return pd.Series(out, index=curated.index)
+
+
 def _derive_group_statistic(state: CurateState, spec: dict) -> pd.Series | None:
     """Score a value against the distribution of its own cohort."""
 
@@ -470,6 +534,7 @@ _INDICATOR_DERIVATIONS = {
     'pooled_vote': _derive_pooled_vote,
     'ratio': _derive_ratio,
     'shape_metric': _derive_shape_metric,
+    'shared_wall': _derive_shared_wall,
     'group_statistic': _derive_group_statistic,
     'cohort_threshold': _derive_cohort_threshold,
 }
@@ -535,6 +600,16 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     - ``shape_metric``: a minimum-bounding-rectangle ``metric`` of each
       geometry -- ``aspect_ratio`` (default), ``length``, ``width``, or
       ``orientation``. Measured on a locally-projected metric copy.
+    - ``shared_wall``: in meters, the longest run of each outline's
+      boundary that lies on or inside another outline of at least
+      ``partner_min_m2`` (default 20 m2): per partner, the length of
+      ``boundary(a) & b``, the largest over partners. Partners are
+      outlines that strictly intersect this one; there is no buffer and
+      no distance tolerance, and nothing is grouped. 0 for an outline
+      no other outline touches, missing on a synthetic or empty
+      geometry. A drawn rowhouse shares one or two party walls; a
+      manufactured home shares none, or a short run with a porch or
+      carport drawn as its own polygon.
     - ``group_statistic``: score ``value_column`` against its ``group_column``
       cohort via ``statistic`` (``zscore`` default, or ``percentile``), after
       an optional ``transform`` (``log1p`` default, or None).

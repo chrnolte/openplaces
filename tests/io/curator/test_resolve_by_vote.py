@@ -501,3 +501,108 @@ def test_insufficient_alone_without_where_applies_everywhere():
     ]
     out = resolve_by_vote(_state(df), target='occupancy_type', decisions=decisions)
     assert out.curated['occupancy_type'].isna().all()
+
+
+def test_insufficient_alone_list_applies_every_guard_with_its_own_helpers():
+    # Fabricated rows. Guard 1: 'shape' needs a partner where 'agree'.
+    # Guard 2: 'shape' and 'value' need one where 'wall'. 'value' is a
+    # partner for guard 1 and a helper for guard 2.
+    df = pd.DataFrame(
+        {
+            'occupancy_type': [None] * 5,
+            'shape': [True] * 5,
+            'value': [False, True, True, True, False],
+            'source': [False, False, False, False, True],
+            'agree': [False, True, False, True, False],
+            'wall': [False, False, True, True, True],
+        },
+        index=['NONE', 'AGREE_VALUE', 'WALL_VALUE', 'BOTH_VALUE', 'WALL_SOURCE'],
+    )
+    decisions = [
+        {
+            'class': 'A',
+            'min_score': 2,
+            'insufficient_alone': [
+                {
+                    'labels': ['shape'],
+                    'where': {'type': 'equals', 'column': 'agree', 'value': True},
+                },
+                {
+                    'labels': ['shape', 'value'],
+                    'where': {'type': 'equals', 'column': 'wall', 'value': True},
+                },
+            ],
+            'indicators': [
+                {
+                    'type': 'equals',
+                    'column': 'shape',
+                    'value': True,
+                    'weight': 2,
+                    'label': 'shape',
+                },
+                {'type': 'equals', 'column': 'value', 'value': True, 'label': 'value'},
+                {
+                    'type': 'equals',
+                    'column': 'source',
+                    'value': True,
+                    'label': 'source',
+                },
+            ],
+        },
+        {'class': 'B', 'indicators': [{'type': 'not_null', 'column': 'shape'}]},
+    ]
+    out = resolve_by_vote(_state(df), target='occupancy_type', decisions=decisions)
+    cls = out.curated['occupancy_type'].astype(object)
+    assert cls['NONE'] == 'A'
+    # 'value' partners shape under the first guard...
+    assert cls['AGREE_VALUE'] == 'A'
+    # ...but is itself a helper under the second.
+    assert cls['WALL_VALUE'] == 'B'
+    assert cls['BOTH_VALUE'] == 'B'
+    assert cls['WALL_SOURCE'] == 'A'
+
+
+def test_insufficient_alone_mapping_and_list_of_one_agree():
+    df = pd.DataFrame(
+        {
+            'occupancy_type': [None] * 3,
+            'shape': [True, True, True],
+            'other': [False, True, False],
+            'agree': [True, True, False],
+        }
+    )
+    guard = {
+        'labels': ['shape'],
+        'where': {'type': 'equals', 'column': 'agree', 'value': True},
+    }
+
+    def run(insufficient_alone):
+        decisions = [
+            {
+                'class': 'A',
+                'insufficient_alone': insufficient_alone,
+                'indicators': [
+                    {
+                        'type': 'equals',
+                        'column': 'shape',
+                        'value': True,
+                        'label': 'shape',
+                    },
+                    {
+                        'type': 'equals',
+                        'column': 'other',
+                        'value': True,
+                        'label': 'other',
+                    },
+                ],
+            }
+        ]
+        out = resolve_by_vote(
+            _state(df.copy()), target='occupancy_type', decisions=decisions
+        )
+        cls = out.curated['occupancy_type'].astype(object)
+        return cls.where(cls.notna(), 'none').tolist()
+
+    # Row 0: shape alone in context, held back; row 1: a partner;
+    # row 2: out of context.
+    assert run(guard) == run([guard]) == ['none', 'A', 'A']

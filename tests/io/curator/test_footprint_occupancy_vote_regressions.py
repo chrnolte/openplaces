@@ -123,10 +123,12 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
         for row in rows
     ]
     merged = [{**DEFAULTS, **row} for row in rows]
-    geometry = [
-        _box(-78.0 + 0.01 * i, 35.0, r.pop('length_m'), r.pop('width_m'))
-        for i, r in enumerate(merged)
-    ]
+    # Each row is its own box 0.01 degrees from the next, touching
+    # nothing, unless a case draws its own outline (shared walls).
+    geometry = []
+    for i, r in enumerate(merged):
+        box = _box(-78.0 + 0.01 * i, 35.0, r.pop('length_m'), r.pop('width_m'))
+        geometry.append(r.pop('geometry', None) or box)
     frame = gpd.GeoDataFrame(merged, geometry=geometry, crs='EPSG:4326')
     frame['area_m2'] = frame.to_crs(frame.estimate_utm_crs()).area
 
@@ -207,9 +209,12 @@ def test_every_vote_input_is_available(recipe):
             for decision in vote['decisions']:
                 _referenced_columns(decision.get('indicators', []), referenced)
                 _referenced_columns(decision.get('require', []), referenced)
-                guard = decision.get('insufficient_alone') or {}
-                if guard.get('where'):
-                    _referenced_columns([guard['where']], referenced)
+                guards = decision.get('insufficient_alone') or []
+                if isinstance(guards, dict):
+                    guards = [guards]
+                for guard in guards:
+                    if guard.get('where'):
+                        _referenced_columns([guard['where']], referenced)
 
     derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
     # A vote also provides its own target and any base_output snapshot, which
@@ -334,6 +339,103 @@ def test_shape_alone_cannot_overrule_a_roll_and_nsi_naming_site_built(
 def test_shape_still_decides_without_agreement_or_beside_a_partner(recipe, context):
     out = _run(recipe, [{**_ROW_UNIT, **context}])
     assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+
+
+def _outline(x0, y0, x1, y1, lon=-77.0, lat=36.0):
+    """A rectangle from metric offsets (m) to lon/lat.
+
+    Every corner goes through the same arithmetic, so outlines drawn
+    against one another share their vertices bit for bit, as a
+    rowhouse block's party walls do in a cadastre.
+    """
+
+    def point(x, y):
+        return (lon + x / (111_320.0 * 0.81), lat + y / 110_574.0)
+
+    return Polygon([point(x0, y0), point(x1, y0), point(x1, y1), point(x0, y1)])
+
+
+class TestSharedWallGuard:
+    """Shape and value cannot make a Manufactured Home of a wall-sharing
+    outline alone (maintainer, 2026-10-24). All geometries fabricated."""
+
+    # A narrow row unit drawn one per outline: 5.5 m by 15 m is aspect
+    # 2.7 and 82 m2, a single-wide's shape. Its morphology score is
+    # 0.9 because no roll names a manufactured home (the rule score).
+    ROW_UNIT = {'n_dwellings_overture': 1, 'p_manufactured_home': 0.9}
+
+    def _row(self, n, **extra):
+        return [
+            {
+                **self.ROW_UNIT,
+                'parcel_id': f'row{i}',
+                'geometry': _outline(5.5 * i, 0.0, 5.5 * (i + 1), 15.0),
+                **extra,
+            }
+            for i in range(n)
+        ]
+
+    def test_a_rowhouse_row_is_not_manufactured_on_shape_alone(self, recipe):
+        # Neither the roll nor NSI speaks, so the site-built guard is
+        # out of context; the shared walls alone hold the shape back.
+        out = _run(recipe, self._row(3))
+        # The degree conversion in _outline is approximate.
+        assert out['shared_wall_m'].tolist() == pytest.approx([15.0] * 3, rel=0.02)
+        classes = out['occupancy_type'].astype(object).tolist()
+        assert classes == ['Single-Family'] * 3
+        # The same outline standing alone is still a manufactured home.
+        alone = _run(recipe, self._row(1))
+        assert alone['shared_wall_m'].iloc[0] == 0.0
+        assert alone['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+
+    def test_a_parcel_without_improvement_value_is_no_partner(self, recipe):
+        out = _run(
+            recipe,
+            self._row(
+                2,
+                improvement_value_parcel=0.0,
+                improvement_value_parcel_whole=0.0,
+            ),
+        )
+        assert out['occupancy_type'].astype(object).tolist() == ['Single-Family'] * 2
+
+    def test_a_single_wide_with_a_porch_drawn_beside_it_still_is(self, recipe):
+        # Home A, 20 m by 4.5 m, with a 2.5 m porch drawn on its end
+        # (11 m2, under the 20 m2 partner floor); home B with a 2.8 m
+        # by 8 m deck (22 m2) against its long side, a 2.8 m run.
+        home = {'n_dwellings_overture': 1}
+        porch = {'priority_on_parcel': 'secondary'}
+        out = _run(
+            recipe,
+            [
+                {**home, 'parcel_id': 'a', 'geometry': _outline(0, 0, 20, 4.5)},
+                {**porch, 'parcel_id': 'a', 'geometry': _outline(20, 0, 22.5, 4.5)},
+                {**home, 'parcel_id': 'b', 'geometry': _outline(0, 50, 20, 54.5)},
+                {**porch, 'parcel_id': 'b', 'geometry': _outline(5, 54.5, 7.8, 62.5)},
+            ],
+        )
+        walls = out['shared_wall_m'].tolist()
+        assert walls[0] == 0.0
+        assert walls[2] == pytest.approx(2.8, rel=0.02)
+        classes = out['occupancy_type'].astype(object).tolist()
+        assert classes[0] == 'Manufactured Home'
+        assert classes[2] == 'Manufactured Home'
+
+    @pytest.mark.parametrize(
+        'partner',
+        [
+            {'occupancy_type_building_nsi': 'Manufactured Home'},
+            {'group_footprint_fema': 'Manufactured Home'},
+            {'use_group_combined_parcel': 'MOBILE HOME'},
+        ],
+        ids=['nsi', 'fema', 'roll-keyword'],
+    )
+    def test_a_wall_sharing_home_a_source_names_stays(self, recipe, partner):
+        out = _run(recipe, self._row(2, **partner))
+        assert (out['shared_wall_m'] >= 3).all()
+        assert (
+            out['occupancy_type'].astype(object).tolist() == ['Manufactured Home'] * 2
+        )
 
 
 def test_manufactured_home_signals_also_prove_single_dwelling(recipe):

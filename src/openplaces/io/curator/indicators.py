@@ -285,7 +285,10 @@ def score_decisions(
         indicator outside ``labels`` fired too. The listed indicators
         still add their weight beside such a partner; they just cannot
         carry the decision by themselves there. An unlabeled indicator
-        counts as a partner.
+        counts as a partner. ``insufficient_alone`` may also be a list
+        of such mappings, each with its own ``labels`` and ``where``:
+        every one applies, and each finds its partner outside its own
+        ``labels``.
     score_classes : set of str, optional
         Classes whose raw weighted score should be returned in *scores*.
         Deliberately ungated by ``min_score`` and by whether the decision
@@ -341,16 +344,28 @@ def score_decisions(
         # its weight everywhere would lose the first; dropping it in
         # that context would lose its corroborating role. This keeps
         # both.
-        guard = decision.get('insufficient_alone') or {}
-        helpers = set(guard.get('labels') or ())
-        partner = pd.Series(False, index=curated.index)
+        #
+        # Several guards may apply, each in its own context and with its
+        # own helpers: shape needs a partner where the roll and NSI name
+        # a site-built class, and shape and value need one where the
+        # outline shares a wall. A single mapping is a list of one.
+        guards = decision.get('insufficient_alone') or []
+        if isinstance(guards, dict):
+            guards = [guards]
+        guards = [
+            (set(guard.get('labels') or ()), guard.get('where'))
+            for guard in guards
+            if guard.get('labels')
+        ]
+        partners = [pd.Series(False, index=curated.index) for _ in guards]
         for indicator in decision.get('indicators', []):
             weight = float(indicator.get('weight', 1.0))
             matched = evaluate_indicator(curated, indicator)
             score = score + matched.astype(float) * weight
             label = indicator.get('label')
-            if label not in helpers:
-                partner = partner | matched
+            for k, (helpers, _) in enumerate(guards):
+                if label not in helpers:
+                    partners[k] = partners[k] | matched
             if label:
                 fired = fired + np.where(matched.to_numpy(), f'{label}+', '')
             label_column = indicator.get('label_column')
@@ -370,10 +385,10 @@ def score_decisions(
         eligible = score >= float(decision.get('min_score', 1))
         for req in decision.get('require', []):
             eligible = eligible & evaluate_indicator(curated, req)
-        if helpers:
+        for (_, where_spec), partner in zip(guards, partners, strict=True):
             where = (
-                evaluate_indicator(curated, guard['where'])
-                if guard.get('where')
+                evaluate_indicator(curated, where_spec)
+                if where_spec
                 else pd.Series(True, index=curated.index)
             )
             eligible = eligible & (~where | partner)
