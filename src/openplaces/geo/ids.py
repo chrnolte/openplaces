@@ -867,7 +867,8 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     replace each run of separator characters with ``|`` instead of deleting
     it), ``no_conv``, ``string_lengths``, ``split_groups``, ``drop_cols``,
     ``keep_length``, ``fill_zeros``, ``switch``, ``merge_after``,
-    ``max_length``, ``join_char``, ``skip_empty``.
+    ``max_length``, ``join_char``, ``skip_empty``, and ``strip_separators``
+    (remove punctuation before the pattern applies).
 
     Parameters
     ----------
@@ -917,6 +918,18 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         return out.where(out.ne(''), pd.NA)
 
     p = _conv_dict(conv_code)
+    if 'strip_separators' in p:
+        # Remove punctuation before the pattern is applied, for a source
+        # that punctuated its ids in an earlier era and writes them bare
+        # today: the bare form's rule then reads the old spelling too,
+        # including groups that straddle an old separator, which no
+        # pattern over the punctuated string could capture. Osceola
+        # County FL's roll wrote '99-99-99-9999-9999-9999' until 2011 and
+        # 18 bare characters from 2012, read in groups of 1 2 2 2 3 4 4.
+        # Measured 2026-10-24 on US-FL-OS: the 2011 roll, stripped and
+        # read by today's rule, gives today's key on 143,227 of 143,227
+        # accounts present in both years.
+        s = s.str.replace(r'[^0-9A-Z]', '', regex=True)
     if 'no_conv' in p:
         return s.where(s.ne(''), pd.NA)
     if 'simple_clean' in p:

@@ -210,3 +210,30 @@ def test_join_key_normalized_across_dash_format_boundary(data_root):
         columns=['tax_year', 'year_built'],
     ).curated
     assert out['tax_year'].iloc[0] == 2020
+
+
+def test_minted_key_compared_exactly_when_not_normalized(data_root):
+    # Two different parcels whose minted keys differ only in where the
+    # segment separator falls (fabricated). Stripped, both read '123'.
+    _write_property_snapshots(
+        [
+            {'parcel_id_local': '1|23', 'tax_year': 2020, 'year_built': 1990},
+            {'parcel_id_local': '12|3', 'tax_year': 2020, 'year_built': 2005},
+        ]
+    )
+    tx = pd.DataFrame({'parcel_id_local': ['12|3'], 'sale_year': [2020]})
+    out = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key='parcel_id_local',
+        normalize_key=False,
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        match_type_column='property_match_type',
+        columns=['tax_year', 'year_built'],
+    ).curated
+    assert out['year_built'].iloc[0] == 2005
+    assert out['property_match_type'].iloc[0] == 'exact'
+    # The key on the sale row is left as it was.
+    assert out['parcel_id_local'].iloc[0] == '12|3'

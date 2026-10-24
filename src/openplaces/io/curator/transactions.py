@@ -27,7 +27,9 @@ _normalized = sale_records.normalized_text
 
 
 @_register('dedup_transactions', phase='standardize')
-def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
+def dedup_transactions(
+    state: CurateState, key_columns: list, normalize_columns: list | None = None
+) -> CurateState:
     """Drop rows that are the same recorded document, kept once.
 
     The transaction spine does this since 2026-09-29; kept for a recipe
@@ -39,9 +41,13 @@ def dedup_transactions(state: CurateState, key_columns: list) -> CurateState:
         Columns whose combination identifies one recorded document. The
         first occurrence of a repeated combination is kept. A column the
         table lacks reads as missing on every row.
+    normalize_columns : list of str, optional
+        Key columns compared without punctuation and case.
     """
     curated = state.curated
-    repeated = sale_records.duplicate_document_mask(curated, key_columns)
+    repeated = sale_records.duplicate_document_mask(
+        curated, key_columns, normalize_columns
+    )
     state.curated = curated.loc[~repeated.to_numpy()].copy()
     if state.verbose:
         print(f'  dedup_transactions: dropped {int(repeated.sum()):,} duplicate rows')
@@ -271,6 +277,7 @@ def join_temporal_snapshot(
     single_vintage_value: str = 'single_vintage',
     no_key_value: str = 'no_key',
     mark_unmatched: str | None = None,
+    normalize_key: bool = True,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
 
@@ -279,7 +286,8 @@ def join_temporal_snapshot(
     non-alphanumeric characters) on both sides before matching, the same
     way :func:`~openplaces.io.curator.filters.normalize_id_column` treats
     the entity side, since the reference recipe is loaded fresh here and
-    never sees that step.
+    never sees that step; *normalize_key* turns that off for a key that
+    is already minted on both sides.
 
     Parameters
     ----------
@@ -339,6 +347,12 @@ def join_temporal_snapshot(
         unset. Belongs on the last temporal pass of a recipe, where a
         row still unmarked genuinely means "the panel was read and did
         not have this property".
+    normalize_key : bool, optional
+        Strip *join_key* of punctuation on both sides before matching
+        (default True). Set False for `parcel_id_local`, which both
+        sides already minted by one rule: stripped, its segment
+        separators go and `1|23` meets `12|3`, the collision the `pipe`
+        conversion exists to prevent.
     """
     # Validate the request before reading the reference, so a recipe
     # error is reported as one rather than as a missing data file.
@@ -397,8 +411,9 @@ def join_temporal_snapshot(
             state.curated = curated
             return state
 
+    key_form = _normalized if normalize_key else (lambda s: s.astype('string'))
     active = curated.loc[active_mask, [join_key, date_column]].copy()
-    active[join_key] = _normalized(active[join_key])
+    active[join_key] = key_form(active[join_key])
     # Both sides to one float dtype: merge_asof refuses keys of
     # different types, and a sale year with any missing value parses to
     # float64 while a complete tax_year column parses to int64, so the
@@ -444,7 +459,7 @@ def join_temporal_snapshot(
     ref_columns = [join_key, vintage_column] + available
     ref = ref[ref_columns].copy()
     columns = [c for c in columns if c == vintage_column or c in available]
-    ref[join_key] = _normalized(ref[join_key])
+    ref[join_key] = key_form(ref[join_key])
     ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce').astype(
         'float64'
     )
