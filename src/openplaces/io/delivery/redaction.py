@@ -82,10 +82,12 @@ import re
 
 import pandas as pd
 
+from openplaces.core.attribute_registry import load_registry
 from openplaces.core.schema import ENTITY_TYPES, admin_scope_covers
 from openplaces.geo.address import POSTAL_CITY_BACKENDS
 
 SOURCE_SUFFIX = '_source'
+GEOMETRY_SOURCE = 'geometry_source'
 
 # Written into a withheld cell's `{column}_source`, so an empty value
 # says why it is empty rather than reading as missing upstream.
@@ -184,6 +186,27 @@ def _names_attribute(
     )
 
 
+def _sidecars(frame) -> dict[str, str]:
+    """`{column: column_source}` for each provenance sidecar in *frame*.
+
+    A sidecar is an unregistered `{column}_source`, as the registry
+    reads one (`core.attribute_registry.get_agg_func`); a registered
+    name ending in `_source` is an attribute. `transaction_id_source`,
+    a source's own record id, read as a sidecar was skipped by every
+    rule, and a restricted source's record ids would have shipped.
+    `geometry_source` is registered and stays a sidecar: rule 1 reads
+    it. A sidecar may outlive its column (a pass that withheld the
+    value), so the column's presence is not asked.
+    """
+    registered = load_registry().index
+    return {
+        column[: -len(SOURCE_SUFFIX)]: column
+        for column in frame.columns
+        if column.endswith(SOURCE_SUFFIX)
+        and (column == GEOMETRY_SOURCE or column not in registered)
+    }
+
+
 def _reach_sidecars(source, sidecars) -> list[str]:
     """Sidecars of the columns a source reached by name can land in."""
     return [
@@ -221,11 +244,7 @@ def units_supplied(frame, sources, admin_id_column) -> dict[str, set]:
     supplied: dict[str, set] = {}
     if frame.empty or admin_id_column not in frame.columns:
         return supplied
-    sidecars = {
-        column[: -len(SOURCE_SUFFIX)]: column
-        for column in frame.columns
-        if column.endswith(SOURCE_SUFFIX)
-    }
+    sidecars = _sidecars(frame)
     units = frame[admin_id_column].astype('string')
     for source in sources:
         source_id = source['source_id']
@@ -468,11 +487,7 @@ def find_restricted(
         known = frozenset(known_sources) | {str(s['source_id']) for s in sources}
     if supplied is None:
         supplied = units_supplied(frame, sources, admin_id_column)
-    sidecars = {
-        column[: -len(SOURCE_SUFFIX)]: column
-        for column in frame.columns
-        if column.endswith(SOURCE_SUFFIX)
-    }
+    sidecars = _sidecars(frame)
     units = (
         frame[admin_id_column].astype('string')
         if admin_id_column in frame.columns

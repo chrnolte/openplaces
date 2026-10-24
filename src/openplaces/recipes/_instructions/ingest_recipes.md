@@ -105,6 +105,14 @@ every CAMA field null with a perfectly plausible feature count.
   `drop_duplicates` key where the members overlap.
 - `drop_duplicates:` — an explicit column subset. A bare full-row dedupe keeps
   rows that differ only in a column you do not care about.
+- `dissolve_by:` names the column naming the record a row belongs to, for a
+  layer that draws one record as several polygon rows and repeats its
+  values on each (Florida DEP's acquisitions repeat one price on every
+  polygon of a deal). The rows become one row with the union of their
+  polygons; a column keeps its value only where every row states the
+  same one, and is left missing otherwise. Runs before the admin
+  overlay, so a record is placed whole. Group by the source's own key
+  only, never by location or by values rows happen to share.
 - `drop_columns:` — scratch columns a transformation produced and the output
   must not carry. Per table: an `additional_layers` entry declares its own
   list and inherits none from the host, like `columns` and `query`.
@@ -135,7 +143,9 @@ transformations:
 ```
 
 Useful ops: `null_if_equal`, `set_null` (empty a whole column, keeping its
-dtype), `to_numeric`, `to_datetime`, `epoch_ms_to_datetime` (an Esri date
+dtype), `to_numeric`, `to_datetime` (optional `args: {format, latest_year}`:
+a strptime format, and the last year a two-digit `%y` may mean, later
+ones moving back a century), `epoch_ms_to_datetime` (an Esri date
 read through `f=geojson`), `parse_currency`, `resolve_century` (2-digit
 years), `split_take`, `concat`, `zfill`.
 

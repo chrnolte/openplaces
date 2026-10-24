@@ -90,6 +90,9 @@ price,Transaction price,USD,float,first,,transaction,ingest
 price_raw,Transaction price as provided by the source,,string,first,,transaction,ingest
 sale_year,Year of the recorded sale,,float,first,,transaction,ingest
 sale_month,Month of the recorded sale,,float,first,,transaction,ingest
+sale_date,"Date of the recorded sale or closing, where the source states the day; sale_year and sale_month carry the same date for comparison with sources that state only those",,datetime,first,,transaction,ingest
+holding_agency,"Public agency that acquired and holds the land, in the source's codes (FL-SOLARIS AUTHORIZED_AGENCY_SHORT_NAME: DEP Department of Environmental Protection for the Board of Trustees, SFWMD, SWFWMD, SJRWMD, SRWMD, NWFWMD the five water management districts, FWCC Fish and Wildlife Conservation Commission, DACS Department of Agriculture and Consumer Services, COMM FloridaCommerce, DMA Department of Military Affairs, Citrus Department of Citrus)",,categorical,first,,transaction,ingest
+conservation_status,"Whether the source records the land as held for conservation, in its codes (FL-SOLARIS CONSERVATION_STATUS_IND: Y yes, N no, U unknown; a semicolon list where one land record holds several closings)",,categorical,first,,transaction,ingest
 sale_book,Official-record book of the recorded sale,,string,first,,transaction,ingest
 sale_page,Official-record page of the recorded sale,,string,first,,transaction,ingest
 sale_clerk_instrument,Clerk instrument number of the recorded sale,,string,first,,transaction,ingest

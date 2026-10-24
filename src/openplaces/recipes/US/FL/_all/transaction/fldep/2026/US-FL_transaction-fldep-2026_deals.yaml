@@ -1,0 +1,100 @@
+# Recipe: Florida DEP state land acquisitions as transactions, linked to
+# the parcels they cover.
+#
+# Use: internal validation of conservation acquisition costs
+# (openplaces-valuation, plans/easement-cost-data-plan.md, G6 and H6b).
+# Held like its ingest recipe (US-FL_transaction-fldep-2026; terms,
+# measurements and the deal key are described there): nothing
+# auto-discovers it, so no curate recipe and no delivery reads it, and
+# its source is recorded as restricted so that a delivery that were ever
+# pointed at it withholds what it supplied (export_delivery).
+#
+# One row per deal (a FL-SOLARIS land record), with its outline, its
+# stated acres (area_ha_nominal) and its measured area (area_ha, from
+# the dissolved outline: the sum of its polygons, which never overlap).
+# The sources are exactly the one listed (`auto_discover: false`):
+# without it the union would also read every Florida transaction source
+# the national spine reads, the DOR sales among them.
+#
+# What a deal conveyed is the transaction-to-parcel link table beside
+# this output, written by spatial overlay alone
+# (`link_transactions_by_overlap`, link_method `polygon_overlap`): a
+# parcel of US_parcel-spine-2026 is linked when more than 80% of its
+# area lies inside the deal's outline, the rule the Colombia acquisition
+# spine uses (CO_transaction-spine-2026). No key pass runs, because the
+# layer carries no county parcel number (GIS_PARCEL_ID is DEP's own
+# polygon id). Processed per county: a deal is placed in the county
+# holding its centroid and links only to that county's parcels, so the
+# parcels of the 542 deals that span several counties are linked in one
+# of them only.
+#
+# Built 2026-10-24 for all 67 counties: 61,983 links to 60,832
+# distinct parcels; 25,800 of 42,555 deals reach at least one parcel,
+# 21,783 of the 35,493 with a price above 0. A deal reaches none where
+# no parcel lies more than 80% inside it; why, per deal, is not
+# measured. 2,292 link rows name a parcel another deal also covers.
+#
+# Deals are never matched to DOR sales: not by parcel and date, not by
+# price. A comparison with the DOR roll or sales goes through these
+# parcel links, which is an overlay, and through nothing else.
+#
+# Design limits checked (plans/design-limits/DESIGN_LIMITS.md): L14,
+# L17, L28 (the link is one spatial rule with a fixed label; no score,
+# no model, no fuzzy tier, no link removed), L2 and L27 (polygons are
+# grouped only by the source's own land id, never by owner, contiguity
+# or distance), L25 (the dissolve keeps a value only where every polygon
+# of the deal states it; nothing is filled from another row), L7 and
+# L29 (no price index, no dedup of deals), L6 (no reconciliation
+# between sources), L1, L3, L8, L10 (no map, lookup, service or
+# database). None crossed.
+
+description: >-
+  Florida DEP state land acquisitions, one row per deal with price, closing
+  date, acres and outline, linked to parcels by overlay.
+
+stage: harmonize
+admin_id: US-FL
+
+held: true
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: fldep
+    license: >-
+      No licence stated; FDEP "as is" disclaimer only (see
+      US-FL_transaction-fldep-2026). Internal use only until counsel
+      question CAP-1 is answered.
+    terms_url: "https://ca.dep.state.fl.us/mapdirectDocs/disclaimer.htm"
+    redistribution_restricted: true
+  version: "2026"
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+# Named apart from the ingest output, which has the same entity, source
+# and version.
+save_to:
+  data_dir: core
+  filename: deals
+
+pipeline:
+  - step: union_spine_sources
+    geom: true
+    sources:
+      - auto_discover: false
+      - recipe_id: US-FL_transaction-fldep-2026
+
+  # area_ha, lat, long from the deal's outline.
+  - step: derive_geometry_attributes
+
+  # Ids from the land id, scoped by the county (`US-FL-XX_<land id>`).
+  - step: assign_transaction_ids
+    document_column: transaction_id_source
+    label: acquisition
+
+  - step: link_transactions_by_overlap
+    parcel_recipe_id: US_parcel-spine-2026
+    min_parcel_share: 0.8

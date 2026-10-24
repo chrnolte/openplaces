@@ -1,0 +1,230 @@
+# Recipe: FL-SOLARIS/LITS State Owned Lands (Florida DEP, Division of
+# State Lands), one row per acquisition with its closing price.
+#
+# Use: internal validation of conservation acquisition costs in the
+# valuation lane (openplaces-valuation, plans/easement-cost-data-plan.md,
+# G6 and H6b). The deals and their parcel links are compared with model
+# values inside the project; no deal, price or polygon is published or
+# delivered. Held from auto-discovery (`held: true`), so neither the
+# national transaction spine nor any curate recipe reads it; only the
+# deals recipe beside this one names it. Background and the source sweep:
+# plans/findings/conservation-acquisition-prices-sources.md.
+#
+# Source: the bulk file geodatabase on DEP's public files host (the same
+# host as the floridagio parcels), not the REST layer
+# (ags.dep.state.fl.us/arcgis/rest/services/OpenData/STATE_OWNED_LANDS/
+# MapServer/0, 1,000 rows per page). Read 2026-10-24: zip Last-Modified
+# 2026-10-24, EXTRACTED_DATE 2026-10-24 (refreshed daily), one layer
+# STATE_OWNED_LAND_SP, 79,645 MultiPolygons in EPSG:6439, the same
+# count and the same 46 fields as the REST layer. The zip also holds
+# FDEP_Data_Disclaimer.pdf (quoted under license).
+#
+# What a row is. The layer has one row per polygon; FL_SOLARIS_LAND_ID
+# (equal to LAND_INVENTORY_KEY) names the land record a polygon belongs
+# to, and every deal field is constant within it: price, ACRES, closing
+# date, A_TOTAL, project and county differ inside no land id (measured
+# 2026-10-24 over all 42,563 land ids; 4,041 of them are drawn as
+# several polygons, at most 3,716). The land id is the deal key the
+# layer states, and `dissolve_by` folds its polygons into one row with
+# the union of its polygons (geo.polygon.dissolve_by_key), because the
+# transaction-to-parcel overlay needs the deal's whole outline: a parcel
+# straddling two polygons of one deal is inside the deal, not inside
+# either polygon. The price, repeated on every polygon of a deal, is
+# therefore counted once and never summed.
+#
+# Not a deal key: a (price, acres, closing date) signature. 3,325 such
+# signatures hold more than one land id (13,584 land ids), but those
+# land ids do not overlap one another (union area equals summed area),
+# each carries its own document id (DM_ID) and each one's polygon area
+# matches ACRES on its own (92% within 10%; their summed area is about n
+# times ACRES). They are separate purchases of equal lots at an equal
+# price on one day, not one purchase repeated, so grouping them would
+# multiply a deal's acres without adding to its price.
+#
+# Deal acreage: the metadata defines ACRES as "The final acreage of the
+# closed Acquisition Pursuit as identified on the Survey and the Closing
+# Statement" (mapped to area_ha_nominal, acres x 0.40468564224), and
+# PARCEL_AC as "The acreage of the parcel as calculated from the
+# submitted polygon". The deals recipe measures area_ha from the
+# dissolved outline, which equals the sum of PARCEL_AC over the deal
+# (no polygon of a land id overlaps another; ratio 1.000). On land ids
+# alone on their price signature, summed polygon acres / ACRES has
+# quartiles 0.95, 0.998, 1.005. ACRE_TYPE_NAME (unmapped, no registry
+# home) says where ACRES came from: Closed Acres 68,933 rows, GIS
+# Calculated 6,476, Deed 3,654, Tax Roll 343, Survey 222, Other 17.
+#
+# Price: CLOSED_PURCHASE_PRICE_AMT is text. The gdb metadata (dated
+# 2026-04-17) gives no definition for it. Over the 79,645 polygon rows:
+# 59,932 parse to a price above 0, 8,182 to 0, 6,571 are empty and
+# 4,960 hold semicolon lists. A list (1,395 land ids, 2 to 36 items)
+# is a land record with several closings: ACRES, CLOSED_DATE_STRING and
+# FUND_SRC_CONTRIBUTION_AMT carry lists of the same length on most of
+# them, and the summed listed acres exceed the record's polygon area
+# (median 1.67 times), so no single price, acreage or date belongs to
+# its outline. `price`, `area_ha_nominal` and `sale_date` stay empty
+# there; `price_raw` keeps the source text. A price of 0 is kept as
+# stated (donations, exchanges and transfers are not told apart here).
+#
+# Closing date: CLOSED_DATE_STRING is DD-MON-YY (CLOSED_DATE is the
+# same text). DOCUMENT_DATE (a real date, unmapped) is a different
+# document's date: it differs from the closing by a median of 22 days
+# and is missing on 10,345 polygon rows. Two-digit years are read with
+# strptime and moved back a century when they land after 2026, the
+# extraction year: 1,482 land ids parse after 2026 and become 1927 to
+# 1968 (DOCUMENT_DATE falls before 1970 for 378 of the 449 that have
+# one).
+# Of the 11,297 land ids read as 2000 to 2026, 15 have a DOCUMENT_DATE
+# about a century earlier: a 1925 closing reads 2025, which the text
+# cannot tell apart. Raise `latest_year` when re-ingesting after 2026.
+#
+# County: the deal is placed in the county holding its outline's
+# centroid (overlay_admin_ids, after the dissolve). GIS_COUNTY_ID and
+# GIS_COUNTY_NAME are DEP's own county list, semicolon-joined on the
+# 542 land ids that span several counties (372 of them single closings
+# with a price), and missing on 78; they are not mapped. A deal is
+# linked only to the parcels of its own county (see the deals recipe).
+#
+# Ingested 2026-10-24 (all 67 counties): 79,645 polygon rows became
+# 42,563 deals (41,123 rows of 4,041 multi-polygon land ids folded, no
+# kept column disagreeing inside a deal); 42,555 saved, the other 8
+# outlines having a centroid in no county polygon. Price above 0 on
+# 35,493 deals ($9.66 billion, median $3,500: 19,191 deals are in
+# Collier County, most of them small lots), 0 on 3,301, a list on
+# 1,395, empty on 2,366. Closing date on 38,843 (1927 to 2026).
+# Measured over stated area: quartiles 0.949, 0.993, 1.006.
+#
+# Agency and conservation flag (registry columns approved by the
+# maintainer 2026-10-24), both constant within every land id and kept
+# in the source's codes:
+#   holding_agency: AUTHORIZED_AGENCY_SHORT_NAME, per land id DEP
+#     32,051, SFWMD 6,880, SWFWMD 2,224, SJRWMD 609, SRWMD 483, NWFWMD
+#     147, FWCC 119, DACS 26, COMM 19, DMA 4, Citrus 1.
+#     AUTHORIZED_AGENCY_NAME spells the same 11 out and is not mapped.
+#   conservation_status: CONSERVATION_STATUS_IND, per land id Y 37,636,
+#     N 3,483, U 48, and a semicolon list on 1,396 (1,395 of them the
+#     multi-closing records of the price lists; every list but one
+#     repeats a single value).
+#
+# Unmapped, no registry home: PROJECT_NAME (1,290 values),
+# RESERVATION_IND, REVERTER_IND, FUNDING_* and
+# FUND_SRC_CONTRIBUTION_AMT, SHARED_OWNER_*, PERCENT_OWNED,
+# MANAGING_AGENCY_NAME, LAND_INPUT_STATUS_NAME, LAND_ACTION_NAME
+# (Inventory 79,294; disposition stages 349; Deleted 2), ACRE_TYPE_NAME.
+# Unmapped as internal: OWNED_LAND_KEY, LAND_INVENTORY_KEY (equals the
+# land id), INTERNAL_AGENCY_ID, GIS_PARCEL_ID (DEP's polygon id, not a
+# county parcel number), FL_SOLARIS_FACILITY_ID, the *_KEY columns,
+# A_TOTAL (the land id's polygon acres again), DM_ID and DOC_WEB_URL
+# (the deed in DEP's document system; a deed names the grantor, so it is
+# not carried), AREA, LEN, SE_ANNO_CAD_DATA (empty). INVENTORY_STATUS_IND
+# is Y on every row.
+#
+# Privacy: the layer has no owner, grantor or grantee column; the linked
+# deeds do, and their links are dropped.
+
+description: >-
+  Florida DEP state-owned land acquisitions (FL-SOLARIS/LITS): one row per
+  land record with closing price, closing date, stated acres and outline.
+
+admin_id: US-FL
+
+held: true
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: fldep
+    portal_url: "https://ags.dep.state.fl.us/arcgis/rest/services/OpenData/STATE_OWNED_LANDS/MapServer/0"
+    download_url: "https://publicfiles.dep.state.fl.us/otis/gis/data/state_owned_land_sp.zip"
+    # No licence. The layer metadata states a use note only; the zip's
+    # FDEP_Data_Disclaimer.pdf and Map Direct's disclaimer
+    # (ca.dep.state.fl.us/mapdirectDocs/disclaimer.htm) disclaim
+    # warranty and liability. Read 2026-10-24. Restricted until BU
+    # counsel answers CAP-1 (Dropbox/Admin/Legal/BU_COUNSEL_QUESTIONS.md),
+    # whether the chapter 119 reasoning of SRS-2 covers this layer.
+    license: >-
+      No licence stated. Metadata: "FL-SOLARIS parcel and attribute data
+      are not land surveys and not intended for use for boundary
+      determination or any activity falling under the regulation of
+      Chapter 472, Florida Statutes." FDEP GIS Data Disclaimer: data
+      "provided in an 'as is' condition ... FDEP shall have no liability,
+      in any case, to the use of provided data (including redistribution
+      and reproduction)." Internal use only until counsel question CAP-1
+      is answered.
+    terms_url: "https://ca.dep.state.fl.us/mapdirectDocs/disclaimer.htm"
+    redistribution_restricted: true
+  version: "2026"
+
+compressed_file_name: "state_owned_land_sp.zip"
+uncompressed_file_name: "STATE_OWNED_LAND_SP.gdb"
+layer: STATE_OWNED_LAND_SP
+
+columns:
+  transaction_id_source: FL_SOLARIS_LAND_ID
+  price_raw: CLOSED_PURCHASE_PRICE_AMT
+  holding_agency: AUTHORIZED_AGENCY_SHORT_NAME
+  conservation_status: CONSERVATION_STATUS_IND
+
+# Source codes kept as written; curate translates.
+columns_to_categorical:
+  - holding_agency
+  - conservation_status
+
+transformations:
+  # A semicolon list does not parse and stays empty (see header).
+  - output: price
+    input: price_raw
+    type: unary
+    operation: to_numeric
+  - output: acres_stated
+    input: ACRES
+    type: unary
+    operation: to_numeric
+  - output: area_ha_nominal
+    type: expression
+    expression: "acres_stated * 0.40468564224"
+    inputs: [acres_stated]
+  - output: sale_date
+    input: CLOSED_DATE_STRING
+    type: unary
+    operation: to_datetime
+    args: {format: "%d-%b-%y", latest_year: 2026}
+  - output: sale_year
+    input: sale_date
+    type: datetime
+    operation: year
+  - output: sale_month
+    input: sale_date
+    type: datetime
+    operation: month
+  # The day only: the daily extract runs in batches seconds apart
+  # (three timestamps on 2026-10-24), and with the time of day the
+  # polygons of 9 deals would disagree and leave it empty.
+  - output: extracted_day
+    input: EXTRACTED_DATE
+    type: string
+    operation: split_take
+    args: {sep: " ", index: 0}
+  - output: source_date
+    input: extracted_day
+    type: unary
+    operation: to_datetime
+    args: {format: "%m/%d/%Y"}
+  - output: conveyance_type
+    type: expression
+    expression: "'acquisition'"
+  - output: price_period
+    type: expression
+    expression: "'total'"
+
+keep_unnamed_columns: false
+drop_columns: [acres_stated, extracted_day]
+
+dissolve_by: transaction_id_source
+
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: 'admin-openplaces-2026_admin3'
+
+save_to:
+  data_dir: cache
+  admin_level: 3
