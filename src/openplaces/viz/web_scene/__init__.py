@@ -4646,6 +4646,9 @@ def deploy_access(site_dir, env_file=None, go=False) -> list[str]:
     env = _rclone_env(settings)
     dry = [] if go else ['--dry-run']
     root = f'bh:{settings["path"]}'
+    # Three connections in all: the host blocks SSH for a while after a
+    # burst, and one connection per folder ran into that after ten
+    # folders (2026-10-23), leaving half the site gated.
     online = _rclone_output(env, 'lsf', '--dirs-only', root) or ''
     folders = [
         '',
@@ -4653,38 +4656,62 @@ def deploy_access(site_dir, env_file=None, go=False) -> list[str]:
     ]
     written = []
     with tempfile.TemporaryDirectory() as tmp:
+        # The `.htaccess` files online, all in one copy.
+        current_dir = Path(tmp) / 'current'
+        _rclone(
+            env,
+            'copy',
+            root,
+            str(current_dir),
+            *_without_filters(RCLONE_SFTP_FLAGS),
+            '--max-depth',
+            '2',
+            '--filter',
+            '+ /*/.htaccess',
+            '--filter',
+            '- **',
+        )
+        upload = Path(tmp) / 'upload'
         for folder in folders:
             manifest = site_dir / folder / 'scene.json'
+            current = current_dir / folder / '.htaccess'
+            current = current.read_text(encoding='utf-8') if current.exists() else ''
+            if folder and not manifest.exists() and 'RedirectMatch' in current:
+                # An old address pointing at a page (`deploy_redirect`),
+                # whose target is gated: left as it is.
+                print(f'{folder}: redirect, left as it is')
+                continue
             if manifest.exists():
                 team = (
                     json.loads(manifest.read_text(encoding='utf-8')).get('audience')
                     == 'team'
                 )
-            elif folder:
-                current = _rclone_output(env, 'cat', f'{root}/{folder}/.htaccess') or ''
-                if 'RedirectMatch' in current:
-                    # An old address pointing at a page (`deploy_redirect`),
-                    # whose target is gated: left as it is.
-                    print(f'{folder}: redirect, left as it is')
-                    continue
-                team = 'AuthUserFile' in current
             else:
-                team = False
-            local = Path(tmp) / f'{folder or "root"}.htaccess'
-            local.write_text(site_htaccess(settings, team), encoding='utf-8')
-            remote = f'{root}/{folder}/.htaccess' if folder else f'{root}/.htaccess'
+                team = bool(folder) and 'AuthUserFile' in current
+            target = upload / folder / '.htaccess'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(site_htaccess(settings, team), encoding='utf-8')
             print(
                 f'{folder or "(root)"}: token gate{" + team password" if team else ""}'
             )
-            _rclone(
-                env,
-                'copyto',
-                str(local),
-                remote,
-                *_without_filters(RCLONE_SFTP_FLAGS),
-                *dry,
-            )
             written.append(folder)
+        # Every gate in one copy, nothing else.
+        _rclone(
+            env,
+            'copy',
+            str(upload),
+            root,
+            *_without_filters(RCLONE_SFTP_FLAGS),
+            '--max-depth',
+            '2',
+            '--filter',
+            '+ /.htaccess',
+            '--filter',
+            '+ /*/.htaccess',
+            '--filter',
+            '- **',
+            *dry,
+        )
     print(f'{"Updated" if go else "Dry run complete"}: {len(written)} folders')
     return written
 

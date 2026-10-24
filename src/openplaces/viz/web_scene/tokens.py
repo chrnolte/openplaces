@@ -1,14 +1,15 @@
 """Hand out and withdraw access to the value site, one token per person.
 
-    python -m openplaces.viz.web_scene.tokens add "<name>"
+    python -m openplaces.viz.web_scene.tokens add "<name>" ["<name>" ...]
+    python -m openplaces.viz.web_scene.tokens add --from-file names.txt
     python -m openplaces.viz.web_scene.tokens list
     python -m openplaces.viz.web_scene.tokens revoke "<name>"
 
 The tokens live in a file on this machine (`ACCESS_TOKENS` in the
 deploy settings, by default beside them), one `token<TAB>name` per
 line; only the tokens ever go to the host, never the names. `add`
-prints the person's link. A change takes effect online once the gate
-is uploaded again::
+prints each person's name and link, one per line. A change takes
+effect online once the gate is uploaded again::
 
     python -m openplaces.viz.web_scene.site access --go
 """
@@ -66,7 +67,11 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(prog='python -m openplaces.viz.web_scene.tokens')
     parser.add_argument('action', choices=['add', 'list', 'revoke'])
     parser.add_argument(
-        'name', nargs='?', help='the person, as you will recognize them'
+        'names', nargs='*', help='the people, as you will recognize them'
+    )
+    parser.add_argument(
+        '--from-file',
+        help='add: also one name per line from this file (blank lines and # skipped)',
     )
     args = parser.parse_args(argv)
     settings = load_deploy_settings()
@@ -75,13 +80,19 @@ def main(argv=None) -> None:
         for token, name in _entries(path):
             print(f'{name}\t{token[:4]}...')
         return
-    if not args.name:
-        parser.error('name the person')
-    if args.action == 'add':
-        print(add(path, args.name, settings['url']))
-    else:
-        revoke(path, args.name)
-        print(f'Revoked {args.name!r}.')
+    names = list(args.names)
+    if args.from_file:
+        lines = Path(args.from_file).read_text(encoding='utf-8').splitlines()
+        names += [n.strip() for n in lines if n.strip() and not n.startswith('#')]
+    if not names:
+        parser.error('name the people')
+    for name in names:
+        if args.action == 'add':
+            # Name and link, one per line, ready to paste into messages.
+            print(f'{name}\t{add(path, name, settings["url"])}')
+        else:
+            revoke(path, name)
+            print(f'Revoked {name!r}.')
     print('Online once the gate is uploaded:')
     print('  python -m openplaces.viz.web_scene.site access --go')
 
