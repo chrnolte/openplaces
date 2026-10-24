@@ -341,6 +341,36 @@ def test_wisconsin_sale_is_graded_from_conveyance_and_relationship():
     ]
 
 
+def test_florida_government_transfers_are_labeled_not_dropped():
+    from openplaces.io.curator.inferers import derive_indicators
+
+    df = pd.DataFrame(
+        {
+            'sale_qualification_code': [
+                'Disqualified - transfer to/from government agency',
+                '18',
+                '01',
+                'Disqualified - transfer to/from utility company',
+            ],
+            'price': [410000.0, 95000.0, 300000.0, 12000.0],
+        }
+    )
+    wanted = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    specs = _grading_specs(wanted, 'US-FL')
+    out = derive_indicators(_state(df), indicators=specs).curated
+    # Every sale stays, with its price; the group says who the party
+    # was, and the confidence keeps it out of a market model.
+    assert len(out) == len(df)
+    assert out['price'].tolist() == df['price'].tolist()
+    assert out['sale_qualification_group'].tolist() == [
+        'government_transfer',
+        'government_transfer',
+        'qualified',
+        'disqualified',
+    ]
+    assert out['sale_arms_length_confidence'].tolist() == [0.0, 0.0, 1.0, 0.0]
+
+
 def test_florida_codes_grade_like_their_labels():
     from pathlib import Path
 
