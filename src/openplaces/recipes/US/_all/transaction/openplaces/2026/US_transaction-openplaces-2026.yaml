@@ -347,6 +347,12 @@ share:
       - lakeland-fl
       - eau-claire-wi
       - greenville-nc
+      - vineland-nj
+      - torrington-ct
+      - hastings-mn
+      - adams-county-co
+      - sarpy-county-ne
+      - salisbury-md
     # Pitt County's parcels and sales are CC-BY-SA-4.0, and its parcel
     # spine also carries values drawn from ODbL footprints (OBM,
     # Microsoft), kept there for internal use and CHEER (decision
