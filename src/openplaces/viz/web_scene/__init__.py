@@ -3997,8 +3997,9 @@ def build_web_scene(
         output_dir, manifest_files(manifest) | manifest_files(previous_manifest)
     )
     for item in STATIC_DIR.iterdir():
-        if item.name in ('landing.html', 'methods.html'):
-            # Site pages beside the scenes, written by `landing.py`.
+        if item.name in ('landing.html', 'methods.html', ACCESS_PAGE):
+            # Site pages beside the scenes, written by `landing.py` and
+            # `deploy_landing`.
             continue
         target = '.htaccess' if item.name == 'htaccess' else item.name
         (output_dir / target).write_bytes(item.read_bytes())
@@ -4072,13 +4073,18 @@ def load_deploy_settings(env_file=None) -> dict:
         host, of the password file guarding team pages
         (`deploy_web_scene`). The maintainer creates that file on the
         host (cPanel's "Directory Privacy"), so no password passes
-        through openplaces.
+        through openplaces. `ACCESS_TOKENS` names the local file of
+        access tokens (`read_access_tokens`; by default
+        `ACCESS_TOKENS_FILE` beside the settings file); every deploy
+        needs tokens in it.
+        `ACCESS_CONTACT` is the email address the access page names
+        (`access_page`); the landing page's deploy needs it.
 
     Returns
     -------
     dict
         `host`, `user`, `path`, `key`, `known_hosts`, `url`,
-        `team_passwd`.
+        `team_passwd`, `access_tokens`, `access_contact`.
     """
     import os
 
@@ -4125,7 +4131,142 @@ def load_deploy_settings(env_file=None) -> dict:
         'known_hosts': _file('KNOWN_HOSTS'),
         'url': values.get(DEPLOY_PREFIX + 'URL', '').rstrip('/'),
         'team_passwd': values.get(DEPLOY_PREFIX + 'TEAM_PASSWD', ''),
+        # Not `_file`: `tokens add` creates the file on first use.
+        'access_tokens': values.get(DEPLOY_PREFIX + 'ACCESS_TOKENS')
+        or str(env_file.parent / ACCESS_TOKENS_FILE),
+        'access_contact': values.get(DEPLOY_PREFIX + 'ACCESS_CONTACT', ''),
     }
+
+
+# The site is shared by invitation (maintainer, 2026-10-23): a request
+# passes with a listed token, in the address (`?t=`) or in the cookie
+# the first such request sets; any other is sent to `ACCESS_PAGE`. One
+# token per person, so one person's access can be withdrawn alone.
+ACCESS_COOKIE = 'op_access'
+# Thirty days, in minutes (mod_rewrite's unit for a cookie's life).
+ACCESS_COOKIE_MINUTES = 43_200
+ACCESS_PAGE = 'access.html'
+# The local token file's default name, beside the deploy settings.
+ACCESS_TOKENS_FILE = 'value-access-tokens.tsv'
+# Random URL-safe tokens (`secrets.token_urlsafe`): letters, digits,
+# `-` and `_`, which a regular expression takes as they are.
+ACCESS_TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9_-]{16,64}$')
+
+
+def read_access_tokens(path) -> list[tuple[str, str]]:
+    """The access tokens of the local token file, as (token, name).
+
+    One `token<TAB>name` per line; blank lines and `#` comments are
+    skipped. The names stay on this machine: only tokens go to the
+    host (`access_htaccess`).
+
+    Raises
+    ------
+    ValueError
+        If the file is not named, holds no token, or a line is not a
+        valid token.
+    """
+    if not path:
+        raise ValueError(
+            f'No access tokens: name the token file in {DEPLOY_PREFIX}ACCESS_TOKENS '
+            'and add one with `python -m openplaces.viz.web_scene.tokens add <name>`. '
+            'No page of the value site is published without the token gate.'
+        )
+    path = Path(path).expanduser()
+    tokens = []
+    if path.exists():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if not line.strip() or line.lstrip().startswith('#'):
+                continue
+            token, _, name = line.partition('\t')
+            token = token.strip()
+            if not ACCESS_TOKEN_PATTERN.match(token):
+                raise ValueError(f'{path}: not an access token: {token[:8]}...')
+            tokens.append((token, name.strip()))
+    if not tokens:
+        raise ValueError(f'{path} holds no access token; the site would let nobody in.')
+    return tokens
+
+
+def access_htaccess(tokens, url_path, host) -> str:
+    """The token gate that heads every `.htaccess` of the value site.
+
+    A request whose `t=` parameter or `ACCESS_COOKIE` matches a token
+    passes; one with the token in its address also sets the cookie,
+    so the link need not be kept. Every other request goes to
+    `ACCESS_PAGE` (302); that page and the site's icons pass always.
+    Written into the site's root and into each page folder, so no
+    page, script or data file is served without it.
+
+    Parameters
+    ----------
+    tokens : sequence of str
+        Valid tokens (`read_access_tokens`).
+    url_path : str
+        The site's path on its host, e.g. `/values`.
+    host : str
+        The site's host name, the cookie's domain (`placeslab.org`).
+
+    Returns
+    -------
+    str
+    """
+    tokens = list(tokens)
+    if not tokens or not all(ACCESS_TOKEN_PATTERN.match(t) for t in tokens):
+        raise ValueError('The token gate needs valid access tokens.')
+    if not re.fullmatch(r'[A-Za-z0-9.-]+', host):
+        raise ValueError(f'Not a host name: {host!r}.')
+    url_path = '/' + url_path.strip('/')
+    alternatives = '|'.join(tokens)
+    exempt = '|'.join(re.escape(f) for f in (ACCESS_PAGE, *ICON_FILES))
+    cookie = f'{ACCESS_COOKIE}=(?:{alternatives})'
+    return (
+        '# Shared by invitation: a listed access token, in the address\n'
+        '# (?t=) or in the cookie that address sets, or the access page.\n'
+        'RewriteEngine On\n'
+        f'RewriteCond %{{QUERY_STRING}} (?:^|&)t=({alternatives})(?:&|$)\n'
+        f'RewriteRule ^ - [CO={ACCESS_COOKIE}:%1:{host}:'
+        f'{ACCESS_COOKIE_MINUTES}:{url_path}:secure:httponly]\n'
+        f'RewriteCond %{{REQUEST_URI}} !(?:^|/)(?:{exempt})$\n'
+        f'RewriteCond %{{QUERY_STRING}} !(?:^|&)t=(?:{alternatives})(?:&|$)\n'
+        f'RewriteCond %{{HTTP_COOKIE}} !(?:^|;\\s*){cookie}(?:;|$)\n'
+        # QSD: a refused token does not travel on to the access page.
+        f'RewriteRule ^ {url_path}/{ACCESS_PAGE} [R=302,L,QSD]\n'
+        '<IfModule mod_headers.c>\n'
+        '  Header set X-Robots-Tag "noindex, nofollow"\n'
+        '</IfModule>\n\n'
+    )
+
+
+def access_page(settings) -> str:
+    """The page a visitor without a token sees, with the contact address
+    of the deploy settings (`ACCESS_CONTACT`), which never enters the
+    repository."""
+    import html
+
+    contact = settings.get('access_contact', '')
+    if not re.fullmatch(r'[^@\s<>"]+@[^@\s<>"]+\.[A-Za-z]{2,}', contact):
+        raise ValueError(
+            f'Set {DEPLOY_PREFIX}ACCESS_CONTACT to the email address the access '
+            'page names for requests.'
+        )
+    page = (STATIC_DIR / ACCESS_PAGE).read_text(encoding='utf-8')
+    return page.replace('{{CONTACT}}', html.escape(contact))
+
+
+def site_htaccess(settings, team=False) -> str:
+    """A page folder's or the site root's `.htaccess`: the token gate,
+    the team password where `team`, then the usual rules."""
+    from urllib.parse import urlparse
+
+    if not settings['url']:
+        raise ValueError(f'{DEPLOY_PREFIX}URL is needed to place the token gate.')
+    tokens = [t for t, _ in read_access_tokens(settings['access_tokens'])]
+    url = urlparse(settings['url'])
+    gate = access_htaccess(tokens, url.path, url.hostname or '')
+    if team:
+        return gate + team_htaccess(settings['team_passwd'])
+    return gate + (STATIC_DIR / 'htaccess').read_text(encoding='utf-8')
 
 
 def team_htaccess(passwd_path) -> str:
@@ -4237,10 +4378,12 @@ def deploy_web_scene(
        build's are kept), so a page opened just before the switch still
        finds its files.
 
-    A team scene (`audience: team`, built from a `<region>.team` bundle)
-    is published only behind a password: its `.htaccess`
-    (`team_htaccess`) goes up before anything else, and the deploy
-    refuses when `TEAM_PASSWD` is not set or names no file on the host.
+    Every page goes up behind the site's token gate (`site_htaccess`):
+    its `.htaccess` goes up before anything else, and the deploy
+    refuses without access tokens (`ACCESS_TOKENS`). A team scene
+    (`audience: team`) also asks for the team password (`team_htaccess`),
+    and the deploy refuses when `TEAM_PASSWD` is not set or names no
+    file on the host.
 
     Parameters
     ----------
@@ -4303,28 +4446,26 @@ def deploy_web_scene(
                 f'password. Create the password file on the host and name it '
                 f'in {DEPLOY_PREFIX}TEAM_PASSWD.'
             )
-        # Written before the check, so a bad path fails without a call
-        # to the host.
-        (output_dir / '.htaccess').write_text(team_htaccess(passwd), encoding='utf-8')
-        if not _rclone_output(env, 'lsf', f'bh:{passwd}'):
-            raise FileNotFoundError(
-                f'{DEPLOY_PREFIX}TEAM_PASSWD names no file on the host '
-                f'({passwd}); the team page was not published.'
-            )
-        print('\nPhase 0: password (.htaccess) before any file of the page')
-        _rclone(
-            env,
-            'copyto',
-            str(output_dir / '.htaccess'),
-            f'{target}/.htaccess',
-            *_without_filters(RCLONE_SFTP_FLAGS),
-            *dry,
+    # The token gate (and a team page's password) before any file of
+    # the page. Written before the host check, so a bad setting fails
+    # without a call to the host.
+    (output_dir / '.htaccess').write_text(
+        site_htaccess(settings, team), encoding='utf-8'
+    )
+    if team and not _rclone_output(env, 'lsf', f'bh:{settings["team_passwd"]}'):
+        raise FileNotFoundError(
+            f'{DEPLOY_PREFIX}TEAM_PASSWD names no file on the host '
+            f'({settings["team_passwd"]}); the team page was not published.'
         )
-    elif 'AuthUserFile' in (output_dir / '.htaccess').read_text(encoding='utf-8'):
-        raise ValueError(
-            f'{output_dir} is a public page but its .htaccess asks for a '
-            'password; rebuild it.'
-        )
+    print('\nPhase 0: access (.htaccess) before any file of the page')
+    _rclone(
+        env,
+        'copyto',
+        str(output_dir / '.htaccess'),
+        f'{target}/.htaccess',
+        *_without_filters(RCLONE_SFTP_FLAGS),
+        *dry,
+    )
 
     # The build currently online, read before the switch, stays.
     previous = _rclone_output(env, 'cat', f'{target}/scene.json')
@@ -4426,13 +4567,24 @@ def deploy_web_scene(
 
 def deploy_landing(output_dir, env_file=None, go=False):
     """Upload a landing page (`landing.build_landing`) to the configured
-    path: its page, card images and list of places only; the scenes in
+    path: its page, card images, list of places and the access page,
+    after the site root's token gate (`site_htaccess`); the scenes in
     the folders beside it are never touched."""
     output_dir = Path(output_dir)
     settings = load_deploy_settings(env_file)
     env = _rclone_env(settings)
     dry = [] if go else ['--dry-run']
     print(f'Target: {settings["user"]}@{settings["host"]}:{settings["path"]}')
+    (output_dir / '.htaccess').write_text(site_htaccess(settings), encoding='utf-8')
+    (output_dir / ACCESS_PAGE).write_text(access_page(settings), encoding='utf-8')
+    _rclone(
+        env,
+        'copyto',
+        str(output_dir / '.htaccess'),
+        f'bh:{settings["path"]}/.htaccess',
+        *_without_filters(RCLONE_SFTP_FLAGS),
+        *dry,
+    )
     _rclone(
         env,
         'copy',
@@ -4448,6 +4600,8 @@ def deploy_landing(output_dir, env_file=None, go=False):
         '--filter',
         '+ /methods.html',
         '--filter',
+        f'+ /{ACCESS_PAGE}',
+        '--filter',
         '+ /{' + ','.join(ICON_FILES) + '}',
         '--filter',
         '- **',
@@ -4455,6 +4609,77 @@ def deploy_landing(output_dir, env_file=None, go=False):
     )
     address = settings['url'] or settings['path']
     print(f'{"Published" if go else "Dry run complete"}: {address}/')
+
+
+def deploy_access(site_dir, env_file=None, go=False) -> list[str]:
+    """Upload the token gate alone: the `.htaccess` of the site root and
+    of every page folder online, so an added or withdrawn token takes
+    effect without a rebuild (`tokens add` / `tokens revoke`).
+
+    The folders are those on the host (a page published from another
+    machine included); a team page's folder keeps its password, read
+    from its local manifest, and one with no local build is a team
+    page if its `.htaccess` online asks for a password.
+
+    Parameters
+    ----------
+    site_dir : str or Path
+        The site's local folder (`site.site_root`).
+    env_file : str or Path, optional
+    go : bool
+        Upload for real.
+
+    Returns
+    -------
+    list of str
+        The folders whose gate was written, the root as ''.
+    """
+    site_dir = Path(site_dir)
+    settings = load_deploy_settings(env_file)
+    env = _rclone_env(settings)
+    dry = [] if go else ['--dry-run']
+    root = f'bh:{settings["path"]}'
+    online = _rclone_output(env, 'lsf', '--dirs-only', root) or ''
+    folders = [
+        '',
+        *sorted(n.rstrip('/') for n in online.split() if n and n != 'thumbs/'),
+    ]
+    written = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for folder in folders:
+            manifest = site_dir / folder / 'scene.json'
+            if manifest.exists():
+                team = (
+                    json.loads(manifest.read_text(encoding='utf-8')).get('audience')
+                    == 'team'
+                )
+            elif folder:
+                current = _rclone_output(env, 'cat', f'{root}/{folder}/.htaccess') or ''
+                if 'RedirectMatch' in current:
+                    # An old address pointing at a page (`deploy_redirect`),
+                    # whose target is gated: left as it is.
+                    print(f'{folder}: redirect, left as it is')
+                    continue
+                team = 'AuthUserFile' in current
+            else:
+                team = False
+            local = Path(tmp) / f'{folder or "root"}.htaccess'
+            local.write_text(site_htaccess(settings, team), encoding='utf-8')
+            remote = f'{root}/{folder}/.htaccess' if folder else f'{root}/.htaccess'
+            print(
+                f'{folder or "(root)"}: token gate{" + team password" if team else ""}'
+            )
+            _rclone(
+                env,
+                'copyto',
+                str(local),
+                remote,
+                *_without_filters(RCLONE_SFTP_FLAGS),
+                *dry,
+            )
+            written.append(folder)
+    print(f'{"Updated" if go else "Dry run complete"}: {len(written)} folders')
+    return written
 
 
 def deploy_redirect(old_path, new_url, env_file=None, go=False):

@@ -1314,6 +1314,9 @@ def _team_scene(tmp_path):
     return tmp_path
 
 
+FAKE_TOKEN = 'AbCdEfGhIjKlMnOpQrSt_-'
+
+
 def _fake_host(monkeypatch, team_passwd, on_host):
     settings = {
         'host': 'host.example',
@@ -1321,11 +1324,17 @@ def _fake_host(monkeypatch, team_passwd, on_host):
         'path': '/home/someone/public_html/values',
         'key': '',
         'known_hosts': '',
-        'url': '',
+        'url': 'https://host.example/values',
         'team_passwd': team_passwd,
+        'access_tokens': 'tokens.tsv',
+        'access_contact': 'someone@host.example',
     }
     calls = []
     monkeypatch.setattr(web_scene, 'load_deploy_settings', lambda env_file: settings)
+    # A fabricated token.
+    monkeypatch.setattr(
+        web_scene, 'read_access_tokens', lambda path: [(FAKE_TOKEN, 'a reader')]
+    )
     monkeypatch.setattr(web_scene, '_rclone_env', lambda settings: {})
     monkeypatch.setattr(
         web_scene,
@@ -1351,10 +1360,11 @@ def test_team_page_goes_up_only_behind_a_password(tmp_path, monkeypatch):
 
     calls = _fake_host(monkeypatch, passwd, on_host={f'bh:{passwd}'})
     web_scene.deploy_web_scene(scene, go=True, subpath='nantucket-team')
-    # The password goes up before any file of the page.
+    # The token gate and the password go up before any file of the page.
     assert calls[0][0] == 'copyto' and calls[0][2].endswith('/nantucket-team/.htaccess')
     htaccess = (scene / '.htaccess').read_text(encoding='utf-8')
     assert f'AuthUserFile "{passwd}"' in htaccess and 'Require valid-user' in htaccess
+    assert FAKE_TOKEN in htaccess and 'access.html [R=302,L,QSD]' in htaccess
     # Apache's own 401 page, or the host's rewrite rules turn the
     # password request into a 404 and browsers never ask.
     assert 'ErrorDocument 401 default' in htaccess
@@ -1372,10 +1382,63 @@ def test_team_password_path_is_checked_and_public_pages_carry_none(
         json.dumps({'build_id': 'x', 'audience': 'public', 'layers': []}),
         encoding='utf-8',
     )
+    # A public page left with a team page's .htaccess is rewritten:
+    # the token gate, no password.
     (scene / '.htaccess').write_text(web_scene.team_htaccess('/p'), encoding='utf-8')
-    _fake_host(monkeypatch, '/p', on_host={'bh:/p'})
-    with pytest.raises(ValueError, match='asks for a password'):
-        web_scene.deploy_web_scene(scene, go=False)
+    calls = _fake_host(monkeypatch, '/p', on_host={'bh:/p'})
+    web_scene.deploy_web_scene(scene, go=False)
+    htaccess = (scene / '.htaccess').read_text(encoding='utf-8')
+    assert 'AuthUserFile' not in htaccess and FAKE_TOKEN in htaccess
+    assert calls[0][0] == 'copyto' and calls[0][2].endswith('/.htaccess')
+
+
+def test_access_gate_lets_tokens_in_and_sends_others_to_the_access_page():
+    gate = web_scene.access_htaccess([FAKE_TOKEN, 'b' * 22], '/values/', 'host.example')
+    # A token in the address sets the cookie, scoped to the site.
+    assert 'CO=op_access:%1:host.example:43200:/values:secure:httponly' in gate
+    # Without a token in the address or the cookie: the access page,
+    # which (with the icons) passes always.
+    # QSD: a refused token does not travel on to the access page.
+    assert 'RewriteRule ^ /values/access.html [R=302,L,QSD]' in gate
+    assert '!(?:^|/)(?:access\\.html|icon\\-32\\.png|icon\\-180\\.png)$' in gate
+    assert f'({FAKE_TOKEN}|{"b" * 22})' in gate
+    with pytest.raises(ValueError):
+        web_scene.access_htaccess(['short'], '/values', 'host.example')
+    with pytest.raises(ValueError):
+        web_scene.access_htaccess([FAKE_TOKEN], '/values', 'bad host"')
+
+
+def test_access_tokens_file_needs_a_token(tmp_path):
+    path = tmp_path / 'tokens.tsv'
+    with pytest.raises(ValueError, match='No access tokens'):
+        web_scene.read_access_tokens('')
+    with pytest.raises(ValueError, match='holds no access token'):
+        web_scene.read_access_tokens(path)
+    path.write_text(f'# comment\n{FAKE_TOKEN}\ta reader\n', encoding='utf-8')
+    assert web_scene.read_access_tokens(path) == [(FAKE_TOKEN, 'a reader')]
+    path.write_text('not a token\tsomeone\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='not an access token'):
+        web_scene.read_access_tokens(path)
+
+
+def test_tokens_add_and_revoke_one_person(tmp_path):
+    from openplaces.viz.web_scene import tokens
+
+    path = tmp_path / 'tokens.tsv'
+    link = tokens.add(path, 'reader one', 'https://host.example/values')
+    tokens.add(path, 'reader two', 'https://host.example/values')
+    token = link.rsplit('=', 1)[1]
+    assert link.startswith('https://host.example/values/?t=')
+    assert web_scene.read_access_tokens(path)[0] == (token, 'reader one')
+    tokens.revoke(path, 'reader one')
+    assert [n for _, n in web_scene.read_access_tokens(path)] == ['reader two']
+
+
+def test_access_page_takes_the_contact_from_the_settings():
+    page = web_scene.access_page({'access_contact': 'someone@host.example'})
+    assert 'mailto:someone@host.example' in page and '{{CONTACT}}' not in page
+    with pytest.raises(ValueError, match='ACCESS_CONTACT'):
+        web_scene.access_page({'access_contact': ''})
 
 
 def test_identical_outlines_merge_into_one_feature():
