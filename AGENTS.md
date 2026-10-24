@@ -339,7 +339,10 @@ everywhere:
   `imputed` marker in its `{col}_source` (`provenance.mark_imputed`).
 
 `export_delivery` pools a curated region into a bundle and **withholds what
-restricted sources supplied**; a team bundle (`<region>.team`) is
+restricted sources supplied**. **The share bucket holds those bundles and
+nothing else**: curated per-unit files are saved to `core`, a recipe saving
+to `share` fails to load, and `io.tables` refuses any other table write
+there (`UnredactedShareWriteError`). A team bundle (`<region>.team`) is
 published only on a password-protected team value page, never openly
 (`io/delivery/README.md`). A narrow debug run of the DAG stops at
 curate, so a one-county rebuild cannot overwrite a shipped regional file

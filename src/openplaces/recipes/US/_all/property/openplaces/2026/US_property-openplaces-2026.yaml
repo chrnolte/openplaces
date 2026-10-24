@@ -55,7 +55,11 @@ process_by:
   admin_level: 3
 
 save_to:
-  data_dir: share
+  # Private: a curated county carries what restricted sources supplied,
+  # which only export_delivery withholds. The share bucket takes the
+  # redacted bundles alone (io.tables.refuse_unredacted_share_write).
+  data_dir: core
+  retention: keep
 
 pipeline:
   # Foundation type, from the source's own foundation words or codes.

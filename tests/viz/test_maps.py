@@ -15,8 +15,9 @@ ADMIN_ID = 'US-MA-MI'
 
 @pytest.fixture
 def share_to_tmp(tmp_path, monkeypatch):
-    """Redirect the 'share' data dir so tests never touch real outputs."""
-    monkeypatch.setitem(cfg.config['directories'], 'share', tmp_path)
+    """Redirect the curated recipe's bucket to a fresh folder per test."""
+    bucket = get_recipe_by_id('US_footprint-openplaces-2026')['save_to']['data_dir']
+    monkeypatch.setitem(cfg.config['directories'], bucket, tmp_path)
     return tmp_path
 
 

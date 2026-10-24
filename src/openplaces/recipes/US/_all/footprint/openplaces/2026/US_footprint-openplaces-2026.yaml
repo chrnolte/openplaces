@@ -26,9 +26,13 @@ process_by:
   admin_level: 3
 
 save_to:
-  data_dir: share
+  # Private: a curated county carries what restricted sources supplied,
+  # which only export_delivery withholds. The share bucket takes the
+  # redacted bundles alone (io.tables.refuse_unredacted_share_write).
+  data_dir: core
+  retention: keep
   # Save as a single combined GeoParquet (attributes + geometry) without sidecars,
-  # optimized for external sharing and direct GIS client consumption.
+  # for direct GIS client consumption.
   combined: true
 
 # Region-wide delivery bundle (io/delivery/: export_delivery). Names the

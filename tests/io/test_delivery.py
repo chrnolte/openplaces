@@ -36,7 +36,7 @@ def _recipe():
         'stage': 'curate',
         'entity': Entity('footprint', 'test', '2026'),
         'process_by': {'admin_level': 3},
-        'save_to': {'data_dir': 'share', 'combined': True},
+        'save_to': {'data_dir': 'core', 'combined': True},
         'share': {
             'columns': CANONICAL,
             'point_columns': POINT_EXTRA,

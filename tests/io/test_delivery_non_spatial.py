@@ -38,7 +38,7 @@ def _recipe(**share_overrides):
         'stage': 'curate',
         'entity': Entity('transaction', 'test', '2026'),
         'process_by': {'admin_level': 3},
-        'save_to': {'data_dir': 'share'},
+        'save_to': {'data_dir': 'core'},
         'share': share,
     }
 

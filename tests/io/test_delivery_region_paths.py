@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from openplaces.config import cfg
 from openplaces.core.schema import AdminId, Entity
 from openplaces.io import delivery as delivery_module
 from openplaces.io import readers
@@ -211,7 +212,7 @@ def _recipe(**delivery):
         'stage': 'curate',
         'entity': Entity('transaction', 'test', '2026'),
         'process_by': {'admin_level': 3},
-        'save_to': {'data_dir': 'share'},
+        'save_to': {'data_dir': 'core'},
         'share': {
             'columns': ['admin3_id', 'price'],
             'geometry': False,
@@ -275,7 +276,12 @@ def test_a_region_anchored_on_its_county_misses_the_curated_output(registry):
     curated = get_output_path(recipe, 'US-NC-BB')
 
     assert canonical != curated
-    assert canonical == curated.parent / 'test-county-anchor' / curated.name
+    # The bundle is filed in the share bucket, the curated file in the
+    # recipe's own; below their roots, the paths line up.
+    share = Path(cfg.get_dir('share'))
+    core = Path(cfg.get_dir('core'))
+    expected = curated.parent / 'test-county-anchor' / curated.name
+    assert canonical.relative_to(share) == expected.relative_to(core)
 
 
 def test_a_region_keeps_its_path_when_a_sibling_is_declared(registry):
@@ -328,8 +334,11 @@ def test_an_undeclared_whole_unit_region_is_refused(registry):
 
 def test_an_inline_grouping_on_a_county_would_overwrite_its_curated_file():
     recipe = _recipe(admin_ids=['US-NC-AL'], admin_id='US-NC-AL')
+    # Filed in the share bucket by default, apart from the curated file.
+    assert delivery_paths(recipe)['canonical'] != get_output_path(recipe, 'US-NC-AL')
+    # Asked into the curated file's own bucket, it would overwrite it.
     with pytest.raises(ValueError, match='curated output of US-NC-AL'):
-        delivery_paths(recipe)
+        delivery_paths(recipe, output_dir='core')
 
 
 def test_an_inline_grouping_on_a_state_is_filed_as_the_state():

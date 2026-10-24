@@ -84,6 +84,16 @@ unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
 whether it is coarse enough. `--config deliver=true` likewise only forces the
 regions the run actually touches.
 
+**The share bucket takes bundles only.** Curated per-unit files are saved to
+`core`, since they hold every source's values unredacted; a curated Fairfax
+property file written into `share/` carried a restricted roll's attributes
+(2026-10-21). `delivery_paths` files bundles in `share` whatever bucket the
+recipe saves to, a recipe whose `save_to: data_dir:` is `share` fails to
+load, and `io.tables` refuses any table write into the share bucket
+(`UnredactedShareWriteError`) outside `redacted_share_writes()`, which
+`export_delivery` enters only around its writes of redacted frames. Team
+folders get no exemption: a team bundle still withholds uncleared sources.
+
 **It withholds what restricted sources supplied, and ships the rest.** A
 source recording `redistribution_restricted: true` or a `usage_requirement`
 may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,

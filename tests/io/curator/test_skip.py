@@ -96,7 +96,7 @@ def test_control_keys_not_passed_as_kwargs(monkeypatch):
 
 def test_save_to_combined_true_passed_to_save_parquet(monkeypatch):
     _, _, _, save_kwargs = _run_pipeline(
-        monkeypatch, [{'step': 't_a'}], save_to={'data_dir': 'share', 'combined': True}
+        monkeypatch, [{'step': 't_a'}], save_to={'data_dir': 'core', 'combined': True}
     )
     assert save_kwargs == {'combined': True}
 

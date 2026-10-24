@@ -1064,7 +1064,9 @@ def aggregate_files(
         Required explicitly because the recipe's own ``save_to.admin_level``
         may differ from the intended aggregation target.
     output_dir : str, optional
-        Directory for the aggregated output files (e.g. ``'share'``).
+        Directory for the aggregated output files (e.g. ``'out'``). Not
+        ``'share'``, which takes only redacted delivery bundles
+        (`io.tables.refuse_unredacted_share_write`).
         Does not affect where intermediate input files are looked up - those
         are always resolved from the recipe's original ``save_to.data_dir``.
         Uses the recipe default if omitted.
