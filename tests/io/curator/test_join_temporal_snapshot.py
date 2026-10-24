@@ -15,7 +15,10 @@ from openplaces.config import cfg
 from openplaces.core.schema import AdminId
 from openplaces.io import to_parquet
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.transactions import join_temporal_snapshot
+from openplaces.io.curator.transactions import (
+    join_temporal_snapshot,
+    take_next_roll_when_built,
+)
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 PROPERTY_RECIPE_ID = 'US-FL_property-fldor-2026'
@@ -365,3 +368,72 @@ def test_no_source_token_writes_no_sidecar(data_root):
         columns=['tax_year', 'year_built'],
     ).curated
     assert not [c for c in out.columns if c.endswith('_source')]
+
+
+def _roll(key, year, market, land, year_built):
+    return {
+        'parcel_id_local': key,
+        'tax_year': year,
+        'market_value': market,
+        'land_value': land,
+        'year_built': year_built,
+    }
+
+
+def test_a_house_finished_in_its_sale_year_takes_the_next_roll(data_root):
+    # Fabricated rolls. A: lot in 2020, house built 2020 on the 2021
+    # roll. B: house built 2021, after its 2020 sale. C: sold as land.
+    _write_property_snapshots(
+        [
+            _roll('A', 2020, 50, 50, None),
+            _roll('A', 2021, 250, 50, 2020),
+            _roll('B', 2020, 40, 40, None),
+            _roll('B', 2021, 240, 40, 2021),
+            _roll('C', 2020, 30, 30, None),
+            _roll('C', 2021, 230, 30, 2020),
+        ]
+    )
+    tx = pd.DataFrame(
+        {
+            'parcel_id_local': ['A', 'B', 'C'],
+            'sale_year': [2020, 2020, 2020],
+            'sale_vacant': ['Improved property', 'Improved property', 'Vacant land'],
+        }
+    )
+    columns = ['tax_year', 'year_built', 'market_value', 'land_value']
+    state = join_temporal_snapshot(
+        _state(tx),
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key='parcel_id_local',
+        normalize_key=False,
+        date_column='sale_year',
+        vintage_column='tax_year',
+        direction='backward',
+        prefix='at_sale_',
+        match_type_column='property_match_type',
+        columns=columns,
+        source_token='fldor',
+    )
+    out = take_next_roll_when_built(
+        state,
+        recipe_id=PROPERTY_RECIPE_ID,
+        join_key='parcel_id_local',
+        date_column='sale_year',
+        vintage_column='tax_year',
+        columns=columns,
+        prefix='at_sale_',
+        restrict_to={'column': 'sale_vacant', 'equals': 'Improved property'},
+        source_token='fldor',
+    ).curated.set_index('parcel_id_local')
+
+    assert out.loc['A', 'property_match_type'] == 'built_in_sale_year'
+    assert out.loc['A', 'at_sale_tax_year'] == 2021
+    assert out.loc['A', 'at_sale_market_value'] == 250
+    assert out.loc['A', 'at_sale_market_value_source'] == 'fldor+imputed'
+    # Built after the sale: the sale-year roll stands.
+    assert out.loc['B', 'property_match_type'] == 'exact'
+    assert out.loc['B', 'at_sale_market_value'] == 40
+    assert out.loc['B', 'at_sale_market_value_source'] == 'fldor'
+    # Sold as land: never considered.
+    assert out.loc['C', 'property_match_type'] == 'exact'
+    assert out.loc['C', 'at_sale_tax_year'] == 2020

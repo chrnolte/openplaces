@@ -618,6 +618,181 @@ def join_temporal_snapshot(
     return state
 
 
+@_register('take_next_roll_when_built', phase='gather')
+def take_next_roll_when_built(
+    state: CurateState,
+    recipe_id: str,
+    join_key: str | list[str],
+    date_column: str,
+    vintage_column: str,
+    columns: list,
+    prefix: str = '',
+    match_type_column: str = 'property_match_type',
+    restrict_to: dict | None = None,
+    market_column: str = 'market_value',
+    land_column: str = 'land_value',
+    year_built_column: str = 'year_built',
+    match_type_value: str = 'built_in_sale_year',
+    source_token: str | None = None,
+    normalize_key: bool = False,
+) -> CurateState:
+    """Describe a house sold in the year it was finished by the next roll.
+
+    A roll of year *t* states a property as it was on its assessment
+    date, early in *t*, so the house on a lot sold later in *t* is often
+    not on it yet: the sale-year roll reads a vacant lot under a sale
+    the record itself calls improved. Measured 2026-10-23 on US-FL-LA:
+    13.3% of improved sales showed no improvement value in the roll of
+    their sale year and one in the roll after it.
+
+    This step runs after an exact-year `join_temporal_snapshot` and
+    replaces that year's values with the next year's where all of these
+    are stated: the sale is within *restrict_to* (Florida: the sale's
+    own vacant/improved code reads improved), the sale-year roll it was
+    matched to gives no improvement (market value not above land
+    value), and the next year's roll of the same property gives one,
+    with a year built no later than the sale year. Every condition is a
+    stated value; nothing is estimated. A row it changes takes
+    *match_type_value* and, with *source_token*, sidecars marked
+    `imputed`: its values come from a year other than the sale's, which
+    the maintainer's rule for neighboring years marks (2026-10-24).
+
+    What this is, against the design limits (L25 above all): the cells
+    are filled from another row of the table, the same property's roll
+    row of year *t+1*, found by exact keys the sale and the roll both
+    state. No table or graph of values is built across properties, and
+    no value is chosen by how often it co-occurs with a key: the one
+    candidate row either meets the stated conditions or is not used.
+    That is the position of the as-of join's fallback passes, which the
+    maintainer kept, marked, on 2026-10-24; the marker lets a reader
+    drop these rows.
+
+    Parameters
+    ----------
+    recipe_id : str
+        The roll panel (as for `join_temporal_snapshot`).
+    join_key : str or list of str
+        Keys tried in order, each exact, as `join_temporal_snapshot`
+        takes them.
+    date_column, vintage_column, columns, prefix
+        As given to the `join_temporal_snapshot` pass this follows.
+    match_type_column : str, optional
+        Only rows reading `exact` here are considered.
+    restrict_to : dict, optional
+        `{'column': ..., 'equals': ...}`: rows outside it are left alone.
+        A column the table lacks selects nothing.
+    market_column, land_column, year_built_column : str, optional
+        Roll columns stating total value, land value and year built.
+    match_type_value : str, optional
+        Written into *match_type_column* on the rows changed.
+    source_token : str, optional
+        Write `{column}_source` as *source_token* marked imputed on the
+        rows changed (vintage column excepted).
+    normalize_key : bool, optional
+        Strip keys of punctuation before comparing (default False).
+    """
+    curated = state.curated
+    keys = [join_key] if isinstance(join_key, str) else list(join_key)
+    keys = [k for k in keys if k in curated.columns]
+    market_at = f'{prefix}{market_column}'
+    land_at = f'{prefix}{land_column}'
+    if (
+        not keys
+        or match_type_column not in curated.columns
+        or market_at not in curated.columns
+        or land_at not in curated.columns
+    ):
+        return state
+
+    eligible = curated[match_type_column] == 'exact'
+    if restrict_to:
+        if restrict_to['column'] not in curated.columns:
+            return state
+        eligible &= curated[restrict_to['column']] == restrict_to['equals']
+    improvement_then = pd.to_numeric(curated[market_at], errors='coerce') - (
+        pd.to_numeric(curated[land_at], errors='coerce')
+    )
+    eligible &= (improvement_then <= 0).fillna(False)
+    if not eligible.any():
+        return state
+
+    try:
+        ref = get_entities(recipe_id, admin_id=state.admin_id)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        return state
+    needed = {market_column, land_column, year_built_column, vintage_column}
+    if ref is None or not needed <= set(ref.columns):
+        return state
+    available = [c for c in columns if c != vintage_column and c in ref.columns]
+    ref_keys = [k for k in keys if k in ref.columns]
+    extra = [
+        c for c in (market_column, land_column, year_built_column) if c not in available
+    ]
+    ref = ref[[*ref_keys, vintage_column, *available, *extra]].copy()
+    ref[vintage_column] = pd.to_numeric(ref[vintage_column], errors='coerce')
+
+    def key_form(values: pd.Series) -> pd.Series:
+        text = _normalized(values) if normalize_key else values.astype('string')
+        return text.astype('string').where(values.notna())
+
+    sales = curated.loc[eligible, [*keys, date_column]].copy()
+    sales['_next_year'] = pd.to_numeric(sales[date_column], errors='coerce') + 1
+    for key in keys:
+        sales[key] = key_form(sales[key])
+    for key in ref_keys:
+        ref[key] = key_form(ref[key])
+
+    # The same exact keys in the same order as the as-of join: a row
+    # placed by an earlier key is not looked up by a later one.
+    found = []
+    remaining = sales
+    for key in ref_keys:
+        left = remaining.loc[remaining[key].notna(), [key, '_next_year']]
+        if left.empty:
+            continue
+        right = ref.dropna(subset=[key]).drop_duplicates(subset=[key, vintage_column])
+        hit = left.reset_index().merge(
+            right.drop(columns=[k for k in ref_keys if k != key]),
+            left_on=[key, '_next_year'],
+            right_on=[key, vintage_column],
+            how='inner',
+        )
+        hit = hit.set_index(hit.columns[0])
+        found.append(hit)
+        remaining = remaining.drop(index=hit.index)
+    if not found:
+        return state
+    nxt = pd.concat(found)
+
+    year_built = pd.to_numeric(nxt[year_built_column], errors='coerce')
+    improvement_next = pd.to_numeric(nxt[market_column], errors='coerce') - (
+        pd.to_numeric(nxt[land_column], errors='coerce')
+    )
+    sale_year = pd.to_numeric(curated.loc[nxt.index, date_column], errors='coerce')
+    built = (improvement_next > 0) & year_built.notna() & (year_built <= sale_year)
+    changed = nxt.index[built.fillna(False).to_numpy()]
+    if len(changed) == 0:
+        return state
+
+    for column in [vintage_column, *available]:
+        dest = f'{prefix}{column}'
+        if dest in curated.columns:
+            curated.loc[changed, dest] = nxt.loc[changed, column].to_numpy()
+    curated.loc[changed, match_type_column] = match_type_value
+    if source_token is not None:
+        for column in available:
+            curated = record_source(
+                curated, f'{prefix}{column}', changed, source_token, imputed=True
+            )
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  take_next_roll_when_built ({recipe_id}): {len(changed):,} of '
+            f'{int(eligible.sum()):,} eligible sales take the next roll'
+        )
+    return state
+
+
 @_register('derive_document_id', phase='standardize')
 def derive_document_id(
     state: CurateState,

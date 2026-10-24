@@ -259,6 +259,27 @@ pipeline_patch:
       source_token: fldor
       columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
                 market_value, land_value, n_dwellings, n_buildings]
+  # A house finished in the year it sold is not on that year's roll,
+  # whose assessment date falls early in the year: the sale says
+  # improved, the roll says vacant lot. Where the next roll states the
+  # house, built no later than the sale, the sale takes that roll
+  # (`built_in_sale_year`, marked imputed; the maintainer's decision 3
+  # of 2026-10-24).
+  # Measured 2026-10-23 on US-FL-LA: 13.3% of improved sales had no improvement value in their sale-year roll and one in the next.
+  - insert_before: keep_registered_columns
+    step:
+      step: take_next_roll_when_built
+      phase_override: follows the backward pass above, same reason
+      recipe_id: US-FL_property-fldor-2026
+      join_key: [parcel_id_admin2, parcel_id_local]
+      date_column: sale_year
+      vintage_column: tax_year
+      prefix: at_sale_
+      match_type_column: property_match_type
+      restrict_to: {column: sale_vacant, equals: "Improved property"}
+      source_token: fldor
+      columns: [tax_year, year_built, living_area_sqft, land_area_sqft,
+                market_value, land_value, n_dwellings, n_buildings]
   # A sale before the roll's first vintage has no earlier year to take;
   # the nearest later one is the only evidence there is. Restricted to
   # sales already improved at the time, so a bare lot cannot inherit the
