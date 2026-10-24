@@ -163,10 +163,9 @@ places:
     terrain: false
   # Washington DC, a circle like every page (maintainer, 2026-10-19),
   # reaching into every state of `states`; the tour starts at Suitland
-  # (BEA). Until the pipeline delivers region `washington-dc`, its lots
-  # come from model files (DC and Prince George's only); then
-  # `lots_in_model_file` goes, and the page reads the bundles, with
-  # models refit on their parcel ids.
+  # (BEA). Lots and buildings from the `washington-dc` team bundles
+  # (`team_bundles`: Fairfax's values, team only), the models joined on
+  # their parcel ids where a unit has a model file (DC, PG, MO).
   - slug: washington-dc-pg-team
     title: Washington DC area (team)
     around: the John A. Wilson Building, for the research team
@@ -177,6 +176,30 @@ places:
     downtown: [-76.93473, 38.84994]
     downtown_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
     team: true
+    team_bundles: true
     model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
-    lots_in_model_file: true
     terrain: false
+  # The greeting page for BEA (maintainer, 2026-10-23): public, with the
+  # valuation work's models, whose training sales' terms allow
+  # publishing their predictions (plans/value-viewer-bea-greeting-page.md).
+  # Only the units cleared for a public page; never on the landing page
+  # or in `--all` (`unlisted`). Model values per parcel only, never
+  # summed or averaged over an area.
+  - slug: suitland
+    title: Suitland and Washington DC
+    around: the Suitland Federal Center
+    state: US-MD
+    states: [US-DC, US-MD, US-VA]
+    center: [-76.93473, 38.84994]
+    center_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
+    only_units: [US-DC-DC, US-MD-PG, US-MD-MO]
+    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+    models_public: true
+    unlisted: true
+    terrain: false
+    notes:
+      - name: Counties shown
+        credit: >-
+          The District of Columbia and Prince George's and Montgomery
+          counties, Maryland, whose records may be shared. The circle's
+          Virginia counties are left out until their terms allow it.

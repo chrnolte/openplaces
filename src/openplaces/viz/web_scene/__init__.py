@@ -461,6 +461,8 @@ class ModelFiles:
     data_credits : tuple of dict
         The sidecars' own `credits`: the data the files were made from
         (a lots file's outlines and values), whatever their names.
+    training_sales : dict
+        Per view label, (admin id, sales it was trained on) per unit.
     """
 
     table: pd.DataFrame
@@ -469,6 +471,7 @@ class ModelFiles:
     basis: str = ''
     credits: tuple = ()
     data_credits: tuple = ()
+    training_sales: dict = field(default_factory=dict)
 
 
 def read_model_files(paths) -> ModelFiles | None:
@@ -481,6 +484,7 @@ def read_model_files(paths) -> ModelFiles | None:
     `credit`). Files that do not exist are skipped; None when none do.
     """
     tables, views, credits, data, years, bases = [], {}, [], [], set(), set()
+    training = {}
     for path in map(Path, paths):
         if not path.exists():
             continue
@@ -509,12 +513,10 @@ def read_model_files(paths) -> ModelFiles | None:
             if view.get('credit'):
                 credits.append({'name': view['label'], 'credit': view['credit']})
             if view.get('n_training_sales'):
-                sales = int(view['n_training_sales'])
-                credits.append(
-                    {
-                        'name': f'{view["label"]}, {side.get("admin_id", path.stem)}',
-                        'credit': f'Trained on {sales:,} sales.',
-                    }
+                # Per view, the unit and its count; the page names the
+                # units (`model_credits`).
+                training.setdefault(view['label'], []).append(
+                    (side.get('admin_id', path.stem), int(view['n_training_sales']))
                 )
         credits += list(side.get('credits') or [])
         data += list(side.get('credits') or [])
@@ -532,7 +534,26 @@ def read_model_files(paths) -> ModelFiles | None:
         basis='; '.join(sorted(b for b in bases if b)),
         credits=tuple(unique.values()),
         data_credits=tuple(data_unique.values()),
+        training_sales=training,
     )
+
+
+def model_credits(model_files, unit_names) -> list[dict]:
+    """The Sources panel's model credits: each model's citation, with
+    the sales it was trained on per unit named in one line ("Trained on
+    sales: District of Columbia 5,798; Prince George's 15,358"). A count
+    of training sales, never a summary of the models' values."""
+    out = []
+    for credit in model_files.credits:
+        sales = model_files.training_sales.get(credit['name'])
+        if sales:
+            counts = '; '.join(f'{unit_names.get(a, a)} {n:,}' for a, n in sales)
+            credit = {
+                **credit,
+                'credit': f'{credit["credit"]}. Trained on sales: {counts}.',
+            }
+        out.append(credit)
+    return out
 
 
 def lots_from_model_file(path, layer) -> tuple[gpd.GeoDataFrame, SceneLayer]:
@@ -1014,7 +1035,36 @@ SOURCE_DISPLAY = {
         'credit': 'Microsoft Building Footprints (ODbL 1.0)',
     },
     'fema': {'name': 'FEMA USA Structures'},
+    'nsi': {'name': 'National Structure Inventory (USACE)'},
+    'vgin': {'name': 'Virginia Geographic Information Network (VGIN)'},
+    # Fairfax VA's assessor roll, shown on team pages only (its terms
+    # are for internal use; maintainer's approval, 2026-10-19).
+    'fairfaxcounty': {'name': 'Fairfax County assessor'},
     'nconemap': {'name': 'NC OneMap', 'credit': 'NC OneMap (nconemap.gov)'},
+    # The acknowledgment Maryland's licence asks of derived data
+    # (US-MD_parcel-mdimap-2026), and DC's CC BY 4.0 attribution
+    # (US-DC_property-dcgovitspe-2026).
+    'mdimap': {
+        'name': 'Maryland Department of Planning (MD iMAP)',
+        'credit': 'State of Maryland / Maryland Department of Planning',
+    },
+    'dcgovitspe': {
+        'name': 'DC Office of Tax and Revenue (ITSPE)',
+        'credit': 'District of Columbia, Office of the Chief Technology Officer and '
+        'Office of Tax and Revenue (CC BY 4.0)',
+    },
+    # DC's lot outlines (US-DC_parcel-dcgovrecordlots-2026,
+    # US-DC_parcel-dcgovtaxlots-2026), CC BY 4.0 like its roll.
+    'dcgovrecordlots': {
+        'name': 'DC record lots (DC GIS)',
+        'credit': 'District of Columbia, Office of the Chief Technology Officer '
+        '(CC BY 4.0)',
+    },
+    'dcgovtaxlots': {
+        'name': 'DC tax lots (DC GIS)',
+        'credit': 'District of Columbia, Office of the Chief Technology Officer '
+        '(CC BY 4.0)',
+    },
 }
 
 _SOURCE_LINE = re.compile(r'^\s*(?P<share>\d+(?:\.\d+)?)%\s+(?P<rest>\S.*)$')
@@ -1111,6 +1161,13 @@ def scene_sources(recipe, geometry_source) -> dict:
 
 
 FILLED_BY_OPENPLACES = 'Filled in by openplaces'
+# A withheld cell's sidecar token (`io.delivery.redaction.WITHHELD`),
+# and how the Sources panel names it.
+WITHHELD_TOKEN = 'withheld'
+WITHHELD_BY_TERMS = "Withheld: the source's terms do not allow sharing it"
+# A unit whose bundle brings no value at all (no roll, or one not
+# cleared for the page).
+NO_VALUES_IN_BUNDLE = "No values in this page's data"
 
 
 def value_sources(provenance) -> list[dict]:
@@ -1140,6 +1197,10 @@ def value_sources(provenance) -> list[dict]:
         return []
 
     def source(token):
+        # A cell the delivery emptied because its source's terms do
+        # not allow sharing it (`io.delivery.redaction.WITHHELD`).
+        if token == WITHHELD_TOKEN:
+            return WITHHELD_BY_TERMS
         # `parcel.massgis`: a lot's value, from that lot's source.
         source_id = token.split('+')[0].split('.')[-1]
         if source_id in ('', 'parcel'):
@@ -1152,9 +1213,50 @@ def value_sources(provenance) -> list[dict]:
     shares = names.value_counts(normalize=True)
     credits = {shown['name']: shown.get('credit') for shown in SOURCE_DISPLAY.values()}
     return [
-        {'name': name, 'share': float(share), 'credit': credits.get(name)}
+        {
+            'name': name,
+            'share': float(share),
+            'credit': credits.get(name),
+            **({'withheld': True} if name == WITHHELD_BY_TERMS else {}),
+        }
         for name, share in shares.items()
     ]
+
+
+def value_sources_by_unit(provenance, units, unit_names) -> list[dict]:
+    """`value_sources` for each unit of a scene, so a county whose
+    source is withheld (Fairfax VA's building values, 2026-10-24) shows
+    apart from its neighbors instead of disappearing into a scene-wide
+    share (maintainer's decision, via the coordinator).
+
+    Parameters
+    ----------
+    provenance : pandas.Series
+        The shown value's `_source` column.
+    units : pandas.Series
+        Each feature's `admin3_id`, aligned with `provenance`.
+    unit_names : dict
+        `admin3_id` to the unit's name.
+
+    Returns
+    -------
+    list of dict
+        `unit` (its name) and `values` (as `value_sources`), in the
+        order of the names given. A unit whose features carry no value
+        at all says so (`NO_VALUES_IN_BUNDLE`, marked `missing`), so its
+        empty lots do not read as unvalued land; a unit without
+        features is left out.
+    """
+    out = []
+    for unit, name in unit_names.items():
+        rows = (units == unit).to_numpy()
+        if not rows.any():
+            continue
+        sources = value_sources(provenance[rows]) or [
+            {'name': NO_VALUES_IN_BUNDLE, 'share': 1.0, 'credit': None, 'missing': True}
+        ]
+        out.append({'unit': name, 'values': sources})
+    return out
 
 
 def _sources_document(entries: list[dict]) -> dict:
@@ -3357,6 +3459,8 @@ def build_web_scene(
     place_title=None,
     model_files=None,
     lots_file=None,
+    models_public=False,
+    notes=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -3440,6 +3544,16 @@ def build_web_scene(
         their lots
         alone, read from that file, and `region` is not read. Needs
         `model_files`; the sidecar's credits are the Sources.
+    models_public : bool
+        Draw `model_files`' views on a public page instead of making it
+        a team page: only for models whose training data's terms allow
+        publishing their predictions (the BEA greeting page, maintainer
+        2026-10-23: DC, Prince George's and Montgomery). Never applies
+        to the layer's own `model_views` (PLACES-FMV), which stay on
+        team pages.
+    notes : sequence of dict, optional
+        Further `name` and `credit` notes for the Sources panel, e.g.
+        which units of the circle are left out and why.
     verbose : bool
 
     Returns
@@ -3462,7 +3576,13 @@ def build_web_scene(
         layers = (lots_layer,)
     refuse_personal_fields(layers)
     # Model files make a team page whatever bundles it reads.
-    audience = 'team' if model_files is not None else scene_audience(region)
+    if models_public and model_files is None:
+        raise ValueError('Public model views come only from handed-over model files.')
+    audience = (
+        'team'
+        if model_files is not None and not models_public
+        else scene_audience(region)
+    )
     palettes = list(palettes) if palettes else default_palettes(layers)
     admin_ids = list(admin_ids)
     output_dir = Path(output_dir)
@@ -3615,6 +3735,12 @@ def build_web_scene(
         provenance = f'{layer.value_column}{SOURCE_SUFFIX}'
         if provenance in gdf.columns:
             source_docs[layer.name]['values'] = value_sources(gdf[provenance])
+            # Per unit too, where a scene spans several: one county's
+            # source can differ, or be withheld.
+            if len(names) > 1 and 'admin3_id' in gdf.columns:
+                source_docs[layer.name]['values_by_unit'] = value_sources_by_unit(
+                    gdf[provenance], gdf['admin3_id'], names
+                )
         out = terrain.gdf
         base = terrain.total_elevation - terrain.rendered_elevation
         geometry = out.geometry
@@ -3703,7 +3829,7 @@ def build_web_scene(
                 # (maintainer, 2026-10-19).
                 type_count += np.bincount(codes, minlength=n_types)
             views['type'] = {'label': 'Type', 'unit': 'type', 'categorical': True}
-        if layer.model_views and audience == 'team':
+        if layer.model_views and (audience == 'team' or models_public):
             homes = None
             if 'dwelling' in views:
                 # The lots the per-home view counts as homes.
@@ -3979,12 +4105,18 @@ def build_web_scene(
         'model_dollars': model_dollars,
         # Notes on values a model filled, for the Sources panel.
         'value_notes': [imputation_note(model_code)] if imputed_cells else [],
+        # Notes on what the page shows (`notes`), e.g. units left out.
+        'page_notes': [{'name': n['name'], 'credit': n['credit']} for n in notes or []],
         # The year the models describe: PLACES-FMV's 2010, or none for
         # models handed over in today's dollars (`model_files`).
         'model_year': None if model_files is not None else MODEL_REFERENCE[0],
         'model_basis': model_files.basis if model_files is not None else '',
         'model_sources': (
-            (list(model_files.credits) if model_files else list(MODEL_SOURCE_NOTES))
+            (
+                model_credits(model_files, names)
+                if model_files
+                else list(MODEL_SOURCE_NOTES)
+            )
             if any(
                 v.get('model')
                 for layer in manifest_layers

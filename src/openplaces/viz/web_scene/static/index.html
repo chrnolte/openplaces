@@ -327,6 +327,11 @@
   .src-item { margin: 0 0 10px; }
   .src-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
   .src-name { font-weight: 600; }
+  /* Values withheld under their source's terms: set apart in amber
+     italics, so they never read as a source that supplied values. */
+  .src-withheld .src-name { color: #f0b45a; font-style: italic; font-weight: 500; }
+  .src-unit > .src-name { margin-bottom: 2px; }
+  .src-unit .src-head .src-name { font-weight: 400; }
   .src-bar { height: 4px; border-radius: 2px; background: rgba(128, 128, 128, 0.2); position: relative; overflow: hidden; }
   .src-bar::after { content: ""; position: absolute; inset: 0; width: var(--w); background: currentColor; opacity: 0.55; border-radius: 2px; }
   .src-share { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; }
