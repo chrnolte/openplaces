@@ -14,13 +14,17 @@ attribute). A unit therefore passes with a note when at most
 Optionally the same outlier-count test runs over named input layers, to
 catch a mis-keyed ingest input whose curated output happens to pass.
 
+A region whose built outputs are older than an input they were built
+from fails too (`openplaces.flow.freshness`), unless ``--allow-stale``
+is passed.
+
 Only when every member passes does ``--deliver`` export the bundle.
 
 Usage::
 
     python -m openplaces.flow.region_verify RECIPE_ID REGION_ID
         [--deliver] [--input-layer RECIPE_ID ...]
-        [--margin 0.1] [--max-outliers 10]
+        [--margin 0.1] [--max-outliers 10] [--allow-stale]
 """
 
 import argparse
@@ -136,10 +140,17 @@ def main(argv=None):
     parser.add_argument('--input-layer', action='append', default=[])
     parser.add_argument('--margin', type=float, default=0.1)
     parser.add_argument('--max-outliers', type=int, default=10)
+    parser.add_argument(
+        '--allow-stale',
+        action='store_true',
+        help='verify and ship even when a built output is older than its inputs',
+    )
     args = parser.parse_args(argv)
     warnings.filterwarnings('ignore')
 
     import openplaces as op
+    from openplaces.flow.dag import RecipeDAG
+    from openplaces.flow.freshness import out_of_date
     from openplaces.io.delivery import delivery_paths
 
     bad, _ = verify_region(
@@ -151,6 +162,21 @@ def main(argv=None):
     )
     if bad:
         sys.exit(1)
+    # A file that passes the bounds test can still predate a rebuilt
+    # spine it was built from; shipping it would publish the old values.
+    dag = RecipeDAG(
+        args.recipe_id,
+        admin_ids=op.get_region_admin_ids(args.region_id),
+        deliver=False,
+        validate=False,
+    )
+    stale = out_of_date(dag)
+    if not stale.empty:
+        print(stale.to_string(index=False), flush=True)
+        print(f'{len(stale)} out-of-date job(s) in {args.region_id}', flush=True)
+        if not args.allow_stale:
+            print('Rebuild them, or pass --allow-stale to ship anyway.')
+            sys.exit(1)
     if not args.deliver:
         print('(dry verification only; pass --deliver to ship)')
         return

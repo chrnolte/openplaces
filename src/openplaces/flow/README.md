@@ -53,6 +53,25 @@ those consumers rerun. A consumed intermediate (absent, with a cleanup
 receipt) is not returned, since `input_paths` already drops it for a job
 whose output exists.
 
+**A delivery does not check that its curated files are current, so
+`region_verify` does** (`flow/freshness.py`). An export pools whatever
+curated files are on disk. A spine rebuilt in one run leaves the
+consumers another run built from it in place, older than the spine,
+and the next export ships them: transaction curates linked to a
+property spine that had since been fixed reached the valuation lane
+this way (2026-10). `out_of_date(dag)` lists every job whose existing
+output is older than an existing input, then every job built from such
+an output. It differs from `plan()` in one way: a missing output does
+not mark its consumers, because an absent file may be a held recipe, an
+opt-in lane or a consumed intermediate, and `plan()` reports Lake
+County, FL's whole transaction graph as "upstream scheduled" behind the
+held Shovels ingest. `region_verify` fails a region with any such job
+unless `--allow-stale` is passed; `python -m openplaces.flow.freshness
+RECIPE --region REGION` (or admin ids) runs the check alone, before a
+direct `export_delivery` call or before fitting on a bundle. Measured
+2026-10-24 on US-MA-SOM: 5 of 50 built footprint jobs out of date, the
+parcel spine older than the new MA DOR sales ingest.
+
 **A staging recipe's ingest is one job for all its units**
 (`ingest_<recipe>_batch` in the Snakefile, for recipes that stage a
 shared archive), and **the profiles keep a failed job's outputs**
