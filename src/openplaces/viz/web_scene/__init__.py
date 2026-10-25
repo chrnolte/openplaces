@@ -2365,6 +2365,9 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
                 'specularColor': [0, 0, 0],
             },
             no_value_rgba=(14, 14, 30, 255),
+            # A lot valued at $0 in black, not the default white, which
+            # glared out of the night view (maintainer, 2026-10-24).
+            zero_value_rgba=(0, 0, 0, 255),
             background=(
                 'radial-gradient(ellipse 80% 70% at 50% 45%, #0d0820 0%, '
                 '#05030d 50%, #000000 100%)'
