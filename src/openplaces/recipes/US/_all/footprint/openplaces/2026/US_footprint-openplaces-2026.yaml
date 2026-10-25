@@ -545,9 +545,9 @@ pipeline:
   # a consistent, parcel-level base.
   #
   # allow_missing: a unit whose parcels come from a geometry layer with
-  # no roll states no value at all (Virginia's VGIN parcels in
-  # Alexandria, Arlington and Falls Church), and apportionment above
-  # already skips a value the curated parcel lacks. The two names are
+  # no roll states no value at all (Virginia's VGIN parcels in Falls
+  # Church), and apportionment above already skips a value the curated
+  # parcel lacks. The two names are
   # fixed here, so the misspelling the strict default guards against
   # cannot hide behind it.
   - step: link_curated_entity
