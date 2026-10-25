@@ -149,6 +149,12 @@ postal_code,Postal (ZIP) code,,string,first,,,ingest
 legal_description,Legal description of the property,,string,first,,,ingest
 subdivision,Subdivision name,,string,first,,parcel,ingest
 subdivision_code,Subdivision code,,string,first,,parcel,ingest
+plat_id_local,"Reference of the recorded plat the parcel lies on, as the roll states it (Maryland SDAT PLAT); together with subdivision_code it names one plat, the key on which a plat's lots and its common areas are linked",,string,first,,parcel,ingest
+is_common_area,"Whether the roll's legal description names the parcel a common area or open space of its plat; read from the text at ingest, none of which is kept",,bool,max,,parcel,ingest
+common_land_share_ha,"On a lot of a townhouse or condominium plat, its share of the plat's common areas, divided among the plat's lots in proportion to lot area; land the roll counts in the lots' values. An area, never a value",ha,float,sum,,parcel,curate
+common_land_lots_area_ha,"On a common area linked to its plat's lots, the summed area of those lots",ha,float,first,,parcel,curate
+n_lots_per_plat,"On a common area linked to its plat's lots, the number of those lots",,float,first,,parcel,curate
+common_land_plat_id,"Plat key shared by a common area and the lots it is linked to (admin unit, subdivision code and plat reference); written only on rows the plat key link reached",,string,first,,parcel,curate
 owner_name,Owner name as recorded,,string,first,,parcel,ingest
 owner_name_2,Second owner name as recorded,,string,first,,parcel,ingest
 owner_name_january_1,Owner of record as of January 1 (the tax-roll assessment date),,string,first,,parcel,

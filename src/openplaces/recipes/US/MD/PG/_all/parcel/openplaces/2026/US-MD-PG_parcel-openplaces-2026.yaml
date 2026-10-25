@@ -1,0 +1,43 @@
+# Patch: give Prince George's townhouse and condominium lots their
+# share of the plat's common land, as an area.
+#
+# Reads the plat link table US-MD-PG_parcel-spine-2026 writes (lots
+# and common areas of one plat, label `plat key`) and writes
+# common_land_share_ha on each lot (the plat's common area divided
+# among its lots in proportion to lot area), n_lots_per_plat and
+# common_land_lots_area_ha on each common area, and the plat key on
+# both (apportion_common_land). No value is written: the lots keep
+# their recorded land values, and the common area keeps none, since the
+# roll counts the common land's worth in the lots (maintainer's
+# decisions 96 to 99a, 2026-10-24). The value page colors a common area
+# at its plat's spread rate from these columns.
+#
+# Measured 2026-10-24 on US-MD-PG (the two steps run in memory on the
+# current spine and curated parcels with the roll's new columns
+# attached; no shared output written): 1,025 plats linked, 2,292
+# common areas (1,153.0 ha) shared among 38,579 lots (745.1 ha), lots
+# per plat median 35 (p95 79, max 180); 36,311 of the lots are curated
+# Townhome. Median land per acre on the linked lots, own area against
+# own area plus share: $2.35M to $888K. No linked common area holds a
+# land_value or land_value_imputed. The roll flags 4,849 accounts; the
+# 2,557 left unlinked are single-family plats' open space, common
+# areas with a recorded value, or have no plat key.
+#
+# Design limits checked: L2, L22, L25, L27 (see apportion_common_land).
+
+admin_id: US-MD-PG
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  # A gather step: it divides an area over a link, and runs with the
+  # other gathers, before any decision.
+  - insert_after: merge_enrichments
+    step:
+      step: apportion_common_land

@@ -852,6 +852,26 @@ share:
     - land_value_per_ha_log_region_nb_peoplewealth
     - land_value_per_ha_log_region_nb_peoplebuildings
     - land_value_per_ha_log_region_nb_popbldwealth
+    # A plat's common land, for the value page (maintainer's decisions
+    # 96 to 99a, 2026-10-24): the roll's common area flag; on a lot of
+    # a townhouse or condominium plat its share of the plat's common
+    # area, by lot area; on a common area the number and summed area
+    # of its lots; on both the plat key that ties them. Areas and
+    # counts only, no value. Filled in Prince George's County MD by
+    # the US-MD-PG patch of this recipe; empty elsewhere.
+    - is_common_area
+    - common_land_share_ha
+    - n_lots_per_plat
+    - common_land_lots_area_ha
+    - common_land_plat_id
+  # Computed by apportion_common_land from the roll's common area flag
+  # and the plat key, without a sidecar: they go wherever the flag
+  # goes when a source is withheld (io.delivery.redaction, rule 7).
+  derived_from:
+    common_land_share_ha: [is_common_area]
+    n_lots_per_plat: [is_common_area]
+    common_land_lots_area_ha: [is_common_area]
+    common_land_plat_id: [is_common_area]
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:

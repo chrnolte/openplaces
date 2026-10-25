@@ -770,3 +770,17 @@ transaction-to-property, one row per pair, the deed's parcels each with an
 area `share`. Curate's `aggregate_from_entities` reads them from the
 finer side (`key: null`), so a curated sale takes its parcels' sums, scaled
 by share, and a use class only where its parcels agree.
+
+**One link table relates parcels to parcels**: `link_common_areas_by_plat`
+(`entity_links.py`, inserted by a county's patch of the parcel spine,
+Prince George's MD so far) pairs each lot of a townhouse or condominium
+plat with the plat's common areas, by exact equality of
+`subdivision_code` and `plat_id_local` as the roll states them,
+`link_method` `plat key`. Its id columns are `parcel_id` (the lot) and
+`common_area_parcel_id`, and it is stored beside the parcel geospine
+under the geospine's own id (`get_plat_link_path`). A common area is a
+row the roll's legal text names one (`is_common_area`) with no land or
+improvement value; a lot is a valued row; a plat qualifies where more
+than half its lots carry one of the patch's use codes. The parcel
+curate's `apportion_common_land` divides each common area among its
+lots by area and writes no value.

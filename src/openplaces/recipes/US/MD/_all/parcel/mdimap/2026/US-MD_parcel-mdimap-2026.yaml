@@ -313,6 +313,23 @@
 # 348 polygons carry no account (roads, alleys, common areas) and so
 # no parcel_id_local.
 #
+# NOTE on common areas and the plat key (maintainer's decisions
+# 2026-10-24, plans/findings/suitland-condo-common-land.md). SDAT
+# records a townhouse plat's common land as its own account, with no
+# land or improvement value (null, not 0), the same SUBDIVSN and PLAT
+# as the lots around it, and a legal description naming it ("PARCEL A
+# COMMON AREA" and the like). SUBDIVSN maps to subdivision_code and
+# PLAT to plat_id_local; is_common_area is true where LEGAL1 to LEGAL3,
+# joined, contain COMMON AREA(S) or OPEN SPACE(S). The legal text is
+# free text and may hold a name, so it is joined in memory, read for
+# those phrases and dropped (drop_columns); none of it is kept.
+# Measured 2026-10-24 on the PRIN and MONT download: is_common_area
+# true on 4,849 of 275,126 Prince George's rows and 11 of 290,458
+# Montgomery rows, whose common areas read "PAR <letter>" instead.
+# SUBDIVSN, four digits, is filled on 257,401 Prince George's and
+# 279,705 Montgomery rows; PLAT is missing on 6.4% of Prince George's
+# rows and 54.7% of Montgomery's.
+#
 # License: the ArcGIS item's own `licenseInfo` (fetched directly via
 # the AGOL sharing API, not just its rendered Hub page) states: "The
 # Data can be freely distributed as long as the metadata entry is
@@ -388,6 +405,9 @@ columns:
   total_value: NFMTTLVL
   last_sale_price: CONSIDR1
   last_sale_date: TRADATE
+  # The plat key (see the header note on common areas).
+  subdivision_code: SUBDIVSN
+  plat_id_local: PLAT
 
 columns_to_categorical:
   - city
@@ -486,6 +506,27 @@ transformations:
         pattern: 'No Bas'
         output: false
     output: has_basement
+
+  # Common area flag from the legal description (see the header note
+  # on common areas). The three LEGAL fields are joined in memory, read
+  # for the two phrases, and dropped (drop_columns): the text is free
+  # text and may hold a name, so none of it is kept.
+  - type: string
+    operation: concat
+    inputs: [LEGAL1, LEGAL2, LEGAL3]
+    args: {sep: " "}
+    output: legal_text
+  - type: remap_conditional
+    input: legal_text
+    default: false
+    conditions:
+      - condition: regex
+        pattern: '(?i)\bCOMMON\s+AREAS?\b|\bOPEN\s+SPACES?\b'
+        output: true
+    output: is_common_area
+
+drop_columns:
+  - legal_text
 
 # The key is the whole ACCTID, SDAT's own account number (this
 # layer's `displayField`), already unique within its jurisdiction.

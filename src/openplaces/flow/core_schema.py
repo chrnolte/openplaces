@@ -65,6 +65,10 @@ LINK_METHODS = {
         "a sale whose number is a range ('704-706') matches the one parcel either "
         'half names'
     ),
+    'plat key': (
+        'a lot of a townhouse or condominium plat and a common area of the same '
+        'plat share the subdivision code and plat reference the roll states'
+    ),
 }
 
 DEFAULT_OUT = Path('docs/1_overview/concepts/_generated/core-schema.rst')
