@@ -1,0 +1,48 @@
+# Patch: link Prince George's townhouse and condominium lots to their
+# plat's common areas.
+#
+# SDAT records a plat's common land (the green between the house rows,
+# the parking courts) as its own account, with the same subdivision
+# code (SUBDIVSN) and plat reference (PLAT) as the lots around it, a
+# legal description naming it a common area or open space, and no
+# land or improvement value: the lots' land values include it. The MD
+# iMAP recipe maps the two key parts and the common area flag
+# (US-MD_parcel-mdimap-2026, header note on common areas). This step
+# writes the parcel-to-parcel link table, one row per (lot, common
+# area) pair of a plat, by exact equality of the key, labeled
+# `plat key`; US-MD-PG_parcel-openplaces-2026 divides each common area
+# among its lots by area. Townhouse and condominium plats only (more
+# than half of the plat's valued lots TH or U): single-family
+# subdivisions with homeowners' open space are left unlinked
+# (maintainer, 2026-10-24;
+# plans/findings/suitland-condo-common-land.md).
+#
+# A county patch, not a state one. Measured 2026-10-24 on US-MD-MO:
+# the roll's legal text names a common area on 11 rows ("PAR <letter>"
+# instead, on 3,432 of 4,150 unvalued accounts sharing a plat key with
+# valued lots, alike for common land, outlots and stormwater parcels),
+# its townhouses carry land use R (no TH code), and PLAT is missing on
+# 54.7% of rows; neither the flag nor the plat rule fits it.
+#
+# Measured 2026-10-24 on US-MD-PG: see the curate patch.
+#
+# After the spine's checkpointed step, so a restored checkpoint cannot
+# skip it. Design limits checked: L2, L14, L17, L25, L27, L28 (see
+# link_common_areas_by_plat).
+
+admin_id: US-MD-PG
+stage: harmonize
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_parcel-spine-2026
+pipeline_patch:
+  - insert_after: link_entities_by_id
+    step:
+      step: link_common_areas_by_plat
+      # SDAT land use: TH town house, U condominium unit.
+      lot_use_values: [TH, U]
