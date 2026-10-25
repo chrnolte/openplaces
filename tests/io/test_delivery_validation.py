@@ -78,7 +78,7 @@ def test_a_declared_member_without_curated_output_stops_the_ship(mock_data_root)
     _county(recipe, ['a', 'b'], admin3_id='US-NC-AL')
 
     with pytest.raises(FileNotFoundError, match='US-NC-BB'):
-        export_delivery(recipe)
+        export_delivery(recipe, allow_stale=True)
 
 
 def test_split_layout_curated_output_delivers(mock_data_root):
@@ -87,7 +87,7 @@ def test_split_layout_curated_output_delivers(mock_data_root):
     _county(recipe, ['a', 'b'], admin3_id='US-NC-AL')
     _county(recipe, ['c', 'd'], admin3_id='US-NC-BB')
 
-    paths = export_delivery(recipe)
+    paths = export_delivery(recipe, allow_stale=True)
 
     canonical = read_parquet(paths['canonical'])
     geo = read_parquet(paths['geo'], geom=True)
@@ -120,7 +120,7 @@ def test_undeliverable_share_block_raises_before_anything_is_written(
     _county(_recipe(), ['b'], admin3_id='US-NC-BB')
 
     with pytest.raises(ValueError, match=message):
-        export_delivery(recipe)
+        export_delivery(recipe, allow_stale=True)
     # Nothing was written: the check runs before the first output file.
     assert not any(path.exists() for path in delivery_paths(recipe).values())
 
@@ -167,7 +167,7 @@ def test_a_failed_reship_leaves_the_previous_bundle_intact(mock_data_root, monke
     recipe = _recipe()
     _county(recipe, ['a', 'b'], admin3_id='US-NC-AL')
     _county(recipe, ['c', 'd'], admin3_id='US-NC-BB')
-    paths = export_delivery(recipe)
+    paths = export_delivery(recipe, allow_stale=True)
     before = read_parquet(paths['canonical'])
 
     # A second curation with different rows, and a failure after the
@@ -179,7 +179,7 @@ def test_a_failed_reship_leaves_the_previous_bundle_intact(mock_data_root, monke
 
     monkeypatch.setattr(delivery, 'bundle_terms', _explode)
     with pytest.raises(RuntimeError, match='interrupted'):
-        export_delivery(recipe)
+        export_delivery(recipe, allow_stale=True)
 
     after = read_parquet(paths['canonical'])
     pd.testing.assert_frame_equal(before, after)
@@ -200,6 +200,6 @@ def test_an_attribute_that_merely_ends_in_source_is_deliverable(mock_data_root):
     _county(recipe, ['a'], admin3_id='US-NC-AL')
     _county(recipe, ['b'], admin3_id='US-NC-BB')
 
-    canonical = read_parquet(export_delivery(recipe)['canonical'])
+    canonical = read_parquet(export_delivery(recipe, allow_stale=True)['canonical'])
 
     assert 'property_source' in canonical.columns

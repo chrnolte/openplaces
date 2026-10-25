@@ -25,6 +25,7 @@ Usage::
     python -m openplaces.flow.region_verify RECIPE_ID REGION_ID
         [--deliver] [--input-layer RECIPE_ID ...]
         [--margin 0.1] [--max-outliers 10] [--allow-stale]
+        [--exclude-recipe-ids ID,ID]
 """
 
 import argparse
@@ -65,7 +66,8 @@ def verify_region(
     input_layers : sequence of str, optional
         Ingest/harmonize recipe ids whose per-unit outputs get the same
         outlier-count bbox test, catching a mis-keyed input behind a
-        passing output.
+        passing output. A layer that fails to load fails the unit, with
+        the layer and the error as the reason.
     margin : float, optional
         Degrees of bbox overshoot tolerated before a row counts as an
         outlier. Boundary simplification and genuinely straddling
@@ -106,10 +108,14 @@ def verify_region(
                     flush=True,
                 )
             for layer_id in input_layers:
+                # A layer that does not load is a failure, not a pass:
+                # skipping it let a unit through on a check never run.
                 try:
                     d = op.get_entities(layer_id, unit, geom=True)
-                except Exception:
-                    continue
+                except Exception as exc:
+                    error = f'{type(exc).__name__}: {exc}'
+                    bad.append((unit, f'{layer_id}: failed to load: {error}'))
+                    break
                 d_out = _bbox_outliers(d, a, margin)
                 if d_out > max_outliers:
                     bad.append((unit, f'{layer_id}: {d_out} rows out of bounds'))
@@ -145,13 +151,25 @@ def main(argv=None):
         action='store_true',
         help='verify and ship even when a built output is older than its inputs',
     )
+    parser.add_argument(
+        '--exclude-recipe-ids',
+        default=None,
+        help=(
+            'comma-separated recipe ids the run excluded, left out of the '
+            'freshness check (default: the local profile)'
+        ),
+    )
     args = parser.parse_args(argv)
     warnings.filterwarnings('ignore')
 
     import openplaces as op
+    from openplaces.flow import freshness
     from openplaces.flow.dag import RecipeDAG
-    from openplaces.flow.freshness import out_of_date
     from openplaces.io.delivery import delivery_paths
+
+    exclude = freshness.parse_exclude(args.exclude_recipe_ids)
+    if exclude is None:
+        exclude = freshness.default_exclude_recipe_ids()
 
     bad, _ = verify_region(
         args.recipe_id,
@@ -164,13 +182,16 @@ def main(argv=None):
         sys.exit(1)
     # A file that passes the bounds test can still predate a rebuilt
     # spine it was built from; shipping it would publish the old values.
-    dag = RecipeDAG(
-        args.recipe_id,
-        admin_ids=op.get_region_admin_ids(args.region_id),
-        deliver=False,
-        validate=False,
+    dag = freshness.freshness_graph(
+        RecipeDAG(
+            args.recipe_id,
+            admin_ids=op.get_region_admin_ids(args.region_id),
+            exclude_recipe_ids=exclude,
+            deliver=False,
+            validate=False,
+        )
     )
-    stale = out_of_date(dag)
+    stale = freshness.out_of_date(dag)
     if not stale.empty:
         print(stale.to_string(index=False), flush=True)
         print(f'{len(stale)} out-of-date job(s) in {args.region_id}', flush=True)
@@ -181,7 +202,15 @@ def main(argv=None):
         print('(dry verification only; pass --deliver to ship)')
         return
     t0 = time.time()
-    op.export_delivery(args.recipe_id, region=args.region_id, verbose=True)
+    # export_delivery runs the same check itself; it is given the graph
+    # and the override so that the two cannot disagree.
+    op.export_delivery(
+        args.recipe_id,
+        region=args.region_id,
+        verbose=True,
+        allow_stale=args.allow_stale,
+        graph=dag,
+    )
     print(f'DELIVERED {args.region_id} in {time.time() - t0:.0f}s', flush=True)
     for role, path in delivery_paths(args.recipe_id, region=args.region_id).items():
         size = path.stat().st_size / 1048576 if path.exists() else 0

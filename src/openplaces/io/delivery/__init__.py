@@ -40,6 +40,8 @@ from openplaces.io import (
     read_parquet,
     to_parquet,
 )
+from openplaces.io.delivery.freshness import StaleOutputError as StaleOutputError
+from openplaces.io.delivery.freshness import refuse_stale
 from openplaces.io.delivery.redaction import (
     _names_attribute,
     find_restricted,
@@ -1350,6 +1352,8 @@ def export_delivery(
     output_dir=None,
     region=None,
     verbose=False,
+    allow_stale=False,
+    graph=None,
 ):
     """Write a curated entity's region-wide output as a four-file bundle.
 
@@ -1371,7 +1375,12 @@ def export_delivery(
 
     Every parameter but *recipe* falls back to the recipe's own
     ``share: delivery:`` block, so a fully declared recipe delivers with
-    ``export_delivery(recipe_id)``.
+    ``export_delivery(recipe_id, graph=delivery_graph(recipe_id))``.
+
+    Before reading anything it refuses a bundle whose pooled curated
+    files are older than an input they were built from (the check in
+    `openplaces.io.delivery.freshness`, run on *graph*), unless
+    *allow_stale* is True.
 
     Parameters
     ----------
@@ -1396,6 +1405,15 @@ def export_delivery(
         recipe declares more than one; see :func:`delivery_regions`.
     verbose : bool, optional
         Print a line per written file.
+    allow_stale : bool, optional
+        Export even when a pooled curated file is older than an input it
+        was built from. Off by default: the bundle would ship values its
+        inputs no longer support.
+    graph : RecipeDAG, optional
+        The dependency graph of the pooled files, which the freshness
+        check walks; `openplaces.flow.freshness.delivery_graph(recipe_id,
+        region)` builds it. It is passed in because the graph is built
+        above this module. Required unless *allow_stale* is True.
 
     Returns
     -------
@@ -1405,6 +1423,14 @@ def export_delivery(
 
     Raises
     ------
+    StaleOutputError
+        When a pooled curated file is older than an input it was built
+        from, directly or through a stale upstream output, and
+        *allow_stale* is False. The message lists the out-of-date
+        outputs and the newer inputs. Nothing is written.
+    ValueError
+        When *graph* is missing and *allow_stale* is False, or when the
+        graph does not build every pooled file.
     ShareAlikeConflictError
         When the geometry and cells left after withholding carry
         share-alike licences of more than one family (ODbL and CC BY-SA,
@@ -1430,6 +1456,16 @@ def export_delivery(
             f'No curated output found under {admin_id} for '
             f'{recipe.get("recipe_id", recipe)!r}; nothing to deliver.'
         )
+    if not allow_stale:
+        if graph is None:
+            raise ValueError(
+                'export_delivery checks that every pooled curated file is '
+                'newer than its inputs, and needs their dependency graph '
+                'for that: pass graph=openplaces.flow.freshness.'
+                'delivery_graph(recipe_id, region), or allow_stale=True to '
+                'export without the check.'
+            )
+        refuse_stale(graph, [path for _, path in inputs])
     sources = _bundle_sources(recipe, region, [process_id for process_id, _ in inputs])
     restricted = sources['restricted']
     admin_id_column = f'admin{process_level}_id'

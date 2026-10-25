@@ -53,22 +53,34 @@ those consumers rerun. A consumed intermediate (absent, with a cleanup
 receipt) is not returned, since `input_paths` already drops it for a job
 whose output exists.
 
-**A delivery does not check that its curated files are current, so
-`region_verify` does** (`flow/freshness.py`). An export pools whatever
-curated files are on disk. A spine rebuilt in one run leaves the
+**A delivery refuses curated files older than their inputs**
+(`io/delivery/freshness.py`, with this package's `flow/freshness.py` as
+its command line). A spine rebuilt in one run leaves the
 consumers another run built from it in place, older than the spine,
-and the next export ships them: transaction curates linked to a
-property spine that had since been fixed reached the valuation lane
-this way (2026-10). `out_of_date(dag)` lists every job whose existing
+and an export that did not look shipped them: transaction curates
+linked to a property spine that had since been fixed reached the
+valuation lane this way (2026-10). The check sits below the
+orchestrator so that `export_delivery` runs it itself; `run_stage
+deliver` and `region_verify` pass it the region's graph
+(`freshness.delivery_graph`), and `--allow-stale` overrides it in both.
+**The check honors the run's excluded and held recipes**: the graph is
+built with the run's `exclude_recipe_ids` (a job's own, else the local
+profile's `defaults.yaml`; `--exclude-recipe-ids` names them), and
+`freshness_graph` also leaves out an enrich job whose source is
+excluded or held, which `RecipeDAG` keeps because the curation names it
+directly. Without that the excluded placeslab lane's link tables marked
+Fairfax, Arlington and Alexandria stale in washington-dc (2026-10-24).
+`out_of_date(dag)` lists every job whose existing
 output is older than an existing input, then every job built from such
 an output. It differs from `plan()` in one way: a missing output does
 not mark its consumers, because an absent file may be a held recipe, an
 opt-in lane or a consumed intermediate, and `plan()` reports Lake
 County, FL's whole transaction graph as "upstream scheduled" behind the
 held Shovels ingest. `region_verify` fails a region with any such job
-unless `--allow-stale` is passed; `python -m openplaces.flow.freshness
-RECIPE --region REGION` (or admin ids) runs the check alone, before a
-direct `export_delivery` call or before fitting on a bundle. Measured
+unless `--allow-stale` is passed, and fails a unit whose
+`--input-layer` does not load, naming the layer and the error;
+`python -m openplaces.flow.freshness RECIPE --region REGION` (or admin
+ids) runs the check alone, before fitting on a bundle. Measured
 2026-10-24 on US-MA-SOM: 5 of 50 built footprint jobs out of date, the
 parcel spine older than the new MA DOR sales ingest.
 

@@ -225,6 +225,14 @@ def main(argv=None) -> None:
             'auto-discovery skips them as the graph did'
         ),
     )
+    parser.add_argument(
+        '--allow-stale',
+        action='store_true',
+        help=(
+            'deliver: export even when a pooled curated file is older than '
+            'an input it was built from'
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.no_orchestrated:
@@ -249,7 +257,25 @@ def main(argv=None) -> None:
         # it through positionally left `region` unset -- which a recipe
         # declaring more than one region refuses to guess at, failing
         # every multi-region delivery at job time.
-        export_delivery(args.recipe_id, region=args.admin_id, verbose=args.verbose)
+        graph = None
+        if not args.allow_stale:
+            from openplaces.flow.freshness import delivery_graph
+
+            # Exactly the run's exclusions, none when it named none:
+            # the workflow passes every id it pruned.
+            exclude = args.exclude_recipe_ids
+            graph = delivery_graph(
+                args.recipe_id,
+                region=args.admin_id,
+                exclude_recipe_ids={r for r in (exclude or '').split(',') if r},
+            )
+        export_delivery(
+            args.recipe_id,
+            region=args.admin_id,
+            verbose=args.verbose,
+            allow_stale=args.allow_stale,
+            graph=graph,
+        )
         return
 
     if args.stage == VALIDATE:

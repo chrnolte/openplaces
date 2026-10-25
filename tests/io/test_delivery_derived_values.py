@@ -387,8 +387,8 @@ def bundles(mock_data_root, monkeypatch):
     monkeypatch.setattr(delivery_module, 'delivery_regions', lambda _: [public, team])
     recipe = _export_recipe()
     return {
-        'public': export_delivery(recipe, region='test-region'),
-        'team': export_delivery(recipe, region='test-region.team'),
+        'public': export_delivery(recipe, region='test-region', allow_stale=True),
+        'team': export_delivery(recipe, region='test-region.team', allow_stale=True),
     }
 
 

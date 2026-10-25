@@ -59,8 +59,23 @@ the membership is data in the registry rather than structure in the YAML.
 `delivery_paths`, `delivery_admin_id` and `export_delivery` all take a `region=`
 selector, and **raise rather than guess** when a multi-region recipe is asked
 for "the" region -- silently picking one would ship a region's rows under
-another's filename. A single-region recipe needs no selector, so
-`export_delivery(recipe_id)` still works unchanged.
+another's filename. A single-region recipe needs no selector.
+
+**It refuses curated files older than their inputs** (`freshness.py`;
+maintainer's decision 102, 2026-10-24). A spine rebuilt in one run
+leaves the consumers another run built from it on disk, older than the
+spine, and an export that did not look shipped them: transaction curates
+linked to a property spine that had since been fixed reached the
+valuation lane this way (2026-10). Before reading anything,
+`export_delivery` runs `out_of_date` (file modification times only) on
+the dependency graph of the pooled files and raises `StaleOutputError`,
+listing every out-of-date output with the newer input or stale upstream
+file it was found by, when any pooled file is among them. The graph is
+`flow.dag.RecipeDAG`, which sits above this package, so the caller
+passes it: `graph=openplaces.flow.freshness.delivery_graph(recipe_id,
+region)`. Without a graph, or with one that does not build every pooled
+file, it refuses too. `allow_stale=True` (`run_stage deliver
+--allow-stale`, `region_verify --allow-stale`) skips the check.
 
 **A named region's bundle sits in a folder named after the region**, inside
 its unit's folder (`share/US/FL/_all/transaction/openplaces/2026/lakeland-fl/`;
