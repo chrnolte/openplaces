@@ -770,7 +770,9 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
 
 def test_apply_remap_csvs_applies_matching_crosswalk_and_infers_key_length():
     spine = pd.DataFrame(
-        {'use_group_code': ['101', '1010', '102', '999', None]},
+        # '000' is a code no class of the crosswalk defines (a 9xx code
+        # takes the exempt class from the one-digit key).
+        {'use_group_code': ['101', '1010', '102', '000', None]},
         index=pd.Index(['a', 'b', 'c', 'd', 'e'], name='parcel_id'),
     )
     state = HarmonizeState(

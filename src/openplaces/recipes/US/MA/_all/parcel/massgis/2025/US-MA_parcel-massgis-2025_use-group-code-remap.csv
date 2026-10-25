@@ -105,3 +105,120 @@ use_group_code,use_group,use_subgroup,admin_id
 960,exempt,office condominium,US-MA-BOS
 971,exempt,rectory or convent,US-MA-BOS
 972,exempt,correctional building,US-MA-BOS
+01,mixed,"mixed use, primarily residential",
+02,mixed,"mixed use, primarily open space",
+03,mixed,"mixed use, primarily commercial",
+04,mixed,"mixed use, primarily industrial",
+06,mixed,"mixed use, primarily chapter 61 forest",
+07,mixed,"mixed use, primarily chapter 61a agricultural",
+08,mixed,"mixed use, primarily chapter 61b recreational",
+09,mixed,"mixed use, primarily exempt",
+3,commercial,commercial,
+4,industrial,industrial,
+9,exempt,exempt,
+910,exempt,"state, conservation and recreation, state parks",
+911,exempt,"state, fish and game, environmental law enforcement",
+912,exempt,"state, corrections, youth services",
+913,exempt,"state, public health, soldiers' homes",
+914,exempt,"state, mental health",
+915,exempt,"state, conservation and recreation, water supply protection",
+916,exempt,"state, military division, campgrounds",
+917,exempt,"state, university and state colleges",
+918,exempt,"state, environmental protection",
+919,exempt,"state, other",
+921,exempt,"state, fish and game, environmental protection",
+922,exempt,"state, corrections, youth services, military, police",
+923,exempt,"state, public health, mental health",
+924,exempt,"state, highway department",
+925,exempt,"state, conservation and recreation, water supply protection, urban parks",
+926,exempt,"state, judiciary",
+927,exempt,"state, university and state colleges",
+928,exempt,"state, capital asset management, state office buildings",
+929,exempt,"state, other",
+945,residential,educational affiliated housing,
+946,exempt,"private educational, vacant",
+951,exempt,"charitable, other",
+953,exempt,"charitable, cemeteries",
+958,exempt,"charitable, recreation, active use",
+959,residential,nonprofit housing,
+973,exempt,"housing authority, vacant",
+974,exempt,"utility authority, vacant",
+975,exempt,"transportation authority, vacant",
+981,exempt,"other city or town, improved",
+982,exempt,"other city or town, conservation, vacant",
+985,exempt,"other city or town, municipal or public safety, improved",
+988,exempt,"other district, vacant",
+989,exempt,"other district, improved",
+991,exempt,"county or regional, vacant",
+992,exempt,"county or regional, deeds or administration, improved",
+993,exempt,"county or regional, correctional, improved",
+994,exempt,"county or regional, association or commission, improved",
+996,exempt,non-taxable condominium common land,
+997,exempt,other exempt,
+010,mixed,mixed residential commercial,US-MA-BOS
+012,mixed,"mixed use, residential and open space",US-MA-BOS
+019,mixed,"mixed use, residential and exempt",US-MA-BOS
+025,mixed,mixed residential commercial,US-MA-BOS
+026,mixed,mixed residential commercial,US-MA-BOS
+027,mixed,mixed residential commercial,US-MA-BOS
+107,residential,other residential,US-MA-BOS
+108,residential,condominium parking,US-MA-BOS
+110,residential,condominium storage,US-MA-BOS
+116,residential,residential parking garage,US-MA-BOS
+119,residential,residential parking lot,US-MA-BOS
+122,residential,fraternity house,US-MA-BOS
+123,residential,residence hall,US-MA-BOS
+125,residential,subsidized housing,US-MA-BOS
+126,residential,subsidized housing,US-MA-BOS
+127,residential,subsidized housing,US-MA-BOS
+326,commercial,restaurant,US-MA-BOS
+334,commercial,service center or retail,US-MA-BOS
+356,commercial,commercial unit,US-MA-BOS
+357,commercial,retail unit,US-MA-BOS
+358,commercial,office unit,US-MA-BOS
+359,commercial,commercial parking unit,US-MA-BOS
+380,commercial,golf course,US-MA-BOS
+413,industrial,auto salvage yard,US-MA-BOS
+465,commercial,billboard,US-MA-BOS
+900,exempt,united states government,US-MA-BOS
+901,exempt,commonwealth of massachusetts,US-MA-BOS
+902,exempt,city of boston,US-MA-BOS
+903,exempt,boston redevelopment authority,US-MA-BOS
+904,exempt,private school or college,US-MA-BOS
+905,exempt,charitable organization,US-MA-BOS
+906,exempt,religious organization,US-MA-BOS
+907,exempt,chapter 121a property,US-MA-BOS
+910,exempt,"state, environmental management",US-MA-BOS
+912,exempt,"state, youth services",US-MA-BOS
+914,exempt,"state, mental health",US-MA-BOS
+915,exempt,"state, metropolitan district commission land",US-MA-BOS
+917,exempt,"state, education, college",US-MA-BOS
+918,exempt,"state, environmental protection",US-MA-BOS
+920,exempt,"state, environmental management",US-MA-BOS
+921,exempt,"state, environmental protection",US-MA-BOS
+922,exempt,"state, corrections or police",US-MA-BOS
+923,exempt,"state, public health",US-MA-BOS
+924,exempt,"state, highway department",US-MA-BOS
+925,exempt,"state, metropolitan district commission",US-MA-BOS
+926,exempt,"state, justice or judiciary",US-MA-BOS
+927,exempt,"state, education, college",US-MA-BOS
+928,exempt,"state, capital asset management",US-MA-BOS
+929,exempt,"state, other property",US-MA-BOS
+950,exempt,retail unit,US-MA-BOS
+965,exempt,government office building,US-MA-BOS
+973,exempt,administrative building,US-MA-BOS
+974,exempt,fire station,US-MA-BOS
+975,exempt,police station,US-MA-BOS
+976,exempt,school,US-MA-BOS
+977,exempt,college,US-MA-BOS
+978,exempt,library,US-MA-BOS
+979,exempt,hospital,US-MA-BOS
+980,exempt,water treatment plant,US-MA-BOS
+981,exempt,incineration plant,US-MA-BOS
+982,exempt,armory,US-MA-BOS
+983,exempt,cemetery,US-MA-BOS
+984,exempt,public beach,US-MA-BOS
+985,exempt,other exempt building,US-MA-BOS
+986,exempt,other public land,US-MA-BOS
+995,,condominium main,US-MA-BOS
+999,,partially exempt,US-MA-BOS

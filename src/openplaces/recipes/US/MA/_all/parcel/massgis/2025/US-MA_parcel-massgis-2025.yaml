@@ -135,6 +135,42 @@ additional_layers:
       n_rooms: NUM_ROOMS
       n_stories: STORIES
       year_built: YEAR_BUILT
+      # USE_CODE is the town's property type classification code. The
+      # crosswalk beside this recipe (_use-group-code-remap.csv, applied
+      # by the harmonizer; a code takes its longest matching key, and a
+      # row scoped to an admin unit overrides the statewide row) gives
+      # it a use group and subgroup. Definitions: MA DOR Division of
+      # Local Services, Bureau of Local Assessment, "Property Type
+      # Classification Codes, Non-arm's Length Codes and Sales Report
+      # Spreadsheet Specifications", revised April 2019. Its coding
+      # structure decides the one- and two-digit keys: "the first digit
+      # indicates a major classification" (3 commercial, 4 industrial,
+      # 9 exempt), so a 3xx, 4xx or 9xx code no row names takes its
+      # class; a multiple-use code is 0 followed by the classes in
+      # order of importance, so 01x is mixed, primarily residential,
+      # and a four-digit 0xxx code (0 and the main use's code, as
+      # Cambridge, Medford and Somerville write them) reads the same.
+      # Housing that the handbook files under exempt owners is
+      # residential here, as housing authority property (970) already
+      # was: 945 (private educational, affiliated housing) and 959
+      # (charitable, housing). 996 (non-taxable condominium common
+      # land) is exempt. Commercial condominium units have no subgroup
+      # with the word condominium, which the land-use keyword table
+      # reads as the residential Condominium class.
+      # Boston writes its own list, "Massachusetts Property
+      # Classification System Occupancy Codes" (Boston Assessing
+      # Department, read 2026-10-24), and its rows carry admin_id
+      # US-MA-BOS. There 995 is "CONDO MAIN (no value)", land use CM,
+      # the master record of a condominium, not exempt land as DOR's
+      # 995 ("Other, Open Space"): its rows give no use group, only the
+      # subgroup "condominium main". Measured 2026-10-24 on US-MA-BOS:
+      # 7,037 of the 7,152 lots coded 995 carry condominium units
+      # (6,865 residential units only, 40 commercial units only). Other
+      # towns write 995 on condominium lots too (Chelsea 124 of 128,
+      # Medford 255 of 259, Winthrop 158 of 160), but without a code
+      # list of their own, so their 995 stays DOR's exempt. Boston's
+      # 983 is a cemetery, 985 an other exempt building, 986 other
+      # public land, 925 Metropolitan District Commission land.
       use_group_code: USE_CODE
       zoning: ZONING
       last_sale_date: LS_DATE

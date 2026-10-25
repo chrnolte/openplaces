@@ -46,6 +46,34 @@
 # a home class lie at least half on protected open space (houses under
 # conservation restrictions), and keep their class. The rows and their
 # evidence columns are kept.
+#
+# 5. A condominium lot counts its dwellings from its unit accounts. The
+# national recipe sums n_dwellings over a lot's properties only where
+# the parcel spine brought none, and on a condominium lot the spine
+# brings one: in Boston the master record's UNITS and its units' added
+# together (the master repeats the complex's total), elsewhere often a
+# count of 0 or 1 where the units state nothing (an Everett lot of 21
+# accounts held 1 dwelling). Here the lot takes the sum over its linked
+# residential condominium
+# units (use code 102, DOR "Residential condominium"; four-digit town
+# codes such as 1020 carry a local suffix), ahead of whatever it held
+# (first non-null). A unit that states no dwellings, or zero, counts as
+# one: a 102 account is one condominium unit, and towns leave UNITS
+# empty or 0 on them (Cambridge, Newton, Somerville, Watertown and
+# Medford on every unit). Parking and storage units (108, 110) and
+# commercial units (356-358) are not 102 and are not counted. Lots with
+# no 102 unit keep the national rule. Through the property-to-parcel
+# link table, as the national step; nothing is grouped anew.
+# Measured 2026-10-24 on the 34 units of the boston page (a scratch
+# curate against the curated lots of 2026-10-20): 25,764 lots
+# carry a 102 unit; the count changes on 15,064 (4,378 up, where units
+# stated 0 or nothing; 10,079 down, mostly Boston, where the master
+# record repeats the complex's total and the national sum counted both:
+# master equal to its units' count on 9,429 of 10,303 Boston masters).
+# Condominium lots with at least twice as many accounts as dwellings
+# fall from 4,713 to 669. A lot holding 102 units beside other homes
+# (a two-family next to a condominium) counts only the units: 20 lots in
+# Boston, 16 in Cambridge, 16 in Somerville, 57 in Brookline.
 
 admin_id: US-MA
 stage: curate
@@ -58,6 +86,20 @@ entity:
 
 patches: US_parcel-openplaces-2026
 pipeline_patch:
+  - insert_after: aggregate_from_entities
+    occurrence: 1
+    step:
+      step: aggregate_from_entities
+      recipe_id: US_property-spine-2026
+      key: [parcel_id_local, parcel_id_admin2]
+      columns:
+        n_dwellings: sum
+      where:
+        column: use_group_code
+        pattern: '102.*'
+      row_minimum:
+        n_dwellings: 1
+      prefer: [n_dwellings]
   - replace: impute_from_group_statistic
     step:
       step: translate_descriptions

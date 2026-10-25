@@ -96,7 +96,13 @@ Steps are organized by the nature of the transformation:
   imputation step, which openplaces does not do for structure values
   (maintainer, 2026-09-22). Measured 2026-09-22 on cheer-eastern-nc:
   179 of 503 such lots hold a recorded figure ($44.1M); on
-  cheer-coastal-tx 447 of 15,555 ($64.8M).
+  cheer-coastal-tx 447 of 15,555 ($64.8M). Three options narrow a
+  reduction: `where` keeps only the reference rows whose code matches
+  a pattern, `row_minimum` counts a row stating less (or nothing) as
+  the minimum, and `prefer` writes the reduction ahead of the curated
+  value wherever it states one. The Massachusetts parcel patch uses
+  all three to count a condominium lot's dwellings from its 102 unit
+  accounts, each at least one, ahead of the master record's count.
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
