@@ -6,7 +6,9 @@ single source of truth: adding an enrichment recipe to a curation pipeline
 automatically adds its jobs. An image recipe it names is configuration
 only (the imagery is fetched in memory and never written), so it is a
 dependency edge, never a job (see writes_nothing); so is a held recipe
-another one names (see is_upstream_job). Consumed by
+another one names (see is_upstream_job), and an enrich recipe adding
+the evidence of a source the run excluded or holds (see
+adds_left_out_source). Consumed by
 workflow/Snakefile; imports nothing from snakemake, so the library works
 without it.
 """
@@ -161,6 +163,61 @@ def is_upstream_job(recipe_id: str, recipe) -> bool:
     return not (writes_nothing(recipe) or is_held(recipe_id, recipe))
 
 
+def adds_left_out_source(recipe, admin_id, exclude_recipe_ids, load_recipe) -> bool:
+    """True for an enrich recipe whose source the run excluded or holds.
+
+    An enrich recipe adds one source's evidence to a spine, so without
+    that source it has nothing to add or refresh. Excluding or holding
+    the source gives the source no job (`is_upstream_job`), but the
+    enrich recipe is named by the curation directly and kept its own,
+    with only the excluded edge dropped. Its output, older than the
+    spine it also reads, then reran on every spine rebuild: the
+    placeslab lane (`US_parcel_parcel-placeslab-fmv2026`, whose ingest
+    the local profile excludes) did so for every washington-dc county
+    (2026-10-24). A consumer reading such an output still runs, on
+    whatever file exists, exactly as it does for an excluded ingest.
+
+    Only enrich recipes are tested: a harmonize recipe reading an
+    excluded source among others still has the others to build from.
+
+    Parameters
+    ----------
+    recipe : dict
+        The enrich recipe, loaded.
+    admin_id : AdminId or None
+        The job's admin unit, at the recipe's save level.
+    exclude_recipe_ids : set of str
+        The run's excluded recipe ids.
+    load_recipe : callable
+        Loads a recipe by id; may raise for a held recipe whose file
+        is absent.
+
+    Returns
+    -------
+    bool
+    """
+    if not isinstance(recipe, dict) or recipe.get('stage') != 'enrich':
+        return False
+    try:
+        # Unpruned, so that the excluded edge is still there to see
+        edges = get_recipe_dependencies(recipe, admin_id=admin_id)
+    except Exception:  # noqa: BLE001 - unresolvable, keep the job
+        return False
+    for edge in edges:
+        upstream_id = edge.upstream_recipe_id
+        if not upstream_id:
+            continue
+        if upstream_id in exclude_recipe_ids:
+            return True
+        try:
+            upstream = load_recipe(upstream_id)
+        except Exception:  # noqa: BLE001 - a held file may be absent
+            upstream = None
+        if is_held(upstream_id, upstream if isinstance(upstream, dict) else None):
+            return True
+    return False
+
+
 def node_key(node: StageNode) -> tuple:
     """Identity of one job: (recipe, admin unit, region).
 
@@ -257,6 +314,10 @@ class RecipeDAG:
         upstream ingest recipe). Composes with 'reference_parcel_recipe_id'/
         'image_recipe'/etc. edges automatically -- nothing further needs to
         be excluded by name. See `openplaces.recipe.get_recipe_dependencies`.
+        An enrich recipe adding an excluded or held source's evidence
+        gets no job and is no job's declared input either, even when
+        the curation names it directly (`adds_left_out_source`); the
+        jobs dropped that way are listed in `left_out`.
     deliver : bool, optional
         Force the delivery job on or off. None (default) decides from scope:
         the bundle is built when the run covers the region the target recipe
@@ -284,6 +345,10 @@ class RecipeDAG:
         # not what it was narrowed to.
         self.requested_admin_ids = [str(a) for a in (admin_ids or [])]
         self._recipes: dict[str, dict] = {}
+        self._left_out_cache: dict[tuple, bool] = {}
+        # (stage, recipe_id, admin_id, region) of each enrich job left
+        # out because its source is excluded or held
+        self.left_out: set[tuple] = set()
         target = self._recipe(target_recipe_id)
         target_level = get_save_admin_level(target)
         if not admin_ids and deliver is not False:
@@ -300,7 +365,7 @@ class RecipeDAG:
         self._nodes: list[StageNode] = []
         seen: set[tuple] = set()
 
-        def _add(recipe_id, recipe, walk_admin):
+        def _add(recipe_id, recipe, walk_admin, upstream=True):
             # A dependency that loads as a table rather than a recipe (the
             # committed admin spine CSV an `admin_id_crosswalk` names) is
             # read in place: there is no job to derive for it.
@@ -311,6 +376,9 @@ class RecipeDAG:
                 key = (recipe_id, admin_str, None)
                 if key in seen:
                     continue
+                # The target is asked for by name and keeps its job
+                if upstream and self._is_left_out(recipe_id, node_admin):
+                    continue
                 seen.add(key)
                 self._nodes.append(
                     StageNode(recipe.get('stage', 'ingest'), recipe_id, admin_str)
@@ -318,7 +386,7 @@ class RecipeDAG:
 
         for admin_id in self.admin_ids:
             target_admin = AdminId(admin_id) if admin_id else None
-            _add(target_recipe_id, target, target_admin)
+            _add(target_recipe_id, target, target_admin, upstream=False)
             for node_id, node_recipe, node_admin in _walk_dag(
                 target,
                 target_admin,
@@ -418,6 +486,8 @@ class RecipeDAG:
                     )
                     key = (upstream_id, admin_str, None)
                     if key in seen:
+                        continue
+                    if self._is_left_out(upstream_id, upstream_admin):
                         continue
                     added = StageNode(
                         upstream.get('stage', 'ingest'), upstream_id, admin_str
@@ -612,6 +682,30 @@ class RecipeDAG:
         if recipe_id not in self._recipes:
             self._recipes[recipe_id] = get_recipe_by_id(recipe_id)
         return self._recipes[recipe_id]
+
+    def _is_left_out(self, recipe_id: str, admin_id) -> bool:
+        """Whether one upstream job is an enrich of a left-out source.
+
+        Records the job in `left_out` when it is; see
+        `adds_left_out_source`.
+        """
+        admin_str = str(admin_id) if admin_id is not None else None
+        key = (recipe_id, admin_str)
+        if key not in self._left_out_cache:
+            try:
+                recipe = self._recipe(recipe_id)
+            except Exception:  # noqa: BLE001 - unresolvable, keep the job
+                recipe = None
+            left_out = adds_left_out_source(
+                recipe,
+                AdminId(admin_str) if admin_str else None,
+                self.exclude_recipe_ids,
+                self._recipe,
+            )
+            self._left_out_cache[key] = left_out
+            if left_out:
+                self.left_out.add((recipe['stage'], recipe_id, admin_str, None))
+        return self._left_out_cache[key]
 
     def _node_admin(self, recipe_id: str, admin_id) -> AdminId | None:
         """Truncate an admin unit to a recipe's save level."""
@@ -1104,7 +1198,16 @@ class RecipeDAG:
                 upstream = self._recipe(upstream_id)
                 if not is_upstream_job(upstream_id, upstream):
                     continue
-                for upstream_admin in self._node_admins(upstream_id, node_admin):
+                upstream_admins = self._node_admins(upstream_id, node_admin)
+                kept = [
+                    u for u in upstream_admins if not self._is_left_out(upstream_id, u)
+                ]
+                if upstream_admins and not kept:
+                    # An enrich of an excluded or held source: no job
+                    # writes it, so it is no declared input either
+                    continue
+                upstream_admins = kept
+                for upstream_admin in upstream_admins:
                     paths.append(primary_output_path(upstream, admin_id=upstream_admin))
                 if upstream.get('stage') == 'harmonize' or upstream.get('entity_links'):
                     upstream_stage = upstream.get('stage', 'ingest')

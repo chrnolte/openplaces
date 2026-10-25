@@ -2,18 +2,20 @@
 
 import os
 import time
-from types import SimpleNamespace
-from typing import NamedTuple
 
 import pandas as pd
 import pytest
 import yaml
 
+import tests.io.harmonizer.test_held_recipes_never_discovered as lane
 from openplaces.config import cfg
 from openplaces.core.held_recipes import EXCLUDE_ENV
 from openplaces.flow import RecipeDAG, freshness
 from openplaces.flow.freshness import out_of_date
 from openplaces.recipe import get_output_path
+
+# The fabricated recipe root of the held-recipe tests
+held_root = lane.held_root
 
 TARGET = 'US_footprint-openplaces-2026'
 BUILDING_SPINE = 'US_building-spine-2026'
@@ -117,102 +119,86 @@ def test_an_excluded_recipe_never_marks_a_consumer_stale(
     assert NSI not in {node.recipe_id for node in dag_without_nsi.nodes()}
 
 
-class _Node(NamedTuple):
-    stage: str
-    recipe_id: str
-    admin_id: str
-    region: str | None = None
+def _lane(root, exclude):
+    """The fabricated enrich lane's graph and the files its jobs write.
 
-
-class _LaneDag:
-    """A spine, an enrich adding one source to it, and the curate.
-
-    The source itself has no job: the run excluded it, or it is held,
-    and RecipeDAG gives such a recipe none while the enrich, named by
-    the curation directly, keeps its own.
+    A spine, one enrich per source (open, held, excluded by the run)
+    and the curate merging all three (`lane.write_enrich_lane`).
     """
+    enriches = lane.write_enrich_lane(root)
+    dag = RecipeDAG(
+        lane.LANE_CURATE_ID,
+        [lane.UNIT],
+        exclude_recipe_ids=set(exclude),
+        deliver=False,
+        validate=False,
+    )
 
-    exclude_recipe_ids = frozenset({'ZZ_parcel-optional-2026'})
+    def out(recipe_id, stage):
+        # Asked of a graph excluding nothing, so that a left-out
+        # enrich's path resolves too
+        return RecipeDAG(
+            recipe_id, [lane.UNIT], deliver=False, validate=False
+        ).output_path(stage, recipe_id, lane.UNIT)
 
-    def __init__(self, root, enrich_id):
-        self.files = {
-            'ZZ_parcel-spine-2026': root / 'spine.parquet',
-            enrich_id: root / 'spine_optional.parquet',
-            'ZZ_parcel-curated-2026': root / 'curated.parquet',
-        }
-        self.enrich_id = enrich_id
-
-    def nodes(self):
-        stages = ('harmonize', 'enrich', 'curate')
-        return [
-            _Node(stage, recipe_id, 'ZZ-AA-ALP')
-            for stage, recipe_id in zip(stages, self.files, strict=True)
-        ]
-
-    def output_path(self, stage, recipe_id, admin_id=None, region=None):
-        return self.files[recipe_id]
-
-    def input_paths(self, stage, recipe_id, admin_id=None, region=None):
-        spine, enrich, _ = self.files.values()
-        return {'enrich': [spine], 'curate': [spine, enrich]}.get(stage, [])
+    files = {
+        'spine': out(lane.LANE_SPINE_ID, 'harmonize'),
+        'curated': out(lane.LANE_CURATE_ID, 'curate'),
+        **{source: out(enrich, 'enrich') for source, enrich in enriches.items()},
+    }
+    return dag, enriches, files
 
 
-EDGES = {
-    'ZZ_parcel-enrich-optional-2026': [
-        'ZZ_parcel-spine-2026',
-        'ZZ_parcel-optional-2026',
-    ],
-    'ZZ_parcel-enrich-held-2026': ['ZZ_parcel-spine-2026', 'ZZ_parcel-heldsrc-2026'],
-}
-
-
-@pytest.fixture
-def lane_recipes(monkeypatch):
-    def recipe(recipe_id):
-        return {'recipe_id': recipe_id, 'held': recipe_id == 'ZZ_parcel-heldsrc-2026'}
-
-    def dependencies(recipe, admin_id=None, exclude_recipe_ids=None):
-        return [
-            SimpleNamespace(upstream_recipe_id=upstream)
-            for upstream in EDGES.get(recipe['recipe_id'], [])
-        ]
-
-    monkeypatch.setattr(freshness, 'get_recipe_by_id', recipe)
-    monkeypatch.setattr(freshness, 'get_recipe_dependencies', dependencies)
-
-
-@pytest.mark.parametrize('enrich_id', list(EDGES))
+@pytest.mark.parametrize('source_id', [lane.HELD_BY_KEY_ID, lane.EXCLUDED_ID])
 def test_an_enrich_of_a_left_out_source_never_marks_the_curate_stale(
-    tmp_path, lane_recipes, enrich_id
+    data_root, held_root, source_id
 ):
-    dag = _LaneDag(tmp_path, enrich_id)
-    spine, enrich, curated = dag.files.values()
-    # The enrich output predates the rebuilt spine; the curate is newer
-    # than both, so only the enrich job and propagation would mark it.
-    _write(enrich, age_s=7200)
-    _write(spine, age_s=3600)
-    _write(curated)
-    assert set(out_of_date(dag)['recipe_id']) == {enrich_id, 'ZZ_parcel-curated-2026'}
+    dag, enriches, files = _lane(held_root, exclude={lane.EXCLUDED_ID})
+    # The left-out enrich output predates the rebuilt spine; the curate
+    # is newer than both, so only that enrich job and propagation from
+    # it could mark the curate.
+    _write(files[source_id], age_s=7200)
+    _write(files['spine'], age_s=3600)
+    _write(files[lane.OPEN_ID])
+    _write(files['curated'])
 
-    graph = freshness.freshness_graph(dag)
+    assert out_of_date(dag).empty
+    assert ('enrich', enriches[source_id], lane.UNIT, None) in dag.left_out
 
-    assert out_of_date(graph).empty
-    assert graph.left_out == {('enrich', enrich_id, 'ZZ-AA-ALP', None)}
+    # The open source's enrich still counts
+    _write(files[lane.OPEN_ID], age_s=7200)
+    stale = set(out_of_date(dag)['recipe_id'])
+    assert stale == {enriches[lane.OPEN_ID], lane.LANE_CURATE_ID}
 
 
 def test_a_curate_older_than_its_spine_stays_stale_beside_a_left_out_lane(
-    tmp_path, lane_recipes
+    data_root, held_root
 ):
-    dag = _LaneDag(tmp_path, 'ZZ_parcel-enrich-optional-2026')
-    spine, enrich, curated = dag.files.values()
-    _write(enrich, age_s=7200)
-    _write(curated, age_s=3600)
-    _write(spine)
+    dag, _, files = _lane(held_root, exclude={lane.EXCLUDED_ID})
+    _write(files[lane.EXCLUDED_ID], age_s=7200)
+    _write(files['curated'], age_s=3600)
+    _write(files['spine'])
 
-    stale = out_of_date(freshness.freshness_graph(dag)).set_index('recipe_id')
+    stale = out_of_date(dag).set_index('recipe_id')
 
-    assert list(stale.index) == ['ZZ_parcel-curated-2026']
-    assert stale.loc['ZZ_parcel-curated-2026', 'reason'].startswith('input newer:')
+    assert list(stale.index) == [lane.LANE_CURATE_ID]
+    assert stale.loc[lane.LANE_CURATE_ID, 'reason'].startswith('input newer:')
+
+
+def test_the_profile_exclusions_plan_no_placeslab_enrich():
+    """The real tree, as the local profile runs it, on a DC county."""
+    dag = RecipeDAG(
+        'US_parcel-openplaces-2026',
+        admin_ids=['US-VA-FA'],
+        exclude_recipe_ids=freshness.default_exclude_recipe_ids(),
+        deliver=False,
+        validate=False,
+    )
+    enrich_id = 'US_parcel_parcel-placeslab-fmv2026'
+    assert enrich_id not in {node.recipe_id for node in dag.nodes()}
+    assert ('enrich', enrich_id, 'US-VA-FA', None) in dag.left_out
+    inputs = dag.input_paths('curate', 'US_parcel-openplaces-2026', 'US-VA-FA')
+    assert not any('placeslab' in p.name for p in inputs)
 
 
 def test_default_exclusions_come_from_the_job_then_the_profile(monkeypatch, tmp_path):

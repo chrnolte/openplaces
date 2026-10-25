@@ -65,11 +65,21 @@ deliver` and `region_verify` pass it the region's graph
 (`freshness.delivery_graph`), and `--allow-stale` overrides it in both.
 **The check honors the run's excluded and held recipes**: the graph is
 built with the run's `exclude_recipe_ids` (a job's own, else the local
-profile's `defaults.yaml`; `--exclude-recipe-ids` names them), and
-`freshness_graph` also leaves out an enrich job whose source is
-excluded or held, which `RecipeDAG` keeps because the curation names it
-directly. Without that the excluded placeslab lane's link tables marked
-Fairfax, Arlington and Alexandria stale in washington-dc (2026-10-24).
+profile's `defaults.yaml`; `--exclude-recipe-ids` names them).
+
+**An enrich job whose source is excluded or held is no job at all**
+(`dag.adds_left_out_source`, listed in `dag.left_out`), even though
+the curation names the enrich recipe directly, and its output is no
+consumer's declared input. An enrich recipe adds one source's evidence;
+without the source it has nothing to refresh. Before this the graph
+kept the job with only the excluded edge dropped, so the placeslab
+lane's evidence (`US_parcel_parcel-placeslab-fmv2026`, its ingest
+excluded by the local profile) reran on every parcel spine rebuild and
+marked Fairfax, Arlington and Alexandria stale in washington-dc
+(2026-10-24). The curate step still runs: `merge_enrichments` merges
+the evidence file if one is on disk and skips the recipe otherwise,
+as it does for an excluded ingest. The rule covers enrich jobs only; a
+harmonize job reading an excluded source among others is kept.
 `out_of_date(dag)` lists every job whose existing
 output is older than an existing input, then every job built from such
 an output. It differs from `plan()` in one way: a missing output does

@@ -182,14 +182,12 @@ def main(argv=None):
         sys.exit(1)
     # A file that passes the bounds test can still predate a rebuilt
     # spine it was built from; shipping it would publish the old values.
-    dag = freshness.freshness_graph(
-        RecipeDAG(
-            args.recipe_id,
-            admin_ids=op.get_region_admin_ids(args.region_id),
-            exclude_recipe_ids=exclude,
-            deliver=False,
-            validate=False,
-        )
+    dag = RecipeDAG(
+        args.recipe_id,
+        admin_ids=op.get_region_admin_ids(args.region_id),
+        exclude_recipe_ids=exclude,
+        deliver=False,
+        validate=False,
     )
     stale = freshness.out_of_date(dag)
     if not stale.empty:
