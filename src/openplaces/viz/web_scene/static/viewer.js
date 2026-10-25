@@ -28,6 +28,10 @@ const LAYER_ICONS = {
   landmarks: '<path d="M9 15s-5-5-5-8.5a5 5 0 0 1 10 0C14 10 9 15 9 15z" fill="currentColor"'
     + ' fill-opacity=".35" stroke="currentColor"/><circle cx="9" cy="6.5" r="1.6"'
     + ' fill="currentColor"/>',
+  // A small cloud of dots.
+  people: '<g fill="currentColor"><circle cx="4" cy="9" r="1.4"/><circle cx="8" cy="5"'
+    + ' r="1.4"/><circle cx="9" cy="11" r="1.4"/><circle cx="13" cy="7" r="1.4"/>'
+    + '<circle cx="14" cy="12" r="1.4"/></g>',
 };
 // Soft white: present, but never competing with the values' colors.
 const BOUNDARY_COLOR = [235, 240, 255, 90];
@@ -1397,6 +1401,24 @@ async function main() {
     shown.landmarks = !hiddenAtStart.includes('landmarks');
     switches.push(['landmarks', 'Landmarks']);
   }
+  // The people cloud (`scene.people`): census dots over the homes,
+  // behind a switch of its own, off unless the address shows it
+  // (`?show=people`; maintainer, 2026-10-24).
+  const people = scene.people || null;
+  if (people) {
+    shown.people = (params.get('show') || '').split(',').includes('people');
+    switches.push(['people', 'People (2020 Census)']);
+  }
+  // Every dot on a machine known to be fast, every second otherwise,
+  // every fourth on a page that had to lighten itself. The file is
+  // shuffled, so its first part is an even sample of the whole.
+  const peopleStride = () => {
+    const speed = machineSpeed();
+    if (speed === 'fast') {
+      return 1;
+    }
+    return speed === 'slow' || params.get('light') === '1' ? 4 : 2;
+  };
   let flatGround = hasTerrain && !shown.terrain;
   let toggleLayer = () => {};
   for (const [name, label] of switches) {
@@ -1723,6 +1745,33 @@ async function main() {
     note.append(sample, 'Dotted edge: value imputed by openplaces');
     legends.appendChild(note);
   };
+  // The people cloud's legend, while it is switched on: a dot per
+  // group, and how many people a dot stands for.
+  const drawPeopleLegend = () => {
+    if (!people || !shown.people) {
+      return;
+    }
+    const block = document.createElement('div');
+    block.className = 'legend legend-people';
+    const label = document.createElement('div');
+    label.className = 'legend-label';
+    label.textContent = 'People';
+    const of = document.createElement('span');
+    of.className = 'legend-of';
+    of.textContent = ` one dot per ${people.per_dot * peopleStride()} people (2020 Census)`;
+    label.appendChild(of);
+    const list = document.createElement('div');
+    list.className = 'legend-people-groups';
+    for (const group of people.groups) {
+      const item = document.createElement('span');
+      const dot = document.createElement('i');
+      dot.style.background = group.color;
+      item.append(dot, group.label);
+      list.appendChild(item);
+    }
+    block.append(label, list);
+    legends.appendChild(block);
+  };
   const drawLegends = () => {
     legends.replaceChildren();
     // Which values the bars show, named small behind each title.
@@ -1734,6 +1783,7 @@ async function main() {
     }
     if (valueView === 'type' && hasTypeView) {
       drawTypeLegend(legends, scene.types);
+      drawPeopleLegend();
       drawImputedNote();
       placeControls();
       return;
@@ -1774,6 +1824,7 @@ async function main() {
     }
     // No row for features without a value (maintainer, 2026-10-17).
     // A third bar changes the legend's height.
+    drawPeopleLegend();
     drawImputedNote();
     placeControls();
   };
@@ -3024,6 +3075,75 @@ async function main() {
     }
   };
 
+  // The people cloud (`scene.people`), loaded the first time it is
+  // switched on: float32 longitude and latitude offsets from its
+  // origin, float32 heights, uint8 groups (`encode_people_file`).
+  let peopleData = null;
+  let peopleLoading = false;
+  const loadPeople = async () => {
+    if (!people || peopleData || peopleLoading) {
+      return;
+    }
+    peopleLoading = true;
+    const buffer = await fetchGzip(people.file);
+    const n = people.count;
+    const lon = new Float32Array(buffer, 0, n);
+    const lat = new Float32Array(buffer, 4 * n, n);
+    const lift = new Float32Array(buffer, 8 * n, n);
+    const group = new Uint8Array(buffer, 12 * n, n);
+    const rgb = people.groups.map((g) => [1, 3, 5].map((i) => parseInt(g.color.slice(i, i + 2), 16)));
+    const count = Math.floor(n / peopleStride());
+    const positions = new Float32Array(count * 3);
+    const colors = new Uint8Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      positions.set([lon[i], lat[i], lift[i]], i * 3);
+      colors.set([...rgb[group[i]], 235], i * 4);
+    }
+    peopleData = {
+      length: count,
+      attributes: {
+        getPosition: {value: positions, size: 3},
+        getFillColor: {value: colors, size: 4},
+      },
+    };
+    redraw();
+  };
+  // At the page's opening zoom a dot is a fine grain (a third of the
+  // first 1.6 px, which overlapped into blots; maintainer, 2026-10-25),
+  // then grows by half the map's own scaling and grows fainter, so the
+  // dots near the camera do not hide the buildings under them. Fades
+  // out over the last zoom level before `max_zoom`, where a dot could
+  // be read as one household.
+  const PEOPLE_FAR_RADIUS = 0.55;
+  const PEOPLE_FAR_OPACITY = 0.9;
+  const PEOPLE_NEAR_OPACITY = 0.35;
+  const makePeople = () => {
+    if (!peopleData) {
+      return [];
+    }
+    const fade = Math.min(1, Math.max(0, people.max_zoom - edgeZoom));
+    if (fade <= 0) {
+      return [];
+    }
+    const closer = Math.max(0, edgeZoom - scene.view.zoom);
+    const span = Math.max(1, people.max_zoom - 1 - scene.view.zoom);
+    const near = Math.min(1, closer / span);
+    const opacity = PEOPLE_FAR_OPACITY + (PEOPLE_NEAR_OPACITY - PEOPLE_FAR_OPACITY) * near;
+    return [
+      new ScatterplotLayer({
+        id: 'people',
+        data: peopleData,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT_OFFSETS,
+        coordinateOrigin: [people.origin[0], people.origin[1], 0],
+        radiusUnits: 'pixels',
+        getRadius: PEOPLE_FAR_RADIUS * Math.SQRT2 ** closer,
+        billboard: true,
+        opacity: opacity * fade,
+        pickable: false,
+      }),
+    ];
+  };
+
   const redraw = () => {
     deckgl.setProps({
       layers: [
@@ -3031,9 +3151,13 @@ async function main() {
         ...layers.flatMap((l) => l.layer).map(styleEdges),
         boundaries,
         ...(shown.landmarks ? makeLandmarks() : []),
+        ...(shown.people ? makePeople() : []),
       ],
     });
   };
+  if (people && shown.people) {
+    loadPeople();
+  }
 
   const setPalette = (next) => {
     palette = next;
@@ -3097,6 +3221,9 @@ async function main() {
   };
   toggleLayer = (name) => {
     shown[name] = !shown[name];
+    if (name === 'people' && shown.people) {
+      loadPeople();
+    }
     // A pinned tooltip goes with its layer, and with any switch that
     // moves the buildings (land lowers them, terrain flattens all).
     if (pin) {
