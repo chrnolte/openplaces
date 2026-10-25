@@ -153,6 +153,9 @@ def get_recipe_dependencies(
     - pipeline steps or source entries with 'auto_discover' or a bare
       'entity_type', resolved per admin unit the same way the pipeline
       resolves them at run time
+    - a 'link_to_reference' step's 'kept_by' recipe: every source its
+      'resolve_spine' step ranks, listed or discovered, and never that
+      recipe itself (the key deliberately does not end in 'recipe_id')
 
     Parameters
     ----------
@@ -362,10 +365,40 @@ def get_recipe_dependencies(
                 resolved=found is not None,
             )
 
+    def _add_kept_by(kept_by_id, step_name):
+        # A link whose reference is the rows another spine's
+        # resolve_spine keeps (link_to_reference's `kept_by`) reads
+        # every source that step ranks, and not that spine's output:
+        # the footprint geospine runs before the parcel geospine.
+        try:
+            kept = _recipe.get_recipe_by_id(kept_by_id)
+            if admin_id is not None:
+                kept, _ = _recipe.apply_recipe_patches(kept, admin_id)
+        except Exception:  # noqa: BLE001 - an unknown recipe adds nothing
+            _add(None, 'kept_by', step=step_name, resolved=False)
+            return
+        entity = kept.get('entity')
+        kept_type = str(entity.entity_type) if entity is not None else None
+        for spec in kept.get('pipeline') or []:
+            if not isinstance(spec, dict) or spec.get('step') != 'resolve_spine':
+                continue
+            for source in spec.get('sources') or []:
+                if not isinstance(source, dict):
+                    continue
+                if source.get('recipe_id'):
+                    _add(source['recipe_id'], 'kept_by', step=step_name)
+                elif source.get('auto_discover') or source.get('entity_type'):
+                    _add_discovered(
+                        source.get('entity_type') or kept_type, 'resolve_spine', True
+                    )
+            break
+
     for step_spec in recipe.get('pipeline') or []:
         if not isinstance(step_spec, dict):
             continue
         step_name = step_spec.get('step')
+        if step_name == 'link_to_reference' and step_spec.get('kept_by'):
+            _add_kept_by(str(step_spec['kept_by']), step_name)
         multi = step_name in _MULTI_DISCOVER_STEPS
         sources = step_spec.get('sources')
         if isinstance(sources, list):

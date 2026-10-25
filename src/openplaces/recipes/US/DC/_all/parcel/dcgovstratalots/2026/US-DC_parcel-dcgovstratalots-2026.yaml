@@ -1,0 +1,79 @@
+# Recipe: Washington, DC "Air Rights Lots": a party's right to build
+# above an existing area of land, numbered 7000-7999 within a square
+# (8000 series for non-contiguous lots).
+#
+# Source: layer 3 of DC's `DCGIS_DATA/Property_and_Land_WebMercator`
+# MapServer (`maps2.dcgis.dc.gov`), the service that serves the sibling
+# lot recipes (`dcgovrecordlots`, layer 35; `dcgovtaxlots`, layer 39).
+# Read the record-lots header for why each DC lot layer has its own
+# source_id.
+#
+# NAME. `dcgovstratalots` (strata: lots drawn above other land), not
+# the layer's title: among DC's same-scope parcel recipes
+# `find_reference_recipe_id` picks the alphabetically first id, and
+# that must stay `dcgovrecordlots` so the footprint geospine's parcel
+# link keeps its name (a test pins it).
+#
+# WHY. OTR's roll (`dcgovitspe`) bills about 1,199 accounts on
+# air-rights lot numbers, which neither the record nor the tax lot
+# layer draws (plans/findings/dc-public-land-zero-values.md, F3). The
+# SSL has the shape of a lot SSL ('9999    7999', fabricated).
+#
+# An air-rights lot is drawn in plan over land another lot also holds
+# (a street, a rail cut, a building's lower floors). The DC parcel
+# geospine patch ranks this layer last, so an air-rights outline
+# enters the spine only where no ranked lot already covers it.
+# UPPER_LIMIT/LOWER_LIMIT (the vertical extent) and FLOORORDER have
+# no registry attribute and are left unmapped.
+#
+# BULK vs REST (equivalence test, 2026-10-24). The Hub item
+# (a235278a48fe40d59cb49fcc48027733, layer 3) lists the live
+# service's fields, so the bulk GeoJSON export is read rather than
+# REST paging (see `dcgovunplattedparcels`).
+# Measured 2026-10-24 on US-DC: REST returnCountOnly 1,020 features.
+#
+# Mapped: SSL and STATEDAREA, as on the siblings. Left unmapped, as on
+# the siblings: SQUARE/SUFFIX/LOT/QUADRANT, the plat, condominium and
+# lineage bookkeeping, CALCULATEDAREA, NARRATIVE, ISHISTORIC and every
+# date field (Esri epoch milliseconds). The layer carries no owner
+# field.
+#
+# License: as `dcgovunplattedparcels`: CC BY 4.0 (Hub item), CC0 1.0
+# under DC's district-data terms; no resale clause, no click-through.
+
+description: >-
+  Washington, DC Air Rights Lots: rights to build above land another lot
+  holds (lots 7000 and up). Geometry and identifier only.
+
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dcgovstratalots
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::air-rights-lots/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/a235278a48fe40d59cb49fcc48027733_3/downloads/data?format=geojson&spatialRefId=4326"
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "dc_air_rights_lots.geojson"
+
+columns:
+  parcel_id_admin2: SSL
+  land_area_sqft: STATEDAREA
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

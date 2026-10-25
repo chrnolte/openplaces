@@ -36,6 +36,8 @@ from openplaces.io.harmonizer.links import (
     _point_step_config,
     _prepare_reference,
     _resolve_reference_recipe,
+    overlay_step_config,
+    reference_rows,
     snap_chained_links,
 )
 from openplaces.io.readers import get_entities
@@ -112,6 +114,7 @@ def load_geospine(
         )
     if isinstance(geospine, str):
         geospine = get_recipe_by_id(geospine)
+    geospine = _as_run_for(geospine, state.admin_id)
     geospine_id = get_recipe_id(geospine)
 
     spine = get_entities(geospine, state.admin_id, geom=True, missing='raise')
@@ -147,6 +150,22 @@ def load_geospine(
     return state
 
 
+def _as_run_for(geospine: dict, admin_id) -> dict:
+    """The geospine recipe as its run for *admin_id* saw it, patches applied.
+
+    The links' fingerprints record the configs of the geospine's prior
+    geometry steps as the unit ran them, so a unit patch of the
+    geospine (DC's parcel ranking) has to be applied here too, or every
+    sidecar it shaped reads as stale.
+    """
+    if admin_id is None:
+        return geospine
+    from openplaces.recipe import apply_recipe_patches
+
+    patched, _ = apply_recipe_patches(geospine, admin_id)
+    return patched
+
+
 def _restore_foreign_links(
     state: HarmonizeState,
     links_recipe_id: str,
@@ -162,7 +181,7 @@ def _restore_foreign_links(
     *links_key* column. The inferred-row frames need no re-keying: they
     are rebuilt from this spine's own provenance columns.
     """
-    other = get_recipe_by_id(links_recipe_id)
+    other = _as_run_for(get_recipe_by_id(links_recipe_id), state.admin_id)
     other_id = get_recipe_id(other)
     if links_key is None:
         entity = other.get('entity')
@@ -449,23 +468,26 @@ def _restore_link(
         min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
         area_min_m2 = thresholds.get('area_intersection_m2_min', 10)
         aggregation_function = step_cfg.get('aggregation_function')
+        # The same reference rows the geospine run overlaid: with
+        # kept_by, the rows another spine's resolve_spine keeps.
+        ref_raw, kept_config = reference_rows(
+            resolved_id, state.admin_id, step_cfg.get('kept_by')
+        )
         fingerprint = _link_fingerprint(
             shim,
             resolved_id,
-            {
-                'min_fraction_of_largest': min_fraction,
-                'area_intersection_m2_min': area_min_m2,
-                'sort_by': step_cfg.get('sort_by'),
-                'list_columns': step_cfg.get('list_columns'),
-                'aggregation_function': (
-                    None if aggregation_function is None else str(aggregation_function)
-                ),
-            },
+            overlay_step_config(
+                min_fraction,
+                area_min_m2,
+                step_cfg.get('sort_by'),
+                step_cfg.get('list_columns'),
+                aggregation_function,
+                kept_config,
+            ),
         )
         overlay = _load_link_sidecar(
             sidecar_path, fingerprint, spine_id_col, verbose=state.verbose
         )
-        ref_raw = get_entities(resolved_id, state.admin_id, geom=True, missing='warn')
         if ref_raw is None or len(ref_raw) == 0:
             # The geospine run skipped this link for the same reason (an
             # expected admin-scoped coverage gap), so there is nothing to

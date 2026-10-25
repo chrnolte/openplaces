@@ -1,0 +1,84 @@
+# Recipe: Washington, DC "Parcel Lots": land never subdivided into
+# record or tax lots, tracked as numbered parcels since 1905.
+#
+# Source: layer 33 of DC's `DCGIS_DATA/Property_and_Land_WebMercator`
+# MapServer (`maps2.dcgis.dc.gov`), the service that serves the sibling
+# lot recipes (`dcgovrecordlots`, layer 35; `dcgovtaxlots`, layer 39).
+# Read the record-lots header for why each DC lot layer has its own
+# source_id. Parcels occur only in the old County of Washington, north
+# of Florida Ave and east of the Anacostia (the layer's description).
+#
+# NAME. `dcgovunplattedparcels`, after the roll's own word for these
+# accounts, rather than the layer's title: among DC's same-scope
+# parcel recipes `find_reference_recipe_id` picks the alphabetically
+# first id, and that must stay `dcgovrecordlots` so the footprint
+# geospine's parcel link keeps its name (a test pins it).
+#
+# WHY. OTR's roll (`dcgovitspe`) bills about 1,420 accounts on an SSL
+# of the shape 'PAR 99999999' (fabricated), which neither the record
+# nor the tax lot layer draws, so their values had no outline to land
+# on (plans/findings/dc-public-land-zero-values.md, F3). This layer's
+# SSL has the same shape: 'PAR ' plus the four-digit parcel and lot
+# numbers.
+#
+# BULK vs REST (equivalence test, 2026-10-24). The Hub item
+# (f07d97c6fc9543d5987fa026636661d7, layer 33) lists the live
+# service's fields under the same names (SHAPE.AREA/SHAPE.LEN become
+# Shape__Area/Shape__Length), modified the same day, unlike the stale
+# Hub exports the record-lots header rejects. So the bulk GeoJSON
+# export is read rather than REST paging.
+# Measured 2026-10-24 on US-DC: REST returnCountOnly 1,124 features.
+#
+# Mapped: SSL (as parcel_id_admin2, copied to parcel_id_assessor, the
+# key parcel_id_local derives from) and STATEDAREA (square feet, the
+# STATEDAREAUNIT code of the siblings). Left unmapped, as on the
+# siblings: SQUARE/SUFFIX/PAR/LOT/QUADRANT (SSL carries them), the
+# plat and lineage bookkeeping (BOOK_NUM, PAGE_NUM, RECORD*,
+# CREATEDBYRECORD, RETIREDBYRECORD, COL, CONDO_*, OF_LOT_SEQ,
+# ACCOUNT_ID, IS_THEORETICAL_LOT, ISHISTORIC, NARRATIVE),
+# CALCULATEDAREA, and every date field (Esri epoch milliseconds, see
+# the record-lots header). The layer carries no owner field.
+#
+# License: the Hub item states CC BY 4.0; DC's district-data terms page
+# dedicates District data to the public domain (CC0 1.0), permits
+# redistribution and commercial use, and asks for (does not require)
+# attribution. The service states only "District of Columbia" as
+# copyright text. No resale clause, no click-through, and the terms
+# say nothing about automated access.
+
+description: >-
+  Washington, DC Parcel Lots: unsubdivided land tracked as numbered parcels
+  ('PAR' SSLs). Geometry and Square-Suffix-Lot identifier only.
+
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dcgovunplattedparcels
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::parcel-lots/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/f07d97c6fc9543d5987fa026636661d7_33/downloads/data?format=geojson&spatialRefId=4326"
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "dc_parcel_lots.geojson"
+
+columns:
+  parcel_id_admin2: SSL
+  land_area_sqft: STATEDAREA
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

@@ -1,0 +1,46 @@
+# Patch: DC's footprint-to-parcel link reaches the lots the parcel
+# geospine keeps, not one lot layer of five.
+#
+# The footprint geospine's parcel link names `entity_type: parcel`,
+# which `find_reference_recipe_id` resolves to one ingest: of DC's
+# same-scope parcel recipes the alphabetically first,
+# `dcgovrecordlots`. The parcel geospine keeps the tax lots over them
+# (the parcel geospine patch beside this file's twin), so before this
+# patch no outline linked to a tax lot: the 8,015 tax lots the old
+# ranking kept, the White House and the Capitol among them, had
+# `n_footprints_per_parcel` 0 (plans/findings/
+# dc-public-land-zero-values.md, F2).
+#
+# `kept_by` makes the link's reference the rows the parcel geospine's
+# resolve_spine keeps for the unit, from every layer it ranks
+# (`links.spatial.reference_rows_kept_by`). The link keeps its name,
+# so the curate steps find it as before.
+#
+# Why a DC patch: the rule is general, and any unit whose parcel
+# geospine reads more than one parcel layer has the same gap. Turning
+# it on in the national recipe makes the parcel links of every such
+# unit stale (their fingerprint gains the other layers), and each then
+# needs its footprint geospine rerun. That is the maintainer's call;
+# units with one parcel layer would be unaffected, fingerprint
+# included.
+
+description: >-
+  DC footprint geospine patch: the parcel link uses the lots the DC parcel
+  geospine keeps, across all of DC's lot layers.
+
+stage: harmonize
+admin_id: US-DC
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+
+pipeline_patch:
+  - set: link_to_reference
+    occurrence: 1
+    params:
+      kept_by: US_parcel-geospine-2026

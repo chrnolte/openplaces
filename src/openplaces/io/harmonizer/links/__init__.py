@@ -130,5 +130,8 @@ from openplaces.io.harmonizer.links.spatial import (  # noqa: F401
     _resolve_reference_recipe,
     _superseded_by_consolidation,
     link_to_reference,
+    overlay_step_config,
+    reference_rows,
+    reference_rows_kept_by,
     snap_chained_links,
 )

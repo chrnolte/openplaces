@@ -1,0 +1,77 @@
+# Patch: the DC parcel geospine ranks OTR's tax lots ahead of the
+# surveyor's record lots, then the lot layers neither draws.
+#
+# Why DC's and not everyone's: DC is the one unit whose cadastre is
+# split into layers that describe the same land twice by design. Tax
+# lots are OTR's billing lots, combines and splits of record lots, and
+# the roll (`dcgovitspe`) values the tax-lot SSL, so the record lots
+# beneath a tax lot match no roll row. Ranked alphabetically, as
+# auto-discovery does, the record lots came first and the IoU test
+# dropped 22,795 tax lots, 22,548 of them valued, $51.2B of land
+# (plans/findings/dc-public-land-zero-values.md, F1).
+#
+# Ranking only; no outline is cut, grown or merged, and no minimum
+# area applies. A lower-ranked outline enters where its IoU with every
+# accepted outline is at most 0.02 (the default) and at most half of
+# its own area lies under accepted outlines (`overlap_share_max`, the
+# rule the footprint geospine uses at 0.1). Without the share test a
+# record lot fully inside a large tax lot (IoU under 0.02) stayed
+# stacked beneath it: 7,022 record lots, 4 of them valued.
+#
+# Record lots only partly covered by a tax lot (a split), measured
+# 2026-10-24 against the lot downloads of 2026-08-19:
+# Measured 2026-10-24 on US-DC: 502 record lots are 10 to 99% under tax lots, 9 valued.
+# Measured 2026-10-24 on US-DC: their part outside tax lots totals 28.4 ha.
+# Under this ranking the record lots dropped while less than 99% under
+# tax lots number 491, holding 48.8 ha outside them, 24 valued; a
+# record lot less than half under tax lots and with an IoU of at most
+# 0.02 against each stays, overlapping the tax lot on the covered part.
+# Measured 2026-10-24 on US-DC: 64 valued record lots are dropped ($246.8M land).
+#
+# The unplatted parcels ('PAR' SSLs), U.S. reservations ('RES') and
+# air-rights lots follow (F3). An air-rights lot is drawn over land a
+# ranked lot holds (828 of 838 lie more than 90% under tax or record
+# lots), so most of them stay out of the spine; their accounts are
+# properties above a lot, which a link to the lot beneath would
+# carry, not an outline of their own.
+#
+# Resolved in memory, 2026-10-24, outlines kept per layer (valued):
+# Measured 2026-10-24 on US-DC-DC: tax lots 30,844 (30,501), record lots 106,413 (98,931).
+# Measured 2026-10-24 on US-DC-DC: unplatted 1,108 (1,094), reservations 429 (143), air rights 14 (12).
+# Measured 2026-10-24 on US-DC-DC: 130,679 of 215,966 roll accounts meet a kept outline.
+# Without the share test the counts are 113,435 record lots, 435
+# reservations and 99 air-rights lots, and the accounts met 130,745.
+
+description: >-
+  DC parcel geospine patch: tax lots ranked ahead of record lots, then
+  unplatted parcels, reservations and air-rights lots.
+
+stage: harmonize
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_parcel-geospine-2026
+
+pipeline_patch:
+  - set: resolve_spine
+    params:
+      sources:
+        - recipe_id: US-DC_parcel-dcgovtaxlots-2026
+          label: dcgovtaxlots
+        - recipe_id: US-DC_parcel-dcgovrecordlots-2026
+          label: dcgovrecordlots
+        - recipe_id: US-DC_parcel-dcgovunplattedparcels-2026
+          label: dcgovunplattedparcels
+        - recipe_id: US-DC_parcel-dcgovreservations-2026
+          label: dcgovreservations
+        - recipe_id: US-DC_parcel-dcgovstratalots-2026
+          label: dcgovstratalots
+        - auto_discover: true
+          entity_type: parcel
+      thresholds:
+        overlap_share_max: 0.5
