@@ -313,6 +313,13 @@ census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the 
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
 census_place_id,"Census place identifier (7-digit state+place FIPS) of the incorporated place or census-designated place holding the entity; null outside every place",,string,first,,,harmonize
 census_place_geoid,"Census place code (7-digit state+place FIPS, TIGER GEOID) on a place tile row of US_tile-census-2025_place; the value link steps copy into census_place_id",,string,first,,,ingest
+census_block_geoid,"Census 2020 tabulation block code (15-digit state+county+tract+block, GEOID20) on a block tile row of US_tile-census-2025_block or a block row of the 2020 Census P.L. 94-171 counts; the value link steps copy into census_block_id",,string,first,,,ingest,
+n_people,"Number of people in the census block, 2020 Census P.L. 94-171 table P2 total (P0020001); carries the Census Bureau's disclosure-avoidance noise at block level",,float,sum,,,ingest,
+n_people_white,"Number of people in the census block who are not Hispanic or Latino and White alone (2020 Census P.L. 94-171, P0020005)",,float,sum,,,ingest,
+n_people_black,"Number of people in the census block who are not Hispanic or Latino and Black or African American alone (2020 Census P.L. 94-171, P0020006)",,float,sum,,,ingest,
+n_people_asian,"Number of people in the census block who are not Hispanic or Latino and Asian alone (2020 Census P.L. 94-171, P0020008)",,float,sum,,,ingest,
+n_people_hispanic,"Number of people in the census block who are Hispanic or Latino, of any race (2020 Census P.L. 94-171, P0020002)",,float,sum,,,ingest,
+n_people_other,"Number of people in the census block who are not Hispanic or Latino and American Indian and Alaska Native alone, Native Hawaiian and Other Pacific Islander alone, Some Other Race alone, or of two or more races (2020 Census P.L. 94-171, P0020007 + P0020009 + P0020010 + P0020011); with the four other n_people_ groups it sums to n_people",,float,sum,,,ingest,
 zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical approximation of ZIP code service areas, not the authoritative ZIP code (see postal_zip5)",,string,first,,,harmonize
 postal_code_conflict,ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree,,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich

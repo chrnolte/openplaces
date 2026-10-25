@@ -1,0 +1,173 @@
+# 2020 Census Redistricting Data (Public Law 94-171), table P2
+# ("Hispanic or Latino, and not Hispanic or Latino by race"), one row
+# per 2020 tabulation block, one file per state.
+#
+# Source: the Census Bureau's legacy-format summary file, one zip per
+# state under
+# https://www2.census.gov/programs-surveys/decennial/2020/data/01-Redistricting_File--PL_94-171/
+# (ma2020.pl.zip, 20 MB; published 2021-08-12). Chosen over the Census
+# API (api.census.gov/data/2020/dec/pl): one bulk file per state
+# against thousands of block queries, and the API has its own terms of
+# service while the bulk file is a plain download.
+#
+# The zip holds four pipe-delimited files without a header row:
+# {st}geo2020.pl (the geographic header, one row per summary level and
+# unit) and three data segments, {st}000012020.pl (tables P1, P2),
+# {st}000022020.pl (P3, P4, H1) and {st}000032020.pl (P5). A data row
+# says nothing of its geography; it shares the logical record number
+# LOGRECNO with its geo row, so the two files are read side by side
+# (`join_members`). Only those two members are extracted. Positions
+# below are 0-based, checked against the DC file 2026-10-24: geo has 97
+# fields, segment 1 has 149 (5 header fields, P1's 71, P2's 73).
+#
+# Geographic header fields read:
+#   2  SUMLEV    summary level; 750 is the tabulation block
+#   7  LOGRECNO  logical record number, the join key
+#   9  GEOCODE   bare 15-digit block code (GEOID20), the key here
+#
+# Table P2 fields read (segment 1; NH: not Hispanic or Latino):
+#   76 P0020001 Total                          -> n_people
+#   77 P0020002 Hispanic or Latino             -> n_people_hispanic
+#   78 P0020003 NH (read, not mapped)
+#   80 P0020005 NH, White alone                -> n_people_white
+#   81 P0020006 NH, Black or African American
+#               alone                          -> n_people_black
+#   82 P0020007 NH, American Indian and Alaska
+#               Native alone                   -> n_people_other
+#   83 P0020008 NH, Asian alone                -> n_people_asian
+#   84 P0020009 NH, Native Hawaiian and Other
+#               Pacific Islander alone         -> n_people_other
+#   85 P0020010 NH, Some Other Race alone      -> n_people_other
+#   86 P0020011 NH, Two or More Races          -> n_people_other
+# P0020004 (NH, one race) is the sum of P0020005 to P0020010 and
+# P0020003 = P0020004 + P0020011, so the five groups partition the
+# total: white + black + asian + hispanic + other = n_people on every
+# row. The categories are those of the Racial Dot Map (Cable, 2013).
+# P0020012 to P0020073 (the two-or-more-races combinations) are left
+# unread.
+#
+# Block counts carry the Bureau's 2020 disclosure-avoidance noise
+# (differential privacy, TopDown algorithm). Held exact are the state
+# populations and each block's counts of housing units and occupied
+# group-quarters facilities; a block's population and its split by
+# race are noisy, so a block can show people and no housing unit.
+#
+# Measured 2026-10-24 on US-DC: 6,012 blocks, the five groups sum to
+# n_people on every one, and the state row's P2 equals the blocks'
+# group totals.
+# Measured 2026-10-24 on US-TX: 668,757 blocks (449,085 with people,
+# 29,145,505 people), the five groups sum to n_people on every one;
+# every block joins US_tile-census-2025_block on census_block_geoid
+# both ways.
+
+description: >-
+  2020 Census P.L. 94-171 redistricting counts, table P2 (Hispanic origin
+  by race), per 2020 tabulation block.
+
+admin_id: US
+
+dataset:
+  theme: population
+  source:
+    source_id: census
+    # Work of the U.S. Government, uncopyrightable in the US by statute
+    # (17 U.S.C. 105). Read 2026-10-24: the Bureau's Data Stewardship
+    # policy DS027 states "Data/works created by Census Bureau employees
+    # generally are not subject to copyright protection within the
+    # United States. Census Bureau data or other works may be subject
+    # to copyright protection in foreign countries." census.gov has no
+    # site-wide terms of use (its policies page lists none); the API's
+    # terms of service bind API use only, which this recipe does not
+    # make. The citation page asks that derived estimates cite the
+    # Census Bureau as the source of the original data only.
+    license: >-
+      public-domain (US Government work, 17 U.S.C. 105); 'Data/works
+      created by Census Bureau employees generally are not subject to
+      copyright protection within the United States' (DS027)
+    terms_url: "https://www2.census.gov/foia/ds_policies/ds027.pdf"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://www.census.gov/programs-surveys/decennial-census/about/rdo/summary-files.html"
+    download_url: "https://www2.census.gov/programs-surveys/decennial/2020/data/01-Redistricting_File--PL_94-171/{admin2_name}/{admin2_id_leaf}2020.pl.zip"
+  version: 2020pl
+
+# One zip per state; the directory is the state's name with
+# underscores (District_of_Columbia), the file its lowercase postal
+# code.
+download_by:
+  admin_level: 2
+  admin_recipe_id: "US_admin-census-2025_admin2"
+  partition_key_transformation:
+    admin2_name: {operation: replace, args: [" ", "_"]}
+    admin2_id_leaf: {operation: lower}
+
+compressed_file_name: "{admin2_id_leaf}2020.pl.zip"
+uncompressed_file_name: "{admin2_id_leaf}000012020.pl"
+extract_members:
+  - "{admin2_id_leaf}geo2020.pl"
+  - "{admin2_id_leaf}000012020.pl"
+
+delimiter: "|"
+# The geo file's place names are Latin-1 in some states; only codes
+# are read, and Latin-1 decodes any byte.
+encoding: latin-1
+csv_dtype:
+  SUMLEV: str
+  GEOCODE: str
+
+join_members:
+  key: LOGRECNO
+  members:
+    - file: "{admin2_id_leaf}geo2020.pl"
+      fields: {2: SUMLEV, 7: LOGRECNO, 9: GEOCODE}
+    - file: "{admin2_id_leaf}000012020.pl"
+      fields:
+        4: LOGRECNO
+        76: P0020001
+        77: P0020002
+        78: P0020003
+        80: P0020005
+        81: P0020006
+        82: P0020007
+        83: P0020008
+        84: P0020009
+        85: P0020010
+        86: P0020011
+
+# Tabulation blocks only; the file also carries the state, county,
+# tract, block group, place and every other summary level.
+query: "SUMLEV == '750'"
+
+columns:
+  census_block_geoid: GEOCODE
+  n_people: P0020001
+  n_people_white: P0020005
+  n_people_black: P0020006
+  n_people_asian: P0020008
+  n_people_hispanic: P0020002
+
+transformations:
+  - type: aggregate
+    operation: sum
+    inputs: [P0020007, P0020009, P0020010, P0020011]
+    output: n_people_other
+  # State FIPS, for the crosswalk to admin2_id (as in the block tiles).
+  - type: string
+    operation: substring
+    input: census_block_geoid
+    args: {start: 0, end: 2}
+    output: admin2_id_admin1
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "US_admin-census-2025_admin2"
+
+# Keyed like the block tiles' census_block_geoid (GEOID20), so a block
+# outline and its counts join on that column.
+set_index: census_block_geoid
+
+save_to:
+  data_dir: cache
+  filename: block
+  admin_level: 2
