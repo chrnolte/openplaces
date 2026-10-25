@@ -56,7 +56,8 @@ def _transform_partition_key(value, spec: dict) -> str:
     spec : dict
         ``operation`` plus ``args``: ``substring`` ([start, stop]),
         ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]),
-        ``replace`` ([old, new], every occurrence).
+        ``replace`` ([old, new], every occurrence), ``lower`` (no
+        arguments).
     """
     value = str(value)
     operation = spec.get('operation')
@@ -89,10 +90,15 @@ def _transform_partition_key(value, spec: dict) -> str:
         # ('NHD_H_North_Dakota_State_GPKG.zip'), which neither
         # admin_key_transform option produces.
         return value.replace(args[0], args[1])
+    if operation == 'lower':
+        # The Census Bureau names each state's P.L. 94-171 members by
+        # the lowercase postal code ('ma' in 'ma000012020.pl'), which
+        # no admin column carries in that case.
+        return value.lower()
     raise ValueError(
         f'Unknown partition_key_transformation operation {operation!r}; '
         "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix', "
-        "'replace'."
+        "'replace', 'lower'."
     )
 
 

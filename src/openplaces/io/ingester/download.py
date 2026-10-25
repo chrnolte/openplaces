@@ -580,6 +580,33 @@ class _DownloadMixin:
             if self.verbose:
                 print(f'Reading {len(matched)} members matching {members_glob}')
 
+        # `join_members`: the partition's table is several extracted files
+        # joined side by side on a key column. The Census Bureau's P.L.
+        # 94-171 files put each record's geography in one file and its
+        # counts in another, related only by a logical record number.
+        # The first member stands in as `data_path` for the checks below.
+        if self.recipe.get('join_members'):
+            spec = self.recipe['join_members']
+            members = []
+            for member in spec['members']:
+                name = member['file']
+                if 'download_by' in self.recipe:
+                    name = self._resolve_placeholders(name)
+                path = self.recipe_heap_dir / name
+                if not path.exists() and self.recipe_heap_dir.exists():
+                    path = _match_extracted_file(self.recipe_heap_dir, path) or path
+                if not path.exists():
+                    raise FileNotFoundError(
+                        f'join_members file {name!r} not found in '
+                        f'{self.recipe_heap_dir}.'
+                    )
+                members.append((path, member['fields']))
+            self.download_partition['join_members'] = {
+                'key': spec['key'],
+                'members': members,
+            }
+            self.download_partition['data_path'] = members[0][0]
+
         # If the expected flat path wasn't created by extraction, search
         # recursively (tar archives often add nested subdirectories).
         if (

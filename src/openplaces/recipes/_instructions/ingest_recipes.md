@@ -103,6 +103,13 @@ every CAMA field null with a perfectly plausible feature count.
   name order and stacked; for an archive that ships a year as monthly
   and weekly extracts (Vermont's transfer returns). Pair it with a
   `drop_duplicates` key where the members overlap.
+- `join_members:` — `key` plus a list of `members`, each a `file`
+  (partition placeholders allowed) and a `fields` map from 0-based
+  column position to name: headerless delimited files read side by
+  side and joined on `key`, for a source that splits each record across
+  files (the Census Bureau's P.L. 94-171 geo header and data segments,
+  related by `LOGRECNO`). The key is read as text; other columns follow
+  `csv_dtype`. A key repeated in a member, or missing from one, raises.
 - `drop_duplicates:` — an explicit column subset. A bare full-row dedupe keeps
   rows that differ only in a column you do not care about.
 - `dissolve_by:` names the column naming the record a row belongs to, for a
