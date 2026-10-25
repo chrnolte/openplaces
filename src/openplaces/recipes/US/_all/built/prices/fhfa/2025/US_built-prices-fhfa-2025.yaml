@@ -28,14 +28,19 @@ dataset:
   theme: built-prices
   source:
     source_id: fhfa
-    # A federal agency's publication. Checked 2026-10-16: the datasets
-    # page states no terms, licence or redistribution condition and
-    # calls the indexes "publicly available"; no terms page is linked.
-    # Recorded as unknown per the recipe guide, not assumed public
-    # domain.
-    license: "unknown (U.S. federal agency publication; no data terms page found)"
-    terms_url: null
-    redistribution_restricted: null
+    # A federal agency's publication. Checked 2026-10-16 and again
+    # 2026-10-25: FHFA.gov states no copyright, licence or
+    # redistribution condition for its data; data.gov lists the HPI for
+    # public access as a U.S. Government work. FHFA's only terms
+    # document is its API Terms of Service (this recipe downloads the
+    # workbook, not the API), which asks a product to say it "uses
+    # FHFA Data but is neither endorsed nor certified by FHFA";
+    # delivery notices that use the index carry that sentence.
+    # Recorded as public domain on the maintainer's decision,
+    # 2026-10-25.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    terms_url: "https://www.fhfa.gov/about/fhfa-policies/api-terms-of-service"
+    redistribution_restricted: false
     portal_url: "https://www.fhfa.gov/data/hpi/datasets"
     download_url: "https://www.fhfa.gov/hpi/download/annual/hpi_at_county.xlsx"
   version: 2025
