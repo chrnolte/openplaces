@@ -1100,6 +1100,144 @@ def test_residential_lots_follow_the_roll_where_it_names_no_home():
     ]
 
 
+def test_residential_lots_drop_public_open_space_and_bare_residential_land():
+    # Fabricated lots, each classed as homes with a home counted on it:
+    rows = [
+        # a reservation's gatehouse lot, all State open space, no count;
+        ('Single-Family', None, None, 2e6, 1.0, 'State', np.nan),
+        # apartments on a beach reservation, the roll counting 200;
+        ('Multi-Family', 'residential', None, 3e7, 0.95, 'State', 200.0),
+        # a house beside a land trust's preserve;
+        (
+            'Single-Family',
+            'residential',
+            'single family',
+            4e5,
+            1.0,
+            'Land Trust',
+            np.nan,
+        ),
+        # residential land with no building on the roll;
+        (
+            'Single-Family',
+            'residential',
+            'developable residential land',
+            0.0,
+            0,
+            None,
+            np.nan,
+        ),
+        # a house whose roll records no improvement, kept as before.
+        ('Single-Family', 'residential', 'single family', 0.0, 0.0, None, np.nan),
+    ]
+    lots = pd.DataFrame(
+        rows,
+        columns=[
+            'land_use_class',
+            'use_group',
+            'use_subgroup',
+            'improvement_value',
+            'protected_open_space_share',
+            'protected_open_space_owner_type',
+            web_scene.ROLL_DWELLINGS,
+        ],
+    ).assign(n_dwellings=[1.0, 200.0, 1.0, 1.0, 1.0])
+    assert list(web_scene.residential_lots(lots)) == [False, True, True, False, True]
+
+
+def test_apartment_lots_counting_fewer_homes_than_their_subgroup_implies():
+    lots = pd.DataFrame(
+        {
+            'use_subgroup': [
+                'apartments over 8 units',
+                'apartments over 8 units',
+                'apartments 4-8 units',
+                'public housing',
+                'single family',
+                None,
+            ],
+            'n_dwellings': [2.0, 120.0, 3.0, 1.0, 1.0, 1.0],
+        }
+    )
+    least = web_scene.implied_min_homes(lots)
+    assert list(least[:4]) == [9.0, 9.0, 4.0, 4.0]
+    assert np.isnan(least[4:]).all()
+    assert list(web_scene.undercounted_lots(lots)) == [
+        True,
+        False,
+        True,
+        True,
+        False,
+        False,
+    ]
+
+
+def test_buildings_on_lots_whose_record_holds_no_home_are_not_homes():
+    # Fabricated lots of a per-home layer, none with a roll count: a
+    # cemetery classed single-family by a building model, with a token
+    # improvement and no use group; a house; a farm with its farmhouse.
+    lots = gpd.GeoDataFrame(
+        {
+            'land_use_class': ['Single-Family'] * 3,
+            'use_group': [None, 'residential', 'Use Value | Agricultural'],
+            'improvement_value': [200.0, 3e5, 1.5e5],
+            'n_dwellings': [np.nan] * 3,
+        },
+        geometry=[box(0, 0, 100, 100), box(200, 0, 300, 100), box(400, 0, 500, 100)],
+        crs='EPSG:26986',
+    )
+    buildings = gpd.GeoDataFrame(
+        {web_scene.BUILDING_CLASS: ['Single-Family'] * 3, 'n_dwellings': [1.0] * 3},
+        geometry=[box(40, 40, 60, 60), box(240, 40, 260, 60), box(440, 40, 460, 60)],
+        crs='EPSG:26986',
+    )
+    gdfs = {'parcels': lots, 'buildings': buildings}
+    scale = {
+        'recipe': 'r',
+        'value_column': 'v',
+        'area_unit': 'sqft',
+        'vmin': 1,
+        'vmax': 2,
+    }
+    layers = [
+        SceneLayer(
+            name='parcels', label='Land', per_dwelling_label='Per home', **scale
+        ),
+        SceneLayer(name='buildings', label='B', stack_on='parcels', **scale),
+    ]
+    web_scene._mark_exempt_ground(gdfs, layers)
+    assert list(gdfs['buildings'][web_scene.BUILDING_CLASS]) == [
+        web_scene.EXEMPT_CLASS,
+        'Single-Family',
+        'Single-Family',
+    ]
+
+
+def test_lots_are_drawn_only_on_land():
+    # Fabricated lots in meters: one reaching halfway into a river, one
+    # wholly in it, one dry; a pier building stands in the water on the
+    # first lot.
+    lots = gpd.GeoDataFrame(
+        {'v': [1.0, 2.0, 3.0]},
+        geometry=[box(0, 0, 100, 100), box(60, 200, 90, 300), box(-300, 0, -200, 100)],
+        crs='EPSG:26986',
+    )
+    river = gpd.GeoSeries([box(50, -50, 150, 400)], crs='EPSG:26986').to_crs(4326)
+    pier = gpd.GeoDataFrame(geometry=[box(70, 40, 80, 60)], crs='EPSG:26986')
+    masked = web_scene.mask_water(lots, river, pier)
+    assert list(masked['v']) == [1.0, 3.0]
+    land_shape = shapely.from_wkb(masked[web_scene.LAND_SHAPE].iloc[0])
+    land = gpd.GeoSeries([land_shape], crs=4326).to_crs(26986)
+    # Half the lot, plus the pier's footing with its margin.
+    expected = 50 * 100 + (10 + 2 * web_scene.PIER_MARGIN_M) * (
+        20 + 2 * web_scene.PIER_MARGIN_M
+    )
+    assert land.area.iloc[0] == pytest.approx(expected, rel=0.02)
+    assert masked[web_scene.LAND_SHAPE].iloc[1] is None
+    # The drawn outline changes; the lot's own geometry does not.
+    assert masked.geometry.iloc[0].equals(box(0, 0, 100, 100))
+
+
 def test_the_page_reads_the_height_check_from_the_footprint_recipe():
     rule = web_scene.ghost_rule('US_footprint-openplaces-2026')
     assert rule['min_value_per_sqft'] > 0
