@@ -1503,7 +1503,9 @@ def _fake_host(monkeypatch, team_passwd, on_host):
     monkeypatch.setattr(web_scene, 'load_deploy_settings', lambda env_file: settings)
     # A fabricated token.
     monkeypatch.setattr(
-        web_scene, 'read_access_tokens', lambda path: [(FAKE_TOKEN, 'a reader')]
+        web_scene,
+        'read_access_tokens',
+        lambda path, tier=None: [(FAKE_TOKEN, 'a reader')],
     )
     monkeypatch.setattr(web_scene, '_rclone_env', lambda settings: {})
     monkeypatch.setattr(
@@ -1646,6 +1648,122 @@ def test_tokens_add_and_revoke_one_person(tmp_path):
     assert web_scene.read_access_tokens(path)[0] == (token, 'reader one')
     tokens.revoke(path, 'reader one')
     assert [n for _, n in web_scene.read_access_tokens(path)] == ['reader two']
+
+
+def test_one_restricted_token_opens_the_restricted_gate_alone(tmp_path):
+    from openplaces.viz.web_scene import tokens
+
+    path = tmp_path / 'tokens.tsv'
+    tokens.add(path, 'reader', 'https://host.example/values')
+    link = tokens.add(path, 'holder', 'https://host.example/values', 'restricted')
+    held = link.rsplit('=', 1)[1]
+    assert len(web_scene.read_access_tokens(path)) == 2
+    assert web_scene.read_access_tokens(path, 'restricted') == [(held, 'holder')]
+    # A second restricted token would be sharing, not personal use.
+    with pytest.raises(SystemExit, match='at most 1'):
+        tokens.add(path, 'another', 'https://host.example/values', 'restricted')
+    settings = {'url': 'https://host.example/values', 'access_tokens': str(path)}
+    gate = web_scene.site_htaccess(settings, restricted=True)
+    reader = web_scene.read_access_tokens(path)[0][0]
+    assert held in gate and reader not in gate and 'AuthUserFile' not in gate
+    assert reader in web_scene.site_htaccess(settings)
+
+
+def test_a_restricted_folder_never_gets_the_general_gate(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from openplaces.viz.web_scene import tokens
+
+    path = tmp_path / 'tokens.tsv'
+    path.write_text(f'{FAKE_TOKEN}\ta reader\n', encoding='utf-8')
+    held = tokens.add(path, 'holder', 'https://h.example/v', 'restricted')
+    held = held.rsplit('=', 1)[1]
+    site = tmp_path / 'site'
+    site.mkdir()
+    read_tokens = web_scene.read_access_tokens
+    calls = _fake_host(monkeypatch, '/p', on_host=set())
+    monkeypatch.setattr(web_scene, 'read_access_tokens', read_tokens)
+    settings = web_scene.load_deploy_settings
+    monkeypatch.setattr(
+        web_scene,
+        'load_deploy_settings',
+        lambda env_file=None: {**settings(env_file), 'access_tokens': str(path)},
+    )
+    # Online only, built on another machine: known by its name.
+    monkeypatch.setattr(
+        web_scene, '_rclone_output', lambda env, *args: 'town-restricted/\n'
+    )
+    uploaded = {}
+
+    def fake_rclone(env, *args):
+        calls.append(args)
+        if args[2].startswith('bh:'):
+            for found in Path(args[1]).rglob('.htaccess'):
+                uploaded[found.parent.name] = found.read_text(encoding='utf-8')
+
+    monkeypatch.setattr(web_scene, '_rclone', fake_rclone)
+    web_scene.deploy_access(site, go=True)
+    assert held in uploaded['town-restricted']
+    assert FAKE_TOKEN not in uploaded['town-restricted']
+
+
+def test_withheld_cells_are_filled_only_in_the_units_named(monkeypatch):
+    # Fabricated rows: two units, each with one withheld land value.
+    part = pd.DataFrame(
+        {
+            'admin3_id': ['US-XX-AAA', 'US-XX-AAA', 'US-XX-BBB'],
+            'land_value': [np.nan, 5.0, np.nan],
+            'land_value_source': ['withheld', 'parcel.roll', 'withheld'],
+        },
+        index=pd.Index(['a', 'b', 'c'], name='parcel_id'),
+    )
+    curated = pd.DataFrame(
+        {
+            'land_value': [100.0, 7.0],
+            'land_value_source': ['parcel.restricted', 'parcel.restricted'],
+        },
+        index=pd.Index(['a', 'b'], name='parcel_id'),
+    )
+    import openplaces.io.readers as readers
+
+    asked = []
+
+    def fake_get_entities(recipe, admin_id=None, geom=False):
+        asked.append(admin_id)
+        return curated
+
+    monkeypatch.setattr(readers, 'get_entities', fake_get_entities)
+    out, filled = web_scene.fill_withheld_values(part, 'recipe', ['US-XX-AAA'])
+    assert filled == 1 and asked == [['US-XX-AAA']]
+    assert out['land_value'].tolist()[:2] == [100.0, 5.0]
+    assert np.isnan(out['land_value'].iloc[2])
+    assert out['land_value_source'].tolist() == [
+        'parcel.restricted',
+        'parcel.roll',
+        'withheld',
+    ]
+    # The bundle's frame is not changed, and no unit means no read.
+    assert np.isnan(part['land_value'].iloc[0])
+    assert web_scene.fill_withheld_values(part, 'recipe', []) == (part, 0)
+
+
+def test_a_place_with_restricted_units_builds_its_twin_first():
+    from openplaces.viz.web_scene.local import page_variants
+
+    note = {'name': 'Left out', 'credit': 'x'}
+    place = {
+        'notes': [note],
+        'restricted_units': ['US-XX-AAA'],
+        'restricted_notes': [{'name': 'Restricted values', 'credit': 'y'}],
+    }
+    (twin, twin_args), (page, page_args) = page_variants(place, 'town')
+    assert (twin, page) == ('town-restricted', 'town')
+    assert twin_args['restricted_units'] == ['US-XX-AAA']
+    assert twin_args['unrestricted_page'] == '../town/'
+    assert [n['name'] for n in twin_args['notes']] == ['Left out', 'Restricted values']
+    assert page_args == {'notes': [note], 'restricted_page': '../town-restricted/'}
+    assert page_variants(place, 'town-phone') == [('town-phone', {'notes': [note]})]
+    assert page_variants({}, 'town') == [('town', {'notes': []})]
 
 
 def test_access_page_takes_the_contact_from_the_settings():

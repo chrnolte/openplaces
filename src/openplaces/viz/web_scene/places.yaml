@@ -153,19 +153,18 @@ places:
     extent_note: Prince George's County, for the research team
     state: US-MD
     admin_ids: [US-MD-PG]
-    # The tour opens on the Suitland Federal Center, BEA's campus, for
-    # the BEA meeting (maintainer, 2026-10-19), not at the county seat.
-    downtown: [-76.93473, 38.84994]
-    downtown_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
+    downtown: [-76.7497, 38.8156]
+    downtown_note: County Administration Building, Upper Marlboro (county seat)
     team: true
     model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
     lots_in_model_file: true
     terrain: false
   # Washington DC, a circle like every page (maintainer, 2026-10-19),
-  # reaching into every state of `states`; the tour starts at Suitland
-  # (BEA). Lots and buildings from the `washington-dc` team bundles
-  # (`team_bundles`: Fairfax's values, team only), the models joined on
-  # their parcel ids where a unit has a model file (DC, PG, MO).
+  # reaching into every state of `states`; a generic Washington tour,
+  # starting downtown at city hall (maintainer, 2026-10-25). Lots and
+  # buildings from the `washington-dc` team bundles (`team_bundles`:
+  # Fairfax's values, team only), the models joined on their parcel ids
+  # where a unit has a model file (DC, PG, MO).
   - slug: washington-dc-pg-team
     title: Washington DC area (team)
     around: the John A. Wilson Building, for the research team
@@ -173,16 +172,26 @@ places:
     states: [US-DC, US-MD, US-VA]
     center: [-77.03133, 38.89503]
     center_note: City hall lot (John A. Wilson Building), 1350 E St NW in DC's records
-    downtown: [-76.93473, 38.84994]
-    downtown_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
     team: true
     team_bundles: true
     model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
     terrain: false
+    # Arlington's values, which the bundles withhold, on a twin page
+    # only the maintainer's restricted token opens (maintainer,
+    # 2026-10-25): its terms allow personal use, not sharing
+    # (plans/findings/northern-virginia-roll-terms.md).
+    restricted_units: [US-VA-AR]
+    restricted_notes:
+      - name: Restricted values
+        credit: >-
+          Arlington County's assessed values, which the shared data
+          withholds, shown here for personal use only. Arlington County
+          Data API was used for this purpose, but it is not endorsed or
+          certified by Arlington County.
   # Washington DC for everyone (maintainer, 2026-10-24): a public page
   # of the city itself, its tour starting downtown at city hall, with
   # no models and no tie to any agency's campus. Only the units cleared
-  # for a public page, as on the greeting page below.
+  # for a public page.
   - slug: washington-dc
     title: Washington, DC
     around: the John A. Wilson Building (city hall)
@@ -191,30 +200,6 @@ places:
     center: [-77.03133, 38.89503]
     center_note: City hall lot (John A. Wilson Building), 1350 E St NW in DC's records
     only_units: [US-DC-DC, US-MD-PG, US-MD-MO]
-    terrain: false
-    notes:
-      - name: Counties shown
-        credit: >-
-          The District of Columbia and Prince George's and Montgomery
-          counties, Maryland, whose records may be shared. The circle's
-          Virginia counties are left out until their terms allow it.
-  # The greeting page for BEA (maintainer, 2026-10-23): public, with the
-  # valuation work's models, whose training sales' terms allow
-  # publishing their predictions (plans/value-viewer-bea-greeting-page.md).
-  # Only the units cleared for a public page; never on the landing page
-  # or in `--all` (`unlisted`). Model values per parcel only, never
-  # summed or averaged over an area.
-  - slug: suitland
-    title: Suitland and Washington DC
-    around: the Suitland Federal Center
-    state: US-MD
-    states: [US-DC, US-MD, US-VA]
-    center: [-76.93473, 38.84994]
-    center_note: Suitland Federal Center lot, 4205 Suitland Rd, Suitland
-    only_units: [US-DC-DC, US-MD-PG, US-MD-MO]
-    model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
-    models_public: true
-    unlisted: true
     terrain: false
     notes:
       - name: Counties shown

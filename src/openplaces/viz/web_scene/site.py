@@ -51,6 +51,7 @@ from openplaces.viz.web_scene.local import (
     extent_label,
     has_circle,
     load_places,
+    page_variants,
     place_elevation,
     place_extent,
     place_lots_file,
@@ -69,28 +70,29 @@ def site_root() -> Path:
 def _page(place, radius_km, slug, phone_scene=None) -> None:
     circle, built, regions = place_extent(place, radius_km, slug)
     models = place_models(place, built, slug)
-    started = time.time()
-    build_web_scene(
-        regions,
-        built,
-        site_root() / slug,
-        title=TITLE,
-        crop=circle,
-        elevation_recipe=place_elevation(place),
-        phone_scene=phone_scene,
-        downtown=downtown_of(place),
-        place_title=place['title'],
-        model_files=models,
-        lots_file=place_lots_file(place, built),
-        models_public=bool(place.get('models_public')),
-        notes=place.get('notes'),
-        verbose=False,
-    )
-    print(
-        f'built {slug} ({extent_label(place, radius_km)}, {len(built)} units) '
-        f'in {time.time() - started:.0f}s',
-        flush=True,
-    )
+    for name, extra in page_variants(place, slug):
+        started = time.time()
+        build_web_scene(
+            regions,
+            built,
+            site_root() / name,
+            title=TITLE,
+            crop=circle,
+            elevation_recipe=place_elevation(place),
+            phone_scene=None if name != slug else phone_scene,
+            downtown=downtown_of(place),
+            place_title=place['title'],
+            model_files=models,
+            lots_file=place_lots_file(place, built),
+            models_public=bool(place.get('models_public')),
+            verbose=False,
+            **extra,
+        )
+        print(
+            f'built {name} ({extent_label(place, radius_km)}, {len(built)} units) '
+            f'in {time.time() - started:.0f}s',
+            flush=True,
+        )
 
 
 def build(places, config) -> None:
@@ -180,10 +182,13 @@ def refresh() -> None:
 def publish(places, go=False, gap_s=180) -> None:
     """Upload the pages, phone page first, then the landing page."""
     root = site_root()
+    # The restricted twin before its page, so the switch never leads
+    # to a missing page.
     slugs = [
         s
         for p in places
-        for s in ((f'{p["slug"]}-phone',) if has_circle(p) else ()) + (p['slug'],)
+        for s in ((f'{p["slug"]}-phone',) if has_circle(p) else ())
+        + tuple(name for name, _ in page_variants(p, p['slug']))
     ]
     for i, slug in enumerate(slugs):
         if i and go:
