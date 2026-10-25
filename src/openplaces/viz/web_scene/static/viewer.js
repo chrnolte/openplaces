@@ -151,6 +151,13 @@ function topOutlines(entry) {
   return data;
 }
 
+// Least height (m) of a feature standing on a lot (`stack`): a building
+// recorded at $0 (a garage or annex the roll's value was not shared
+// to) had no height, so its roof lay in the lot's top face and the two
+// flickered as the camera moved (maintainer, 2026-10-25: Washington,
+// about 44,000 such buildings). Too low to read as value.
+const MIN_STACKED_HEIGHT = 0.6;
+
 function buildBinary({arrays}, dropStack = false, flat = false, assessed = false) {
   const {xy, ring_offsets: rings, part_ring_offsets: partRings} = arrays;
   // A draped layer carries each vertex's own ground height in `z`;
@@ -170,7 +177,8 @@ function buildBinary({arrays}, dropStack = false, flat = false, assessed = false
       ringFeature[r] = feature;
     }
     const start = vertexZ ? 0 : featureBase(arrays, feature, dropStack, flat, assessed);
-    const tall = featureHeight(arrays, feature, assessed);
+    const own = featureHeight(arrays, feature, assessed);
+    const tall = arrays.stack ? Math.max(own, MIN_STACKED_HEIGHT) : own;
     for (let v = rings[partRings[p]]; v < rings[partRings[p + 1]]; v++) {
       positions[3 * v] = xy[2 * v];
       positions[3 * v + 1] = xy[2 * v + 1];
