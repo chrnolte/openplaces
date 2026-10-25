@@ -490,6 +490,13 @@ pipeline:
       year_built: year_built_parcel
       land_value_imputed: land_value
       improvement_value_imputed: structure_value
+      # The roll's dwelling count, split over the lot's footprints by
+      # the weights the improvement value uses (floor area or overlap,
+      # dwelling-point suppression, none on a secondary, whose share
+      # passes to the others). It is the first lane of n_dwellings in
+      # reconcile_values below, so a building's value per dwelling is
+      # its lot's improvement per unit wherever the roll states units.
+      n_dwellings: n_dwellings_parcel
     land_use_column: land_use_class
     non_residential_classes:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
@@ -680,14 +687,36 @@ pipeline:
     condition_column: land_use_class_parcel
     condition_value: Vacant
 
+  # The roll's share is evidence only where it amounts to a dwelling:
+  # a lot whose roll states 0 (a commercial account, a town that leaves
+  # UNITS at 0) or nothing passes 0 to its footprints, and a secondary
+  # receives 0 by rule. A share of one half or less (a lot of one
+  # stated dwelling and two or three dwelling buildings) rounds to no
+  # dwelling (cast_integers rounds half to even) on a building that
+  # holds one. Both are emptied, and the footprint falls through to
+  # Overture and NSI as before.
+  # Measured 2026-10-24 on the 34 units of the boston page (scratch
+  # curate): with only zeros emptied, 1,254 of 166,763 footprints taking
+  # the roll's share rounded to 0 dwellings.
+  - step: suppress_where
+    column: n_dwellings_parcel
+    indicators:
+      - {type: numeric_at_most, column: n_dwellings_parcel, max: 0.5}
+
   # Reconcile remaining per-row values from competing sources:
   # - land_value is pre-written by apportionment and needs no reconciliation.
   # - structure_value was already decided per admin unit above, not here.
+  # - n_dwellings: the roll's count, apportioned above, ahead of
+  #   Overture's address points and NSI. One Overture point per building
+  #   counted 1 dwelling on a building its roll gives 5 or 30, so the
+  #   building's value per dwelling was its lot's whole improvement
+  #   (the diagnosis plans/findings/boston-large-parcels-as-homes.md,
+  #   section 6). Ordered first non-null, no weights between lanes.
   # Reconcile phase: runs before any vote (moved ahead of the Overture
   # vote 2026-09-29; neither reads the other's output).
   - step: reconcile_values
     priority:
-      n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
+      n_dwellings: [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
       postal_code: [postal_code_dwelling_overture]
 
   # Vote a single-source occupancy class from Overture counts (>=2 is Multi-Family,

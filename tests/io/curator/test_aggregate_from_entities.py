@@ -416,6 +416,106 @@ def test_agree_writes_a_class_only_where_the_properties_agree(classed_properties
     assert out.iloc[3:].isna().all()
 
 
+@pytest.fixture
+def condo_lots(monkeypatch):
+    # Fabricated accounts. Lot C1: a master record repeating the
+    # complex's total (3) and three units stating 1 each. Lot C2: a
+    # master stating 1 and four units stating 0 or nothing, plus a
+    # parking unit (108) and a commercial unit (357). Lot C3: a
+    # two-family house, no condominium. Lot C4: a 4-digit unit code.
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['C1'] * 4 + ['C2'] * 7 + ['C3', 'C4', 'C4'],
+            'use_group_code': ['995', '102', '102', '102']
+            + ['995', '102', '102', '102', '102', '108', '357']
+            + ['104', '1020', '1020'],
+            'n_dwellings': [3.0, 1.0, 1.0, 1.0]
+            + [1.0, 0.0, None, 0.0, None, 0.0, 0.0]
+            + [2.0, 2.0, None],
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+
+
+def _count_condo_units(curated):
+    return aggregation.aggregate_from_entities(
+        _state(curated),
+        'r',
+        columns={'n_dwellings': 'sum'},
+        where={'column': 'use_group_code', 'pattern': '102.*'},
+        row_minimum={'n_dwellings': 1},
+        prefer=['n_dwellings'],
+    ).curated
+
+
+def test_a_condominium_lot_counts_its_units_ahead_of_its_master(condo_lots):
+    curated = pd.DataFrame(
+        {
+            'parcel_id_local': ['C1', 'C2', 'C3', 'C4'],
+            # What the spine brought: master and units added (6), the
+            # master's 1, the house's 2, nothing.
+            'n_dwellings': [6.0, 1.0, 2.0, None],
+        }
+    )
+    out = _count_condo_units(curated)['n_dwellings']
+    # Three units, not the master's 3 added to them.
+    assert out[0] == 3.0
+    # Four residential units, each one dwelling though it states none;
+    # the parking and commercial units are not dwellings.
+    assert out[1] == 4.0
+    # No condominium unit on the lot: the lot keeps what it had.
+    assert out[2] == 2.0
+    # A unit stating 2 keeps its 2; a 4-digit code is a 102 unit.
+    assert out[3] == 3.0
+
+
+def test_where_and_row_minimum_leave_the_plain_sum_unchanged(condo_lots):
+    curated = pd.DataFrame({'parcel_id_local': ['C1', 'C2']})
+    out = aggregation.aggregate_from_entities(
+        _state(curated), 'r', columns={'n_dwellings': 'sum'}
+    ).curated['n_dwellings']
+    # Without the options every account is summed as stated.
+    assert out.tolist() == [6.0, 1.0]
+
+
+def test_where_rejects_unknown_keys(condo_lots):
+    curated = pd.DataFrame({'parcel_id_local': ['C1']})
+    with pytest.raises(ValueError, match='where takes'):
+        aggregation.aggregate_from_entities(
+            _state(curated),
+            'r',
+            columns={'n_dwellings': 'sum'},
+            where={'column': 'use_group_code', 'values': ['102']},
+        )
+
+
+def test_the_massachusetts_patch_counts_condominium_units():
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe, _ = apply_recipe_patches(
+        get_recipe_by_id('US_parcel-openplaces-2026'), AdminId('US', 'MA', 'SOM')
+    )
+    steps = [s for s in recipe['pipeline'] if s['step'] == 'aggregate_from_entities']
+    # Right after the national property reduction, which fills first.
+    assert steps[0].get('where') is None
+    condo = steps[1]
+    assert condo['where'] == {'column': 'use_group_code', 'pattern': '102.*'}
+    assert condo['row_minimum'] == {'n_dwellings': 1}
+    assert condo['prefer'] == ['n_dwellings']
+    assert condo['columns'] == {'n_dwellings': 'sum'}
+
+
 def test_the_sidecar_names_the_rows_the_value_came_from(classed_properties):
     curated = pd.DataFrame({'parcel_id_local': ['p1', 'p2', 'p3']})
     state = aggregation.aggregate_from_entities(

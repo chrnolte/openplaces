@@ -226,6 +226,9 @@ def aggregate_from_entities(
     reference_key: str | list[str] | None = None,
     fill_only: bool = True,
     recover: list[str] | None = None,
+    where: dict | None = None,
+    row_minimum: dict | None = None,
+    prefer: list[str] | None = None,
 ) -> CurateState:
     """Reduce a reference entity's rows onto the curated rows they belong to.
 
@@ -293,6 +296,24 @@ def aggregate_from_entities(
         Columns written only where the reduction is positive, onto cells
         that are missing or not positive (see above). Takes precedence
         over *fill_only* for the columns it names.
+    where : dict, optional
+        Reduce only the reference rows whose ``column`` matches
+        ``pattern`` in full (a regular expression), e.g. ``{column:
+        use_group_code, pattern: '102.*'}`` for a roll's condominium
+        units. Rows without a value in ``column`` are left out. Default
+        None (every row).
+    row_minimum : dict, optional
+        Per column, the least value each reference row contributes,
+        applied before the reduction (and before a link's ``share``
+        scales it): ``{n_dwellings: 1}`` counts a row that states no
+        dwellings, or zero, as one. For a row whose code defines what
+        it is, so that the value follows from the record's existence:
+        a residential condominium unit is one dwelling. Default None.
+    prefer : list of str, optional
+        Columns where the reduction comes first: written wherever it
+        states a value, and the curated value kept wherever it does not
+        (first non-null, reduction ahead of the curated column). Takes
+        precedence over *fill_only* for the columns it names.
     """
     curated = state.curated
     link_only = key is None
@@ -346,18 +367,45 @@ def aggregate_from_entities(
         if ROW_SOURCE_COLUMN in available and len(sidecars) < len(present)
         else None
     )
+    where_column = None
+    if where is not None:
+        if set(where) != {'column', 'pattern'}:
+            raise ValueError(
+                "aggregate_from_entities: where takes 'column' and 'pattern'; "
+                f'got {sorted(where)}.'
+            )
+        where_column = where['column']
+        if where_column not in available:
+            # No row can match a column the unit's reference lacks.
+            return state
     reference = get_entities(
         recipe_id,
         state.admin_id,
-        columns=[
-            *([reference_key] if reference_key else []),
-            *present,
-            *sidecars.values(),
-            *([row_source] if row_source else []),
-        ],
+        columns=list(
+            dict.fromkeys(
+                [
+                    *([reference_key] if reference_key else []),
+                    *present,
+                    *sidecars.values(),
+                    *([row_source] if row_source else []),
+                    *([where_column] if where_column else []),
+                ]
+            )
+        ),
     )
     if reference is None or len(reference) == 0:
         return state
+    if where_column is not None:
+        matches = (
+            reference[where_column]
+            .astype('string')
+            .str.fullmatch(where['pattern'])
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
+        reference = reference[matches]
+        if len(reference) == 0:
+            return state
     if row_source and row_source in reference.columns:
         tokens = _row_source_tokens(reference[row_source])
         for column in present:
@@ -393,6 +441,12 @@ def aggregate_from_entities(
             and not pd.api.types.is_numeric_dtype(series)
             else series
         )
+    for column, minimum in (row_minimum or {}).items():
+        if column in numeric:
+            # A row that states less than the minimum, or nothing,
+            # contributes the minimum (see row_minimum).
+            stated = pd.to_numeric(numeric[column], errors='coerce')
+            numeric[column] = stated.where(stated >= minimum, float(minimum))
     for column, sidecar in sidecars.items():
         if column in functions:
             numeric[sidecar] = reference[sidecar]
@@ -412,9 +466,16 @@ def aggregate_from_entities(
     reduced = _reduce(values, group_key, functions)
     written = []
     recover = set(recover or ())
+    prefer = set(prefer or ())
     for column in reduced.columns:
         incoming = keys.map(reduced[column])
-        if column in recover:
+        if column in prefer:
+            wrote = incoming.notna()
+            if column in curated.columns:
+                curated[column] = incoming.where(wrote, curated[column])
+            else:
+                curated[column] = incoming
+        elif column in recover:
             positive = pd.to_numeric(incoming, errors='coerce').gt(0).fillna(False)
             if column in curated.columns:
                 existing = curated[column]
