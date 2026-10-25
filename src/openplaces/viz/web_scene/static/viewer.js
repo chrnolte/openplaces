@@ -8,6 +8,10 @@
 
 // Units as legends name them; a dwelling is a "home" to visitors.
 const AREA_UNIT_LABELS = {ac: 'acre', ha: 'ha', sqft: 'sq ft', m2: 'm²', dwelling: 'home'};
+// A legend title spells the unit out and says, in grey, what area it is
+// of: a lot's land or a building's footprint (maintainer, 2026-10-24).
+const LEGEND_UNIT_LABELS = {...AREA_UNIT_LABELS, sqft: 'square foot', m2: 'square meter'};
+const AREA_OF = {buildings: 'footprint'};
 // Names of the layer switches (their tooltips); a layer not listed
 // shows its label.
 const LAYER_SWITCH_LABELS = {parcels: 'Land', buildings: 'Buildings'};
@@ -579,7 +583,13 @@ function drawLegend(container, legend) {
   const label = document.createElement('div');
   label.className = 'legend-label';
   label.textContent =
-    `${legend.label} per ${AREA_UNIT_LABELS[legend.unit] || legend.unit}`;
+    `${legend.label} per ${LEGEND_UNIT_LABELS[legend.unit] || legend.unit}`;
+  if (legend.of && legend.unit !== 'dwelling') {
+    const of = document.createElement('span');
+    of.className = 'legend-of';
+    of.textContent = ` of ${legend.of}`;
+    label.appendChild(of);
+  }
   // Which values the bar shows ("imputed", "assessed", later a model's
   // name), behind the title (maintainer, 2026-10-17).
   if (legend.source) {
@@ -1745,6 +1755,7 @@ async function main() {
         shown: shown[layer.name],
         label: view && view.model ? `${layer.label}, model ${view.label}` : layer.label,
         unit: spec.unit,
+        of: AREA_OF[layer.name] || 'land',
         vmin: spec.vmin,
         vmax: spec.vmax,
         // 32 stops are plenty for a gradient bar.

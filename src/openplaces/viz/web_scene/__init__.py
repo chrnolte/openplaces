@@ -1062,6 +1062,9 @@ SOURCE_DISPLAY = {
     # Fairfax VA's assessor roll, shown on team pages only (its terms
     # are for internal use; maintainer's approval, 2026-10-19).
     'fairfaxcounty': {'name': 'Fairfax County assessor'},
+    # Alexandria VA's real estate accounts, team pages only (cleared
+    # for team sharing, 2026-10-24).
+    'alexgis': {'name': 'City of Alexandria (AlexGIS)'},
     'nconemap': {'name': 'NC OneMap', 'credit': 'NC OneMap (nconemap.gov)'},
     # The acknowledgment Maryland's licence asks of derived data
     # (US-MD_parcel-mdimap-2026), and DC's CC BY 4.0 attribution
