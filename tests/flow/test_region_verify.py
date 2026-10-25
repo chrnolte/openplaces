@@ -184,7 +184,6 @@ def main_dependencies(monkeypatch):
     monkeypatch.setattr(op, 'export_delivery', export_delivery)
     monkeypatch.setattr(dag, 'RecipeDAG', recipe_dag)
     monkeypatch.setattr(freshness, 'out_of_date', out_of_date)
-    monkeypatch.setattr(freshness, 'freshness_graph', lambda graph: graph)
     monkeypatch.setattr(
         freshness, 'default_exclude_recipe_ids', lambda: {EXCLUDED_BY_PROFILE}
     )
