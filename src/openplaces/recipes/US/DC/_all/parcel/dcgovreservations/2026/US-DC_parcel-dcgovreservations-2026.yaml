@@ -1,0 +1,70 @@
+# Recipe: Washington, DC "Reservations": U.S. Reservations, land the
+# federal government acquired after the city's founding (by purchase,
+# condemnation, dedication or gift), most of it under the National
+# Park Service.
+#
+# Source: layer 37 of DC's `DCGIS_DATA/Property_and_Land_WebMercator`
+# MapServer (`maps2.dcgis.dc.gov`), the service that serves the sibling
+# lot recipes (`dcgovrecordlots`, layer 35; `dcgovtaxlots`, layer 39).
+# Read the record-lots header for why each DC lot layer has its own
+# source_id. The layer's description notes that RPTA has converted
+# some reservations to tax lots; those also appear on the tax-lot
+# layer, which the DC parcel geospine patch ranks first.
+#
+# WHY. OTR's roll (`dcgovitspe`) values reservations under SSLs of the
+# shape 'RES 999A0000' (fabricated), which neither the record nor the
+# tax lot layer draws: the National Mall's parks and memorials among
+# them (plans/findings/dc-public-land-zero-values.md, F3). This layer's
+# SSL has the same shape.
+#
+# BULK vs REST (equivalence test, 2026-10-24). The Hub item
+# (0ac4302b2e354fad986f07199e73a19e, layer 37) lists the live
+# service's fields, so the bulk GeoJSON export is read rather than
+# REST paging (see `dcgovunplattedparcels`).
+# Measured 2026-10-24 on US-DC: REST returnCountOnly 939 features.
+#
+# Mapped: SSL and STATEDAREA, as on the siblings. Left unmapped, as on
+# the siblings: SQUARE/SUFFIX/LOT/RES/QUADRANT (SSL carries them), the
+# plat and lineage bookkeeping, CALCULATEDAREA, NARRATIVE, ISHISTORIC
+# and every date field (Esri epoch milliseconds). The layer carries no
+# owner field.
+#
+# License: as `dcgovunplattedparcels`: CC BY 4.0 (Hub item), CC0 1.0
+# under DC's district-data terms; no resale clause, no click-through.
+
+description: >-
+  Washington, DC Reservations: federal reservations ('RES' SSLs), most
+  under the National Park Service. Geometry and identifier only.
+
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dcgovreservations
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::reservations/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/0ac4302b2e354fad986f07199e73a19e_37/downloads/data?format=geojson&spatialRefId=4326"
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "dc_reservations.geojson"
+
+columns:
+  parcel_id_admin2: SSL
+  land_area_sqft: STATEDAREA
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
