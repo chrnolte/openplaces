@@ -2198,6 +2198,13 @@ class Palette:
 # Matte, a wall's shade depends on the direction it faces alone.
 MATTE = {'ambient': 0.35, 'diffuse': 0.6, 'shininess': 32, 'specularColor': [0, 0, 0]}
 
+# A lot valued at $0 on a dark page: white at 50% opacity over the
+# page's dark ground (#0a1222), not bright white, which glared out of
+# Earth and Sunset (maintainer, 2026-10-25). Mixed here rather than
+# drawn translucent: translucent slabs depend on the order deck.gl
+# draws them in (`Palette.blend`).
+DARK_ZERO_VALUE_RGBA = (133, 137, 145, 255)
+
 
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
     """The page's color options (maintainer's choice, 2026-10-16).
@@ -2229,6 +2236,7 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             # `landscape`, so stored choices and `?palette=` still work.
             label='Earth',
             material=MATTE,
+            zero_value_rgba=DARK_ZERO_VALUE_RGBA,
             layers={
                 'parcels': PaletteLayer(
                     (
@@ -2274,6 +2282,10 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             id='sunset',
             label='Sunset',
             material=MATTE,
+            # Black, as on Neon: the land ramp ends near white at the
+            # dearest land, so a white or gray $0 read as the most
+            # valuable homes (maintainer, 2026-10-25).
+            zero_value_rgba=(0, 0, 0, 255),
             layers={
                 'parcels': PaletteLayer(
                     'cmr.ocean',
