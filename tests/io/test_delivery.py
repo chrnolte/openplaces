@@ -77,7 +77,7 @@ def two_counties(mock_data_root):
 
 
 def _bundle(admin_ids):
-    return export_delivery(_recipe(), 'US-NC', admin_ids=admin_ids)
+    return export_delivery(_recipe(), 'US-NC', admin_ids=admin_ids, allow_stale=True)
 
 
 DATA_ROLES = ('canonical', 'point', 'geo', 'evidence')
@@ -194,12 +194,12 @@ def test_recipe_without_share_block_raises(two_counties):
     recipe = {k: v for k, v in _recipe().items() if k != 'share'}
 
     with pytest.raises(ValueError, match='share'):
-        export_delivery(recipe, 'US-NC', admin_ids=two_counties)
+        export_delivery(recipe, 'US-NC', admin_ids=two_counties, allow_stale=True)
 
 
 def test_no_curated_output_raises(mock_data_root):
     with pytest.raises(FileNotFoundError, match='nothing to deliver'):
-        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-ZZ'])
+        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-ZZ'], allow_stale=True)
 
 
 def test_recipe_declares_the_whole_delivery(two_counties):
@@ -207,7 +207,7 @@ def test_recipe_declares_the_whole_delivery(two_counties):
     assert str(delivery_admin_id(_recipe())) == 'US-NC'
     assert delivery_members(_recipe()) == ['US-NC-AL', 'US-NC-BB']
 
-    paths = export_delivery(_recipe())
+    paths = export_delivery(_recipe(), allow_stale=True)
 
     assert paths == delivery_paths(_recipe())
     assert list(read_parquet(paths['canonical']).index) == ['a', 'b', 'c', 'd']
@@ -219,13 +219,13 @@ def test_declared_members_win_over_the_admin_hierarchy(mock_data_root):
     _county(['b'], admin3_id='US-NC-BB')
     _county(['z'], admin3_id='US-NC-ZZ')
 
-    canonical = read_parquet(export_delivery(_recipe())['canonical'])
+    canonical = read_parquet(export_delivery(_recipe(), allow_stale=True)['canonical'])
 
     assert list(canonical.index) == ['a', 'b']
 
 
 def test_shipped_files_are_left_read_only(two_counties):
-    paths = export_delivery(_recipe())
+    paths = export_delivery(_recipe(), allow_stale=True)
 
     for role, path in paths.items():
         assert not os.access(path, os.W_OK), role
@@ -233,8 +233,8 @@ def test_shipped_files_are_left_read_only(two_counties):
 
 def test_a_second_export_unlocks_its_own_outputs(two_counties):
     """Read-only must guard against other writers, not against reshipping."""
-    export_delivery(_recipe())
-    paths = export_delivery(_recipe())
+    export_delivery(_recipe(), allow_stale=True)
+    paths = export_delivery(_recipe(), allow_stale=True)
 
     assert list(read_parquet(paths['canonical']).index) == ['a', 'b', 'c', 'd']
 
@@ -259,7 +259,7 @@ def test_a_piece_keeping_its_source_id_is_one_evidence_row(two_counties, monkeyp
     monkeypatch.setattr(delivery, 'get_admin', lambda *a, **k: None)
     recipe = _recipe()
     recipe['share']['delivery']['slice_at_unit_lines'] = True
-    paths = export_delivery(recipe, 'US-NC', admin_ids=two_counties)
+    paths = export_delivery(recipe, 'US-NC', admin_ids=two_counties, allow_stale=True)
 
     evidence = read_parquet(paths['evidence'])
     assert evidence.index.is_unique

@@ -153,7 +153,7 @@ def test_the_nantucket_merge_keeps_the_land_values_without_their_aoa(
 
 @pytest.mark.parametrize('region', ['nantucket-ma', 'nantucket-ma.team'])
 def test_no_nantucket_bundle_carries_an_aoa_column(nantucket_curated, region):
-    paths = export_delivery(PARCEL, region=region)
+    paths = export_delivery(PARCEL, region=region, allow_stale=True)
     for role in DATA_ROLES:
         names = pq.read_schema(paths[role]).names
         assert not _aoa(names), (region, role)

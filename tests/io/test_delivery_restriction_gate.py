@@ -216,7 +216,9 @@ def test_export_withholds_restricted_values_and_ships_the_rest(
     _county(['c', 'd'], admin3_id='US-NC-BB')
     restricted(_source('closedcounty', 'US-NC-AL', ['year_built']))
 
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+    )
     canonical = _read(paths, 'canonical')
 
     assert canonical.loc[['a', 'b'], 'year_built'].isna().all()
@@ -241,7 +243,9 @@ def test_export_leaves_out_rows_drawn_from_the_source(mock_data_root, restricted
     )
     restricted(_source('closedcounty', 'US-NC-XX'))
 
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL'])
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=['US-NC-AL'], allow_stale=True
+    )
 
     for role in ('canonical', 'point', 'geo', 'evidence'):
         assert list(_read(paths, role).index) == ['b'], role
@@ -251,7 +255,9 @@ def test_export_is_unchanged_by_a_source_it_does_not_carry(mock_data_root, restr
     _county(['a', 'b'], admin3_id='US-NC-AL')
     restricted(_source('roomcounty', 'US-NC-AL', ['n_bedrooms'], 'property'))
 
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL'])
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=['US-NC-AL'], allow_stale=True
+    )
 
     assert _read(paths, 'canonical')['year_built'].notna().all()
     assert 'Withheld' not in paths['terms'].read_text(encoding='utf-8')
@@ -270,7 +276,7 @@ def test_the_gate_refuses_values_redaction_missed(
     )
 
     with pytest.raises(RestrictedInputError, match='closedcounty'):
-        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL'])
+        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL'], allow_stale=True)
 
     for path in delivery_module.delivery_paths(_recipe(), 'US-NC').values():
         assert not path.exists()
@@ -347,8 +353,8 @@ def test_only_the_team_bundle_keeps_values_cleared_for_the_team(
     }
     restricted(cleared)
 
-    public = export_delivery(_recipe(), region='test-region')
-    team = export_delivery(_recipe(), region='test-region.team')
+    public = export_delivery(_recipe(), region='test-region', allow_stale=True)
+    team = export_delivery(_recipe(), region='test-region.team', allow_stale=True)
 
     assert _read(public, 'canonical').loc[['a', 'b'], 'year_built'].isna().all()
     assert _read(team, 'canonical').loc[['a', 'b'], 'year_built'].notna().all()
@@ -366,7 +372,7 @@ def test_a_team_bundle_still_withholds_sources_not_cleared_for_it(
     _county(['c', 'd'], admin3_id='US-NC-BB')
     restricted(_source('closedcounty', 'US-NC-AL', ['year_built']))
 
-    team = export_delivery(_recipe(), region='test-region.team')
+    team = export_delivery(_recipe(), region='test-region.team', allow_stale=True)
 
     assert _read(team, 'canonical').loc[['a', 'b'], 'year_built'].isna().all()
 

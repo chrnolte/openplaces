@@ -159,7 +159,9 @@ def test_export_refuses_two_families_and_writes_nothing(mock_data_root, catalog)
     _two_counties('alpha', 'beta')
 
     with pytest.raises(ShareAlikeConflictError) as raised:
-        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+        export_delivery(
+            _recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+        )
 
     message = str(raised.value)
     assert 'alpha (ODbL-1.0): 50.0% of geometry' in message
@@ -174,7 +176,9 @@ def test_export_ships_one_family(mock_data_root, catalog):
     catalog(alpha='CC-BY-SA-3.0', beta='CC-BY-SA-4.0')
     _two_counties('alpha', 'beta')
 
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+    )
 
     assert paths['canonical'].exists()
 
@@ -287,7 +291,9 @@ def test_the_same_bundle_conflicts_without_the_declaration(mock_data_root, catal
     _cc_by_sa_outlines_with_odbl_values()
 
     with pytest.raises(ShareAlikeConflictError, match='withhold_share_alike'):
-        export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+        export_delivery(
+            _recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+        )
 
 
 def test_withholding_odbl_resolves_the_conflict(mock_data_root, catalog):
@@ -295,7 +301,9 @@ def test_withholding_odbl_resolves_the_conflict(mock_data_root, catalog):
     _cc_by_sa_outlines_with_odbl_values()
     recipe = _withholding(['odbl'])
 
-    paths = export_delivery(recipe, 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+    paths = export_delivery(
+        recipe, 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+    )
 
     canonical = pd.read_parquet(paths['canonical'])
     # The CC BY-SA rows all ship; the ODbL values in them do not.
@@ -317,7 +325,9 @@ def test_withholding_leaves_out_rows_the_family_drew(mock_data_root, catalog):
     _two_counties('alpha', 'beta')
     recipe = _withholding(['ODbL'])
 
-    paths = export_delivery(recipe, 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+    paths = export_delivery(
+        recipe, 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+    )
 
     canonical = pd.read_parquet(paths['canonical'])
     assert sorted(canonical.index) == ['c', 'd']
@@ -415,7 +425,7 @@ def test_a_team_bundle_may_carry_two_families(mock_data_root, catalog, public_an
     catalog(alpha='ODbL-1.0', beta='CC-BY-SA-4.0')
     _cc_by_sa_outlines_with_odbl_values()
 
-    paths = export_delivery(_recipe(), region='test-region.team')
+    paths = export_delivery(_recipe(), region='test-region.team', allow_stale=True)
 
     canonical = pd.read_parquet(paths['canonical'])
     assert canonical['year_built'].notna().all()
@@ -430,7 +440,7 @@ def test_the_public_twin_still_withholds(mock_data_root, catalog, public_and_tea
     catalog(alpha='ODbL-1.0', beta='CC-BY-SA-4.0')
     _cc_by_sa_outlines_with_odbl_values()
 
-    paths = export_delivery(_recipe(), region='test-region')
+    paths = export_delivery(_recipe(), region='test-region', allow_stale=True)
 
     assert pd.read_parquet(paths['canonical'])['year_built'].isna().all()
 
