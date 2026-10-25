@@ -27,6 +27,7 @@ download_by:
       - b19013   # Median Household Income
       - b02001   # Race
       - b25077   # Median Property Value (Dollars)
+      - b25035   # Median Year Structure Built
       - b17001   # Poverty Status in the Past 12 Months
       - b15003   # Educational attainment for over 25yo
       - b23025   # Employment status (Labor force, unemployment) 
@@ -200,6 +201,7 @@ columns:
     #Rent and home values
     med_gross_rent: B25064_E001
     med_prop_val: B25077_E001
+    med_year_built: B25035_E001
 
     #Mortgage Burden
     mortgage_units: B25091_E002

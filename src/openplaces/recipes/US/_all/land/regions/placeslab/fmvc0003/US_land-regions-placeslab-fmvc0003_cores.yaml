@@ -1,0 +1,37 @@
+# Recipe: cores of the PLACES lab land-value regions (fmv_c0003)
+#
+# One point per region of US_land-regions-placeslab-fmvc0003: the
+# location its region was grown from. `core_id` equals the region's
+# `region_id`. Placed by hand, like the regions; see that recipe's
+# header.
+
+description: >-
+  Cores of the PLACES lab land-value regions (979 points, contiguous
+  U.S.).
+
+admin_id: US
+
+dataset:
+  theme: land-regions
+  source:
+    source_id: placeslab
+    # Held 2026-10-16 pending counsel: the cores rest on a population
+    # raster built partly from licensed land use data.
+    license: "unpublished (PLACES lab, Boston University); held pending review"
+    terms_url: null
+    redistribution_restricted: true
+    portal_url: "https://places-conus.readthedocs.io/"
+  version: fmvc0003
+
+# Placed by hand: a copy of places' cores.gpkg (2023-11-09).
+uncompressed_file_name: "cores.gpkg"
+
+columns:
+  land_value_region_id: core_id
+  land_value_region_type: type
+
+keep_unnamed_columns: true
+
+save_to:
+  data_dir: core
+  filename: cores

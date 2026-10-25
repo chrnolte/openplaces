@@ -193,6 +193,14 @@ def test_withholding_empties_values_and_says_why():
     assert again['counts'] == {}
 
 
+def test_two_recipes_of_one_source_count_each_row_once():
+    # A county's parcel layer and its property table flag the same row.
+    second = {**CLOSED, 'recipe_id': 'US-NC-AL_property-closedcounty-2026'}
+    _, counts = withhold(_frame(), [CLOSED, second], 'admin3_id')
+    _, single = withhold(_frame(), [CLOSED], 'admin3_id')
+    assert counts['closedcounty'] == single['closedcounty']
+
+
 def test_a_source_whose_columns_are_not_delivered_changes_nothing():
     """Room counts from a restricted roll, in a bundle without them."""
     rooms = _source('roomcounty', 'US-NC-AL', ['n_bedrooms'], 'property')

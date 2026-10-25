@@ -386,6 +386,26 @@ class _TableReadMixin:
         # the default stays pandas' 'error', so nothing is lost unasked.
         if self.recipe.get('on_bad_lines'):
             read_kwargs['on_bad_lines'] = self.recipe['on_bad_lines']
+        # The Census Gazetteer pads its last header with spaces, so the
+        # name never matches a mapping. A recipe that declares
+        # `strip_column_names: true` reads its headers trimmed.
+        if self.recipe.get('strip_column_names'):
+            wanted = None if columns is None else {str(c).strip() for c in columns}
+            df = pd.read_csv(
+                data_path,
+                usecols=None if wanted is None else lambda c: c.strip() in wanted,
+                **read_kwargs,
+            )
+            df.columns = df.columns.str.strip()
+            # A callable usecols skips a missing header silently, where
+            # the list form raises; keep the list form's contract.
+            absent = sorted((wanted or set()) - set(df.columns))
+            if absent:
+                raise ValueError(
+                    f'Usecols do not match columns, columns expected but '
+                    f'not found: {absent}'
+                )
+            return df
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_joined_members(self, members, key, encoding=None):

@@ -23,6 +23,7 @@ technically canonical than belong in a compact delivery, and that editorial
 choice is the recipe author's.
 """
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -35,6 +36,7 @@ from openplaces.core.constants import ENVELOPE_ID_COLUMN
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import (
+    building_imputation,
     coerce_mixed_object_columns,
     parquet_columns,
     read_parquet,
@@ -60,8 +62,9 @@ from openplaces.io.delivery.terms import (
     share_alike_inputs,
     value_source_cells,
 )
-from openplaces.io.readers import get_admin
+from openplaces.io.readers import get_admin, get_dataset
 from openplaces.io.tables import redacted_share_writes
+from openplaces.path import recipe_path
 from openplaces.recipe import (
     get_output_path,
     get_process_admin_level,
@@ -1344,6 +1347,225 @@ def _deduplicate(frame, coverage_columns, admin_id_column):
     return kept, len(frame) - len(kept)
 
 
+def imputation_spec(recipe, region=None) -> dict | None:
+    """The recipe's `share: delivery: impute:` block, if it covers *region*.
+
+    A team bundle is covered when its base region is: it reuses the public
+    twin's imputation rather than fitting its own (see `_impute`).
+    """
+    spec = recipe.get('share', {}).get('delivery', {}).get('impute')
+    if not spec:
+        return None
+    delivery = delivery_spec(recipe, region)
+    base = delivery.get('base_region_id') or delivery.get('region_id') or region
+    return spec if base in spec.get('regions', []) else None
+
+
+def _with_adjusted_columns(canonical_columns):
+    """Canonical columns with the adjusted value right after structure value."""
+    columns = [
+        c for c in canonical_columns if c not in building_imputation.ADJUSTED_COLUMNS
+    ]
+    position = (
+        columns.index('structure_value') + 1
+        if 'structure_value' in columns
+        else len(columns)
+    )
+    return (
+        columns[:position] + building_imputation.ADJUSTED_COLUMNS + columns[position:]
+    )
+
+
+def _code_revision() -> dict | None:
+    """Branch and commit of the checkout this package runs from.
+
+    Recorded with an imputation, because the model code may run from a
+    branch that a released version does not contain. None outside a git
+    checkout (an installed package) or without git; 'dirty' is True when
+    the package's files differ from the commit, untracked modules
+    included (a model extension may be one).
+    """
+    import subprocess
+
+    here = Path(__file__).resolve().parent
+    package = here.parent.parent
+
+    def git(*args):
+        try:
+            result = subprocess.run(
+                ['git', '-C', str(here), *args], capture_output=True, text=True
+            )
+        except OSError:
+            return None
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    commit = git('rev-parse', '--short', 'HEAD')
+    if commit is None:
+        return None
+    status = git('status', '--porcelain', '--', str(package)) or ''
+    return {
+        'branch': git('rev-parse', '--abbrev-ref', 'HEAD'),
+        'commit': commit,
+        'dirty': bool(status),
+    }
+
+
+def _imputation_cache_path(recipe, region, admin_level):
+    """Where a region's imputation block is kept for its team twin to reuse."""
+    canonical = delivery_paths(recipe, None, admin_level, 'cache', region)['canonical']
+    return canonical.with_name(canonical.stem + '_imputation.parquet')
+
+
+def _county_area_km2(admin_ids) -> pd.Series:
+    admin = get_admin(sorted(admin_ids), geom=True)
+    ids = admin.index if admin.index.name else admin['admin_id']
+    area = admin.to_crs('EPSG:5070').area.to_numpy() / 1e6
+    return pd.Series(area, index=pd.Index(ids).astype(str))
+
+
+LOCATION_COLUMNS = (
+    'land_value_region_type',
+    'distance_to_land_value_core_km',
+    'land_value_per_ha_log_2010',
+)
+
+
+def _location_inputs(recipe, spec, attributes) -> pd.DataFrame | None:
+    """Read the land-market enrichment for the pooled rows, if declared.
+
+    It is read here, not merged into the curated tables, so that these
+    inputs inform the models without adding columns to the delivered
+    files.
+    """
+    location_recipe_id = spec.get('location_recipe')
+    if not location_recipe_id:
+        return None
+    location_recipe = get_recipe_by_id(location_recipe_id)
+    import warnings
+
+    parts = []
+    missing = []
+    for unit in sorted(attributes['admin3_id'].dropna().unique()):
+        path = get_output_path(
+            location_recipe, unit, entity_recipe_id=recipe.get('entity_recipe')
+        )
+        if not path.exists():
+            missing.append(unit)
+            continue
+        available = parquet_columns(path)
+        parts.append(
+            read_parquet(path, columns=[c for c in LOCATION_COLUMNS if c in available])
+        )
+    if missing:
+        # Those rows run without the inputs; say so rather than let a
+        # path mismatch pass unseen.
+        warnings.warn(
+            f'{location_recipe_id}: no output for {len(missing)} unit(s): '
+            + ', '.join(missing[:10]),
+            stacklevel=2,
+        )
+    if not parts:
+        return None
+    location = pd.concat(parts)
+    location = location[~location.index.duplicated()]
+    return location.reindex(attributes.index)
+
+
+def _census_inputs(spec) -> dict | None:
+    """Read the census levels the imputation uses, if declared."""
+    census_recipe_id = spec.get('census_recipe')
+    if not census_recipe_id:
+        return None
+    acs = {
+        table: get_dataset(census_recipe_id, 'US', partition_id=table)
+        for table, _ in building_imputation.ACS_TABLES.values()
+    }
+    gazetteer = {}
+    if spec.get('gazetteer_recipe'):
+        gazetteer = {
+            table: get_dataset(spec['gazetteer_recipe'], 'US', partition_id=table)
+            for table in ('tracts', 'place')
+        }
+    return building_imputation.census_levels(acs, gazetteer)
+
+
+def _impute(recipe, region, spec, pooled, audience, admin_level, verbose):
+    """Fill the pooled rows' primary columns.
+
+    The public bundle fits the models on its own (already withheld) rows and
+    keeps the result in the cache; its team twin reads that result and
+    fills only what the team bundle lacks, so no model sees a value
+    cleared for team sharing only.
+
+    Returns the filled rows, the counts, and for a public bundle the
+    callable that writes the cache, to be called once the bundle ships.
+    """
+    delivery = delivery_spec(recipe, region)
+    base = delivery.get('base_region_id') if audience == 'team' else region
+    cache = _imputation_cache_path(recipe, base, admin_level)
+    log = print if verbose else (lambda message: None)
+    if audience == 'team':
+        if not cache.exists():
+            raise FileNotFoundError(
+                f'{cache} not found: deliver the public bundle {base!r} first; '
+                'its imputation is what the team bundle reuses.'
+            )
+        block = pd.read_parquet(cache)
+        counts = json.loads(cache.with_suffix('.json').read_text(encoding='utf-8'))
+        if 'scales' not in counts:
+            raise ValueError(
+                f'{cache} predates the appraisal scales in its counts: '
+                f'deliver the public bundle {base!r} again first.'
+            )
+    else:
+        entity = recipe.get('entity') or recipe.get('dataset')
+        appraisal = pd.read_csv(
+            recipe_path(recipe['admin_id'], entity, filename='appraisal-years.csv'),
+            dtype={'county_fips': str},
+        )
+        hpi = get_dataset(spec['price_index'], 'US')
+        area = _county_area_km2(pooled['admin3_id'].dropna().unique())
+        # The models never read the polygons; copying them would double
+        # the memory of a region-wide frame.
+        attributes = pd.DataFrame(pooled.drop(columns='geometry', errors='ignore'))
+        location = _location_inputs(recipe, spec, attributes)
+        block, counts = building_imputation.impute_delivery(
+            attributes,
+            spec,
+            appraisal,
+            hpi,
+            area,
+            log=log,
+            location=location,
+            census=_census_inputs(spec),
+        )
+        counts['code'] = _code_revision()
+    pooled = building_imputation.overlay_delivery(
+        pooled, block, keep_observed=audience == 'team', scales=counts['scales']
+    )
+    if audience == 'team':
+        # What this file carries: the team's own values replace some
+        # filled cells, and rows the public bundle lacks stay unfilled.
+        counts = {
+            **counts,
+            'filled': building_imputation.imputed_cells(pooled, counts['version']),
+        }
+    if {'structure_value_per_area', 'area_m2'} <= set(pooled.columns):
+        area_m2 = pd.to_numeric(pooled['area_m2'], errors='coerce')
+        pooled['structure_value_per_area'] = pd.to_numeric(
+            pooled['structure_value'], errors='coerce'
+        ) / area_m2.where(area_m2 > 0)
+
+    def keep():
+        # Called once the public bundle is in place: a refused or failed
+        # export leaves the cache its team twin reads as it was.
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        block.to_parquet(cache)
+        cache.with_suffix('.json').write_text(json.dumps(counts), encoding='utf-8')
+
+    return pooled, counts, (keep if audience != 'team' else None)
+
+
 def export_delivery(
     recipe,
     admin_id=None,
@@ -1468,6 +1690,7 @@ def export_delivery(
         refuse_stale(graph, [path for _, path in inputs])
     sources = _bundle_sources(recipe, region, [process_id for process_id, _ in inputs])
     restricted = sources['restricted']
+    audience = sources['audience']
     admin_id_column = f'admin{process_level}_id'
     # What tells a token naming a source from a method's name, and in
     # which units each restricted source's values are present: the two
@@ -1498,6 +1721,11 @@ def export_delivery(
     # over a region, either one alone runs to several GB.
     declared = [*canonical_columns, *point_columns]
     _refuse_personal_columns(declared)
+    impute = imputation_spec(recipe, region)
+    # The models' evidence inputs ride along in pass one only, so they
+    # are withheld like every other value before any model sees them;
+    # they still reach the evidence file through pass two as before.
+    model_inputs = building_imputation.EVIDENCE_COLUMNS if impute else []
     frames = []
     for process_id, path in inputs:
         available = parquet_columns(path)
@@ -1507,6 +1735,12 @@ def export_delivery(
         # envelope's id; the slicing below leaves them alone.
         if ENVELOPE_ID_COLUMN in available and ENVELOPE_ID_COLUMN not in wanted:
             wanted.append(ENVELOPE_ID_COLUMN)
+        # Some model inputs are canonical sidecars already (geometry_source).
+        wanted += [
+            column
+            for column in model_inputs
+            if column in available and column not in wanted
+        ]
         # A split (non-combined) curated output keeps its geometry in a
         # `_geo` sidecar joined on `_join_id`, or failing that `geo_id`.
         # Requesting only the declared columns dropped that key, and the
@@ -1599,6 +1833,16 @@ def export_delivery(
             f'Resolved {n_dropped} entity id(s) curated by two adjacent '
             f'{admin_id_column} units; kept the better-covered copy.'
         )
+
+    imputation = None
+    keep_imputation = None
+    if impute:
+        pooled, imputation, keep_imputation = _impute(
+            recipe, region, impute, pooled, audience, admin_level, verbose
+        )
+        # The recipe's credit for the method, which the notice prints.
+        imputation = {**imputation, 'credit': impute.get('credit')}
+        canonical_columns = _with_adjusted_columns(canonical_columns)
 
     source_columns = _source_columns(canonical_columns, pooled.columns)
     # Sources trail the values they explain, so the table opens on
@@ -1727,6 +1971,7 @@ def export_delivery(
     terms['withheld'] = _withheld_report(withheld, sources['withhold'])
     terms['audience'] = sources['audience']
     terms['team_shared'] = sources['team_shared']
+    terms['imputation'] = imputation
     staged['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
 
     # Every file exists; only now does the shipped bundle change.
@@ -1734,6 +1979,8 @@ def export_delivery(
         os.replace(staged[role], path)
     for path in paths.values():
         _lock(path)
+    if keep_imputation is not None:
+        keep_imputation()
 
     if verbose:
         for role in ('canonical', 'point', 'geo', 'evidence'):

@@ -871,6 +871,42 @@ class TestDynamicCategories:
         assert values_found == {'old_a', 'old_b'}
 
 
+class TestSplitImputed:
+    def _spec_with_source(self, tmp_path):
+        spec = _dynamic_cat_spec(tmp_path, values=['a', 'b', 'a'])
+        pd.DataFrame(
+            {
+                'conflict_field': ['a', 'b', 'a'],
+                'conflict_field_source': ['nsi', 'model-v1+imputed', None],
+            }
+        ).to_parquet(spec.attr_path)
+        return spec
+
+    def test_split_imputed_makes_observed_and_imputed_rules(self, tmp_path):
+        out = _run(tmp_path, [self._spec_with_source(tmp_path)], split_imputed=True)
+        root = _read_qgs_root(out)
+        [renderer] = [
+            r for r in root.iter('renderer-v2') if r.get('type') == 'RuleRenderer'
+        ]
+        parents = renderer.find('rules').findall('rule')
+        assert [p.get('label') for p in parents] == ['Observed', 'Imputed']
+        assert parents[1].get('filter') == (
+            '"conflict_field_source" LIKE \'%imputed%\''
+        )
+        for parent in parents:
+            assert [c.get('filter') for c in parent.findall('rule')] == [
+                '"conflict_field" = \'a\'',
+                '"conflict_field" = \'b\'',
+            ]
+
+    def test_default_keeps_the_categorized_renderer(self, tmp_path):
+        out = _run(tmp_path, [self._spec_with_source(tmp_path)])
+        root = _read_qgs_root(out)
+        types = {r.get('type') for r in root.iter('renderer-v2')}
+        assert 'RuleRenderer' not in types
+        assert 'categorizedSymbol' in types
+
+
 class TestRenderModes:
     """Re-rendering a cloned template layer for differently-shaped data.
 

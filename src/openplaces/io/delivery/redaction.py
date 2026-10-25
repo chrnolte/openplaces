@@ -47,7 +47,10 @@ too (maintainer's decision, 2026-10-23), within the admin unit:
    An estimate looked up from a place reference instead (a city from
    its ZIP code, `zipcodes+imputed`, a backend in
    `geo.address.POSTAL_CITY_BACKENDS`) is tied to a place, not to the
-   unit's values, and stays (maintainer, 2026-10-24).
+   unit's values, and stays (maintainer, 2026-10-24). So does one
+   marked `open` (`<version>+open+imputed`): its model was fit on a
+   frame from which every restricted value had already been withheld,
+   so no restricted value reached it.
 6. A `{column}_per_area` ratio goes wherever its `{column}` goes:
    multiplied back by the area the bundle ships, it is the value.
 7. A column a recipe declares computed from others without a sidecar
@@ -96,6 +99,9 @@ WITHHELD = 'withheld'
 # Mirrors `io.curator.provenance`'s marker, which sits above this
 # module in the layer hierarchy.
 IMPUTED = 'imputed'
+# Marks an estimate whose model saw only open values (rule 5's second
+# exemption); written before IMPUTED, as in `<version>+open+imputed`.
+OPEN = 'open'
 
 # Place references an estimate can be looked up from (rule 5's
 # exemption): a city from its ZIP code depends on where a building
@@ -118,6 +124,7 @@ _UNSPECIFIC = _ENTITY_NAMES | {
     'reconciled',
     'usaddress',
     IMPUTED,
+    OPEN,
     'assessor',
     'keywords',
     'override',
@@ -269,14 +276,17 @@ def _derived_by(source, known):
     nothing that rule 2 does not already see.
 
     Only a restricted source (one with `reasons`) has derived cells
-    withheld; and an estimate looked up from a place reference
-    (`zipcodes+imputed`) is never one of them.
+    withheld; an estimate looked up from a place reference
+    (`zipcodes+imputed`) is never one of them, nor is one whose model
+    saw only open values (`+open+imputed`).
     """
     if not source.get('reasons'):
         return None
 
     def estimated(tokens):
-        return IMPUTED in tokens and not tokens & _PLACE_REFERENCES
+        return (
+            IMPUTED in tokens and OPEN not in tokens and not tokens & _PLACE_REFERENCES
+        )
 
     if source.get('layer_source', True):
         return estimated

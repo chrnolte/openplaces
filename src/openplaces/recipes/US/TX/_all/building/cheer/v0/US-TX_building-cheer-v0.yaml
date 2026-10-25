@@ -51,6 +51,11 @@ null_value_strings:
   - "Unknown"
   - "No Structure"
 
+# Foundation and construction arrive as NSI letter codes; the label
+# tables beside this recipe (as for North Carolina) translate them to
+# names at ingest. Without them, Harris and Jefferson shipped the codes
+# (1,299,423 construction cells in the bundle of 2026-10-15).
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - foundation_type

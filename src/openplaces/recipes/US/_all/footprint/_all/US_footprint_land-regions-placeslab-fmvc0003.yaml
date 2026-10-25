@@ -1,0 +1,37 @@
+# Enrichment recipe: locate footprints in the PLACES lab land-value regions
+#
+# Per footprint: its land-value region and region type, the distance from
+# its centroid to that region's core, and the 2010 land value under the
+# centroid. Building imputation reads these at delivery
+# (io/building_imputation.py); measured 2026-10-16 on cheer-eastern-nc,
+# leaving them out raised the median absolute error of county structure
+# value totals from 15.4% to 21.4% (plans/building-attribute-imputation.md).
+#
+# Not merged into curated footprints: delivery reads it as model input
+# only, so the bundles carry no region columns.
+
+description: >-
+  Land-value region, region type, distance to the region's core, and 2010
+  land value for each footprint.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: footprint
+
+dataset: land-regions-placeslab-fmvc0003
+
+# Centroids come from the footprint polygons.
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: assign_land_value_region
+    regions_recipe_id: US_land-regions-placeslab-fmvc0003
+    cores_recipe_id: US_land-regions-placeslab-fmvc0003_cores
+  - step: sample_raster_at_centroids
+    raster_recipe_id: US_land-values-placeslab-fmv2010
+    column: land_value_per_ha_log_2010
