@@ -179,6 +179,25 @@ places:
     team_bundles: true
     model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
     terrain: false
+  # Washington DC for everyone (maintainer, 2026-10-24): a public page
+  # of the city itself, its tour starting downtown at city hall, with
+  # no models and no tie to any agency's campus. Only the units cleared
+  # for a public page, as on the greeting page below.
+  - slug: washington-dc
+    title: Washington, DC
+    around: the John A. Wilson Building (city hall)
+    state: US-DC
+    states: [US-DC, US-MD, US-VA]
+    center: [-77.03133, 38.89503]
+    center_note: City hall lot (John A. Wilson Building), 1350 E St NW in DC's records
+    only_units: [US-DC-DC, US-MD-PG, US-MD-MO]
+    terrain: false
+    notes:
+      - name: Counties shown
+        credit: >-
+          The District of Columbia and Prince George's and Montgomery
+          counties, Maryland, whose records may be shared. The circle's
+          Virginia counties are left out until their terms allow it.
   # The greeting page for BEA (maintainer, 2026-10-23): public, with the
   # valuation work's models, whose training sales' terms allow
   # publishing their predictions (plans/value-viewer-bea-greeting-page.md).
