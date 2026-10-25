@@ -1,0 +1,51 @@
+# Recipe: PLACES lab core-based land-value regions, version fmv_c0003
+#
+# 979 regions covering the contiguous United States, each grown from a
+# high-value core (a CBSA's densest point, a resort, or a secondary city)
+# over the 2010 land value gradient (US_land-values-placeslab-fmv2010)
+# with a watershed segmentation, meeting where land values reach a local
+# minimum. Built by the `places` codebase (jupyter/dev/b6y_regions.ipynb,
+# region_version 'fmv_c0003'), documented in places-conus
+# docs/data/regions/regions.rst. Their cores are
+# US_land-regions-placeslab-fmvc0003_cores.
+#
+# Not published: held on 2026-10-16 while the licence of an input is
+# reviewed, so the file is placed by hand (no download URL).
+# Building imputation reads each footprint's region type and distance
+# to its core (US_footprint_land-regions-placeslab-fmvc0003).
+#
+# The `.gpqt` edition of 2023-09-22 is ingested, not the `.gpkg` of
+# 2025-05-09: it is what the places code reads (`get_regions()`) and it
+# shares its ids with the cores file; the two editions disagree on some
+# ids (measured 2026-10-16: 99.8% of geometries equal).
+
+description: >-
+  PLACES lab core-based land-value regions (979, contiguous U.S.), grown
+  from high-value cores over the 2010 land value gradient.
+
+admin_id: US
+
+dataset:
+  theme: land-regions
+  source:
+    source_id: placeslab
+    # Held 2026-10-16 pending counsel: the cores rest on a population
+    # raster built partly from licensed land use data.
+    license: "unpublished (PLACES lab, Boston University); held pending review"
+    terms_url: null
+    redistribution_restricted: true
+    portal_url: "https://places-conus.readthedocs.io/"
+  version: fmvc0003
+
+# Placed by hand: a copy of places' regions_fmv_c0003.gpqt (GeoParquet),
+# renamed to the .parquet extension the readers recognize.
+uncompressed_file_name: "regions_fmv_c0003.parquet"
+
+columns:
+  land_value_region_id: region_id
+  land_value_region_type: type
+
+keep_unnamed_columns: true
+
+save_to:
+  data_dir: core

@@ -112,7 +112,9 @@ def test_point_columns_without_a_point_file_are_refused():
 
 def test_exports_canonical_and_evidence_only(two_counties):
     """End to end: two files of data, plus the licence notice."""
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=two_counties)
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=two_counties, allow_stale=True
+    )
 
     assert set(paths) == {'canonical', 'evidence', 'terms'}
     canonical = read_parquet(paths['canonical'])

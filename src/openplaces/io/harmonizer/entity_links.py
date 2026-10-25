@@ -711,3 +711,216 @@ def link_entities_by_id(
             f'than one; wrote {path.name}'
         )
     return state
+
+
+#: `link_common_areas_by_plat`: a lot and a common area of one plat,
+#: found by exact equality of subdivision code and plat reference.
+PLAT_KEY_METHOD = 'plat key'
+#: Id column of the common-area side of a plat link; the lot side is
+#: `parcel_id`. Both are parcels, so the table names the role.
+COMMON_AREA_ID = 'common_area_parcel_id'
+
+
+def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    return pd.to_numeric(frame[column], errors='coerce').gt(0).fillna(False)
+
+
+def plat_common_area_links(
+    parcels: pd.DataFrame,
+    lot_use_values: list[str],
+    lot_use_column: str = 'use_group_code',
+    subdivision_column: str = 'subdivision_code',
+    plat_column: str = 'plat_id_local',
+    flag_column: str = 'is_common_area',
+    lot_value_column: str = 'land_value',
+    common_value_columns: tuple[str, ...] = ('land_value', 'improvement_value'),
+    source_column: str | None = 'geometry_source',
+) -> pd.DataFrame:
+    """Pair each lot of a townhouse or condominium plat with its common areas.
+
+    A roll that records a plat's common land as its own account states
+    the relationship in two fields: the common area carries the same
+    subdivision code and plat reference as the lots around it, and its
+    legal description names it a common area. The pair is found by
+    exact equality of those two fields, never by geometry, owner or
+    name, and the table holds the two ids and a fixed label.
+
+    Why not the existing condominium clusters: they group lots that
+    touch, and most lots of a plat touch neither each other nor the
+    common area, while one common area touches several unit groups.
+    The plat key is what the roll itself states.
+
+    Rows of each role:
+
+    - common area: `flag_column` true and no positive value in any of
+      `common_value_columns` (the roll counts its worth in the lots);
+    - lot: `flag_column` not true and a positive `lot_value_column`,
+      so an unvalued outlot or stormwater parcel is neither;
+    - a plat qualifies where more than half of its lots carry one of
+      `lot_use_values` in `lot_use_column` (Maryland's `TH` town house
+      and `U` condominium unit), so single-family subdivisions with
+      open space are left unlinked (maintainer, 2026-10-24).
+
+    Parameters
+    ----------
+    parcels : pandas.DataFrame
+        Parcel rows indexed by `parcel_id`.
+    lot_use_values : list of str
+        Use codes of a townhouse or condominium lot, in the roll's own
+        vocabulary.
+    lot_use_column, subdivision_column, plat_column, flag_column : str
+        Columns holding the lot's use code, the two key parts and the
+        common area flag.
+    lot_value_column : str
+        Value a lot must record (positive) to count as a lot.
+    common_value_columns : tuple of str
+        Values a common area must not record.
+    source_column : str, optional
+        Column naming the source of the lot row, written to
+        `link_source`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns `parcel_id` (the lot), `common_area_parcel_id`,
+        `link_method`, `link_source` and `share` (empty: the curate
+        step apportions), one row per pair, sorted by both ids.
+    """
+    from openplaces.io.harmonizer.links import _placeholder_key_mask
+
+    columns = ['parcel_id', COMMON_AREA_ID, *LINK_COLUMNS_TAIL]
+    needed = (subdivision_column, plat_column, flag_column)
+    if any(c not in parcels.columns for c in needed):
+        return pd.DataFrame(columns=columns)
+
+    subdivision = parcels[subdivision_column].astype('string').str.strip()
+    plat = parcels[plat_column].astype('string').str.strip()
+    keyed = ~(_placeholder_key_mask(subdivision) | _placeholder_key_mask(plat))
+    key = (subdivision + '/' + plat).where(keyed)
+
+    flag = parcels[flag_column].astype('boolean').fillna(False).astype(bool)
+    unvalued = ~pd.concat(
+        [_positive(parcels, c) for c in common_value_columns], axis=1
+    ).any(axis=1)
+    is_common = keyed & flag & unvalued
+    is_lot = keyed & ~flag & _positive(parcels, lot_value_column)
+
+    if lot_use_column in parcels.columns:
+        use = parcels[lot_use_column].astype('string').str.strip()
+        townhouse = use.isin([str(v) for v in lot_use_values]).fillna(False)
+    else:
+        townhouse = pd.Series(False, index=parcels.index)
+    lot_share = townhouse[is_lot].groupby(key[is_lot]).mean()
+    plats = set(lot_share.index[lot_share > 0.5]) & set(key[is_common])
+
+    in_plat = key.isin(plats)
+    source = (
+        parcels[source_column].astype('string')
+        if source_column and source_column in parcels.columns
+        else pd.Series(pd.NA, index=parcels.index, dtype='string')
+    )
+    lots = pd.DataFrame(
+        {
+            'parcel_id': parcels.index[is_lot & in_plat],
+            'key': key[is_lot & in_plat].to_numpy(),
+            'link_source': source[is_lot & in_plat].to_numpy(),
+        }
+    )
+    commons = pd.DataFrame(
+        {
+            COMMON_AREA_ID: parcels.index[is_common & in_plat],
+            'key': key[is_common & in_plat].to_numpy(),
+        }
+    )
+    links = lots.merge(commons, on='key', how='inner')
+    links['link_method'] = pd.Series(PLAT_KEY_METHOD, index=links.index, dtype='string')
+    links['link_source'] = links['link_source'].astype('string')
+    links['share'] = pd.Series(pd.NA, index=links.index, dtype='Float64')
+    return (
+        links[columns]
+        .sort_values(['parcel_id', COMMON_AREA_ID], kind='stable')
+        .reset_index(drop=True)
+    )
+
+
+def get_plat_link_path(recipe, admin_id):
+    """Path of the plat link table of a parcel spine and admin unit.
+
+    A parcel-to-parcel table, stored where `geo.link.get_entity_link_path`
+    puts a link between a recipe and itself: beside the geospine that
+    mints the parcel ids, named after it twice.
+    """
+    owner = get_link_owner_recipe_id(recipe)
+    return get_entity_link_path(owner, owner, admin_id)
+
+
+@_register('link_common_areas_by_plat')
+def link_common_areas_by_plat(
+    state: HarmonizeState,
+    lot_use_values: list[str],
+    lot_use_column: str = 'use_group_code',
+    subdivision_column: str = 'subdivision_code',
+    plat_column: str = 'plat_id_local',
+    flag_column: str = 'is_common_area',
+) -> HarmonizeState:
+    """Write the link table between a plat's lots and its common areas.
+
+    Pairs each lot of a townhouse or condominium plat with the plat's
+    common areas by exact equality of subdivision code and plat
+    reference (`plat_common_area_links`, which states the roles and the
+    plat rule), and saves the pairs beside the parcel geospine
+    (`get_plat_link_path`). `link_method` is the fixed label
+    `plat key`. The spine itself is not changed; the parcel curate's
+    `apportion_common_land` reads the table.
+
+    Design limits checked: L2 (grouping by a roll-stated plat key,
+    never by owner), L27 (no boundary growth, union or tolerance), L14,
+    L17 and L28 (one exact pass, a fixed label, no score, no fuzzy
+    tier), L25 (area is apportioned in curate, no value is filled).
+
+    Parameters
+    ----------
+    lot_use_values : list of str
+        Use codes of a townhouse or condominium lot in the roll's own
+        vocabulary; set by the county's patch recipe.
+    lot_use_column, subdivision_column, plat_column, flag_column : str
+        See `plat_common_area_links`.
+    """
+    if state.spine is None:
+        warnings.warn('link_common_areas_by_plat: spine is None; skipping.')
+        return state
+    links = plat_common_area_links(
+        state.spine,
+        lot_use_values,
+        lot_use_column=lot_use_column,
+        subdivision_column=subdivision_column,
+        plat_column=plat_column,
+        flag_column=flag_column,
+    )
+    owner = get_link_owner_recipe_id(state.recipe)
+    path = get_plat_link_path(state.recipe, state.admin_id)
+    write_entity_link(
+        path,
+        links,
+        writer_recipe_id=get_recipe_id(state.recipe),
+        finer_recipe_id=owner,
+        coarser_recipe_id=owner,
+        admin_id=state.admin_id,
+        step_config={
+            'lot_use_values': [str(v) for v in lot_use_values],
+            'lot_use_column': lot_use_column,
+            'subdivision_column': subdivision_column,
+            'plat_column': plat_column,
+            'flag_column': flag_column,
+        },
+        stamped_recipe_ids=(owner,),
+    )
+    if state.verbose:
+        print(
+            f'  link_common_areas_by_plat: {len(links):,d} links, '
+            f'{links["parcel_id"].nunique():,d} lots, '
+            f'{links[COMMON_AREA_ID].nunique():,d} common areas; wrote {path.name}'
+        )
+    return state

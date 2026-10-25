@@ -133,6 +133,19 @@ false`). The choice reads recipes only, never the outputs on disk: the
 DAG makes it while planning, before the run's ingests exist, to declare
 the sidecar the job will write.
 
+**A unit with several parcel layers links footprints to one of them**
+unless the step names `kept_by: US_parcel-geospine-2026`. The reference
+is then the rows that recipe's `resolve_spine` keeps for the unit, from
+every layer it ranks (`reference_rows_kept_by`), resolved again in
+memory because the footprint geospine is built before the parcel
+geospine. The link keeps the name of the reference resolved above, so
+the curate steps find it unchanged, and a unit whose parcel spine keeps
+one layer reads and fingerprints exactly what it did without the key.
+DC sets it in a patch (`US-DC_footprint-geospine-2026`), where the
+record lots the plain rule chose lie under the tax lots the parcel
+spine keeps. `load_geospine` applies the unit's patches to the geospine
+recipe it restores, so a patched geometry step does not read as stale.
+
 **join modes**:
 
 **`spatial_overlay`** (polygon-on-polygon):
@@ -770,3 +783,17 @@ transaction-to-property, one row per pair, the deed's parcels each with an
 area `share`. Curate's `aggregate_from_entities` reads them from the
 finer side (`key: null`), so a curated sale takes its parcels' sums, scaled
 by share, and a use class only where its parcels agree.
+
+**One link table relates parcels to parcels**: `link_common_areas_by_plat`
+(`entity_links.py`, inserted by a county's patch of the parcel spine,
+Prince George's MD so far) pairs each lot of a townhouse or condominium
+plat with the plat's common areas, by exact equality of
+`subdivision_code` and `plat_id_local` as the roll states them,
+`link_method` `plat key`. Its id columns are `parcel_id` (the lot) and
+`common_area_parcel_id`, and it is stored beside the parcel geospine
+under the geospine's own id (`get_plat_link_path`). A common area is a
+row the roll's legal text names one (`is_common_area`) with no land or
+improvement value; a lot is a valued row; a plat qualifies where more
+than half its lots carry one of the patch's use codes. The parcel
+curate's `apportion_common_land` divides each common area among its
+lots by area and writes no value.

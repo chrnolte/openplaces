@@ -253,6 +253,29 @@ def test_a_city_looked_up_from_its_zip_code_stays():
     assert _cells(found, 'city')[:2] == [False, True]
 
 
+def test_an_estimate_fit_on_open_values_only_stays():
+    # A building-imputation cell whose model saw only the withheld
+    # (open) frame says so with `+open`; a plain estimate goes.
+    cases = (
+        # A county's parcel layer, restricted (Edgecombe's case).
+        (
+            _roll(layer_source=True, entity_type='parcel', via_entities=[]),
+            'building-imputation-v0.5',
+        ),
+        # A roll reached through the curated parcels.
+        (_roll(), 'parcel.city__is_residential'),
+    )
+    for roll, token in cases:
+        frame = _frame()
+        frame['year_built'] = [1990.0] * 6
+        frame['year_built_source'] = [
+            f'{token}+open+imputed',
+            f'{token}+imputed',
+        ] + [None] * 4
+        found = find_restricted(frame, [roll], 'admin3_id', KNOWN)
+        assert _cells(found, 'year_built')[:2] == [False, True]
+
+
 def test_a_city_from_zip_codes_stays_beside_a_layer_roll():
     layer = _roll(layer_source=True, entity_type='parcel', via_entities=[])
     frame = pd.DataFrame(
@@ -387,8 +410,8 @@ def bundles(mock_data_root, monkeypatch):
     monkeypatch.setattr(delivery_module, 'delivery_regions', lambda _: [public, team])
     recipe = _export_recipe()
     return {
-        'public': export_delivery(recipe, region='test-region'),
-        'team': export_delivery(recipe, region='test-region.team'),
+        'public': export_delivery(recipe, region='test-region', allow_stale=True),
+        'team': export_delivery(recipe, region='test-region.team', allow_stale=True),
     }
 
 

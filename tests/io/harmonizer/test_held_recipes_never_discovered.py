@@ -215,6 +215,130 @@ def test_an_explicit_reference_does_not_schedule_a_held_ingest(held_root):
     assert {node.recipe_id for node in own.nodes()} == {HELD_BY_SOURCE_ID}
 
 
+LANE_SPINE_ID = 'US-NC_parcel-spinetest-2026'
+LANE_CURATE_ID = 'US-NC_parcel-curatetest-2026'
+# The run excludes this open ingest, as the local profile excludes the
+# placeslab lane's.
+EXCLUDED_ID = 'US-NC_property-lanetest-2026'
+
+
+def _enrich_id(source_id):
+    return 'US-NC_parcel_' + source_id.split('_', 1)[1]
+
+
+def write_enrich_lane(root):
+    """A spine, one enrich per fabricated source, and a curate.
+
+    Each enrich adds one source's evidence to the spine, the way
+    `US_parcel_parcel-placeslab-fmv2026` adds its reference parcels,
+    and the curate merges all three, naming each enrich directly.
+
+    Returns
+    -------
+    dict
+        Source recipe id to its enrich recipe id.
+    """
+    lane = _recipe('US-NC', 'lanetest', '2026')
+    spine = _recipe('US-NC', 'spinetest', '2026')
+    spine['stage'] = 'harmonize'
+    spine['entity']['entity_type'] = 'parcel'
+    fabricated = {
+        ('US-NC', 'property-lanetest-2026'): lane,
+        ('US-NC', 'parcel-spinetest-2026'): spine,
+    }
+    enriches = {}
+    for source_id in (OPEN_ID, HELD_BY_KEY_ID, EXCLUDED_ID):
+        enrich_id = _enrich_id(source_id)
+        enriches[source_id] = enrich_id
+        # Stored as {admin}_{entity}_{dataset}, like the placeslab enrich
+        fabricated[('US-NC', 'parcel', source_id.split('_', 1)[1])] = {
+            'description': 'A fabricated enrichment for a graph test.',
+            'admin_id': 'US-NC',
+            'stage': 'enrich',
+            'entity': {'entity_type': 'parcel'},
+            'dataset': source_id.split('_', 1)[1],
+            'entity_recipe': LANE_SPINE_ID,
+            'reference_parcel_recipe_id': source_id,
+            'process_by': {'admin_level': 3},
+            'pipeline': [{'step': 'enrich_parcels_from_reference_crosswalk'}],
+        }
+    curate = _recipe('US-NC', 'curatetest', '2026')
+    curate['stage'] = 'curate'
+    curate['entity']['entity_type'] = 'parcel'
+    curate['entity_recipe'] = LANE_SPINE_ID
+    curate['pipeline'] = [
+        {
+            'step': 'merge_enrichments',
+            'recipes': [
+                {'recipe_id': enrich_id, 'columns': {'value_evidence': 'value'}}
+                for enrich_id in enriches.values()
+            ],
+        }
+    ]
+    fabricated[('US-NC', 'parcel-curatetest-2026')] = curate
+    for parts, recipe in fabricated.items():
+        target = recipe_path(*parts, root=root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(yaml.safe_dump(recipe), encoding='utf-8')
+    _clear_caches()
+    return enriches
+
+
+def test_an_enrich_of_an_excluded_or_held_source_gets_no_job(held_root):
+    """The source is left out, so the enrich adding it is left out too.
+
+    The curation names the enrich directly, and until 2026-10-24 the
+    graph kept its job with only the excluded edge dropped: placeslab's
+    evidence reran on every parcel spine rebuild in washington-dc.
+    """
+    from openplaces.flow.dag import RecipeDAG
+
+    enriches = write_enrich_lane(held_root)
+    dag = RecipeDAG(
+        LANE_CURATE_ID,
+        [UNIT],
+        exclude_recipe_ids={EXCLUDED_ID},
+        deliver=False,
+        validate=False,
+    )
+    scheduled = {(node.stage, node.recipe_id) for node in dag.nodes()}
+    open_enrich = enriches[OPEN_ID]
+    assert ('enrich', open_enrich) in scheduled
+    assert ('ingest', OPEN_ID) in scheduled
+    left_out = {enriches[HELD_BY_KEY_ID], enriches[EXCLUDED_ID]}
+    assert not {recipe_id for _, recipe_id in scheduled} & left_out
+    assert dag.left_out == {('enrich', rid, UNIT, None) for rid in left_out}
+
+    inputs = {p.name for p in dag.input_paths('curate', LANE_CURATE_ID, UNIT)}
+    assert any('opentest' in n for n in inputs)
+    assert not any('heldtest' in n or 'lanetest' in n for n in inputs)
+    assert not any(
+        'heldtest' in p.name or 'lanetest' in p.name for p in dag.stale_inputs()
+    )
+    # The curate's edges in the graph reach the open enrich only
+    upstream = {up[0] for up, down in dag._edges if down[0] == LANE_CURATE_ID}
+    assert open_enrich in upstream
+    assert not upstream & left_out
+
+
+def test_an_enrich_of_an_open_source_is_unchanged(held_root):
+    """Excluding nothing, only the held source's enrich is left out."""
+    from openplaces.flow.dag import RecipeDAG
+
+    enriches = write_enrich_lane(held_root)
+    dag = RecipeDAG(LANE_CURATE_ID, [UNIT], deliver=False, validate=False)
+    scheduled = {node.recipe_id for node in dag.nodes()}
+    assert {enriches[OPEN_ID], enriches[EXCLUDED_ID], EXCLUDED_ID} <= scheduled
+    assert enriches[HELD_BY_KEY_ID] not in scheduled
+    inputs = {p.name for p in dag.input_paths('curate', LANE_CURATE_ID, UNIT)}
+    assert any('opentest' in n for n in inputs)
+    assert any('lanetest' in n for n in inputs)
+
+    # Asked for by name, an enrich of a held source keeps its own job
+    own = RecipeDAG(enriches[HELD_BY_KEY_ID], [UNIT], deliver=False, validate=False)
+    assert enriches[HELD_BY_KEY_ID] in {node.recipe_id for node in own.nodes()}
+
+
 def test_the_admin_style_scan_skips_held_recipes(held_root):
     scanned = {s['recipe_id'] for s in discover._scan_entity_ingest_recipes('property')}
     assert OPEN_ID in scanned

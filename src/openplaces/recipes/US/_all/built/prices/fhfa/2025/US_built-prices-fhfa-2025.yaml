@@ -1,0 +1,67 @@
+# Recipe: FHFA House Price Index for counties, annual, all transactions
+#
+# The Federal Housing Finance Agency's developmental county index
+# (`hpi_at_county.xlsx`, release "Last updated: March 31, 2026", years
+# 1975-2025). It moves appraised structure values from a county roll's
+# appraisal date to a common year in building imputation
+# (io/building_imputation.py); a published index is used and none is
+# built here (plans/design-limits, L29).
+#
+# The workbook opens with notes; the header is its sixth row. Indexes
+# are calibrated on appraisals and sale prices of mortgages bought or
+# guaranteed by Fannie Mae and Freddie Mac; small counties have gaps
+# ("." in the source, read as missing): measured 2026-10-15 on US-NC,
+# 99 of 100 counties have a value in 2010-2022 and 98 in 2023-2025
+# (Tyrrell absent; Hyde missing 2023-2024; Bertie missing 2025).
+#
+# Three index columns share one series with different bases; only the
+# base-100-at-first-record `HPI` is mapped, since a ratio between two
+# years is the same under any base.
+
+description: >-
+  FHFA annual House Price Index for U.S. counties (all transactions,
+  developmental), 1975-2025.
+
+admin_id: US
+
+dataset:
+  theme: built-prices
+  source:
+    source_id: fhfa
+    # A federal agency's publication. Checked 2026-10-16 and again
+    # 2026-10-25: FHFA.gov states no copyright, licence or
+    # redistribution condition for its data; data.gov lists the HPI for
+    # public access as a U.S. Government work. FHFA's only terms
+    # document is its API Terms of Service (this recipe downloads the
+    # workbook, not the API), which asks a product to say it "uses
+    # FHFA Data but is neither endorsed nor certified by FHFA";
+    # delivery notices that use the index carry that sentence.
+    # Recorded as public domain on the maintainer's decision,
+    # 2026-10-25.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    terms_url: "https://www.fhfa.gov/about/fhfa-policies/api-terms-of-service"
+    redistribution_restricted: false
+    portal_url: "https://www.fhfa.gov/data/hpi/datasets"
+    download_url: "https://www.fhfa.gov/hpi/download/annual/hpi_at_county.xlsx"
+  version: 2025
+
+uncompressed_file_name: "hpi_at_county.xlsx"
+header: 5
+
+columns:
+  county_fips: "FIPS code"
+  index_year: "Year"
+  house_price_index: "HPI"
+
+# The workbook stores FIPS codes as numbers, which drops the state's
+# leading zero (Alabama's 01001 reads as 1001).
+transformations:
+  - input: county_fips
+    output: county_fips
+    type: string
+    operation: zfill
+    args:
+      width: 5
+
+save_to:
+  data_dir: core

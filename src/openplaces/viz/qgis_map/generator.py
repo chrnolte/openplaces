@@ -808,6 +808,275 @@ def _retarget_graduated(
         symbols_el.append(sym)
 
 
+# The marker `provenance.mark_imputed` writes into a `{col}_source`
+# cell that openplaces filled itself.
+_IMPUTED_TOKEN = 'imputed'
+
+# Renderer children that describe drawing rather than classification,
+# carried over unchanged when a renderer becomes rule-based.
+_KEPT_RENDERER_CHILDREN = ('effect', 'orderby', 'data-defined-properties')
+
+_NUMERIC_CATEGORY_TYPES = frozenset(
+    {'double', 'int', 'integer', 'qlonglong', 'longlong', 'uint', 'bool'}
+)
+
+
+def _rule_key() -> str:
+    return '{' + str(uuid.uuid4()) + '}'
+
+
+def _field_ref(attr: str) -> str:
+    """Quote a bare field name; parenthesize a renderer expression."""
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', attr):
+        return f'"{attr}"'
+    return f'({attr})'
+
+
+def _bare_field(attr: str | None) -> str | None:
+    """The column a renderer attribute or expression classifies on."""
+    if not attr:
+        return None
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', attr):
+        return attr
+    match = re.search(r'"([^"]+)"', attr)
+    return match.group(1) if match else None
+
+
+def _category_literal(value: str, value_type: str | None) -> str:
+    """A QGIS expression literal for one category value."""
+    if value_type in _NUMERIC_CATEGORY_TYPES:
+        return value
+    # Untyped: a plain decimal number is numeric; 'nan', 'inf' and a
+    # zero-padded code ('01') stay strings.
+    if value_type is None and re.fullmatch(r'-?(0|[1-9]\d*)(\.\d+)?', value):
+        return value
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _category_filter(ref: str, category: ET.Element) -> str:
+    """The rule filter that selects what *category* matched.
+
+    A NULL-typed category matches missing values. An empty value is
+    QGIS's catch-all ("all other values") category, which in a rule
+    renderer is an ELSE rule among its siblings. A list category
+    (`<val>` children) becomes an IN test.
+    """
+    value = category.get('value') or ''
+    value_type = category.get('type')
+    listed = category.findall('val')
+    if listed:
+        literals = ', '.join(
+            _category_literal(v.get('value') or '', v.get('type')) for v in listed
+        )
+        return f'{ref} IN ({literals})'
+    if value_type == 'NULL' or (value == 'NULL' and value_type is None):
+        return f'{ref} IS NULL'
+    if value == '':
+        return 'ELSE'
+    return f'{ref} = {_category_literal(value, value_type)}'
+
+
+def _classes(renderer: ET.Element) -> list[tuple[str, str, str, bool]]:
+    """(filter, label, symbol name, checked) per class of *renderer*.
+
+    Graduated ranges are sorted by lower bound and closed at both ends,
+    except that a range whose lower bound is its predecessor's upper
+    bound is open below, so a feature on a shared bound is drawn once
+    (by the lower class, as the graduated renderer assigns it) rather
+    than by both neighbors.
+    """
+    ref = _field_ref(renderer.get('attr') or '')
+    out = []
+    if renderer.get('type') == 'categorizedSymbol':
+        for category in renderer.iter('category'):
+            out.append(
+                (
+                    _category_filter(ref, category),
+                    category.get('label') or category.get('value') or '',
+                    category.get('symbol') or '',
+                    category.get('render', 'true') != 'false',
+                )
+            )
+        return out
+    ranges = sorted(
+        renderer.iter('range'), key=lambda r: float(r.get('lower') or 'nan')
+    )
+    previous_upper = None
+    for range_el in ranges:
+        lower = float(range_el.get('lower') or 'nan')
+        lower_op = '>' if previous_upper == lower else '>='
+        previous_upper = float(range_el.get('upper') or 'nan')
+        filter_expr = (
+            f'{ref} {lower_op} {range_el.get("lower")} '
+            f'AND {ref} <= {range_el.get("upper")}'
+        )
+        out.append(
+            (
+                filter_expr,
+                range_el.get('label') or '',
+                range_el.get('symbol') or '',
+                range_el.get('render', 'true') != 'false',
+            )
+        )
+    return out
+
+
+def _split_observed_imputed(clone: ET.Element, *, source_field: str) -> bool:
+    """Rewrite *clone*'s classifying renderer as Observed/Imputed rules.
+
+    A categorized or graduated renderer becomes a rule-based one with two
+    top-level rules, "Observed" and "Imputed", each holding one child
+    rule per original class with that class's symbol and label. The
+    parents are what a viewer toggles in the QGIS legend: unchecking
+    "Imputed" hides every cell openplaces filled itself, whatever its
+    class. Every child rule gets its own copy of its symbol, because a
+    rule renderer keys symbols one per rule.
+
+    Parameters
+    ----------
+    clone : xml.etree.ElementTree.Element
+        The `<maplayer>` to rewrite in place.
+    source_field : str
+        The provenance field as the layer's expressions name it (joined
+        fields include their join prefix).
+
+    Returns
+    -------
+    bool
+        True when the renderer was rewritten; False (renderer unchanged)
+        when it is not categorized or graduated, or has no classes.
+    """
+    renderer = clone.find('renderer-v2')
+    if renderer is None or renderer.get('type') not in (
+        'categorizedSymbol',
+        'graduatedSymbol',
+    ):
+        return False
+    classes = _classes(renderer)
+    symbols_el = renderer.find('symbols')
+    by_name = {s.get('name'): s for s in symbols_el} if symbols_el is not None else {}
+    classes = [c for c in classes if c[2] in by_name]
+    if not classes:
+        return False
+
+    src = f'"{source_field}"'
+    imputed = f"{src} LIKE '%{_IMPUTED_TOKEN}%'"
+    parents = (
+        ('Observed', f'{src} IS NULL OR NOT ({imputed})'),
+        ('Imputed', imputed),
+    )
+    new = ET.Element(
+        'renderer-v2',
+        {
+            'type': 'RuleRenderer',
+            'symbollevels': renderer.get('symbollevels', '0'),
+            'enableorderby': renderer.get('enableorderby', '0'),
+            'forceraster': renderer.get('forceraster', '0'),
+            'referencescale': renderer.get('referencescale', '-1'),
+        },
+    )
+    rules = ET.SubElement(new, 'rules', {'key': _rule_key()})
+    symbols = ET.Element('symbols')
+    n_symbols = 0
+    for parent_label, parent_filter in parents:
+        parent = ET.SubElement(
+            rules,
+            'rule',
+            {'key': _rule_key(), 'label': parent_label, 'filter': parent_filter},
+        )
+        for filter_expr, label, symbol_name, checked in classes:
+            symbol = copy.deepcopy(by_name[symbol_name])
+            symbol.set('name', str(n_symbols))
+            symbols.append(symbol)
+            attrs = {
+                'key': _rule_key(),
+                'label': label,
+                'filter': filter_expr,
+                'symbol': str(n_symbols),
+            }
+            if not checked:
+                attrs['checkstate'] = '0'
+            ET.SubElement(parent, 'rule', attrs)
+            n_symbols += 1
+    new.append(symbols)
+    for tag in _KEPT_RENDERER_CHILDREN:
+        for child in renderer.findall(tag):
+            new.append(copy.deepcopy(child))
+    index = list(clone).index(renderer)
+    clone.remove(renderer)
+    clone.insert(index, new)
+    return True
+
+
+def _join_field_prefix(clone: ET.Element, *, join_layer_name: str | None) -> str:
+    """The prefix QGIS puts on fields *clone* reads through its join.
+
+    A join with `hasCustomPrefix="1"` uses its `customPrefix` (empty in
+    every join `_add_join` writes, so joined fields keep bare names);
+    one without falls back to QGIS's default, the joined layer's name
+    and an underscore. A layer without a join reads its own fields.
+    """
+    vectorjoins = clone.find('vectorjoins')
+    joins = vectorjoins.findall('join') if vectorjoins is not None else []
+    if not joins:
+        return ''
+    join = joins[0]
+    if join.get('hasCustomPrefix', '0') == '1':
+        return join.get('customPrefix') or ''
+    return f'{join_layer_name}_' if join_layer_name else ''
+
+
+def _ensure_joined_field(clone: ET.Element, name: str) -> None:
+    """Add *name* to every field subset *clone*'s joins restrict to."""
+    for subset in clone.iter('joinFieldsSubset'):
+        if not any(f.get('name') == name for f in subset.findall('field')):
+            ET.SubElement(subset, 'field', {'name': name})
+
+
+# Derived columns with no source sidecar of their own, and the sidecar
+# that says whether they were imputed: a per-area value is imputed
+# exactly when the value is.
+DERIVED_SOURCES = {'structure_value_per_area': 'structure_value_source'}
+
+
+def _apply_imputed_split(
+    clone: ET.Element,
+    column: str | None,
+    available: set[str],
+    *,
+    join_layer_name: str | None = None,
+) -> bool:
+    """Split *clone* by provenance when its data carries a source column.
+
+    Parameters
+    ----------
+    clone : xml.etree.ElementTree.Element
+        A finished `<maplayer>` clone (render mode and joins applied).
+    column : str or None
+        The column its renderer classifies on.
+    available : set of str
+        Columns of the layer's attribute data.
+    join_layer_name : str, optional
+        Name of the layer *clone* joins, for QGIS's default prefix.
+
+    Returns
+    -------
+    bool
+        True when the renderer was converted.
+    """
+    prefix = _join_field_prefix(clone, join_layer_name=join_layer_name)
+    if column and prefix and column.startswith(prefix):
+        column = column[len(prefix) :]
+    source = DERIVED_SOURCES.get(column, f'{column}_source') if column else None
+    if not source or source not in available:
+        return False
+    if not _split_observed_imputed(clone, source_field=f'{prefix}{source}'):
+        return False
+    _ensure_joined_field(clone, source)
+    return True
+
+
 def _find_or_create_group(
     root_group: ET.Element, group_path: str, *, verbose: bool
 ) -> ET.Element:
@@ -1204,6 +1473,7 @@ def generate_qgz(
     template_path: str | Path | None = None,
     output_path: str | Path | None = None,
     title: str | None = None,
+    split_imputed: bool = False,
     verbose: bool = False,
 ) -> Path:
     """Generate a standardized QGIS project (.qgz) for *recipe* at *admin_id*.
@@ -1233,6 +1503,13 @@ def generate_qgz(
     title : str, optional
         Project title to set. When omitted, the template's own (typically
         dynamic, project-variable-driven) title is left as-is.
+    split_imputed : bool, optional
+        Give every classified layer whose data carries a `{col}_source`
+        column for its classifying column `col` a rule-based renderer
+        with two toggleable top-level rules, "Observed" and "Imputed"
+        (a source token containing "imputed"), each holding the
+        original classes. Layers without such a column keep their
+        renderer. Default False.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
 
@@ -1287,6 +1564,8 @@ def generate_qgz(
     static_styles_by_layername = {s.template_layer_name: s for s in get_static_styles()}
 
     new_maplayers: list[ET.Element] = []
+    # Ids of layers split by provenance, expanded in the panel below.
+    split_ids: set[str] = set()
 
     for spec in layer_specs:
         style = get_style(spec.entity_type, spec.source, spec.role)
@@ -1364,7 +1643,9 @@ def generate_qgz(
             tree_entries.append((label_id, label_name, label_visible))
 
         new_attr_id: str | None = None
+        attr_layer_name: str | None = None
         delivery_join_field: str | None = None
+        split_columns = _data_columns(spec.attr_path) if split_imputed else set()
         if spec.combined and spec.attr_path != spec.geo_path:
             # A delivery polygon view: the geometry file carries only the
             # entity id, so the canonical table rides along as a
@@ -1378,10 +1659,11 @@ def generate_qgz(
                 )
             delivery_join_field = sorted(shared)[0]
             new_attr_id = f'{sanitize(spec.display_name)}_attr_{uuid.uuid4().hex}'
+            attr_layer_name = f'Attributes - {spec.attr_path.stem}'
             attr_clone = _clone_maplayer(
                 geo_template,
                 new_id=new_attr_id,
-                new_layername=f'Attributes - {spec.attr_path.stem}',
+                new_layername=attr_layer_name,
                 new_datasource=_relative_datasource(
                     spec.attr_path, anchor=output_path.parent
                 ),
@@ -1420,10 +1702,11 @@ def generate_qgz(
                 )
             attr_template, attr_template_id = original_index[attr_name]
             new_attr_id = f'{sanitize(spec.display_name)}_attr_{uuid.uuid4().hex}'
+            attr_layer_name = f'{spec.display_name}_attr'
             attr_clone = _clone_maplayer(
                 attr_template,
                 new_id=new_attr_id,
-                new_layername=f'{spec.display_name}_attr',
+                new_layername=attr_layer_name,
                 new_datasource=_relative_datasource(
                     spec.attr_path, anchor=output_path.parent
                 ),
@@ -1432,6 +1715,15 @@ def generate_qgz(
                 geo_clone, old_attr_id=attr_template_id, new_attr_id=new_attr_id
             )
             new_maplayers.extend((attr_clone, geo_clone))
+        if split_imputed and spec.render != RENDER_OUTLINE:
+            if _apply_imputed_split(
+                geo_clone,
+                style.dynamic_categorize_attr
+                or _bare_field(_classifying_attr(geo_clone)),
+                split_columns,
+                join_layer_name=attr_layer_name,
+            ):
+                split_ids.add(geo_clone.findtext('id'))
 
         # Style variants apply regardless of whether the base spec is
         # combined: a combined variant clone just shares the base's
@@ -1521,6 +1813,13 @@ def generate_qgz(
                     for join in list(vectorjoins.findall('join')):
                         vectorjoins.remove(join)
             _apply_render_mode(variant_clone, spec.render)
+            if split_imputed and _apply_imputed_split(
+                variant_clone,
+                _bare_field(variant_attr),
+                split_columns,
+                join_layer_name=attr_layer_name,
+            ):
+                split_ids.add(variant_clone.findtext('id'))
             new_maplayers.append(variant_clone)
             # A polygon view renders through the canonical hash-join, so
             # even a variant that defaults on as a point view must start
@@ -1576,6 +1875,11 @@ def generate_qgz(
 
     if layer_tree_root is not None:
         _expand_group_path(layer_tree_root, 'Buildings/Point geometries')
+        # A layer split by provenance opens with its Observed and Imputed
+        # rules showing, or a reader never finds the switches.
+        for node in layer_tree_root.iter('layer-tree-layer'):
+            if node.get('id') in split_ids:
+                node.set('expanded', '1')
     # Administrative context lists and draws above everything else.
     if layer_tree_root is not None:
         _move_group_first(layer_tree_root, 'Administrative units')

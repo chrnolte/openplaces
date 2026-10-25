@@ -32,6 +32,7 @@ from openplaces.config import cfg
 from openplaces.io.delivery import TEAM_SUFFIX
 from openplaces.io.readers import get_admin
 from openplaces.viz.web_scene import (
+    RESTRICTED_SUFFIX,
     _region_members,
     build_web_scene,
     read_model_files,
@@ -230,32 +231,61 @@ def extent_label(place, radius_km) -> str:
     return f'{radius_km:g} km' if has_circle(place) else ', '.join(place['admin_ids'])
 
 
+def page_variants(place, slug) -> list[tuple[str, dict]]:
+    """A page's folder name and its extra `build_web_scene` arguments,
+    its restricted twin first where the place lists `restricted_units`.
+
+    The twin (`<slug>-restricted`) fills those units' withheld values
+    (`fill_withheld_values`) and adds `restricted_notes` to the page's
+    notes; the page itself is unchanged but for the switch to the twin.
+    A phone page has no twin.
+    """
+    notes = list(place.get('notes') or [])
+    units = place.get('restricted_units')
+    if not units or slug.endswith('-phone'):
+        return [(slug, {'notes': notes})]
+    twin = f'{slug}{RESTRICTED_SUFFIX}'
+    return [
+        (
+            twin,
+            {
+                'notes': notes + list(place.get('restricted_notes') or []),
+                'restricted_units': list(units),
+                'unrestricted_page': f'../{slug}/',
+            },
+        ),
+        (slug, {'notes': notes, 'restricted_page': f'../{twin}/'}),
+    ]
+
+
 def build_place(place, radius_km, slug, phone_scene=None) -> Path:
-    """Build one local page of a place; returns its folder."""
+    """Build one local page of a place, and its restricted twin where it
+    has one (`page_variants`); returns the page's folder."""
     circle, built, regions = place_extent(place, radius_km, slug)
     models = place_models(place, built, slug)
-    output = local_root() / slug
-    print(
-        f'Building {slug} ({extent_label(place, radius_km)}, {len(built)} units) '
-        f'into {output}'
-    )
-    build_web_scene(
-        regions,
-        built,
-        output,
-        crop=circle,
-        elevation_recipe=place_elevation(place),
-        local_only=True,
-        phone_scene=phone_scene,
-        downtown=downtown_of(place),
-        place_title=place['title'],
-        model_files=models,
-        lots_file=place_lots_file(place, built),
-        models_public=bool(place.get('models_public')),
-        notes=place.get('notes'),
-        verbose=False,
-    )
-    return output
+    for name, extra in page_variants(place, slug):
+        output = local_root() / name
+        print(
+            f'Building {name} ({extent_label(place, radius_km)}, {len(built)} units) '
+            f'into {output}'
+        )
+        build_web_scene(
+            regions,
+            built,
+            output,
+            crop=circle,
+            elevation_recipe=place_elevation(place),
+            local_only=True,
+            phone_scene=None if name != slug else phone_scene,
+            downtown=downtown_of(place),
+            place_title=place['title'],
+            model_files=models,
+            lots_file=place_lots_file(place, built),
+            models_public=bool(place.get('models_public')),
+            verbose=False,
+            **extra,
+        )
+    return local_root() / slug
 
 
 def serve(root: Path, slug: str, port: int) -> None:

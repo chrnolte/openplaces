@@ -123,14 +123,74 @@ def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
         calls['env'] = os.environ.get('OPENPLACES_ORCHESTRATED')
 
     monkeypatch.setattr(delivery_mod, 'export_delivery', _fake_export)
+    graph = _fake_graph(monkeypatch)
     run_stage.main(
         ['deliver', 'US_footprint-openplaces-2026', 'cheer-eastern-nc', '--verbose']
     )
 
     assert calls['recipe'] == 'US_footprint-openplaces-2026'
     assert calls['admin_id'] is None
-    assert calls['kwargs'] == {'region': 'cheer-eastern-nc', 'verbose': True}
+    assert calls['kwargs'] == {
+        'region': 'cheer-eastern-nc',
+        'verbose': True,
+        'allow_stale': False,
+        'graph': graph.return_value,
+    }
+    graph.assert_called_once_with(
+        'US_footprint-openplaces-2026',
+        region='cheer-eastern-nc',
+        exclude_recipe_ids=set(),
+    )
     assert calls['env'] == '1'
+
+
+def _fake_graph(monkeypatch):
+    """Stand in for the region's RecipeDAG, which reads the recipe tree."""
+    from unittest.mock import Mock
+
+    from openplaces.flow import freshness
+
+    graph = Mock(return_value=object())
+    monkeypatch.setattr(freshness, 'delivery_graph', graph)
+    return graph
+
+
+def test_deliver_graph_takes_the_run_exclusions(monkeypatch, no_orchestrated_env):
+    import openplaces.io.delivery as delivery_mod
+    from openplaces.core.held_recipes import EXCLUDE_ENV
+
+    # Set first so that monkeypatch restores what run_stage overwrites
+    monkeypatch.setenv(EXCLUDE_ENV, '')
+    monkeypatch.setattr(delivery_mod, 'export_delivery', lambda recipe, **kw: None)
+    graph = _fake_graph(monkeypatch)
+    run_stage.main(
+        [
+            'deliver',
+            'US_footprint-openplaces-2026',
+            '--exclude-recipe-ids',
+            'ZZ_lane-a-2026,ZZ_lane-b-2026',
+        ]
+    )
+
+    assert graph.call_args.kwargs['exclude_recipe_ids'] == {
+        'ZZ_lane-a-2026',
+        'ZZ_lane-b-2026',
+    }
+
+
+def test_deliver_allow_stale_skips_the_graph(monkeypatch, no_orchestrated_env):
+    import openplaces.io.delivery as delivery_mod
+
+    calls = {}
+    monkeypatch.setattr(
+        delivery_mod, 'export_delivery', lambda recipe, **kw: calls.update(kw)
+    )
+    graph = _fake_graph(monkeypatch)
+    run_stage.main(['deliver', 'US_footprint-openplaces-2026', '--allow-stale'])
+
+    assert calls['allow_stale'] is True
+    assert calls['graph'] is None
+    graph.assert_not_called()
 
 
 def test_deliver_without_admin_id_leaves_it_to_the_recipe(
@@ -144,6 +204,7 @@ def test_deliver_without_admin_id_leaves_it_to_the_recipe(
         'export_delivery',
         lambda recipe, admin_id=None, **kw: calls.update(admin_id=admin_id),
     )
+    _fake_graph(monkeypatch)
     run_stage.main(['deliver', 'US_footprint-openplaces-2026'])
 
     assert calls['admin_id'] is None

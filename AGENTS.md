@@ -233,7 +233,7 @@ Layer 2  recipe
 Layer 3  io/__init__ and the six modules it fronts (io/fetch, io/archives, io/tables, io/deletion, io/geodatabase, io/transfer), io/steps, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/*, io/scrapers/*, io/aggregate, io/admin/*, io/admin_migration, io/delivery/*, io/transform, io/sale_records, io/cleanup/*
+Layer 6  io/ingester/*, io/scrapers/*, io/aggregate, io/admin/*, io/admin_migration, io/delivery/*, io/transform, io/sale_records, io/building_imputation, io/cleanup/*
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator

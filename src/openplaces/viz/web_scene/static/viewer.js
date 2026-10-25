@@ -155,6 +155,13 @@ function topOutlines(entry) {
   return data;
 }
 
+// Least height (m) of a feature standing on a lot (`stack`): a building
+// recorded at $0 (a garage or annex the roll's value was not shared
+// to) had no height, so its roof lay in the lot's top face and the two
+// flickered as the camera moved (maintainer, 2026-10-25: Washington,
+// about 44,000 such buildings). Too low to read as value.
+const MIN_STACKED_HEIGHT = 0.6;
+
 function buildBinary({arrays}, dropStack = false, flat = false, assessed = false) {
   const {xy, ring_offsets: rings, part_ring_offsets: partRings} = arrays;
   // A draped layer carries each vertex's own ground height in `z`;
@@ -174,7 +181,8 @@ function buildBinary({arrays}, dropStack = false, flat = false, assessed = false
       ringFeature[r] = feature;
     }
     const start = vertexZ ? 0 : featureBase(arrays, feature, dropStack, flat, assessed);
-    const tall = featureHeight(arrays, feature, assessed);
+    const own = featureHeight(arrays, feature, assessed);
+    const tall = arrays.stack ? Math.max(own, MIN_STACKED_HEIGHT) : own;
     for (let v = rings[partRings[p]]; v < rings[partRings[p + 1]]; v++) {
       positions[3 * v] = xy[2 * v];
       positions[3 * v + 1] = xy[2 * v + 1];
@@ -1208,7 +1216,9 @@ function buildPlaceNav(places, deckgl, isTouring, shown, choices = () => ({})) {
       }
     }
     // What is off travels as `hide`; ghosts, off by default, as `show`.
-    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
+    const hidden = Object.keys(shown).filter(
+      (name) => !['ghosts', 'restricted'].includes(name) && !shown[name],
+    );
     if (hidden.length) {
       query.set('hide', hidden.join(','));
     }
@@ -1419,6 +1429,16 @@ async function main() {
     }
     return speed === 'slow' || params.get('light') === '1' ? 4 : 2;
   };
+  // Values the shared data withholds, on a twin page behind its own
+  // gate (`restricted_page`; maintainer, 2026-10-25): a switch that
+  // moves between the two pages, keeping the view. On the plain page
+  // it shows only once the twin answers, so only a visitor holding a
+  // restricted token sees it.
+  const twinPage = scene.restricted_page || scene.unrestricted_page || null;
+  if (twinPage) {
+    shown.restricted = Boolean(scene.unrestricted_page);
+    switches.push(['restricted', 'Restricted values']);
+  }
   let flatGround = hasTerrain && !shown.terrain;
   let toggleLayer = () => {};
   for (const [name, label] of switches) {
@@ -1475,6 +1495,35 @@ async function main() {
     }
   };
   markLayerSwitch();
+  // The twin's manifest, once its gate let this visitor in.
+  let twinScene = null;
+  let swapRestricted = async () => {};
+  // A unit's files on the twin, where they differ from this page's.
+  const twinFiles = (spec, unit) => {
+    const twinSpec = twinScene && twinScene.layers.find((l) => l.name === spec.name);
+    const theirs = twinSpec && twinSpec.files[unit];
+    const mine = spec.files[unit];
+    if (!theirs || (mine && theirs.geometry === mine.geometry && theirs.tooltip === mine.tooltip)) {
+      return null;
+    }
+    return {
+      geometry: `${scene.restricted_page}${theirs.geometry}`,
+      tooltip: `${scene.restricted_page}${theirs.tooltip}`,
+    };
+  };
+  if (scene.restricted_page) {
+    const button = layerSwitch.querySelector('[data-layer="restricted"]');
+    button.hidden = true;
+    // Refused, the gate sends the request on to the access page.
+    fetch(`${scene.restricted_page}scene.json`, {cache: 'no-store'})
+      .then(async (response) => {
+        if (response.ok && !response.redirected) {
+          twinScene = await response.json();
+          button.hidden = false;
+        }
+      })
+      .catch(() => {});
+  }
 
   // Two display choices, both recoloring every feature and hiding none:
   // the value per area or per dwelling (where a layer offers it), and
@@ -2620,7 +2669,9 @@ async function main() {
     if (shown.ghosts) {
       query.set('show', 'ghosts');
     }
-    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
+    const hidden = Object.keys(shown).filter(
+      (name) => !['ghosts', 'restricted'].includes(name) && !shown[name],
+    );
     if (hidden.length) {
       query.set('hide', hidden.join(','));
     }
@@ -3220,6 +3271,17 @@ async function main() {
     redraw();
   };
   toggleLayer = (name) => {
+    if (name === 'restricted') {
+      if (scene.unrestricted_page) {
+        // The twin opened on its own: back to the page it twins.
+        location.href = `${twinPage}${new URL(shareLink()).search}`;
+        return;
+      }
+      shown.restricted = !shown.restricted;
+      markLayerSwitch();
+      swapRestricted();
+      return;
+    }
     shown[name] = !shown[name];
     if (name === 'people' && shown.people) {
       loadPeople();
@@ -3327,14 +3389,58 @@ async function main() {
   // Units dropped while their files were loading; their layers are
   // discarded when the files arrive.
   const dropped = new Set();
+  // A unit's files: this page's, or with restricted values switched on
+  // the twin's where they differ (`twinFiles`).
+  const filesFor = (spec, unit, paths) => (shown.restricted && twinFiles(spec, unit)) || paths;
   const load = async ({spec, unit, paths}) => {
+    const use = filesFor(spec, unit, paths);
     const [geometry, tooltip] = await Promise.all([
-      fetchGzip(paths.geometry),
-      fetchGzip(paths.tooltip),
+      fetchGzip(use.geometry),
+      fetchGzip(use.tooltip),
     ]);
     if (dropped.has(unit)) {
       return;
     }
+    const entry = makeEntry(spec, unit, geometry, tooltip);
+    layers.push(entry);
+    layers.sort((a, b) => a.order - b.order);
+    redraw();
+    if (unit === firstUnit && --firstLeft === 0) {
+      tourControl.ready();
+    }
+    done += 1;
+    setStatus(done < expected ? `Loading ${done} of ${expected} files...` : '');
+  };
+  // Switching restricted values swaps only the units whose files
+  // differ between the two pages (Arlington's), in place: the camera,
+  // the tour and every other unit stay as they are (maintainer,
+  // 2026-10-25: opening the twin reloaded everything and stopped the
+  // tour). Units still loading pick their files as they arrive.
+  swapRestricted = async () => {
+    if (pin) {
+      unpin();
+    }
+    for (const spec of scene.layers) {
+      for (const unit of Object.keys(spec.files)) {
+        const twin = twinFiles(spec, unit);
+        const id = `${spec.name}-${unit}`;
+        if (!twin || !layers.some((e) => e.id === id)) {
+          continue;
+        }
+        const use = shown.restricted ? twin : spec.files[unit];
+        const [geometry, tooltip] = await Promise.all([
+          fetchGzip(use.geometry),
+          fetchGzip(use.tooltip),
+        ]);
+        const at = layers.findIndex((e) => e.id === id);
+        if (at >= 0) {
+          layers[at] = makeEntry(spec, unit, geometry, tooltip);
+          redraw();
+        }
+      }
+    }
+  };
+  function makeEntry(spec, unit, geometry, tooltip) {
     const decoded = decodeScene(geometry);
     const values = JSON.parse(new TextDecoder().decode(tooltip));
     const {objectFeature, data} = buildBinary(
@@ -3359,15 +3465,8 @@ async function main() {
       order: scene.layers.indexOf(spec),
     };
     entry.layer = makeLayer(entry);
-    layers.push(entry);
-    layers.sort((a, b) => a.order - b.order);
-    redraw();
-    if (unit === firstUnit && --firstLeft === 0) {
-      tourControl.ready();
-    }
-    done += 1;
-    setStatus(done < expected ? `Loading ${done} of ${expected} files...` : '');
-  };
+    return entry;
+  }
   // The first file (the first stop's ground) loads alone, with all the
   // bandwidth, so something is on screen as early as possible.
   const queue = [...first, ...rest];

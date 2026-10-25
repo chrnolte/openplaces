@@ -1,0 +1,43 @@
+# Recipe: PLACES-FMV 2010 land value raster (Nolte 2020, PNAS)
+#
+# Estimated land values across the contiguous United States in 2010,
+# from sales of vacant and non-vacant properties (`places_fmv_all.tif`;
+# the vacant-sales twin `places_fmv_vacant.tif` ships in the same
+# archive). Values are ln(2017 USD per hectare) on a 480 m grid in
+# EPSG:5070. Used as a building-imputation input: sampled at each
+# footprint's centroid by US_footprint_land-regions-placeslab-fmvc0003.
+#
+# Nolte, C. (2020). High-resolution land value maps reveal
+# underestimation of conservation costs in the United States. PNAS
+# 117(47): 29577-29583, doi:10.1073/pnas.2012865117; data
+# doi:10.5061/dryad.np5hqbzq9.
+
+description: >-
+  PLACES-FMV estimated 2010 land values, contiguous U.S., 480 m grid,
+  ln(2017 USD per hectare).
+
+admin_id: US
+
+dataset:
+  theme: land-values
+  source:
+    source_id: placeslab
+    # Dryad publishes every dataset "under a CC0 instrument" (Dryad
+    # terms of service, section 1(a); checked 2026-10-16).
+    license: "CC0-1.0 (Dryad terms of service, section 1(a))"
+    terms_url: "https://datadryad.org/terms"
+    redistribution_restricted: false
+    portal_url: "https://doi.org/10.5061/dryad.np5hqbzq9"
+    doi: "10.5061/dryad.np5hqbzq9"
+  version: fmv2010
+  is_raster: True
+  nodata: 0
+
+# Placed by hand: Dryad's file API answers 401 without a login (checked
+# 2026-10-16, https://datadryad.org/api/v2/files/3928343/download), so
+# `places_fmv_all.tif` is taken from the archive
+# `places_fmv_pnas_dryad.zip` (299,063,757 bytes) on the dataset page.
+uncompressed_file_name: "places_fmv_all.tif"
+
+save_to:
+  data_dir: core

@@ -503,3 +503,39 @@ def test_total_value_never_exceeds_the_parcels_it_came_from():
     )
     out = apportion_reference_values(pairs, ref, spine_id_col='fid')
     assert out['total_value'].sum() <= ref['total_value'].sum()
+
+
+def test_entity_on_references_without_a_value_stays_missing_not_zero():
+    # F1 sits on two lots, neither of which records an improvement value
+    # or a dwelling count: it has no recorded value, which a page must
+    # print as "not recorded", never "$0". F2 sits on a lot with a value
+    # and one without, and keeps its share of the recorded one.
+    pairs = _pairs(
+        [
+            ('F1', 'P1', 100.0),
+            ('F1', 'P2', 50.0),
+            ('F2', 'P3', 80.0),
+            ('F2', 'P1', 20.0),
+        ]
+    )
+    ref = pd.DataFrame(
+        {
+            'improvement_value': [np.nan, np.nan, 90000.0],
+            'improvement_value_imputed': [np.nan, np.nan, 90000.0],
+            'n_dwellings': [np.nan, np.nan, 1.0],
+        },
+        index=pd.Index(['P1', 'P2', 'P3']),
+    )
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid')
+    for col in ('improvement_value', 'improvement_value_imputed', 'n_dwellings'):
+        assert pd.isna(out.loc['F1', col]), col
+    assert out.loc['F2', 'improvement_value'] == 90000.0
+    assert out.loc['F2', 'n_dwellings'] == 1.0
+
+
+def test_recorded_zero_value_stays_zero():
+    # A roll that writes 0 states a value; only an absent one is missing.
+    pairs = _pairs([('F1', 'P1', 100.0)])
+    ref = pd.DataFrame({'improvement_value': [0.0]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid')
+    assert out.loc['F1', 'improvement_value'] == 0.0

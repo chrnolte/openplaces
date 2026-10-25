@@ -28,6 +28,15 @@ and a narrower debug run stops at curate so a one-county rebuild cannot
 overwrite a shipped regional file. `--config deliver=true|false` overrides
 either way, `true` still limited to the regions the run touches.
 
+A delivery's inputs are its members' curated files and, for a region the
+recipe imputes building attributes for (`share: delivery: impute:`), the
+inputs the imputation reads and no curate step names: the price index, the
+`census_recipe` and `gazetteer_recipe` tables and each member's
+`location_recipe` enrichment. These are added to the
+graph before its closure, so their own upstreams get jobs too. A team twin
+reuses its public region's imputation, so its delivery depends on the
+public delivery instead.
+
 A **`validate`** job follows each delivery, one per shipped region whose
 recipe lists notebooks for it (`validation: notebooks:`, each naming the
 reference it scores; `ground_truth` or a sidecar `references:` key resolves to
@@ -53,22 +62,44 @@ those consumers rerun. A consumed intermediate (absent, with a cleanup
 receipt) is not returned, since `input_paths` already drops it for a job
 whose output exists.
 
-**A delivery does not check that its curated files are current, so
-`region_verify` does** (`flow/freshness.py`). An export pools whatever
-curated files are on disk. A spine rebuilt in one run leaves the
+**A delivery refuses curated files older than their inputs**
+(`io/delivery/freshness.py`, with this package's `flow/freshness.py` as
+its command line). A spine rebuilt in one run leaves the
 consumers another run built from it in place, older than the spine,
-and the next export ships them: transaction curates linked to a
-property spine that had since been fixed reached the valuation lane
-this way (2026-10). `out_of_date(dag)` lists every job whose existing
+and an export that did not look shipped them: transaction curates
+linked to a property spine that had since been fixed reached the
+valuation lane this way (2026-10). The check sits below the
+orchestrator so that `export_delivery` runs it itself; `run_stage
+deliver` and `region_verify` pass it the region's graph
+(`freshness.delivery_graph`), and `--allow-stale` overrides it in both.
+**The check honors the run's excluded and held recipes**: the graph is
+built with the run's `exclude_recipe_ids` (a job's own, else the local
+profile's `defaults.yaml`; `--exclude-recipe-ids` names them).
+
+**An enrich job whose source is excluded or held is no job at all**
+(`dag.adds_left_out_source`, listed in `dag.left_out`), even though
+the curation names the enrich recipe directly, and its output is no
+consumer's declared input. An enrich recipe adds one source's evidence;
+without the source it has nothing to refresh. Before this the graph
+kept the job with only the excluded edge dropped, so the placeslab
+lane's evidence (`US_parcel_parcel-placeslab-fmv2026`, its ingest
+excluded by the local profile) reran on every parcel spine rebuild and
+marked Fairfax, Arlington and Alexandria stale in washington-dc
+(2026-10-24). The curate step still runs: `merge_enrichments` merges
+the evidence file if one is on disk and skips the recipe otherwise,
+as it does for an excluded ingest. The rule covers enrich jobs only; a
+harmonize job reading an excluded source among others is kept.
+`out_of_date(dag)` lists every job whose existing
 output is older than an existing input, then every job built from such
 an output. It differs from `plan()` in one way: a missing output does
 not mark its consumers, because an absent file may be a held recipe, an
 opt-in lane or a consumed intermediate, and `plan()` reports Lake
 County, FL's whole transaction graph as "upstream scheduled" behind the
 held Shovels ingest. `region_verify` fails a region with any such job
-unless `--allow-stale` is passed; `python -m openplaces.flow.freshness
-RECIPE --region REGION` (or admin ids) runs the check alone, before a
-direct `export_delivery` call or before fitting on a bundle. Measured
+unless `--allow-stale` is passed, and fails a unit whose
+`--input-layer` does not load, naming the layer and the error;
+`python -m openplaces.flow.freshness RECIPE --region REGION` (or admin
+ids) runs the check alone, before fitting on a bundle. Measured
 2026-10-24 on US-MA-SOM: 5 of 50 built footprint jobs out of date, the
 parcel spine older than the new MA DOR sales ingest.
 

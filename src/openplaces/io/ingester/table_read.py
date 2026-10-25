@@ -77,6 +77,21 @@ class _TableReadMixin:
         layer = self.recipe.get('layer')
         data_path = data_path_override or self.download_partition['data_path']
 
+        joined = (getattr(self, 'download_partition', None) or {}).get('join_members')
+        if joined and data_path_override is None:
+            if 'fids' in kwargs:
+                raise ValueError('`join_members` does not support `fid` selection.')
+            df = self._read_joined_members(
+                joined['members'], joined['key'], kwargs.get('encoding')
+            )
+            self.timer.mark('Read joined members' + timer_suffix, path=data_path)
+            if columns:
+                df = df[[c for c in columns if c in df.columns]]
+            warnings.filterwarnings(
+                'default', 'received a polygon with more than 100 parts'
+            )
+            return df
+
         # Match the extension case-insensitively: the *_EXTENSIONS sets are
         # lowercase, but agency exports routinely ship uppercase names --
         # the PACS appraisal roll members are all `.TXT`, which otherwise
@@ -371,7 +386,98 @@ class _TableReadMixin:
         # the default stays pandas' 'error', so nothing is lost unasked.
         if self.recipe.get('on_bad_lines'):
             read_kwargs['on_bad_lines'] = self.recipe['on_bad_lines']
+        # The Census Gazetteer pads its last header with spaces, so the
+        # name never matches a mapping. A recipe that declares
+        # `strip_column_names: true` reads its headers trimmed.
+        if self.recipe.get('strip_column_names'):
+            wanted = None if columns is None else {str(c).strip() for c in columns}
+            df = pd.read_csv(
+                data_path,
+                usecols=None if wanted is None else lambda c: c.strip() in wanted,
+                **read_kwargs,
+            )
+            df.columns = df.columns.str.strip()
+            # A callable usecols skips a missing header silently, where
+            # the list form raises; keep the list form's contract.
+            absent = sorted((wanted or set()) - set(df.columns))
+            if absent:
+                raise ValueError(
+                    f'Usecols do not match columns, columns expected but '
+                    f'not found: {absent}'
+                )
+            return df
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
+
+    def _read_joined_members(self, members, key, encoding=None):
+        """Read several headerless delimited files and join them on a key.
+
+        Declared as ``join_members: {key, members: [{file, fields}]}``.
+        Each member is read without a header row, keeping only the
+        columns its ``fields`` map names (0-based position to name), and
+        the members are joined side by side on *key*, which every member
+        must name. The key is read as text in every member, so a
+        zero-padded record number matches across files. Other columns
+        follow the recipe's ``csv_dtype`` like a flat table's.
+
+        The join is strict: a key repeated within a member, or present in
+        one member and missing from another, raises rather than dropping
+        or duplicating rows, because such files are meant to be parallel
+        record for record.
+
+        Parameters
+        ----------
+        members : list of tuple
+            ``(path, fields)`` per member, in join order.
+        key : str
+            Column name, present in every member's ``fields``, to join on.
+        encoding : str, optional
+            From the recipe's ``encoding`` key.
+
+        Raises
+        ------
+        ValueError
+            When a member does not name *key*, repeats a key value, or the
+            members do not hold the same set of keys.
+        """
+        csv_dtype = self.recipe.get('csv_dtype')
+        delimiter = self.recipe.get('delimiter', ',')
+        joined = None
+        for path, fields in members:
+            names = {int(position): name for position, name in fields.items()}
+            if key not in names.values():
+                raise ValueError(f'join_members: {path.name} does not name {key!r}.')
+            if csv_dtype == 'str':
+                dtype = dict.fromkeys(names, str)
+            else:
+                lookup = csv_dtype if isinstance(csv_dtype, dict) else {}
+                dtype = {p: lookup[n] for p, n in names.items() if n in lookup}
+            dtype.update({p: str for p, n in names.items() if n == key})
+            df = pd.read_csv(
+                path,
+                sep=delimiter,
+                header=None,
+                usecols=sorted(names),
+                dtype=dtype,
+                encoding=encoding,
+                low_memory=False,
+            ).rename(columns=names)
+            if df[key].duplicated().any():
+                raise ValueError(
+                    f'join_members: {path.name} repeats {key} values '
+                    f'({int(df[key].duplicated().sum())} rows).'
+                )
+            if joined is None:
+                joined = df
+                continue
+            merged = joined.merge(df, on=key, how='outer', indicator=True)
+            unmatched = int((merged['_merge'] != 'both').sum())
+            if unmatched:
+                raise ValueError(
+                    f'join_members: {unmatched} {key} values are not in every '
+                    f'member (last joined: {path.name}).'
+                )
+            joined = merged.drop(columns='_merge')
+        return joined
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):
         """Read a fixed-width flat file using the recipe's ``fixed_width`` layout.

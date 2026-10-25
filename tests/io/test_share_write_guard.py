@@ -136,7 +136,9 @@ def test_export_files_a_redacted_bundle_in_share_from_private_files(
         lambda *_a, **_kw: [_source('closedcounty', 'US-NC-AL', ['year_built'])],
     )
 
-    paths = export_delivery(_recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'])
+    paths = export_delivery(
+        _recipe(), 'US-NC', admin_ids=['US-NC-AL', 'US-NC-BB'], allow_stale=True
+    )
 
     share_root = Path(cfg.get_dir('share')).resolve()
     curated = get_output_path(_recipe(), 'US-NC-AL').resolve()

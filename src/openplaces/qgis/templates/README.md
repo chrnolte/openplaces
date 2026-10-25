@@ -98,6 +98,25 @@ Rows with no meaningful alternate column (e.g. `parcel-output` styled only
 on `land_use_class`) simply have no variant rows — variants are opt-in per
 style key, not required.
 
+## Observed and imputed values
+
+`export_qgis_map(..., split_imputed=True)` (also on `generate_qgz`)
+lets a viewer switch observed and imputed values on and off. Every
+generated layer whose categorized or graduated renderer classifies on a
+column `col`, where the layer's data also carries `{col}_source`, gets a
+rule-based renderer instead: two top-level rules, "Observed"
+(`"{col}_source" IS NULL OR NOT ("{col}_source" LIKE '%imputed%')`) and
+"Imputed" (`"{col}_source" LIKE '%imputed%'`), both checked, each
+holding one child rule per original category or range with its symbol
+and label. Each parent shows as a checkbox in the layer's legend.
+Layers without a source column for their attribute keep their renderer.
+
+A polygon view reads its attributes through a join whose custom prefix
+is empty, so the expressions use bare field names, and `{col}_source` is
+added to the join's field subset. A template join without a custom
+prefix uses QGIS's default (the joined layer's name and `_`), which the
+filters follow. Nothing in the template needs to change for this.
+
 ## Other requirements
 
 - **Print layout**: add at least one, with a title expression that

@@ -93,9 +93,10 @@ def apportion_reference_values(
 
     - ``improvement_value``, ``improvement_value_imputed``
       (:data:`PROPORTIONAL_SPLIT_COLUMNS`): each multiplied by every pair's
-      within-reference overlap fraction and summed per spine entity; missing
-      (not 0) on entities whose *priority* is ``'secondary'``, whose share
-      the reference's other entities receive in proportion to theirs (a
+      within-reference overlap fraction and summed per spine entity
+      (missing, not 0, where every linked reference lacks the value);
+      missing (not 0) on entities whose *priority* is ``'secondary'``,
+      whose share the reference's other entities receive in proportion to theirs (a
       reference whose entities are all secondary stays unallocated). A
       reference id in *equal_area_ref_ids* is exempt from both the
       dwelling-linked suppression below and this secondary rule, so
@@ -325,7 +326,10 @@ def apportion_reference_values(
         if col not in value_cols:
             continue
         split = (attrs[col] * fraction_proportional).round(2)
-        summed = split.groupby(spine_ids).sum()
+        # min_count=1: an entity whose linked references all lack the
+        # value stays missing. A plain sum wrote 0, which a page prints
+        # as "$0" for a building nothing records a value for.
+        summed = split.groupby(spine_ids).sum(min_count=1)
         if priority is not None:
             secondary = priority.reindex(summed.index).eq('secondary').fillna(False)
             if equal_area_spine_ids:
@@ -346,7 +350,7 @@ def apportion_reference_values(
             (attrs['n_dwellings'] * fraction_dwellings)
             .round(2)
             .groupby(spine_ids)
-            .sum()
+            .sum(min_count=1)
         )
 
     if 'year_built' in value_cols:

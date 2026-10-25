@@ -103,6 +103,15 @@ Steps are organized by the nature of the transformation:
   value wherever it states one. The Massachusetts parcel patch uses
   all three to count a condominium lot's dwellings from its 102 unit
   accounts, each at least one, ahead of the master record's count.
+- `common_land.py` — `apportion_common_land` (gather), the plat's
+  common land as an area: it reads the parcel spine's `plat key` link
+  table and writes `common_land_share_ha` on each lot (the common area
+  divided among the plat's lots in proportion to lot area),
+  `n_lots_per_plat` and `common_land_lots_area_ha` on each common area,
+  and `common_land_plat_id` on both. **It writes no value**: the lots keep
+  their recorded land values and the common area none, because the roll
+  counts the common land's worth in the lots (maintainer, 2026-10-24); a
+  reader divides a lot's land by its area plus its share.
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).

@@ -13,6 +13,7 @@ from openplaces.flow import dag, freshness, region_verify
 REGION = 'fabricated-region'
 RECIPE = 'ZZ_property-fabricated-2026'
 UNITS = ('ZZ-AA-ALP', 'ZZ-AA-BET', 'ZZ-AA-GAM')
+EXCLUDED_BY_PROFILE = 'ZZ_parcel-optional-lane-2026'
 
 
 def _geodataframe(*geometries):
@@ -136,6 +137,42 @@ def test_verify_region_fails_bad_input_when_curated_output_passes(monkeypatch, c
     assert f'FAILED {UNITS[0]}' in capsys.readouterr().out
 
 
+def test_verify_region_fails_an_input_layer_that_does_not_load(monkeypatch, capsys):
+    input_recipe = 'ZZ_property-fabricated-input-2026'
+    entities = {
+        (RECIPE, UNITS[0]): _geodataframe(Point(1, 1)),
+        (input_recipe, UNITS[0]): OSError('fabricated unreadable file'),
+    }
+    _patch_region(monkeypatch, entities, units=(UNITS[0],))
+
+    bad, total_rows = region_verify.verify_region(
+        RECIPE, REGION, input_layers=[input_recipe]
+    )
+
+    assert bad == [
+        (
+            UNITS[0],
+            f'{input_recipe}: failed to load: OSError: fabricated unreadable file',
+        )
+    ]
+    assert total_rows == 1
+    assert f'FAILED {UNITS[0]}' in capsys.readouterr().out
+
+
+def test_main_passes_graph_and_override_to_the_export(monkeypatch, main_dependencies):
+    export_delivery, fake_dag, _, _ = main_dependencies
+    monkeypatch.setattr(region_verify, 'verify_region', lambda *args, **kwargs: ([], 1))
+    monkeypatch.setattr(
+        'openplaces.io.delivery.delivery_paths', lambda *args, **kwargs: {}
+    )
+
+    region_verify.main([RECIPE, REGION, '--deliver', '--allow-stale'])
+
+    export_delivery.assert_called_once_with(
+        RECIPE, region=REGION, verbose=True, allow_stale=True, graph=fake_dag
+    )
+
+
 @pytest.fixture
 def main_dependencies(monkeypatch):
     export_delivery = Mock()
@@ -147,6 +184,9 @@ def main_dependencies(monkeypatch):
     monkeypatch.setattr(op, 'export_delivery', export_delivery)
     monkeypatch.setattr(dag, 'RecipeDAG', recipe_dag)
     monkeypatch.setattr(freshness, 'out_of_date', out_of_date)
+    monkeypatch.setattr(
+        freshness, 'default_exclude_recipe_ids', lambda: {EXCLUDED_BY_PROFILE}
+    )
     return export_delivery, fake_dag, recipe_dag, out_of_date
 
 
@@ -181,11 +221,28 @@ def test_main_exits_one_for_stale_outputs(monkeypatch, main_dependencies):
     recipe_dag.assert_called_once_with(
         RECIPE,
         admin_ids=[UNITS[0]],
+        exclude_recipe_ids={EXCLUDED_BY_PROFILE},
         deliver=False,
         validate=False,
     )
     out_of_date.assert_called_once_with(fake_dag)
     export_delivery.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('flag', 'expected'),
+    [
+        ('ZZ_lane-a-2026,ZZ_lane-b-2026', {'ZZ_lane-a-2026', 'ZZ_lane-b-2026'}),
+        ('', set()),
+    ],
+)
+def test_main_takes_the_run_exclusions(monkeypatch, main_dependencies, flag, expected):
+    _, _, recipe_dag, _ = main_dependencies
+    monkeypatch.setattr(region_verify, 'verify_region', lambda *args, **kwargs: ([], 1))
+
+    region_verify.main([RECIPE, REGION, f'--exclude-recipe-ids={flag}'])
+
+    assert recipe_dag.call_args.kwargs['exclude_recipe_ids'] == expected
 
 
 def test_main_allow_stale_continues_without_delivery(

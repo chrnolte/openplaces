@@ -1065,6 +1065,9 @@ SOURCE_DISPLAY = {
     # Alexandria VA's real estate accounts, team pages only (cleared
     # for team sharing, 2026-10-24).
     'alexgis': {'name': 'City of Alexandria (AlexGIS)'},
+    # Arlington VA's assessments, on restricted pages only (personal
+    # use, `RESTRICTED_TIER`).
+    'arlington': {'name': 'Arlington County (Data API)'},
     'nconemap': {'name': 'NC OneMap', 'credit': 'NC OneMap (nconemap.gov)'},
     # The acknowledgment Maryland's licence asks of derived data
     # (US-MD_parcel-mdimap-2026), and DC's CC BY 4.0 attribution
@@ -3529,6 +3532,69 @@ def overlay_imputed_values(part, recipe, region, columns) -> tuple[pd.DataFrame,
     return part, taken
 
 
+def fill_withheld_values(part, recipe, units) -> tuple[pd.DataFrame, int]:
+    """Fill the cells a bundle withheld in `units` from the curated
+    per-unit files, for a restricted page (`audience: restricted`).
+
+    Only cells the bundle marks withheld (`WITHHELD_TOKEN` in their
+    `_source`) and only in the units named are taken, with the curated
+    file's own source, so the Sources panel names the roll. The units
+    are listed by a person in `places.yaml` (`restricted_units`) after
+    reading the source's terms, never derived: another source's
+    withheld cells (a licence that forbids any display) stay withheld.
+    The bundle itself is never changed.
+
+    Parameters
+    ----------
+    part : pandas.DataFrame
+        Rows read from a bundle, indexed by entity id like the curated
+        files.
+    recipe : str
+        The layer's recipe.
+    units : sequence of str
+        Units (`admin3_id`) whose withheld cells are filled.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, int)
+        The rows, and how many cells were filled.
+    """
+    from openplaces.io.readers import get_entities
+
+    units = [u for u in units if u in set(part['admin3_id'])]
+    sources = [
+        c
+        for c in part.columns
+        if c.endswith(SOURCE_SUFFIX)
+        and (part[c].astype('string') == WITHHELD_TOKEN).any()
+    ]
+    if not units or not sources:
+        return part, 0
+    curated = get_entities(recipe, admin_id=units, geom=False)
+    curated = curated.reindex(part.index)
+    in_units = part['admin3_id'].isin(units)
+    part = part.copy()
+    filled = 0
+    for source in sources:
+        column = source[: -len(SOURCE_SUFFIX)]
+        if column not in part.columns or column not in curated.columns:
+            continue
+        take = (
+            in_units
+            & (part[source].astype('string') == WITHHELD_TOKEN).fillna(False)
+            & curated[column].notna()
+        )
+        if isinstance(part[column].dtype, pd.CategoricalDtype):
+            # The roll's own labels may be categories the bundle lacks.
+            part[column] = part[column].astype(object)
+        part.loc[take, column] = curated.loc[take, column]
+        part[source] = part[source].astype('string')
+        if source in curated.columns:
+            part.loc[take, source] = curated.loc[take, source].astype('string')
+        filled += int(take.sum())
+    return part, filled
+
+
 def ghost_rule(recipe) -> dict | None:
     """The parameters of a recipe's `flag_unconfirmed_height` step, or
     None where its pipeline has none (the parcel recipe)."""
@@ -4024,6 +4090,9 @@ def build_web_scene(
     notes=None,
     land_mask=True,
     people_cloud=True,
+    restricted_units=None,
+    restricted_page=None,
+    unrestricted_page=None,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -4126,6 +4195,18 @@ def build_web_scene(
         counts are on this machine and the page's audience is in
         `PEOPLE_AUDIENCES` (team pages only); the page shows it behind
         a switch, off by default.
+    restricted_units : sequence of str, optional
+        Units whose withheld cells are filled from the curated files
+        (`fill_withheld_values`). The page is then a restricted page
+        (`audience: restricted`), which `deploy_web_scene` publishes
+        only behind the restricted tokens (`RESTRICTED_TIER`).
+    restricted_page : str, optional
+        Relative address of this page's restricted twin
+        (`../<slug>-restricted/`). The page offers a switch to it, shown
+        only to a visitor the twin's gate lets in.
+    unrestricted_page : str, optional
+        On a restricted page, the address of the page it is the twin
+        of, where its switch leads back.
     verbose : bool
 
     Returns
@@ -4155,6 +4236,11 @@ def build_web_scene(
         if model_files is not None and not models_public
         else scene_audience(region)
     )
+    restricted_units = list(restricted_units or [])
+    if restricted_units:
+        audience = RESTRICTED_AUDIENCE
+    # Cells filled from the curated files (`fill_withheld_values`).
+    restricted_cells = 0
     palettes = list(palettes) if palettes else default_palettes(layers)
     admin_ids = list(admin_ids)
     output_dir = Path(output_dir)
@@ -4238,6 +4324,10 @@ def build_web_scene(
                         part, layer.recipe, name, layer.imputed_columns
                     )
                     imputed_cells += taken
+                    part, released = fill_withheld_values(
+                        part, layer.recipe, restricted_units
+                    )
+                    restricted_cells += released
                     if taken:
                         model_code += imputed_model_code(layer.recipe, name)
                     if layer.recorded_column and layer.recorded_column not in part:
@@ -4447,7 +4537,7 @@ def build_web_scene(
                 # (maintainer, 2026-10-19).
                 type_count += np.bincount(codes, minlength=n_types)
             views['type'] = {'label': 'Type', 'unit': 'type', 'categorical': True}
-        if layer.model_views and (audience == 'team' or models_public):
+        if layer.model_views and (audience in GATED_AUDIENCES or models_public):
             homes = None
             if 'dwelling' in views:
                 # The lots the per-home view counts as homes.
@@ -4702,6 +4792,9 @@ def build_web_scene(
         'preview': region is None and not given,
         'local_only': bool(local_only),
         'audience': audience,
+        'restricted_page': restricted_page,
+        'unrestricted_page': unrestricted_page,
+        'restricted_cells': restricted_cells,
         'landmarks': marks,
         'phone_scene': phone_scene,
         'known_issues': known_issues(admin_ids),
@@ -4923,20 +5016,42 @@ ACCESS_TOKENS_FILE = 'value-access-tokens.tsv'
 # Random URL-safe tokens (`secrets.token_urlsafe`): letters, digits,
 # `-` and `_`, which a regular expression takes as they are.
 ACCESS_TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9_-]{16,64}$')
+# A token's tier (the token file's third column) that also opens the
+# restricted pages (`audience: restricted`): values a bundle withholds,
+# shown under terms that allow personal use only (Arlington,
+# `plans/findings/northern-virginia-roll-terms.md`). Personal use means
+# one holder, the maintainer (2026-10-25); a second token would be
+# distribution, which needs the source's written permission first.
+RESTRICTED_TIER = 'restricted'
+MAX_RESTRICTED_TOKENS = 1
+RESTRICTED_AUDIENCE = 'restricted'
+# Pages published only behind a gate beyond the site's token gate.
+GATED_AUDIENCES = frozenset({'team', RESTRICTED_AUDIENCE})
+# A restricted twin's folder: `<slug>-restricted`.
+RESTRICTED_SUFFIX = '-restricted'
 
 
-def read_access_tokens(path) -> list[tuple[str, str]]:
+def read_access_tokens(path, tier=None) -> list[tuple[str, str]]:
     """The access tokens of the local token file, as (token, name).
 
-    One `token<TAB>name` per line; blank lines and `#` comments are
-    skipped. The names stay on this machine: only tokens go to the
-    host (`access_htaccess`).
+    One `token<TAB>name[<TAB>tier]` per line; blank lines and `#`
+    comments are skipped. The names stay on this machine: only tokens
+    go to the host (`access_htaccess`).
+
+    Parameters
+    ----------
+    path : str or Path
+        The token file.
+    tier : str, optional
+        Only the tokens of this tier (`RESTRICTED_TIER`); None reads
+        every token.
 
     Raises
     ------
     ValueError
-        If the file is not named, holds no token, or a line is not a
-        valid token.
+        If the file is not named, holds no token (of the tier), a line
+        is not a valid token, or more tokens are restricted than
+        `MAX_RESTRICTED_TOKENS`.
     """
     if not path:
         raise ValueError(
@@ -4950,13 +5065,21 @@ def read_access_tokens(path) -> list[tuple[str, str]]:
         for line in path.read_text(encoding='utf-8').splitlines():
             if not line.strip() or line.lstrip().startswith('#'):
                 continue
-            token, _, name = line.partition('\t')
+            token, _, rest = line.partition('\t')
+            name, _, token_tier = rest.partition('\t')
             token = token.strip()
             if not ACCESS_TOKEN_PATTERN.match(token):
                 raise ValueError(f'{path}: not an access token: {token[:8]}...')
-            tokens.append((token, name.strip()))
+            if tier is None or token_tier.strip() == tier:
+                tokens.append((token, name.strip()))
+    if tier == RESTRICTED_TIER and len(tokens) > MAX_RESTRICTED_TOKENS:
+        raise ValueError(
+            f'{path} holds {len(tokens)} restricted tokens; at most '
+            f'{MAX_RESTRICTED_TOKENS} until the source allows sharing in writing.'
+        )
     if not tokens:
-        raise ValueError(f'{path} holds no access token; the site would let nobody in.')
+        what = f'{tier} access token' if tier else 'access token'
+        raise ValueError(f'{path} holds no {what}; the site would let nobody in.')
     return tokens
 
 
@@ -5026,14 +5149,25 @@ def access_page(settings) -> str:
     return page.replace('{{CONTACT}}', html.escape(contact))
 
 
-def site_htaccess(settings, team=False) -> str:
+def site_htaccess(settings, team=False, restricted=False) -> str:
     """A page folder's or the site root's `.htaccess`: the token gate,
-    the team password where `team`, then the usual rules."""
+    the team password where `team`, then the usual rules.
+
+    A `restricted` page's gate lets in only the restricted tokens
+    (`RESTRICTED_TIER`) and asks for no password: the switch to it on
+    its twin probes it in the background, and a password prompt would
+    then open for every team member.
+    """
     from urllib.parse import urlparse
 
     if not settings['url']:
         raise ValueError(f'{DEPLOY_PREFIX}URL is needed to place the token gate.')
-    tokens = [t for t, _ in read_access_tokens(settings['access_tokens'])]
+    tier = RESTRICTED_TIER if restricted else None
+    tokens = [t for t, _ in read_access_tokens(settings['access_tokens'], tier)]
+    if restricted:
+        url = urlparse(settings['url'])
+        gate = access_htaccess(tokens, url.path, url.hostname or '')
+        return gate + (STATIC_DIR / 'htaccess').read_text(encoding='utf-8')
     url = urlparse(settings['url'])
     gate = access_htaccess(tokens, url.path, url.hostname or '')
     if team:
@@ -5210,6 +5344,15 @@ def deploy_web_scene(
     print(f'Mode  : {"PUBLISH" if go else "dry run"}')
 
     team = manifest.get('audience') == 'team'
+    restricted = manifest.get('audience') == RESTRICTED_AUDIENCE
+    # The folder's name tells `site access` which gate it gets, so a
+    # restricted page goes only to a `-restricted` folder.
+    if restricted != bool(subpath and subpath.endswith(RESTRICTED_SUFFIX)):
+        raise ValueError(
+            f'{output_dir}: a restricted page is published only to a folder '
+            f'ending in {RESTRICTED_SUFFIX!r}, and only a restricted page there '
+            f'(subpath {subpath!r}).'
+        )
     if team:
         passwd = settings['team_passwd']
         if not passwd:
@@ -5222,7 +5365,7 @@ def deploy_web_scene(
     # the page. Written before the host check, so a bad setting fails
     # without a call to the host.
     (output_dir / '.htaccess').write_text(
-        site_htaccess(settings, team), encoding='utf-8'
+        site_htaccess(settings, team, restricted), encoding='utf-8'
     )
     if team and not _rclone_output(env, 'lsf', f'bh:{settings["team_passwd"]}'):
         raise FileNotFoundError(
@@ -5446,19 +5589,35 @@ def deploy_access(site_dir, env_file=None, go=False) -> list[str]:
                 # whose target is gated: left as it is.
                 print(f'{folder}: redirect, left as it is')
                 continue
+            audience = (
+                json.loads(manifest.read_text(encoding='utf-8')).get('audience')
+                if manifest.exists()
+                else None
+            )
+            # By its name as well as its manifest: a restricted folder
+            # this machine has no build of must never get the general
+            # gate, which every token passes.
+            restricted = audience == RESTRICTED_AUDIENCE or str(folder).endswith(
+                RESTRICTED_SUFFIX
+            )
             if manifest.exists():
-                team = (
-                    json.loads(manifest.read_text(encoding='utf-8')).get('audience')
-                    == 'team'
-                )
+                team = audience == 'team'
             else:
                 team = bool(folder) and 'AuthUserFile' in current
             target = upload / folder / '.htaccess'
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(site_htaccess(settings, team), encoding='utf-8')
-            print(
-                f'{folder or "(root)"}: token gate{" + team password" if team else ""}'
+            target.write_text(
+                site_htaccess(settings, team and not restricted, restricted),
+                encoding='utf-8',
             )
+            kind = (
+                'restricted tokens only'
+                if restricted
+                else 'token gate + team password'
+                if team
+                else 'token gate'
+            )
+            print(f'{folder or "(root)"}: {kind}')
             written.append(folder)
         # Every gate in one copy, nothing else.
         _rclone(

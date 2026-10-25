@@ -63,6 +63,7 @@ def link_to_reference(
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
     save_link: bool = True,
+    kept_by: str | None = None,
 ) -> HarmonizeState:
     """Load a reference dataset and build a spine ↔ reference crosswalk.
 
@@ -143,6 +144,20 @@ def link_to_reference(
         stays verifiable. After an overlay reload,
         ``state.overlays[recipe_id]`` carries no geometry column (only
         the area/IoU columns are consumed downstream).
+    kept_by : str, optional
+        A harmonize recipe whose ``resolve_spine`` decides which rows
+        of the unit's reference layers form the reference (for
+        ``spatial_overlay``): the rows that recipe keeps, from every
+        source it ranks, as :func:`reference_rows_kept_by` describes.
+        The footprint geospine names the parcel geospine here, so its
+        parcel link reaches the lots the parcel spine keeps rather than
+        one ingest of several. The link keeps the name of the
+        reference resolved from *recipe_id* or *entity_type*. Where the
+        recipe keeps the rows of that one reference alone, nothing
+        changes, not even the sidecar's fingerprint. Never a
+        ``*recipe_id`` key: the footprint geospine is built before the
+        parcel geospine, so it depends on that recipe's ingests, not on
+        its output.
     """
     if state.spine is None:
         warnings.warn('link_to_reference: spine is None; skipping.')
@@ -175,6 +190,7 @@ def link_to_reference(
             sort_by,
             list_columns,
             save_link,
+            kept_by=kept_by,
         )
     elif join == 'spatial_point':
         return _link_spatial_point(
@@ -223,6 +239,160 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     return find_reference_recipe_id(
         entity_type, admin_id, recipes=find_recipes(entity_type, stage='ingest')
     )
+
+
+def overlay_step_config(
+    min_fraction: float,
+    area_min_m2: float,
+    sort_by: str | None,
+    list_columns: list[str] | None,
+    aggregation_function,
+    kept_config: dict | None = None,
+) -> dict:
+    """The step configuration an overlay link's fingerprint records.
+
+    One function for the linking step and the geospine loader, so the two
+    compute the same fingerprint. *kept_config* (from
+    :func:`reference_rows`) enters only when a ``kept_by`` reference
+    differs from the plain one, so every other sidecar keeps the
+    fingerprint it was written with.
+    """
+    config = {
+        'min_fraction_of_largest': min_fraction,
+        'area_intersection_m2_min': area_min_m2,
+        'sort_by': sort_by,
+        'list_columns': list_columns,
+        'aggregation_function': (
+            None if aggregation_function is None else str(aggregation_function)
+        ),
+    }
+    if kept_config is not None:
+        config['kept_by'] = kept_config
+    return config
+
+
+def reference_rows(
+    recipe_id: str,
+    admin_id: AdminId | None,
+    kept_by: str | None = None,
+    verbose: bool = False,
+):
+    """Rows of an overlay link's reference, and the config that chose them.
+
+    Without *kept_by*, the reference recipe's own rows for the unit, as
+    always. With it, the rows :func:`reference_rows_kept_by` returns,
+    unless that recipe keeps the rows of *recipe_id* alone, in which
+    case the plain rows are returned, so a unit with one parcel layer
+    reads and fingerprints exactly what it did before.
+
+    Returns
+    -------
+    tuple
+        The reference rows (None or empty when the unit has none) and the
+        ``kept_by`` configuration to fingerprint, None when the plain
+        reference was read.
+    """
+    if kept_by:
+        kept = reference_rows_kept_by(kept_by, admin_id, verbose=verbose)
+        if kept is not None:
+            rows, config = kept
+            if set(config['sources']) != {recipe_id}:
+                return rows, config
+    return get_entities(recipe_id, admin_id, geom=True, missing='warn'), None
+
+
+def reference_rows_kept_by(
+    spine_recipe_id: str, admin_id: AdminId | None, verbose: bool = False
+):
+    """The rows of a spine's own sources that its ``resolve_spine`` keeps.
+
+    Runs the first ``resolve_spine`` step of *spine_recipe_id*, with the
+    unit's patches applied, exactly as that recipe's run would, and
+    returns, for every source it kept rows of, that source's full rows
+    (every column the ingest wrote) for the kept ids. Each kept row is
+    taken from the source its ``geometry_source`` label names, so an
+    outline two layers draw identically comes from the layer the spine
+    ranked first. This is how the footprint geospine, built before the
+    parcel geospine, links to the lots the parcel spine will keep:
+    resolving the spine again is cheap next to the overlay, and reading
+    its output instead would make the two geospines depend on each other.
+
+    Returns
+    -------
+    tuple or None
+        ``(rows, config)``, where *config* records the recipe, the
+        fingerprint-relevant ``resolve_spine`` step and the source recipe
+        ids that supplied rows, sorted. None when the recipe has no
+        ``resolve_spine`` step or keeps no rows for the unit.
+    """
+    import geopandas as gpd
+
+    from openplaces.io.harmonizer.links.sidecars import _fingerprint_safe_step
+    from openplaces.io.harmonizer.spine import _expand_auto_discover, resolve_spine
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe = get_recipe_by_id(spine_recipe_id)
+    recipe, _ = apply_recipe_patches(recipe, admin_id)
+    step = next(
+        (
+            s
+            for s in recipe.get('pipeline') or []
+            if isinstance(s, dict) and s.get('step') == 'resolve_spine'
+        ),
+        None,
+    )
+    if step is None:
+        return None
+    params = {k: v for k, v in step.items() if k not in ('step', 'checkpoint')}
+    shim = HarmonizeState(recipe=recipe, admin_id=admin_id, verbose=False, timer=None)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        shim = resolve_spine(shim, **params)
+    spine = shim.spine
+    if spine is None or len(spine) == 0 or 'geometry_source' not in spine.columns:
+        return None
+
+    # Labels name sources as resolve_spine stamped them; a bundled
+    # additional_layers table carries no outline of its own.
+    label_to_recipe: dict[str, str] = {}
+    for src in _expand_auto_discover(params.get('sources') or [], shim):
+        if src.get('layer') or not src.get('recipe_id'):
+            continue
+        label_to_recipe.setdefault(src.get('label', src['recipe_id']), src['recipe_id'])
+
+    parts = []
+    used = []
+    kept_by_label = spine.groupby('geometry_source', observed=True).groups
+    for label, kept_ids in kept_by_label.items():
+        source_id = label_to_recipe.get(label)
+        if source_id is None:
+            continue
+        rows = get_entities(source_id, admin_id, geom=True, missing='warn')
+        if rows is None or len(rows) == 0:
+            continue
+        rows = rows[rows.index.isin(set(kept_ids))]
+        if len(rows):
+            parts.append(rows)
+            used.append(source_id)
+    if not parts:
+        return None
+    if verbose:
+        counts = ', '.join(
+            f'{rid}: {len(p):,d}' for rid, p in zip(used, parts, strict=True)
+        )
+        print(f'  Link (overlay): reference rows kept by {spine_recipe_id} ({counts})')
+    crs = next(p.crs for p in parts if getattr(p, 'crs', None) is not None)
+    rows = gpd.GeoDataFrame(
+        pd.concat([p.to_crs(crs) for p in parts], sort=False),
+        geometry='geometry',
+        crs=crs,
+    )
+    config = {
+        'recipe_id': spine_recipe_id,
+        'resolve_spine': _fingerprint_safe_step(step),
+        'sources': sorted(used),
+    }
+    return rows, config
 
 
 def _prepare_reference(
@@ -357,6 +527,7 @@ def _link_spatial_overlay(
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
     save_link: bool = False,
+    kept_by: str | None = None,
 ) -> HarmonizeState:
     """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
     min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
@@ -366,7 +537,9 @@ def _link_spatial_overlay(
     # missing='warn': a reference recipe can genuinely have zero coverage for
     # this admin unit (see _link_spatial_point's identical handling) -- an
     # expected admin-scoped gap, not an error.
-    ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    ref_raw, kept_config = reference_rows(
+        recipe_id, state.admin_id, kept_by, verbose=state.verbose
+    )
     if ref_raw is None or len(ref_raw) == 0:
         raise_if_coverage_complete(recipe_id, state.admin_id)
         if state.verbose:
@@ -397,15 +570,14 @@ def _link_spatial_overlay(
         fingerprint = _link_fingerprint(
             state,
             recipe_id,
-            {
-                'min_fraction_of_largest': min_fraction,
-                'area_intersection_m2_min': area_min_m2,
-                'sort_by': sort_by,
-                'list_columns': list_columns,
-                'aggregation_function': (
-                    None if aggregation_function is None else str(aggregation_function)
-                ),
-            },
+            overlay_step_config(
+                min_fraction,
+                area_min_m2,
+                sort_by,
+                list_columns,
+                aggregation_function,
+                kept_config,
+            ),
         )
         if not state.reprocess:
             footprints_on_ref = _load_link_sidecar(

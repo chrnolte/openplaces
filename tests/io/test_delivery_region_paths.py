@@ -361,4 +361,4 @@ def test_a_whole_unit_region_missing_a_county_is_not_exported(
     )
     recipe = _recipe(regions=['test-statewide'], whole_unit_regions=['test-statewide'])
     with pytest.raises(ValueError, match='missing: US-NC-DD'):
-        export_delivery(recipe, region='test-statewide')
+        export_delivery(recipe, region='test-statewide', allow_stale=True)
