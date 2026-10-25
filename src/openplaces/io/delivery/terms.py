@@ -1265,7 +1265,8 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             'this bundle may carry). No year built or structure',
             'value comes from NSI. structure_value_adjusted is structure_value',
             f"moved from the roll's appraisal_year to {imputation['common_year']}",
-            'with the FHFA county house price index. Cells filled:',
+            'with the FHFA county house price index. This product uses FHFA',
+            'Data but is neither endorsed nor certified by FHFA. Cells filled:',
         ]
         for column, count in imputation['filled'].items():
             if count:
