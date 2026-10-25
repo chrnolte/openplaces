@@ -1212,7 +1212,9 @@ function buildPlaceNav(places, deckgl, isTouring, shown, choices = () => ({})) {
       }
     }
     // What is off travels as `hide`; ghosts, off by default, as `show`.
-    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
+    const hidden = Object.keys(shown).filter(
+      (name) => !['ghosts', 'restricted'].includes(name) && !shown[name],
+    );
     if (hidden.length) {
       query.set('hide', hidden.join(','));
     }
@@ -1405,6 +1407,16 @@ async function main() {
     shown.landmarks = !hiddenAtStart.includes('landmarks');
     switches.push(['landmarks', 'Landmarks']);
   }
+  // Values the shared data withholds, on a twin page behind its own
+  // gate (`restricted_page`; maintainer, 2026-10-25): a switch that
+  // moves between the two pages, keeping the view. On the plain page
+  // it shows only once the twin answers, so only a visitor holding a
+  // restricted token sees it.
+  const twinPage = scene.restricted_page || scene.unrestricted_page || null;
+  if (twinPage) {
+    shown.restricted = Boolean(scene.unrestricted_page);
+    switches.push(['restricted', 'Restricted values']);
+  }
   let flatGround = hasTerrain && !shown.terrain;
   let toggleLayer = () => {};
   for (const [name, label] of switches) {
@@ -1461,6 +1473,16 @@ async function main() {
     }
   };
   markLayerSwitch();
+  if (scene.restricted_page) {
+    const button = layerSwitch.querySelector('[data-layer="restricted"]');
+    button.hidden = true;
+    // Refused, the gate sends the request on to the access page.
+    fetch(`${scene.restricted_page}scene.json`, {cache: 'no-store'})
+      .then((response) => {
+        button.hidden = !(response.ok && !response.redirected);
+      })
+      .catch(() => {});
+  }
 
   // Two display choices, both recoloring every feature and hiding none:
   // the value per area or per dwelling (where a layer offers it), and
@@ -2577,7 +2599,9 @@ async function main() {
     if (shown.ghosts) {
       query.set('show', 'ghosts');
     }
-    const hidden = Object.keys(shown).filter((name) => name !== 'ghosts' && !shown[name]);
+    const hidden = Object.keys(shown).filter(
+      (name) => !['ghosts', 'restricted'].includes(name) && !shown[name],
+    );
     if (hidden.length) {
       query.set('hide', hidden.join(','));
     }
@@ -3104,6 +3128,10 @@ async function main() {
     redraw();
   };
   toggleLayer = (name) => {
+    if (name === 'restricted') {
+      location.href = `${twinPage}${new URL(shareLink()).search}`;
+      return;
+    }
     shown[name] = !shown[name];
     // A pinned tooltip goes with its layer, and with any switch that
     // moves the buildings (land lowers them, terrain flattens all).
