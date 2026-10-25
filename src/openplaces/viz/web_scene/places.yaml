@@ -165,7 +165,10 @@ places:
   # buildings from the `washington-dc` team bundles (`team_bundles`:
   # Fairfax's values, team only), the models joined on their parcel ids
   # where a unit has a model file (DC, PG, MO).
-  - slug: washington-dc-pg-team
+  # Named washington-dc-pg-team until 2026-10-25 (when it showed DC and
+  # Prince George's for the BEA meeting); a published copy under that
+  # name gets a redirect here (`deploy_redirect`) when this is published.
+  - slug: washington-dc-team
     title: Washington DC area (team)
     around: the John A. Wilson Building, for the research team
     state: US-DC
