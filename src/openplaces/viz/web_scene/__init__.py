@@ -4090,6 +4090,7 @@ def build_web_scene(
     notes=None,
     land_mask=True,
     people_cloud=True,
+    preview_team=False,
     restricted_units=None,
     restricted_page=None,
     unrestricted_page=None,
@@ -4195,6 +4196,11 @@ def build_web_scene(
         counts are on this machine and the page's audience is in
         `PEOPLE_AUDIENCES` (team pages only); the page shows it behind
         a switch, off by default.
+    preview_team : bool
+        Mark the page a team page though it reads public bundles, so a
+        local preview can show the people cloud before any team region
+        is declared. Allowed only with `local_only`, so such a page is
+        never published.
     restricted_units : sequence of str, optional
         Units whose withheld cells are filled from the curated files
         (`fill_withheld_values`). The page is then a restricted page
@@ -4231,9 +4237,11 @@ def build_web_scene(
     # Model files make a team page whatever bundles it reads.
     if models_public and model_files is None:
         raise ValueError('Public model views come only from handed-over model files.')
+    if preview_team and not local_only:
+        raise ValueError('A team preview of public bundles is local only.')
     audience = (
         'team'
-        if model_files is not None and not models_public
+        if preview_team or (model_files is not None and not models_public)
         else scene_audience(region)
     )
     restricted_units = list(restricted_units or [])
