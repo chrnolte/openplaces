@@ -78,6 +78,11 @@ pipeline:
       gross_floor_area_sqft: sum
       total_value: sum
       improvement_value: sum
+      # Land rides the geospine only when the roll's own table carries
+      # it; a values table that `supplements:` the roll stays in the
+      # property spine (Alexandria, Arlington), so land is reduced here
+      # too. Without it impute_land_value skips the unit entirely.
+      land_value: sum
       # Part of total_value that is neither land nor building (MassGIS
       # OTHER_VAL); impute_land_value subtracts it before reading the
       # rest of a total as land.
