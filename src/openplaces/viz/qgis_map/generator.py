@@ -846,12 +846,10 @@ def _category_literal(value: str, value_type: str | None) -> str:
     """A QGIS expression literal for one category value."""
     if value_type in _NUMERIC_CATEGORY_TYPES:
         return value
-    if value_type is None:
-        try:
-            float(value)
-            return value
-        except ValueError:
-            pass
+    # Untyped: a plain decimal number is numeric; 'nan', 'inf' and a
+    # zero-padded code ('01') stay strings.
+    if value_type is None and re.fullmatch(r'-?(0|[1-9]\d*)(\.\d+)?', value):
+        return value
     escaped = value.replace("'", "''")
     return f"'{escaped}'"
 

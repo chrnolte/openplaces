@@ -253,36 +253,97 @@ share:
     # are unchanged; only the bundle is.
     slice_at_unit_lines: true
     # Fill the primary columns of these regions' bundles at delivery
-    # (io/building_imputation.py; plans/building-attribute-imputation.md,
-    # section 11). Filled cells' `_source` reads `<version>+imputed`, and
-    # `<version>+clipped+imputed` for a structure value held to its
-    # occupancy's value per m2 bound; no
-    # year built or structure value ships from NSI; structure value is
-    # also given in `common_year` dollars (structure_value_adjusted) using
-    # `price_index` and the sidecar `..._appraisal-years.csv`.
+    # (io/building_imputation.py; method and evaluation in
+    # plans/building-imputation-report.md). Filled cells' `_source`
+    # reads `<version>+open+imputed`, and
+    # `<version>+clipped+open+imputed` for a structure value held to
+    # its occupancy's value per m2 bound. `open`: the models are fitted
+    # on the public bundle's rows after every restricted and
+    # share-alike value was withheld, so no such value reaches a filled
+    # cell (io/delivery/redaction.py, rule 5). A team bundle reuses the
+    # public bundle's imputation and puts its own values back only
+    # where the public bundle withheld the cell or lacks the row. No
+    # year built or structure value ships from NSI. Structure value is
+    # also given in `common_year` dollars (structure_value_adjusted)
+    # using `price_index` and the sidecar `..._appraisal-years.csv`.
+    #
+    # What the models do (decided with the maintainer, 2026-10-14 to
+    # 2026-10-24):
+    # - Labels are parcel-recorded values only; NSI fields are named
+    #   inputs, never labels (NSI years are area lookups).
+    # - Year built and structure value: one model per county, trained
+    #   on its own labels plus donor counties weighted by centroid
+    #   distance and county similarity (`donors`). A county whose own
+    #   labels cover under 30% of the buildings the attribute applies
+    #   to is filled from donors only (MIN_OWN_LABEL_SHARE): such labels
+    #   are the buildings a recent record reached, not a sample. The
+    #   other attributes: one regional model each, in a fixed chain
+    #   order.
+    # - Classes and counts are one draw from the predicted class
+    #   probabilities, not the likeliest class, so county class shares
+    #   stay right.
+    # - Structure value is moved to `common_year` before fitting,
+    #   modeled in two parts (zero or not; log value with smearing per
+    #   band and a factor matching training totals), and filled with a
+    #   draw from the band's residuals. Rejected: Poisson loss (median
+    #   county total +0.6%, building MAE $172,488) and gamma loss
+    #   (-8.8%, unstable leaves), 2026-10-21; the expected value per
+    #   building (Wake's imputed single-family median was $4,840).
+    # - A manufactured home the roll does not list (personal property,
+    #   or a park of five or more homes) is valued by a model of listed
+    #   homes, park homes scaled by the park factor.
+    # - Counties without value labels get their price level from the
+    #   ACS median home value (`price_anchor: acs`). Rejected: an NSI
+    #   anchor and a blend, 2026-10-24: NSI is near the roll on the
+    #   coast and 1.3 to 2.7 times it inland, so its level does not
+    #   carry from donors (typical county miss 20.1% and 17.5%
+    #   against 12.8%).
+    # - Every delivery checks each county's scaled single-family roll
+    #   median against its ACS median home value and warns outside 0.3
+    #   to 1.3 (ROLL_LEVEL_RANGE). Pender's roll carries its 2026
+    #   reappraisal; v0.5 took it for 2019 and inflated every Pender
+    #   label 71% (parcel-sourced median 1.60 of ACS; the other 32
+    #   counties 0.44 to 1.05). The check on v0.6: Pender 0.76, the
+    #   36 counties 0.23 to 0.86, Hyde 0.27 and Tyrrell 0.23 flagged
+    #   (no county price index; their scale is a fallback median).
+    #
+    # Measured 2026-10-24 on cheer-eastern-nc, v0.6, 14 counties held
+    # out whole, held-out buildings as incomplete as the real gaps
+    # (Stage 2b; NSI is the inventory before imputation):
+    # - structure value: county totals -12.8% at the median county
+    #   and a 12.8% typical miss (NSI +42.8%);
+    # - year built: MAE 15.4 years (NSI 16.6), median county mean
+    #   bias -0.9 years (NSI +6.5);
+    # - the seven other attributes: macro F1 above the most common
+    #   class for each (construction 0.34 against 0.18, roof 0.32
+    #   against 0.06), and county class shares off by 0.01 to 0.23
+    #   (most common class: 0.05 to 0.71).
     impute:
       regions:
         - cheer-eastern-nc
         - cheer-coastal-tx
-      version: building-imputation-v0.5
+      # v0.6 (2026-10-24): Pender's appraisal year, no land-market
+      # inputs, the roll level check, the recorded seed.
+      version: building-imputation-v0.6
       common_year: 2025
+      # Base seed of every random step; a delivery with the same seed,
+      # inputs and code reproduces its filled values.
+      seed: 2026
       price_index: US_built-prices-fhfa-2025
-      # Land-market inputs per footprint (region type, distance to the
-      # region's core, 2010 land value), read at delivery as model
-      # inputs; the bundle does not carry them.
-      location_recipe: US_footprint_land-regions-placeslab-fmvc0003
+      price_anchor: acs
+      # No land-market inputs (location_recipe): the PLACES lab regions
+      # and their 2010 land values are held pending review
+      # (redistribution_restricted), and restricted evidence never
+      # reaches a shipped value, not even through the county summaries
+      # that weigh donors. Leaving all three out moved the typical
+      # county miss of structure value from 8.1% to 9.4% (2026-10-24,
+      # Pender's labels still inflated).
       # Census levels (public domain), read at delivery as model inputs;
       # the bundle does not carry them: ACS median home value, year
       # built, income and population, and the Gazetteer's land areas
       # and place locations for density and settlement distances.
       census_recipe: US_population-acs-2024
       gazetteer_recipe: US_population-gazetteer-2024
-      # The land-market region type and distance to its core rest on a
-      # population raster built partly from ZTRAX land use. Leaving
-      # them out cost nothing in leave-county-out on cheer-eastern-nc
-      # (2026-10-21: typical county miss 13.7% without, 14.3% with),
-      # so the delivered values do not depend on them.
-      exclude_inputs: [region_type, distance_to_core_km]
       # Printed in the licence notice's imputation section.
       credit: >-
         Method: the choice of gradient-boosted trees, spatially blocked

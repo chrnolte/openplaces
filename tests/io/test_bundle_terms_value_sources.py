@@ -101,6 +101,66 @@ def test_a_token_naming_another_states_source_is_not_listed(monkeypatch):
     assert 'othercounty' not in format_notice(RECIPE, terms)
 
 
+def test_a_walked_recipe_of_another_state_sharing_the_id_is_not_listed(monkeypatch):
+    # Two counties in two states share a source id; the walk of a
+    # national recipe reaches both rolls. An NC bundle's tokens must not
+    # take the other state's terms (an NC notice listed an Ohio roll's
+    # restriction, 2026-10-24).
+    import openplaces.io.delivery.terms as module
+
+    open_roll = _catalog_entry('samecounty', 'US-NC-GRE', license='unknown')
+    restricted_roll = {
+        **_catalog_entry('samecounty', 'US-OH-GR', license='restricted use'),
+        'redistribution_restricted': True,
+    }
+    monkeypatch.setattr(module, '_catalog_terms', lambda: {})
+    monkeypatch.setattr(
+        module,
+        '_source_terms',
+        lambda recipe, admin_ids=None, key=None: {
+            open_roll['recipe_id']: open_roll,
+            restricted_roll['recipe_id']: restricted_roll,
+        },
+    )
+    terms = bundle_terms(
+        RECIPE,
+        pd.Series(['outlines'] * 10),
+        admin_ids=['US-NC-GRE'],
+        value_cells={'samecounty': 5},
+    )
+    assert [e['admin_id'] for e in terms['values']] == ['US-NC-GRE']
+    assert terms['restricted'] == []
+
+
+def test_a_geometry_source_takes_only_its_own_states_catalog_terms(monkeypatch):
+    # The geometry path adds every licence the catalog records for a
+    # contributing id; another state's roll under the same id is not one.
+    import openplaces.io.delivery.terms as module
+
+    restricted_roll = {
+        **_catalog_entry('samecounty', 'US-OH-GR', license='restricted use'),
+        'redistribution_restricted': True,
+    }
+    monkeypatch.setattr(
+        module,
+        '_catalog_terms',
+        lambda: {
+            'samecounty': [
+                _catalog_entry('samecounty', 'US-NC-GRE', license='unknown'),
+                restricted_roll,
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        module, '_source_terms', lambda recipe, admin_ids=None, key=None: {}
+    )
+    terms = bundle_terms(
+        RECIPE, pd.Series(['samecounty'] * 10), admin_ids=['US-NC-GRE']
+    )
+    assert [e['admin_id'] for e in terms['sources']] == ['US-NC-GRE']
+    assert terms['restricted'] == []
+
+
 def test_a_county_source_inside_a_state_bundle_is_listed(monkeypatch):
     _fabricated_catalog(monkeypatch, _catalog_entry('othercounty', 'US-NC-NHA'))
     terms = bundle_terms(

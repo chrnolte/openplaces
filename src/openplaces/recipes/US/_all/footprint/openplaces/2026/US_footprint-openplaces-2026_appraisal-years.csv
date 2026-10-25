@@ -69,7 +69,7 @@ county_fips,county_name,roll_year,appraisal_year,source
 37135,Orange,2025,2025,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
 37137,Pamlico,2025,2020,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
 37139,Pasquotank,2025,2022,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
-37141,Pender,2025,2019,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
+37141,Pender,2026,2026,"Pender County reappraisal effective January 1, 2026 (pendercountync.gov/370/Revaluation; notices mailed spring 2026; S.B. 889 defers its tax use to 2027-28): the county's ArcGIS layer read for this roll carries the 2026 values, not the 2019 ones the NCDOR schedule gives for the 2025 tax roll (checked 2026-10-24)"
 37143,Perquimans,2025,2024,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
 37145,Person,2025,2025,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"
 37147,Pitt,2025,2024,"NCDOR, 2025-2026 Property Tax Rates and Reappraisal Schedules (August 2025) and earlier editions; latest revaluation effective on or before January 1 of the roll year"

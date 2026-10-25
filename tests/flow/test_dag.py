@@ -237,13 +237,12 @@ def test_delivery_outputs_match_the_writer(shipping_dag):
 PRICE_INDEX = 'US_built-prices-fhfa-2025'
 CENSUS = 'US_population-acs-2024'
 GAZETTEER = 'US_population-gazetteer-2024'
-LOCATION = 'US_footprint_land-regions-placeslab-fmvc0003'
 
 
 def test_delivery_inputs_are_every_member_county(shipping_dag):
     # Each member's curated file, then what the building imputation
-    # reads: the price index, the census tables and each member's
-    # region enrichment.
+    # reads: the price index and the census tables. No land-market
+    # enrichment: the recipe reads none (restricted).
     members = delivery_members(TARGET, region=REGION)
     assert len(members) == 44
     inputs = shipping_dag.input_paths('deliver', TARGET, 'US-NC')
@@ -251,10 +250,7 @@ def test_delivery_inputs_are_every_member_county(shipping_dag):
         *(get_output_path(TARGET, admin_id=member) for member in members),
         get_output_path(PRICE_INDEX, admin_id='US'),
     ]
-    assert inputs[-len(members) :] == [
-        get_output_path(LOCATION, admin_id=member) for member in members
-    ]
-    census = inputs[len(members) + 1 : -len(members)]
+    census = inputs[len(members) + 1 :]
     assert census
     assert all(CENSUS in str(path) or GAZETTEER in str(path) for path in census)
 
@@ -274,7 +270,6 @@ def test_delivery_edges_let_plan_propagate(shipping_dag):
     built = {m for m in members if (TARGET, m, None) in node_keys}
     assert upstreams == {
         *((TARGET, member, None) for member in built),
-        *((LOCATION, member, None) for member in built),
         (PRICE_INDEX, 'US', None),
         (CENSUS, 'US', None),
         (GAZETTEER, 'US', None),

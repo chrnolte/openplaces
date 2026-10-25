@@ -1,5 +1,7 @@
 """Tests for building attribute imputation (fabricated data only)."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -237,17 +239,24 @@ def _block(index):
         }
         block[spec.column] = 9.0 if numeric else 'Wood'
         block[f'{spec.column}_source'] = 'm+imputed'
-    block['structure_value_adjusted'] = 18.0
-    block['appraisal_year'] = 2020.0
     return block
+
+
+SCALES = {'99001': {'scale': 2.0, 'appraisal_year': 2020.0}}
 
 
 def test_public_overlay_takes_the_block_everywhere():
     pooled = pd.DataFrame(
-        {'year_built': [1990.0, np.nan], 'year_built_source': ['parcel', None]},
+        {
+            'year_built': [1990.0, np.nan],
+            'year_built_source': ['parcel', None],
+            'county_fips': ['99001', '99001'],
+        },
         index=pd.Index(['a', 'b'], name='footprint_id'),
     )
-    out = bi.overlay_delivery(pooled, _block(pooled.index), keep_observed=False)
+    out = bi.overlay_delivery(
+        pooled, _block(pooled.index), keep_observed=False, scales=SCALES
+    )
     assert out['year_built'].tolist() == [9.0, 9.0]
     assert out['structure_value_adjusted'].tolist() == [18.0, 18.0]
 
@@ -257,10 +266,13 @@ def test_team_overlay_keeps_its_own_observed_values():
         {
             'year_built': [1990.0, 1980.0, np.nan],
             'year_built_source': ['parcel', 'nsi', None],
+            'county_fips': ['99001'] * 3,
         },
         index=pd.Index(['a', 'b', 'c'], name='footprint_id'),
     )
-    out = bi.overlay_delivery(pooled, _block(pooled.index), keep_observed=True)
+    out = bi.overlay_delivery(
+        pooled, _block(pooled.index), keep_observed=True, scales=SCALES
+    )
     assert out['year_built'].tolist() == [1990.0, 9.0, 9.0]
     assert out['year_built_source'].tolist() == ['parcel', 'm+imputed', 'm+imputed']
 
@@ -274,13 +286,109 @@ def test_team_overlay_restores_only_what_the_public_twin_withheld():
         {
             'structure_value': [50_000.0, 3_000.0, 70_000.0],
             'structure_value_source': ['parcel', 'parcel', 'parcel'],
+            'county_fips': ['99001'] * 3,
         },
         index=pd.Index(['a', 'b', 'c'], name='footprint_id'),
     )
     block = _block(pd.Index(['a', 'b'], name='footprint_id'))
     block['structure_value_withheld'] = [True, False]
-    out = bi.overlay_delivery(pooled, block, keep_observed=True)
+    out = bi.overlay_delivery(pooled, block, keep_observed=True, scales=SCALES)
     assert out['structure_value'].tolist() == [50_000.0, 9.0, 70_000.0]
+    # The adjusted value follows the value shipped beside it, on rows
+    # the public twin lacks too.
+    assert out['structure_value_adjusted'].tolist() == [100_000.0, 18.0, 140_000.0]
+    assert out['appraisal_year'].tolist() == [2020.0] * 3
+    assert bi.imputed_cells(out, 'm')['structure_value'] == 1
+
+
+def test_an_excluded_location_input_takes_its_county_summary_with_it():
+    for feature, (_, _, county) in bi.LOCATION_INPUTS.items():
+        assert county in bi.COUNTY_FEATURES
+        assert {feature, county} <= set(bi.UNUSED_LOCATION_INPUTS)
+
+
+def test_value_model_fits_with_a_single_zero_label():
+    rng = np.random.default_rng(0)
+    x = pd.DataFrame({'a': rng.normal(size=400)})
+    y = pd.Series(np.exp(11 + x['a'].to_numpy()))
+    y.iloc[0] = 0.0
+    model = bi.fit_value_model(x, y, np.ones(len(y)), seed=1)
+    assert model.zero is None
+
+
+def test_pooled_scores_count_classes_and_shares():
+    results = pd.DataFrame(
+        {
+            'admin3_id': ['A'] * 4,
+            'config': ['model'] * 4,
+            'observed': ['Wood', 'Wood', 'Masonry', 'Masonry'],
+            'predicted': ['Masonry', 'Wood', 'Wood', 'Masonry'],
+        }
+    )
+    row = bi.score_pooled(results, 'class').loc['model']
+    assert row['accuracy'] == 0.5
+    assert row['macro_f1'] == pytest.approx(0.5)
+    # Right shares, wrong buildings.
+    assert row['county_share_gap_median'] == 0.0
+    counts = results.assign(observed=[1, 2, 2, 1], predicted=[1.0, 2.0, 3.0, 1.0])
+    row = bi.score_pooled(counts, 'count').loc['model']
+    assert row['accuracy'] == 0.75
+    assert row['mae'] == 0.25
+
+
+def test_nsi_anchor_moves_a_county_to_its_donor_calibrated_nsi_total():
+    # Donor A's roll totals are half its NSI totals; C has no labels,
+    # NSI of 100 per building, and filled values of 31.25: its target
+    # total is 0.5 * 100 per building, so the factor is 1.6.
+    n = bi.ANCHOR_MIN_HOMES
+    index = pd.RangeIndex(2 * n)
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['A'] * n + ['C'] * n,
+            'structure_value_building_nsi': [100.0] * (2 * n),
+        },
+        index=index,
+    )
+    y = pd.Series([50.0] * n + [np.nan] * n, index=index)
+    stub = SimpleNamespace(
+        frame=frame,
+        value_scale=pd.Series(1.0, index=index),
+        donors=SimpleNamespace(
+            weights=lambda county, donors, config: np.ones(len(donors))
+        ),
+        config=None,
+    )
+    values = pd.Series(31.25, index=index[n:])
+    factor = bi.Imputer._nsi_anchor(stub, 'C', values, y, exclude_own=True)
+    assert factor == pytest.approx(1.6)
+
+
+def test_an_appraisal_after_the_index_is_measured_from_its_last_year():
+    hpi = pd.DataFrame(
+        {'fips': ['99001'] * 2, 'year': [2019, 2025], 'hpi': [100.0, 171.0]}
+    )
+    scales = bi.value_scales(hpi, pd.Series({'99001': 2026}), 2025)
+    assert scales.at['99001', 'scale'] == pytest.approx(1.0)
+    assert not scales.at['99001', 'fallback']
+
+
+def test_roll_level_check_flags_a_county_far_from_its_acs_level():
+    n = bi.ANCHOR_MIN_HOMES
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['A'] * n + ['B'] * n,
+            'occupancy_type': ['Single-Family'] * (2 * n),
+        }
+    )
+    labels = pd.Series([100.0] * n + [170.0] * n)
+    stub = SimpleNamespace(
+        frame=frame,
+        acs_value=pd.Series({'A': 150.0, 'B': 110.0}),
+        _labels=lambda spec: labels,
+    )
+    level = bi.roll_level_check(stub)
+    assert level['ratio'] == {'A': 0.667, 'B': 1.545}
+    assert level['flagged'] == {'B': 1.545}
 
 
 def test_appraisal_scales_require_every_county():

@@ -1381,23 +1381,28 @@ def _code_revision() -> dict | None:
 
     Recorded with an imputation, because the model code may run from a
     branch that a released version does not contain. None outside a git
-    checkout (an installed package); 'dirty' is True when tracked files
-    of the checkout differ from the commit.
+    checkout (an installed package) or without git; 'dirty' is True when
+    the package's files differ from the commit, untracked modules
+    included (a model extension may be one).
     """
     import subprocess
 
     here = Path(__file__).resolve().parent
+    package = here.parent.parent
 
     def git(*args):
-        result = subprocess.run(
-            ['git', '-C', str(here), *args], capture_output=True, text=True
-        )
+        try:
+            result = subprocess.run(
+                ['git', '-C', str(here), *args], capture_output=True, text=True
+            )
+        except OSError:
+            return None
         return result.stdout.strip() if result.returncode == 0 else None
 
     commit = git('rev-parse', '--short', 'HEAD')
     if commit is None:
         return None
-    status = git('status', '--porcelain', '--untracked-files=no') or ''
+    status = git('status', '--porcelain', '--', str(package)) or ''
     return {
         'branch': git('rev-parse', '--abbrev-ref', 'HEAD'),
         'commit': commit,
@@ -1436,18 +1441,29 @@ def _location_inputs(recipe, spec, attributes) -> pd.DataFrame | None:
     if not location_recipe_id:
         return None
     location_recipe = get_recipe_by_id(location_recipe_id)
+    import warnings
+
     parts = []
+    missing = []
     for unit in sorted(attributes['admin3_id'].dropna().unique()):
         path = get_output_path(
             location_recipe, unit, entity_recipe_id=recipe.get('entity_recipe')
         )
-        if path.exists():
-            available = parquet_columns(path)
-            parts.append(
-                read_parquet(
-                    path, columns=[c for c in LOCATION_COLUMNS if c in available]
-                )
-            )
+        if not path.exists():
+            missing.append(unit)
+            continue
+        available = parquet_columns(path)
+        parts.append(
+            read_parquet(path, columns=[c for c in LOCATION_COLUMNS if c in available])
+        )
+    if missing:
+        # Those rows run without the inputs; say so rather than let a
+        # path mismatch pass unseen.
+        warnings.warn(
+            f'{location_recipe_id}: no output for {len(missing)} unit(s): '
+            + ', '.join(missing[:10]),
+            stacklevel=2,
+        )
     if not parts:
         return None
     location = pd.concat(parts)
@@ -1473,13 +1489,16 @@ def _census_inputs(spec) -> dict | None:
     return building_imputation.census_levels(acs, gazetteer)
 
 
-def _impute(recipe, region, spec, pooled, audience, admin_id, admin_level, verbose):
-    """Fill the pooled rows' primary columns; return them and the counts.
+def _impute(recipe, region, spec, pooled, audience, admin_level, verbose):
+    """Fill the pooled rows' primary columns.
 
     The public bundle fits the models on its own (already withheld) rows and
     keeps the result in the cache; its team twin reads that result and
     fills only what the team bundle lacks, so no model sees a value
     cleared for team sharing only.
+
+    Returns the filled rows, the counts, and for a public bundle the
+    callable that writes the cache, to be called once the bundle ships.
     """
     delivery = delivery_spec(recipe, region)
     base = delivery.get('base_region_id') if audience == 'team' else region
@@ -1493,6 +1512,11 @@ def _impute(recipe, region, spec, pooled, audience, admin_id, admin_level, verbo
             )
         block = pd.read_parquet(cache)
         counts = json.loads(cache.with_suffix('.json').read_text(encoding='utf-8'))
+        if 'scales' not in counts:
+            raise ValueError(
+                f'{cache} predates the appraisal scales in its counts: '
+                f'deliver the public bundle {base!r} again first.'
+            )
     else:
         entity = recipe.get('entity') or recipe.get('dataset')
         appraisal = pd.read_csv(
@@ -1516,18 +1540,30 @@ def _impute(recipe, region, spec, pooled, audience, admin_id, admin_level, verbo
             census=_census_inputs(spec),
         )
         counts['code'] = _code_revision()
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        block.to_parquet(cache)
-        cache.with_suffix('.json').write_text(json.dumps(counts), encoding='utf-8')
     pooled = building_imputation.overlay_delivery(
-        pooled, block, keep_observed=audience == 'team'
+        pooled, block, keep_observed=audience == 'team', scales=counts['scales']
     )
+    if audience == 'team':
+        # What this file carries: the team's own values replace some
+        # filled cells, and rows the public bundle lacks stay unfilled.
+        counts = {
+            **counts,
+            'filled': building_imputation.imputed_cells(pooled, counts['version']),
+        }
     if {'structure_value_per_area', 'area_m2'} <= set(pooled.columns):
         area_m2 = pd.to_numeric(pooled['area_m2'], errors='coerce')
         pooled['structure_value_per_area'] = pd.to_numeric(
             pooled['structure_value'], errors='coerce'
         ) / area_m2.where(area_m2 > 0)
-    return pooled, counts
+
+    def keep():
+        # Called once the public bundle is in place: a refused or failed
+        # export leaves the cache its team twin reads as it was.
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        block.to_parquet(cache)
+        cache.with_suffix('.json').write_text(json.dumps(counts), encoding='utf-8')
+
+    return pooled, counts, (keep if audience != 'team' else None)
 
 
 def export_delivery(
@@ -1799,9 +1835,10 @@ def export_delivery(
         )
 
     imputation = None
+    keep_imputation = None
     if impute:
-        pooled, imputation = _impute(
-            recipe, region, impute, pooled, audience, admin_id, admin_level, verbose
+        pooled, imputation, keep_imputation = _impute(
+            recipe, region, impute, pooled, audience, admin_level, verbose
         )
         # The recipe's credit for the method, which the notice prints.
         imputation = {**imputation, 'credit': impute.get('credit')}
@@ -1942,6 +1979,8 @@ def export_delivery(
         os.replace(staged[role], path)
     for path in paths.values():
         _lock(path)
+    if keep_imputation is not None:
+        keep_imputation()
 
     if verbose:
         for role in ('canonical', 'point', 'geo', 'evidence'):

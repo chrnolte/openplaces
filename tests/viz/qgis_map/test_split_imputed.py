@@ -5,8 +5,17 @@ import xml.etree.ElementTree as ET
 from openplaces.viz.qgis_map.generator import (
     _add_join,
     _apply_imputed_split,
+    _category_literal,
     _split_observed_imputed,
 )
+
+
+def test_untyped_category_literals_quote_codes_that_only_parse_as_numbers():
+    assert _category_literal('2.5', None) == '2.5'
+    assert _category_literal('-3', None) == '-3'
+    assert _category_literal('01', None) == "'01'"
+    assert _category_literal('nan', None) == "'nan'"
+    assert _category_literal('inf', None) == "'inf'"
 
 
 def _symbol(name: str, color: str) -> str:

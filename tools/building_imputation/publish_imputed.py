@@ -7,21 +7,20 @@ leave whichever ran last. The imputed bundle sits beside the region's
 folder instead, under the region id plus '.imputed'
 (share/US/NC/_all/footprint/openplaces/2026/cheer-eastern-nc.imputed/,
 with a team bundle in team/ inside it, as team bundles sit inside
-their region's folder). Files already there move to prior/<date>/
-first.
+their region's folder). A bundle already there is replaced only with
+--archived, once it was copied to the archive root (which mirrors the
+data root) with scripts/storage/snapshot.py: the share bucket holds
+one copy, never earlier vintages.
 
-Export to the cache first (`export_and_check.py --output-dir cache`).
+Export to the cache first (the export tool, with --output-dir cache).
 
-Usage
------
-    python tools/building_imputation/publish_imputed.py \
-        cheer-eastern-nc cheer-eastern-nc.team cheer-coastal-tx
+Usage: pass the region ids (cheer-eastern-nc cheer-eastern-nc.team
+cheer-coastal-tx).
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime
 import shutil
 import stat
 from pathlib import Path
@@ -45,7 +44,7 @@ def cache_files(region: str) -> list[Path]:
     return list(delivery_paths(RECIPE, region=region, output_dir='cache').values())
 
 
-def publish(region: str, date: str) -> list[Path]:
+def publish(region: str, archived: bool) -> list[Path]:
     target = imputed_dir(region)
     sources = cache_files(region)
     missing = [p for p in sources if not p.exists()]
@@ -53,13 +52,15 @@ def publish(region: str, date: str) -> list[Path]:
         raise SystemExit(f'{region}: not in the cache: {[p.name for p in missing]}')
     target.mkdir(parents=True, exist_ok=True)
     old = [target / p.name for p in sources if (target / p.name).exists()]
-    if old:
-        prior = target / 'prior' / date
-        if prior.exists():
-            raise SystemExit(f'{prior} exists; pass another --date.')
-        prior.mkdir(parents=True)
-        for path in old:
-            path.rename(prior / path.name)
+    if old and not archived:
+        raise SystemExit(
+            f'{target} holds a bundle: archive it first (scripts/storage/'
+            'snapshot.py copy, then verify, into the archive root mirroring '
+            'share/), then pass --archived.'
+        )
+    for path in old:
+        # The shipped copies are read-only.
+        path.chmod(path.stat().st_mode | stat.S_IWRITE)
     written = []
     for source in sources:
         destination = target / source.name
@@ -74,10 +75,14 @@ def publish(region: str, date: str) -> list[Path]:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('regions', nargs='+')
-    parser.add_argument('--date', default=datetime.date.today().isoformat())
+    parser.add_argument(
+        '--archived',
+        action='store_true',
+        help='the bundle already in the target was archived; replace it',
+    )
     args = parser.parse_args()
     for region in args.regions:
-        for path in publish(region, args.date):
+        for path in publish(region, args.archived):
             print(f'{region}: {path} ({path.stat().st_size:,d} bytes)')
 
 

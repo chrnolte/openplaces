@@ -65,6 +65,9 @@ from sklearn.ensemble import (
 )
 
 MODEL_VERSION = 'building-imputation-v0.1'
+# Base seed of every random step (samples, gap patterns, fits, draws);
+# a recipe's `impute: seed:` overrides it and the counts record it.
+DEFAULT_SEED = 2026
 YEAR_RANGE = (1700, 2026)
 VALUE_CAP = 5e8
 # Filled structure values are clipped to this quantile of the labels'
@@ -273,7 +276,7 @@ class DonorConfig:
     Parameters
     ----------
     mode : str
-        'region' weights a donor building by ``decay ** order``, where
+        'region' weights a donor building by `decay ** order`, where
         order is the region-graph distance between its region and the
         target county's regions (summed over the target's regions,
         weighted by their share of its buildings); 'km' by a Gaussian
@@ -332,16 +335,16 @@ class ImputationExtensions:
     Parameters
     ----------
     repair : callable, optional
-        ``frame -> (frame, counts)``: empties observed values that cannot
+        `frame -> (frame, counts)`: empties observed values that cannot
         be true before any label is read; counts are cells per rule.
     train_rows : callable, optional
-        ``(x, y, w, patterns, rng) -> (x, y, w)``: changes a model's
+        `(x, y, w, patterns, rng) -> (x, y, w)`: changes a model's
         training rows before it is fitted. *patterns* are the input rows
         of buildings that genuinely lack the target. With it, one model
         fills all target rows, and the guard that leaves out inputs the
         target rows lack (Imputer._guarded_fit_predict) is not used.
     holdout_rows : callable, optional
-        ``(xt, patterns, rng) -> xt``: thins held-out rows to the input
+        `(xt, patterns, rng) -> xt`: thins held-out rows to the input
         patterns of genuinely incomplete buildings, for evaluation.
     """
 
@@ -564,7 +567,10 @@ def build_features(frame: pd.DataFrame) -> pd.DataFrame:
     out['log_area_m2'] = _log(frame['area_m2'])
     out['x_km'] = frame['x'] / 1000.0
     out['y_km'] = frame['y'] / 1000.0
-    out['log_land_value_2010'] = _log(frame['land_value_2010'])
+    # Already a log (ln USD/ha, land_value_per_ha_log_2010).
+    out['log_land_value_2010'] = pd.to_numeric(
+        frame['land_value_2010'], errors='coerce'
+    )
     out['distance_to_core_km'] = frame['distance_to_core_km']
     for column in [
         'structure_value_building_nsi',
@@ -630,9 +636,7 @@ def county_table(frame: pd.DataFrame, county_area_km2: pd.Series) -> pd.DataFram
             'county_log_area': g['area_m2'].agg(
                 lambda s: np.log(pd.to_numeric(s, errors='coerce')).median()
             ),
-            'county_log_land_value_2010': g['land_value_2010'].agg(
-                lambda s: np.log1p(s).median()
-            ),
+            'county_log_land_value_2010': g['land_value_2010'].median(),
             'county_share_metro': g['region_type'].agg(
                 lambda s: s.astype('string').eq('metro').mean()
             ),
@@ -1019,7 +1023,14 @@ def fit_value_model(x, y, w, seed: int) -> ValueModel:
     loss gave -8.8%, $138,533 and 17.1%.
     """
     zero = (y <= 0).astype(int)
-    zero_model = fit_classifier(x, zero, w, seed) if zero.nunique() > 1 else None
+    # Early stopping's stratified split fails on a class with one
+    # member; a part with this few labels is left out, like a rare
+    # class (drop_rare_classes).
+    zero_model = (
+        fit_classifier(x, zero, w, seed)
+        if zero.nunique() > 1 and zero.value_counts().min() >= MIN_CLASS_ROWS
+        else None
+    )
     pos = (y > 0).to_numpy()
     log_y = np.log(y[pos].to_numpy(float))
     positive = fit_regressor(x[pos], log_y, w[pos], loss='squared_error', seed=seed)
@@ -1142,7 +1153,9 @@ def value_scales(
     Uses a published county index (FHFA all-transactions HPI); no index
     is built here (design limit L29). A county missing either year
     falls back to the median factor of the counties appraised in the
-    same year.
+    same year. An appraisal year after the index's last year (a
+    reappraisal effective 1 January of the year after it) is measured
+    from that last year: no movement is known beyond it.
 
     Parameters
     ----------
@@ -1154,10 +1167,18 @@ def value_scales(
         Year all values are expressed in.
     """
     table = hpi.pivot_table(index='fips', columns='year', values='hpi')
+    last = max(table.columns) if len(table.columns) else common_year
+
+    def level(fips, year):
+        year = min(int(year), last)
+        if fips not in table.index or year not in table.columns:
+            return np.nan
+        return table.at[fips, year]
+
     rows = []
     for fips, year in appraisal.items():
-        base = table.at[fips, year] if fips in table.index else np.nan
-        top = table.at[fips, common_year] if fips in table.index else np.nan
+        base = level(fips, year)
+        top = level(fips, common_year)
         rows.append((fips, year, top / base if base and base > 0 else np.nan))
     out = pd.DataFrame(rows, columns=['fips', 'year', 'scale']).set_index('fips')
     fallback = out.groupby('year')['scale'].transform('median')
@@ -1203,6 +1224,10 @@ class Imputer:
     extensions : ImputationExtensions, optional
         Steps a separate module adds (repairs, training-row and held-out
         hooks); none by default.
+    anchor : str
+        How a county without value labels gets its price level: 'acs'
+        (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`) or 'both'
+        (their geometric mean). Anything else raises ValueError.
     """
 
     def __init__(
@@ -1212,11 +1237,15 @@ class Imputer:
         orders: dict,
         config: DonorConfig,
         value_scale: pd.Series | None = None,
-        seed: int = 2026,
+        seed: int = DEFAULT_SEED,
         exclude_inputs: tuple[str, ...] = (),
         acs_value: pd.Series | None = None,
         extensions: ImputationExtensions | None = None,
+        anchor: str = 'acs',
     ):
+        if anchor not in {'acs', 'nsi', 'both'}:
+            raise ValueError(f"anchor must be 'acs', 'nsi' or 'both', not {anchor!r}")
+        self.anchor = anchor
         self.extensions = extensions or ImputationExtensions()
         self.voided = {}
         if self.extensions.repair is not None:
@@ -1331,9 +1360,7 @@ class Imputer:
                         parts[0][1], county
                     ):
                         values = pd.to_numeric(current[in_county], errors='coerce')
-                        factor = self._price_anchor(
-                            county, values, y, exclude_own=False
-                        )
+                        factor = self._anchor_factor(county, values, y)
                         self.price_anchor[county] = factor
                         current.loc[in_county] = values * factor
                         log(f'structure_value {county}: price anchor {factor:.3f}')
@@ -1428,7 +1455,7 @@ class Imputer:
         not set its level: it has none, or too few to train on
         (MIN_OWN_LABEL_SHARE).
         """
-        if self.acs_value is None:
+        if self.acs_value is None and self.anchor != 'nsi':
             return False
         if county in self.donors_only.get('structure_value', []):
             return True
@@ -1486,6 +1513,69 @@ class Imputer:
             return 1.0
         current = float(filled.median()) / float(acs[county])
         return float(np.clip(target / current, *ANCHOR_RANGE))
+
+    def _anchor_factor(self, county: str, values: pd.Series, y: pd.Series) -> float:
+        """The delivery's level factor for a county without value labels.
+
+        'acs' (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`), or
+        'both', their geometric mean.
+        """
+        if self.anchor == 'nsi':
+            return self._nsi_anchor(county, values, y, exclude_own=False)
+        acs = self._price_anchor(county, values, y, exclude_own=False)
+        if self.anchor == 'both':
+            return float(
+                np.sqrt(acs * self._nsi_anchor(county, values, y, exclude_own=False))
+            )
+        return acs
+
+    def _nsi_anchor(
+        self, county: str, values: pd.Series, y: pd.Series, exclude_own: bool
+    ) -> float:
+        """Factor setting *county*'s filled total from its NSI total.
+
+        NSI's replacement-cost values see what stands in a county (a
+        coast of large houses) that donors from elsewhere may not, but
+        their level is off by a county-specific factor. The target is
+        the county's NSI total over its filled rows with an NSI value,
+        times the donor-weighted geometric mean of the ratio of roll
+        totals to NSI totals in donor counties; the factor moves the
+        filled total of those rows to it and applies to all filled
+        values. Same inputs as :meth:`_price_anchor`.
+
+        Measured 2026-10-24 on cheer-eastern-nc, 14 counties held out:
+        NSI's county totals were 0.75 to 2.70 times the roll's (Pender
+        1.02), where the donor model alone gave Pender 0.52.
+        """
+        admin = self.frame['admin3_id']
+        nsi = _numeric_column(self.frame, 'structure_value_building_nsi')
+        nsi = (nsi * self.value_scale).where(nsi > 0)
+        labeled = y.notna() & nsi.notna()
+        if exclude_own:
+            labeled &= admin.ne(county)
+        sums = pd.DataFrame({'y': y[labeled], 'nsi': nsi[labeled]}).groupby(
+            admin[labeled]
+        )
+        totals = sums.sum()[sums.size() >= ANCHOR_MIN_HOMES]
+        ratio = (totals['y'] / totals['nsi'])[lambda r: r > 0]
+        if ratio.empty:
+            return 1.0
+        donors = pd.DataFrame(
+            {'admin3_id': ratio.index, 'region_id': pd.NA}, index=ratio.index
+        )
+        w = self.donors.weights(county, donors, self.config)
+        keep = (w > 1e-3) & (ratio.index != county)
+        if not keep.any():
+            return 1.0
+        target = float(np.exp(np.average(np.log(ratio[keep]), weights=w[keep])))
+        rows = nsi.reindex(values.index).notna() & values.notna()
+        if rows.sum() < ANCHOR_MIN_HOMES:
+            return 1.0
+        current = float(values[rows].sum())
+        expected = target * float(nsi.reindex(values.index)[rows].sum())
+        if current <= 0:
+            return 1.0
+        return float(np.clip(expected / current, *ANCHOR_RANGE))
 
     def _own_labels_too_sparse(
         self, spec: TargetSpec, y: pd.Series, applicable: pd.Series, county: str
@@ -1601,6 +1691,7 @@ class Imputer:
             out = predict_target(spec, model, xt.drop(columns=empty), rng)
             return out.astype(float) if spec.kind in {'year', 'value', 'log'} else out
         out = np.empty(len(xt), dtype=object)
+        models = {}
         nsi_column = 'log_structure_value_building_nsi'
         has_nsi = (
             xt[nsi_column].notna()
@@ -1619,8 +1710,11 @@ class Imputer:
                 # Empty in this training sample: breaks histogram binning.
                 or x[c].notna().sum() == 0
             ]
-            model = fit_target(spec, x.drop(columns=shift), y, w, self.seed)
-            out[mask] = predict_target(spec, model, xg.drop(columns=shift), rng)
+            # Both groups often leave out the same inputs: fit once.
+            key = tuple(shift)
+            if key not in models:
+                models[key] = fit_target(spec, x.drop(columns=shift), y, w, self.seed)
+            out[mask] = predict_target(spec, models[key], xg.drop(columns=shift), rng)
         if spec.kind in {'year', 'value', 'log'}:
             return out.astype(float)
         return out
@@ -1690,11 +1784,18 @@ class Imputer:
                 if spec.kind == 'value' and self.acs_value is not None:
                     # Scored with and without the price anchor, which
                     # applies to exactly this case: no labels of its own.
-                    factor = self._price_anchor(
-                        county, pd.Series(pred, index=idx), y, exclude_own=True
-                    )
+                    values = pd.Series(pred, index=idx)
+                    factor = self._price_anchor(county, values, y, exclude_own=True)
+                    nsi_factor = self._nsi_anchor(county, values, y, exclude_own=True)
                     variants[f'{config.name()}+anchor'] = pred * factor
-                    log(f'LOCO {county} price anchor {factor:.3f}')
+                    variants[f'{config.name()}+nsi_anchor'] = pred * nsi_factor
+                    variants[f'{config.name()}+both_anchors'] = pred * np.sqrt(
+                        factor * nsi_factor
+                    )
+                    log(
+                        f'LOCO {county} price anchor {factor:.3f}, '
+                        f'NSI anchor {nsi_factor:.3f}'
+                    )
                 for name, values in variants.items():
                     if spec.kind == 'value':
                         values, _ = clip_to_caps(
@@ -1744,6 +1845,145 @@ class Imputer:
                 )
             )
         return pd.concat(rows)
+
+    def leave_county_out_pooled(
+        self,
+        spec: TargetSpec,
+        counties: list[str],
+        filled: pd.DataFrame,
+        cap: int = 20_000,
+        log=print,
+        thin_heldout: bool = False,
+    ) -> pd.DataFrame:
+        """Leave-county-out for a pooled (not per-county) target.
+
+        Fits the region-wide model as the delivery does, on labels
+        outside the held-out county, and predicts the county's labeled
+        rows, with its parcel value inputs masked and, with
+        *thin_heldout*, its incomplete buildings' input gaps imposed,
+        as :meth:`leave_county_out` does. Rows carry the observed and
+        predicted values, and a 'baseline' configuration: the training
+        labels' most common class, or their median.
+        """
+        y = self._labels(spec)
+        rows = applies_to(spec, self.frame)
+        lacking = rows & labels_for(spec, self.frame, train=False).isna()
+        admin = self.frame['admin3_id']
+        out = []
+        for county in counties:
+            held = y.notna() & rows & admin.eq(county)
+            idx = held[held].index
+            if len(idx) == 0:
+                continue
+            if len(idx) > cap:
+                rng = np.random.default_rng(self.seed)
+                idx = idx[np.sort(rng.choice(len(idx), cap, replace=False))]
+            train = self._pooled_sample(y.notna() & rows & admin.ne(county))
+            train_pool, test_pool = self._gap_pools(spec, lacking, county, filled)
+            x = self._x(train, spec, filled)
+            xt = self._x(idx, spec, filled)
+            masked = [c for c in PARCEL_VALUE_INPUTS if c in xt.columns]
+            xt[masked] = np.nan
+            hook = self.extensions.holdout_rows
+            if thin_heldout and hook is not None and test_pool is not None:
+                xt = hook(xt, test_pool[xt.columns], np.random.default_rng(self.seed))
+            pred = self._guarded_fit_predict(
+                spec, x, y.loc[train], np.ones(len(train)), xt, train_pool
+            )
+            labels = y.loc[train]
+            if spec.kind == 'class':
+                baseline = labels.mode().iloc[0]
+            else:
+                baseline = pd.to_numeric(labels, errors='coerce').median()
+            for name, values in (('model', pred), ('baseline', baseline)):
+                out.append(
+                    pd.DataFrame(
+                        {
+                            'admin3_id': county,
+                            'config': name,
+                            'observed': y.loc[idx].to_numpy(),
+                            'predicted': values,
+                        },
+                        index=idx,
+                    )
+                )
+            log(f'LOCO {spec.column} {county}')
+        results = pd.concat(out)
+        # One type per column, so the results write to parquet.
+        for column in ('observed', 'predicted'):
+            results[column] = (
+                results[column].astype('string')
+                if spec.kind == 'class'
+                else pd.to_numeric(results[column], errors='coerce')
+            )
+        return results
+
+
+def score_pooled(results: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """Score :meth:`Imputer.leave_county_out_pooled` results.
+
+    Classes and counts (both filled by a draw from the predicted class
+    probabilities): accuracy, macro F1 (each class counts equally, so a
+    model that only predicts the common class scores low), the median
+    county accuracy and the median county share gap (half the summed
+    absolute differences of class shares). Counts also get the numeric
+    scores. Numbers: mean absolute error, the share
+    within a tolerance (exact for counts, 25% for area) and the median
+    absolute county mean bias.
+    """
+    from sklearn.metrics import f1_score
+
+    out = []
+    for config, grp in results.dropna(subset=['predicted']).groupby('config'):
+        row = {'config': config, 'n': len(grp), 'counties': grp['admin3_id'].nunique()}
+        if kind in {'class', 'count'}:
+            observed = grp['observed'].astype(str)
+            predicted = grp['predicted'].astype(str)
+            if kind == 'count':
+                # '2' and '2.0' are one class.
+                observed, predicted = (
+                    pd.to_numeric(s, errors='coerce').astype(float).round().astype(str)
+                    for s in (observed, predicted)
+                )
+            hit = observed.eq(predicted)
+            # Filled classes are draws, meant to keep each county's
+            # class shares right: half the summed share differences.
+            shares = pd.concat(
+                {
+                    'o': observed.groupby(grp['admin3_id']).value_counts(
+                        normalize=True
+                    ),
+                    'p': predicted.groupby(grp['admin3_id']).value_counts(
+                        normalize=True
+                    ),
+                },
+                axis=1,
+            ).fillna(0)
+            share_gap = (shares['o'] - shares['p']).abs().groupby(level=0).sum() / 2
+            row.update(
+                accuracy=hit.mean(),
+                macro_f1=f1_score(observed, predicted, average='macro'),
+                county_accuracy_median=hit.groupby(grp['admin3_id']).mean().median(),
+                county_share_gap_median=share_gap.median(),
+            )
+        if kind in {'count', 'log'}:
+            observed = pd.to_numeric(grp['observed'], errors='coerce')
+            predicted = pd.to_numeric(grp['predicted'], errors='coerce')
+            if kind == 'count':
+                within = predicted.round().eq(observed)
+            else:
+                within = (predicted / observed - 1).abs().le(0.25)
+            frame = pd.DataFrame(
+                {'o': observed, 'p': predicted, 'county': grp['admin3_id']}
+            )
+            county = frame.groupby('county')[['o', 'p']].mean()
+            row.update(
+                mae=(predicted - observed).abs().mean(),
+                within=within.mean(),
+                county_mean_abs_bias_median=(county['p'] - county['o']).abs().median(),
+            )
+        out.append(row)
+    return pd.DataFrame(out).set_index('config')
 
 
 def score(results: pd.DataFrame, kind: str) -> pd.DataFrame:
@@ -1847,6 +2087,9 @@ ADJUSTED_COLUMNS = ['structure_value_adjusted', 'appraisal_year']
 # Suffix of the imputation block's per-column flag: the cell was
 # withheld in the bundle the block was fitted for.
 WITHHELD_FLAG = '_withheld'
+# Token before the imputed marker on every filled cell
+# (`<version>+open+imputed`); io.delivery.redaction.OPEN reads it.
+OPEN_MARKER = 'open'
 UNUSED_LOCATION_INPUTS = (
     'distance_to_core_km',
     'region_type',
@@ -1860,8 +2103,13 @@ UNUSED_LOCATION_INPUTS = (
 def delivery_config(spec: dict) -> DonorConfig:
     """Donor weighting from a recipe's `share: delivery: impute:` block."""
     donors = spec.get('donors', {})
+    mode = donors.get('mode', 'km')
+    if mode == 'region':
+        # A delivery has no region graph (orders={}, region_id empty),
+        # so every donor would weigh 0.
+        raise ValueError("donors: mode 'region' needs a region graph; use 'km'.")
     return DonorConfig(
-        mode=donors.get('mode', 'km'),
+        mode=mode,
         bandwidth_km=float(donors.get('bandwidth_km', 100.0)),
         similarity_bandwidth=donors.get('similarity_bandwidth', 1.0),
         radius_km=float(donors.get('radius_km', 250.0)),
@@ -2136,6 +2384,142 @@ def attach_census_inputs(frame: pd.DataFrame, census: dict | None) -> None:
         )
 
 
+# Each land-market input: the enrichment column it is read from, the
+# frame column it is written to, and the county summary built from it.
+LOCATION_INPUTS = {
+    'region_type': ('land_value_region_type', 'region_type', 'county_share_metro'),
+    'distance_to_core_km': (
+        'distance_to_land_value_core_km',
+        'distance_to_core_km',
+        'county_distance_to_core',
+    ),
+    'log_land_value_2010': (
+        'land_value_per_ha_log_2010',
+        'land_value_2010',
+        'county_log_land_value_2010',
+    ),
+}
+
+
+def build_imputer(
+    pooled: pd.DataFrame,
+    spec: dict,
+    appraisal_years: pd.DataFrame,
+    hpi: pd.DataFrame,
+    county_area_km2: pd.Series,
+    location: pd.DataFrame | None = None,
+    census: dict | None = None,
+    without: tuple[str, ...] = (),
+    extensions: str | None = None,
+    log=print,
+) -> tuple[Imputer, pd.DataFrame]:
+    """The imputer a delivery runs, and its appraisal scales.
+
+    One construction for :func:`impute_delivery` and the leave-county-out
+    tool, so the scored model is the shipped one.
+
+    Parameters
+    ----------
+    pooled, spec, appraisal_years, hpi, county_area_km2, location, census
+        See :func:`impute_delivery`.
+    without : tuple of str
+        Further inputs to leave out of every model (an ablation).
+    extensions : str, optional
+        'module:attribute' overriding the recipe's `extensions`; '' for
+        none.
+
+    Returns
+    -------
+    imputer : Imputer
+    scales : DataFrame
+        From :func:`appraisal_scales`.
+    """
+    common_year = int(spec['common_year'])
+    frame = delivery_frame(pooled)
+    excluded = set(spec.get('exclude_inputs', ())) | set(without)
+    if location is None:
+        excluded |= set(UNUSED_LOCATION_INPUTS)
+    else:
+        location = location.reindex(frame.index)
+        for feature, (source, column, county) in LOCATION_INPUTS.items():
+            if feature in excluded or source not in location.columns:
+                # Never written, so no county summary (and no donor
+                # similarity) carries an input left out of the models.
+                excluded |= {feature, county}
+                continue
+            values = location[source]
+            frame[column] = (
+                values.astype('string')
+                if column == 'region_type'
+                else pd.to_numeric(values, errors='coerce')
+            )
+        used = sorted(set(LOCATION_INPUTS) - excluded)
+        log(f'location inputs used: {", ".join(used) or "none"}')
+    attach_census_inputs(frame, census)
+    log(
+        'census inputs on '
+        f'{frame["acs_median_home_value_tract"].notna().mean():.1%} of rows'
+    )
+    scales = appraisal_scales(frame['county_fips'], appraisal_years, hpi, common_year)
+    fips = frame.groupby('admin3_id')['county_fips'].first().astype(str)
+    acs_value = None
+    if census is not None and 'county' in census:
+        acs_value = acs_value_levels(
+            census['county']['acs_median_home_value_county'], fips, hpi, common_year
+        )
+    imputer = Imputer(
+        frame,
+        county_area_km2,
+        orders={},
+        config=delivery_config(spec),
+        value_scale=fips.map(scales['scale']),
+        # Every draw, sample and fit derives from this one seed, so the
+        # recipe's value reproduces a delivery.
+        seed=int(spec.get('seed', DEFAULT_SEED)),
+        anchor=spec.get('price_anchor', 'acs'),
+        exclude_inputs=tuple(sorted(excluded)),
+        acs_value=acs_value,
+        extensions=load_extensions(
+            spec.get('extensions') if extensions is None else extensions
+        ),
+    )
+    return imputer, scales
+
+
+# A county whose single-family roll median, after the appraisal scaling,
+# falls outside this multiple of its ACS median home value (which
+# includes land) is flagged: the likeliest cause is a wrong appraisal
+# year, which inflates or deflates every label in the county.
+# Pender's roll carried its 2026 reappraisal while the sidecar gave
+# 2019, a 71% inflation of every Pender label (parcel-sourced median
+# 1.60 of ACS, against 0.44 to 1.05 elsewhere).
+# Measured 2026-10-24 on cheer-eastern-nc: 0.23 to 0.86 in 36 counties.
+ROLL_LEVEL_RANGE = (0.3, 1.3)
+
+
+def roll_level_check(imputer: Imputer) -> dict:
+    """Each county's scaled single-family roll median over its ACS level.
+
+    Returns 'ratio' by admin3_id (counties with ANCHOR_MIN_HOMES labeled
+    single-family homes and an ACS level) and 'flagged', those outside
+    ROLL_LEVEL_RANGE. Empty without ACS levels.
+    """
+    if imputer.acs_value is None:
+        return {'ratio': {}, 'flagged': {}}
+    y = imputer._labels(TARGETS[-1])
+    single = imputer.frame['occupancy_type'].astype('string').eq('Single-Family')
+    positive = single & y.gt(0).fillna(False)
+    grouped = y[positive].groupby(imputer.frame.loc[positive, 'admin3_id'])
+    medians = grouped.median()[grouped.size() >= ANCHOR_MIN_HOMES]
+    ratio = (medians / imputer.acs_value.reindex(medians.index)).dropna()
+    low, high = ROLL_LEVEL_RANGE
+    flagged = ratio[(ratio < low) | (ratio > high)]
+    return {
+        'ratio': {k: round(float(v), 3) for k, v in ratio.items()},
+        'flagged': {k: round(float(v), 3) for k, v in flagged.items()},
+    }
+
+
 def impute_delivery(
     pooled: pd.DataFrame,
     spec: dict,
@@ -2144,7 +2528,7 @@ def impute_delivery(
     county_area_km2: pd.Series,
     log=print,
     location: pd.DataFrame | None = None,
-    census: pd.DataFrame | None = None,
+    census: dict | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Fill a delivery's primary columns; return the filled block and counts.
 
@@ -2156,7 +2540,8 @@ def impute_delivery(
         and the EVIDENCE_COLUMNS.
     spec : dict
         The recipe's `share: delivery: impute:` block ('version',
-        'common_year', optional 'donors').
+        'common_year', optional 'donors', 'exclude_inputs',
+        'extensions').
     appraisal_years, hpi : DataFrame
         See :func:`appraisal_scales`.
     county_area_km2 : Series
@@ -2165,74 +2550,58 @@ def impute_delivery(
         Progress messages.
     location : DataFrame, optional
         Per-row land-market inputs from the region enrichment
-        (US_footprint_land-regions-placeslab-fmvc0003): columns
-        `land_value_region_type`, `distance_to_land_value_core_km`,
-        `land_value_per_ha_log_2010`. Without it, the models run on the
-        other inputs alone.
-    census : DataFrame, optional
-        Tract levels (:func:`census_tract_levels`); the same holds
-        without it.
+        (LOCATION_INPUTS). An input the recipe excludes is not read at
+        all, not even into the county summaries that weigh donors.
+        Without it, the models run on the other inputs alone.
+    census : dict, optional
+        From :func:`census_levels`; the same holds without it.
 
     Returns
     -------
     block : DataFrame
         For every row: the filled canonical columns, their `_source`
-        sidecars (filled cells read '<version>+imputed', a structure
-        value held to its value per m2 bound '<version>+clipped+imputed'
+        sidecars (filled cells read '<version>+open+imputed', a structure
+        value held to its value per m2 bound
+        '<version>+clipped+open+imputed'
         (:func:`value_per_area_caps`); NSI-sourced
-        years and values on rows not imputed are emptied), and
-        ADJUSTED_COLUMNS.
+        years and values on rows not imputed are emptied).
     counts : dict
-        Cells filled per column, cells voided, model version.
+        Cells filled per column, cells voided, model version, and the
+        appraisal 'scales' by county FIPS that :func:`overlay_delivery`
+        applies.
     """
     from openplaces.core.provenance import mark_imputed
 
     version = spec['version']
     common_year = int(spec['common_year'])
-    frame = delivery_frame(pooled)
-    excluded = UNUSED_LOCATION_INPUTS
-    if location is not None:
-        location = location.reindex(frame.index)
-        frame['region_type'] = location['land_value_region_type'].astype('string')
-        frame['distance_to_core_km'] = pd.to_numeric(
-            location['distance_to_land_value_core_km'], errors='coerce'
-        )
-        frame['land_value_2010'] = pd.to_numeric(
-            location['land_value_per_ha_log_2010'], errors='coerce'
-        )
-        excluded = ()
-        log(
-            'location inputs on '
-            f'{frame["distance_to_core_km"].notna().mean():.1%} of rows'
-        )
-    # Inputs the recipe leaves out of every model (impute:
-    # exclude_inputs).
-    excluded = tuple(excluded) + tuple(spec.get('exclude_inputs', ()))
-    attach_census_inputs(frame, census)
-    log(
-        'census inputs on '
-        f'{frame["acs_median_home_value_tract"].notna().mean():.1%} of rows'
-    )
-    scales = appraisal_scales(frame['county_fips'], appraisal_years, hpi, common_year)
-    fips = frame.groupby('admin3_id')['county_fips'].first().astype(str)
-    county_scale = fips.map(scales['scale'])
-    acs_value = None
-    if census is not None and 'county' in census:
-        acs_value = acs_value_levels(
-            census['county']['acs_median_home_value_county'], fips, hpi, common_year
-        )
-    imputer = Imputer(
-        frame,
+    imputer, scales = build_imputer(
+        pooled,
+        spec,
+        appraisal_years,
+        hpi,
         county_area_km2,
-        orders={},
-        config=delivery_config(spec),
-        value_scale=county_scale,
-        exclude_inputs=excluded,
-        acs_value=acs_value,
-        extensions=load_extensions(spec.get('extensions')),
+        location=location,
+        census=census,
+        log=log,
     )
+    # The frame the models read: after the extensions' repairs, so a
+    # value a repair voided ships without the source it no longer has.
+    frame = imputer.frame
+    level = roll_level_check(imputer)
+    if level['flagged']:
+        import warnings
+
+        warnings.warn(
+            'Roll level far from the ACS home value after the appraisal '
+            f'scaling (check appraisal-years.csv): {level["flagged"]}',
+            stacklevel=2,
+        )
     filled, flags = imputer.run(log=log)
-    token = mark_imputed(version)
+    # `+open`: these models were fit on the delivery's frame after every
+    # restricted and share-alike value was withheld from it, so no such
+    # value reached a filled cell, and redaction's rule 5 lets the cell
+    # stay in a unit whose restricted source it would otherwise follow.
+    token = mark_imputed(f'{version}+{OPEN_MARKER}')
     block = pd.DataFrame(index=frame.index)
     for target in TARGETS:
         column = target.column
@@ -2247,7 +2616,9 @@ def impute_delivery(
         if column == 'structure_value':
             # A value held to its value per m2 bound says so.
             clipped = getattr(imputer, 'clipped', pd.Series(False, index=frame.index))
-            sidecar = sidecar.where(~clipped, mark_imputed(f'{version}+clipped'))
+            sidecar = sidecar.where(
+                ~clipped, mark_imputed(f'{version}+clipped+{OPEN_MARKER}')
+            )
         block[source] = sidecar
         # Which cells this bundle had withheld before filling them: the
         # only cells a team twin may put its own value back into
@@ -2263,16 +2634,12 @@ def impute_delivery(
         nsi = is_nsi_token(frame[f'{column}_source'].fillna(''))
         drop = nsi & ~flags[column]
         block.loc[drop, [column, f'{column}_source']] = np.nan
-    scale = frame['county_fips'].astype(str).map(scales['scale'])
-    block['structure_value_adjusted'] = (
-        pd.to_numeric(block['structure_value'], errors='coerce') * scale
-    )
-    block['appraisal_year'] = (
-        frame['county_fips'].astype(str).map(scales['appraisal_year']).astype(float)
-    )
     counts = {
         'version': version,
         'common_year': common_year,
+        'seed': imputer.seed,
+        'price_anchor_mode': imputer.anchor,
+        'roll_level_vs_acs': level,
         'filled': {t.column: int(flags[t.column].sum()) for t in TARGETS},
         'voided': imputer.voided,
         'scale_fallback': sorted(scales.index[scales['fallback']].tolist()),
@@ -2280,22 +2647,34 @@ def impute_delivery(
         'value_clipped': int(getattr(imputer, 'clipped', pd.Series(dtype=bool)).sum()),
         'donors_only': imputer.donors_only,
         'price_anchor': {k: round(v, 3) for k, v in imputer.price_anchor.items()},
+        # Applied in overlay_delivery to the values the bundle ships, so
+        # a team bundle's own values are adjusted too.
+        'scales': {
+            str(fips): {
+                'scale': float(row['scale']),
+                'appraisal_year': float(row['appraisal_year']),
+            }
+            for fips, row in scales.iterrows()
+        },
     }
     return block, counts
 
 
 def overlay_delivery(
-    pooled: pd.DataFrame, block: pd.DataFrame, keep_observed: bool
+    pooled: pd.DataFrame, block: pd.DataFrame, keep_observed: bool, scales: dict
 ) -> pd.DataFrame:
     """Write an imputation block into a delivery's rows.
 
     Parameters
     ----------
     pooled : DataFrame
-        The rows about to be written.
+        The rows about to be written, with 'county_fips'.
     block : DataFrame
         From :func:`impute_delivery`, possibly computed for the public
         twin of this bundle.
+    scales : dict
+        The counts' 'scales' from :func:`impute_delivery`; the
+        ADJUSTED_COLUMNS come from them and the merged structure value.
     keep_observed : bool
         True for a team bundle: its own observed (non-NSI) values win
         where the public twin withheld the cell or lacks the row, so the
@@ -2339,6 +2718,28 @@ def overlay_delivery(
             out[column] = merged.astype('string').astype('category')
         out[source] = out[source].astype('object') if source in out.columns else np.nan
         out[source] = out[source].where(own, block[source])
-    for column in ADJUSTED_COLUMNS:
-        out[column] = block[column]
+    # From the values this bundle ships, a team bundle's own included.
+    fips = out['county_fips'].astype(str)
+    scale = fips.map({k: v['scale'] for k, v in scales.items()})
+    out['structure_value_adjusted'] = (
+        pd.to_numeric(out['structure_value'], errors='coerce') * scale
+    )
+    out['appraisal_year'] = fips.map(
+        {k: v['appraisal_year'] for k, v in scales.items()}
+    ).astype(float)
     return out
+
+
+def imputed_cells(frame: pd.DataFrame, version: str) -> dict[str, int]:
+    """Cells per target column this imputation *version* filled."""
+    return {
+        t.column: int(
+            frame[f'{t.column}_source']
+            .astype('string')
+            .str.startswith(f'{version}+')
+            .fillna(False)
+            .sum()
+        )
+        for t in TARGETS
+        if f'{t.column}_source' in frame.columns
+    }

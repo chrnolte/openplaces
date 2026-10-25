@@ -921,7 +921,14 @@ def bundle_terms(
     catalog = _catalog_terms()
     for source_id in shares:
         recorded = listed.get(source_id, set())
-        fallbacks = catalog.get(source_id) or []
+        # Only recipes whose scope relates to the bundle's units: a
+        # source id two counties share (`greenecounty`, NC and OH) must
+        # not lend one state's terms to the other's geometry.
+        fallbacks = [
+            entry
+            for entry in catalog.get(source_id) or []
+            if _applies_to(entry, admin_ids)
+        ]
         if not fallbacks and not recorded:
             fallbacks = [_blank_entry(source_id)]
         for fallback in fallbacks:
@@ -968,7 +975,13 @@ def bundle_terms(
     for source_id, count in sorted(value_counts.items(), key=lambda kv: -kv[1]):
         if source_id in listed:
             continue
-        entries = by_id.get(source_id) or in_scope.get(source_id)
+        # The walk's recipes face the same scope test: a national curate
+        # recipe reaches every state's rolls, and two counties share a
+        # source id (`greenecounty` is Greene County NC and Greene
+        # County OH), so an NC bundle listed the Ohio roll's restricted
+        # terms against NC values.
+        walked = [e for e in by_id.get(source_id, []) if _applies_to(e, admin_ids)]
+        entries = walked or in_scope.get(source_id) or []
         seen_licences = set()
         for entry in entries:
             if entry['license'] in seen_licences:
@@ -1205,6 +1218,16 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
     withheld = terms.get('withheld') or []
     restricted_withheld = [e for e in withheld if not e.get('share_alike_family')]
     family_withheld = [e for e in withheld if e.get('share_alike_family')]
+    # A withheld cell the imputation then filled carries its value and
+    # token, not an empty 'withheld' cell.
+    refilled = (
+        [
+            'Where a column is imputed (see Imputed values), such a cell',
+            "holds a model value and its '_source' reads the imputed token.",
+        ]
+        if terms.get('imputation')
+        else []
+    )
     if restricted_withheld:
         lines += [
             'Withheld',
@@ -1213,6 +1236,7 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             'reason given under each. Rows whose outline came from them are',
             "left out; values they filled are empty, with their '_source'",
             "column set to 'withheld'.",
+            *refilled,
         ]
         lines += _withheld_lines(restricted_withheld)
         lines.append('')
@@ -1227,6 +1251,7 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             'sources. Rows whose outline came from them are left out; values',
             "they filled are empty, with their '_source' column set to",
             "'withheld'.",
+            *refilled,
         ]
         lines += _withheld_lines(family_withheld)
         lines.append('')
@@ -1236,7 +1261,8 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             'Imputed values',
             '-' * 70,
             "Cells openplaces filled say so: their '_source' column reads",
-            f"'{imputation['version']}+imputed'. No year built or structure",
+            f"'{imputation['version']}+open+imputed' (open: fit only on values",
+            'this bundle may carry). No year built or structure',
             'value comes from NSI. structure_value_adjusted is structure_value',
             f"moved from the roll's appraisal_year to {imputation['common_year']}",
             'with the FHFA county house price index. Cells filled:',
@@ -1260,6 +1286,8 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
                 '',
                 *textwrap.wrap(' '.join(str(imputation['credit']).split()), 70),
             ]
+        if imputation.get('seed') is not None:
+            lines.append(f'Random seed: {imputation["seed"]}.')
         code = imputation.get('code')
         if code:
             state = ', with uncommitted changes' if code.get('dirty') else ''

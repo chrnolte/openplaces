@@ -4,20 +4,17 @@ For each region, runs `export_delivery` and reports, for primary
 buildings: the share of each primary column that is filled, the
 sources of year built and structure value, the number of year or value
 cells still sourced from NSI (must be 0), and any column name that
-mentions a land-value region. With ``--restricted-notes``, every
-bundle file is also checked against a restricted source's column-notes
-CSV (raw, canonical and canonical-plus-suffix names), so a source a
-newer checkout marks restricted cannot leave in an older one's export.
+mentions a land-value region. With --restricted-notes, every bundle
+file is also checked against a restricted source's column-notes CSV
+(raw, canonical and canonical-plus-suffix names), so a source a newer
+checkout marks restricted cannot leave in an older one's export.
 
-With ``--capture``, the inputs of each public bundle's imputation are
-saved beside its cached bundle (``loco-<version>/``), for
-`leave_county_out.py` to rebuild the exact model.
+With --capture, the inputs of each public bundle's imputation are saved
+beside its cached bundle ('loco-<version>/'), for the leave-county-out
+tool to rebuild the exact model.
 
-Usage
------
-    python tools/building_imputation/export_and_check.py \
-        cheer-eastern-nc cheer-eastern-nc.team cheer-coastal-tx \
-        [--capture] [--restricted-notes <column-notes.csv>]
+Usage: pass the region ids (cheer-eastern-nc cheer-eastern-nc.team
+cheer-coastal-tx), optionally with --capture and --restricted-notes.
 """
 
 from __future__ import annotations

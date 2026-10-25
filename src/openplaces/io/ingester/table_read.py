@@ -382,6 +382,14 @@ class _TableReadMixin:
                 **read_kwargs,
             )
             df.columns = df.columns.str.strip()
+            # A callable usecols skips a missing header silently, where
+            # the list form raises; keep the list form's contract.
+            absent = sorted((wanted or set()) - set(df.columns))
+            if absent:
+                raise ValueError(
+                    f'Usecols do not match columns, columns expected but '
+                    f'not found: {absent}'
+                )
             return df
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
