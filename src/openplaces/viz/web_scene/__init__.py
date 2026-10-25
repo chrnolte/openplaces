@@ -731,6 +731,26 @@ RESIDENTIAL_USE = (
 # An improvement value at or below this is no building in the roll's
 # eyes (Massachusetts records $200 on exempt open land).
 NO_BUILDING_VALUE = 1_000.0
+# Public owners of protected open space (`protected_open_space_owner_type`)
+# and the least share of a lot under such land that makes it no home
+# lot where the roll counts no dwellings on it (`residential_lots`): a
+# reservation's gatehouse lot or a city park whose only class came
+# from a building model (maintainer, 2026-10-24: Chestnut Hill
+# Reservation, Ramsay Park). Apartment lots on a beach reservation keep
+# their roll's counts and stay homes.
+PUBLIC_OPEN_SPACE_OWNERS = frozenset({'Municipal', 'State', 'Federal', 'County'})
+PUBLIC_OPEN_SPACE_SHARE = 0.9
+# Words of a roll's use subgroup (`use_subgroup`) naming residential
+# land rather than homes ("developable residential land"). Such a lot
+# with no building on the roll is not a home lot, though its use group
+# names a home (maintainer, 2026-10-24).
+RESIDENTIAL_LAND_SUBGROUP = r'residential land'
+# Least dwellings a public-housing subgroup implies; an apartment
+# subgroup states its own ("apartments over 8 units", "apartments 4-8
+# units", `implied_min_homes`).
+PUBLIC_HOUSING_MIN_HOMES = 4
+# Evidence columns of the lots read for the tests above.
+LOT_EVIDENCE_COLUMNS = ('use_subgroup', 'protected_open_space_owner_type')
 # Lots smaller than this (ha) that the roll calls vacant keep their
 # class: a new home on a lot the roll still lists as vacant.
 NEW_HOME_MAX_HA = 0.5
@@ -1722,21 +1742,42 @@ def _mark_exempt_ground(gdfs, layers) -> None:
     own is shown with the class `EXEMPT_CLASS` instead. Public housing
     keeps its homes where the roll counts them. Written to the stacked
     layer's `BUILDING_CLASS`, in place.
+
+    The same holds on a lot of a residential class with no roll count
+    whose record says it holds no home: no building on the roll (and
+    no use group naming a home), public open space, or residential land
+    (maintainer, 2026-10-24: a monument and cemetery chapels drawn as
+    homes, their lots' codes missing from the use-code table). A class
+    merely unconfirmed does not do it, nor does a farm: where a roll
+    states neither use groups nor counts, its houses stay homes, and a
+    farmhouse stays a home.
+    Measured 2026-10-24 on boston: 457 outlines no longer drawn as homes
     """
     for layer in layers:
         above = next((u for u in layers if u.stack_on == layer.name), None)
         if above is None:
             continue
         lots, buildings = gdfs[layer.name], gdfs[above.name]
-        if 'use_group' not in lots.columns or BUILDING_CLASS not in buildings.columns:
+        if BUILDING_CLASS not in buildings.columns:
             continue
-        use = lots['use_group'].astype('string').str.strip().str.lower()
+        empty = pd.Series(pd.NA, index=lots.index, dtype='string')
+        use = (
+            lots['use_group'].astype('string').str.strip().str.lower()
+            if 'use_group' in lots.columns
+            else empty
+        )
         own = (
             lots['n_dwellings'].astype(float)
             if 'n_dwellings' in lots.columns
             else pd.Series(np.nan, index=lots.index)
         )
         exempt = ((use == 'exempt').fillna(False) & ~(own > 0)).to_numpy()
+        if layer.per_dwelling_label:
+            tests = _home_lot_tests(lots.assign(**{ROLL_DWELLINGS: own.where(own > 0)}))
+            rejected = tests['home_class'] & (
+                tests['no_building'] | tests['public_land'] | tests['bare_land']
+            )
+            exempt = exempt | (rejected & ~(own > 0).to_numpy())
         if not exempt.any() or buildings.empty:
             continue
         points = gpd.GeoDataFrame(
@@ -2484,17 +2525,26 @@ def lake_polygons(admin_ids) -> gpd.GeoSeries:
     geopandas.GeoSeries
         Lake polygons in EPSG:4326.
     """
+    return _nhd_polygons(admin_ids, 'US_water-waterbody-usgs-nhdhr2023', LAKE_TYPES)
+
+
+def _nhd_polygons(admin_ids, recipe_id, feature_types, bounds=None) -> gpd.GeoSeries:
+    """NHD polygons of `feature_types` from `recipe_id`'s state files,
+    within `bounds` (longitude and latitude; by default the units'
+    bounding box) and cut to it, in EPSG:4326. A state whose file is
+    missing contributes nothing."""
     from openplaces.core.schema import AdminId
     from openplaces.recipe import get_output_path, get_recipe_by_id
 
     admin_ids = list(admin_ids)
     states = sorted({str(AdminId(a).truncate_to_level(2)) for a in admin_ids})
-    units = get_admin(states, level=3, geom=True)
-    if 'admin3_id' not in units.columns:
-        units = units.reset_index()
-    units = units[units['admin3_id'].isin(admin_ids)]
-    bounds = units.to_crs(4326).total_bounds
-    recipe = get_recipe_by_id('US_water-waterbody-usgs-nhdhr2023')
+    if bounds is None:
+        units = get_admin(states, level=3, geom=True)
+        if 'admin3_id' not in units.columns:
+            units = units.reset_index()
+        units = units[units['admin3_id'].isin(admin_ids)]
+        bounds = units.to_crs(4326).total_bounds
+    recipe = get_recipe_by_id(recipe_id)
     parts = []
     for state in states:
         attributes_path = get_output_path(recipe, state)
@@ -2504,16 +2554,132 @@ def lake_polygons(admin_ids) -> gpd.GeoSeries:
         types = pd.read_parquet(
             attributes_path, columns=['feature_type_nhd', '_join_id']
         )
-        keys = types.loc[types['feature_type_nhd'].isin(LAKE_TYPES), '_join_id']
+        keys = types.loc[types['feature_type_nhd'].isin(feature_types), '_join_id']
         geo = gpd.read_parquet(geo_path, bbox=tuple(bounds))
         parts.append(geo.loc[geo['_join_id'].isin(keys), 'geometry'].to_crs(4326))
     if not parts:
         return gpd.GeoSeries([], crs=4326)
-    return gpd.GeoSeries(pd.concat(parts, ignore_index=True), crs=4326)
+    # The sea is one polygon per state: only the stretch in view is kept.
+    shapes = shapely.clip_by_rect(
+        pd.concat(parts, ignore_index=True).to_numpy(), *bounds
+    )
+    shapes = shapes[~shapely.is_empty(shapes)]
+    return gpd.GeoSeries(shapes, crs=4326)
 
 
 # NHD feature types that cut a town border (`lake_polygons`).
 LAKE_TYPES = (390, 436)
+# NHDArea feature types drawn as water under the lots (`water_polygons`):
+# the sea and ocean, and wide rivers. Foreshore (364), the land between
+# the tides, is not among them.
+SEA_RIVER_TYPES = (445, 460)
+
+
+def water_polygons(admin_ids, bounds) -> gpd.GeoSeries:
+    """Open water within `bounds` (longitude and latitude) in the
+    units' states, from NHD: lakes and reservoirs (`LAKE_TYPES`), and
+    the sea and wide rivers of NHDArea (`SEA_RIVER_TYPES`), in
+    EPSG:4326."""
+    lakes = _nhd_polygons(
+        admin_ids, 'US_water-waterbody-usgs-nhdhr2023', LAKE_TYPES, bounds
+    )
+    seas = _nhd_polygons(
+        admin_ids, 'US_water-waterbody-usgs-nhdhr2023_area', SEA_RIVER_TYPES, bounds
+    )
+    return gpd.GeoSeries(pd.concat([lakes, seas], ignore_index=True), crs=4326)
+
+
+# The land part of a lot is drawn in this column (`mask_water`).
+LAND_SHAPE = '_land_shape'
+# Margin (m) kept as land around a building standing over mapped water,
+# so a pier's building keeps the ground it stands on.
+PIER_MARGIN_M = 2.0
+# A lot keeps less than this share of its area as land, or less than
+# `MASKED_MIN_M2`, and it is water: not drawn at all.
+MASKED_MIN_SHARE = 0.01
+MASKED_MIN_M2 = 5.0
+
+
+def mask_water(lots, water, buildings=None) -> gpd.GeoDataFrame:
+    """Draw only the land of each lot (maintainer, 2026-10-24: lots
+    reaching into the Charles River and the harbor).
+
+    A display step, and the one place a lot is drawn with a shape its
+    source does not have: rolls draw many waterfront lots out to a
+    harbor line or a river's middle, and drawn whole they cover the
+    water. The lot's value and its value per area stay those of the
+    whole lot (the rendering reads its area before the mask applies),
+    so a lot's height and color do not change; only its outline stops
+    at the shore. Ground under a building is kept within
+    `PIER_MARGIN_M`, so piers keep their buildings' footing. A lot that
+    keeps less than `MASKED_MIN_SHARE` of its area, or under
+    `MASKED_MIN_M2`, is water and is left out. NHD's shorelines are
+    mapped at about 1:24,000.
+    Measured 2026-10-24 on boston: 116 all-water lots left out
+
+    Parameters
+    ----------
+    lots : geopandas.GeoDataFrame
+        The bottom layer's features.
+    water : geopandas.GeoSeries
+        Open water (`water_polygons`).
+    buildings : geopandas.GeoDataFrame, optional
+        The layer stacked on the lots.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        The lots, wet ones' land shapes in `LAND_SHAPE` (WKB in
+        EPSG:4326; None where a lot is all land), all-water lots
+        dropped.
+    """
+    lots = lots.copy()
+    lots[LAND_SHAPE] = None
+    if lots.empty or water.empty:
+        return lots
+    metric = lots.geometry.to_crs(5070)
+    wet = water.to_crs(5070)
+    wet = gpd.GeoSeries(shapely.make_valid(wet.to_numpy()), crs=5070)
+    hit_water, hit_lot = metric.sindex.query(wet.to_numpy(), predicate='intersects')
+    if not len(hit_lot):
+        return lots
+    water_shape = shapely.union_all(wet.to_numpy()[np.unique(hit_water)])
+    if buildings is not None and not buildings.empty:
+        footing = buildings.geometry.to_crs(5070)
+        near = footing.sindex.query(water_shape, predicate='intersects')
+        if len(near):
+            kept = shapely.buffer(footing.to_numpy()[near], PIER_MARGIN_M)
+            water_shape = shapely.difference(water_shape, shapely.union_all(kept))
+    rows = np.unique(hit_lot)
+    shapes = shapely.make_valid(metric.to_numpy()[rows])
+    xmin, ymin, xmax, ymax = shapely.bounds(shapes).T
+    # Each lot meets only the water within its own box, a small piece of
+    # a coastline that may run for kilometers.
+    local_water = shapely.intersection(water_shape, shapely.box(xmin, ymin, xmax, ymax))
+    land = shapely.difference(shapes, local_water)
+    # Polygons only: a difference can leave slivers as lines or points.
+    mixed = shapely.get_type_id(land) == 7
+    if mixed.any():
+        land[mixed] = [
+            shapely.union_all(
+                [p for p in shapely.get_parts(g) if p.geom_type.endswith('Polygon')]
+            )
+            for g in land[mixed]
+        ]
+    whole = shapely.area(shapes)
+    left = shapely.area(land)
+    drop = (left < MASKED_MIN_M2) | (left < MASKED_MIN_SHARE * whole)
+    changed = ~drop & (left < whole - 0.5)
+    # As WKB: the rendering hands the frame to Arrow, which takes bytes
+    # but no shapes in a plain column.
+    column = np.full(len(lots), None, dtype=object)
+    column[rows[changed]] = shapely.to_wkb(
+        gpd.GeoSeries(land[changed], crs=5070).to_crs(4326).to_numpy()
+    )
+    lots[LAND_SHAPE] = column
+    keep = np.ones(len(lots), dtype=bool)
+    keep[rows[drop]] = False
+    return lots[keep]
 
 
 def land_borders(
@@ -3346,19 +3512,49 @@ def residential_lots(lots) -> np.ndarray:
     houses.
     Measured 2026-10-19 on nantucket-ma: 150 houses lost to that test
 
+    Two more tests apply where the roll counts no dwellings itself
+    (maintainer, 2026-10-24): a lot at least `PUBLIC_OPEN_SPACE_SHARE`
+    under protected open space of a public owner
+    (`PUBLIC_OPEN_SPACE_OWNERS`) is no home lot, and neither is a lot
+    whose use subgroup names residential land
+    (`RESIDENTIAL_LAND_SUBGROUP`) with no building on the roll, though
+    its use group names a home.
+    Measured 2026-10-24 on boston: 62 open-space lots, 244 land lots
+
     Parameters
     ----------
     lots : pandas.DataFrame
         `n_dwellings`, and where present `land_use_class`, `use_group`,
-        `improvement_value`, `area_ha` and the roll's own count
-        (`ROLL_DWELLINGS`).
+        `use_subgroup`, `improvement_value`, `area_ha`,
+        `protected_open_space_share`, `protected_open_space_owner_type`
+        and the roll's own count (`ROLL_DWELLINGS`).
 
     Returns
     -------
     numpy.ndarray of bool
     """
+    tests = _home_lot_tests(lots)
+    return (
+        (lots['n_dwellings'].to_numpy(dtype=float) > 0)
+        & tests['home_class']
+        & tests['confirmed']
+        & ~tests['farm']
+        & ~tests['public_land']
+        & ~tests['bare_land']
+    )
+
+
+def _home_lot_tests(lots) -> dict:
+    """The tests of `residential_lots`, each an array of bool per lot,
+    apart from the dwellings: `home_class`, `confirmed`, `farm`,
+    `public_land`, `bare_land` and `no_building`, and `roll_count`
+    (floats)."""
     empty = pd.Series(pd.NA, index=lots.index, dtype='string')
-    dwellings = lots['n_dwellings'].to_numpy(dtype=float)
+    dwellings = (
+        lots['n_dwellings'].to_numpy(dtype=float)
+        if 'n_dwellings' in lots
+        else np.full(len(lots), np.nan)
+    )
     land_use = (
         lots['land_use_class'].astype('string') if 'land_use_class' in lots else empty
     )
@@ -3408,12 +3604,87 @@ def residential_lots(lots) -> np.ndarray:
     )
     confirmed = (roll_count > 0) | use_says_home | own_class
     farm = use.str.contains(FARM_USE).fillna(False).to_numpy() & ~names_home
-    return (
-        (dwellings > 0)
-        & land_use.isin(RESIDENTIAL_LAND_USE).fillna(False).to_numpy()
-        & confirmed
-        & ~farm
+    counted_by_roll = roll_count > 0
+    owner = (
+        lots['protected_open_space_owner_type'].astype('string')
+        if 'protected_open_space_owner_type' in lots
+        else empty
     )
+    open_share = (
+        pd.to_numeric(lots['protected_open_space_share'], errors='coerce').to_numpy()
+        if 'protected_open_space_share' in lots
+        else np.full(len(lots), np.nan)
+    )
+    public_land = (
+        owner.isin(PUBLIC_OPEN_SPACE_OWNERS).fillna(False).to_numpy()
+        & (open_share >= PUBLIC_OPEN_SPACE_SHARE)
+        & ~counted_by_roll
+    )
+    subgroup = (
+        lots['use_subgroup'].astype('string').str.lower()
+        if 'use_subgroup' in lots
+        else empty
+    )
+    without_building = (
+        (pd.to_numeric(lots['improvement_value'], errors='coerce') <= NO_BUILDING_VALUE)
+        .fillna(False)
+        .to_numpy()
+        if 'improvement_value' in lots
+        else np.zeros(len(lots), dtype=bool)
+    )
+    bare_land = (
+        subgroup.str.contains(RESIDENTIAL_LAND_SUBGROUP).fillna(False).to_numpy()
+        & without_building
+        & ~counted_by_roll
+    )
+    return {
+        'home_class': land_use.isin(RESIDENTIAL_LAND_USE).fillna(False).to_numpy(),
+        'confirmed': confirmed,
+        'farm': farm,
+        'public_land': public_land,
+        'bare_land': bare_land,
+        'no_building': no_building,
+        'roll_count': roll_count,
+    }
+
+
+def implied_min_homes(lots) -> np.ndarray:
+    """The least dwellings a lot's use subgroup implies, NaN where it
+    implies none.
+
+    "Apartments over 8 units" implies 9, "apartments 4-8 units" 4, and
+    public housing `PUBLIC_HOUSING_MIN_HOMES`. Read from the subgroup's
+    own words, so a roll naming its classes this way needs no list.
+    """
+    if 'use_subgroup' not in lots:
+        return np.full(len(lots), np.nan)
+    subgroup = lots['use_subgroup'].astype('string').str.lower()
+    over = pd.to_numeric(
+        subgroup.str.extract(r'over (\d+) units?', expand=False), errors='coerce'
+    )
+    span = pd.to_numeric(
+        subgroup.str.extract(r'(\d+)\s*-\s*\d+ units?', expand=False), errors='coerce'
+    )
+    least = (over + 1).fillna(span)
+    housing = subgroup.str.contains('public housing').fillna(False)
+    least = least.where(~housing | least.notna(), float(PUBLIC_HOUSING_MIN_HOMES))
+    return least.to_numpy(dtype=float)
+
+
+def undercounted_lots(lots) -> np.ndarray:
+    """Lots counting fewer dwellings than their use subgroup implies
+    (`implied_min_homes`).
+
+    Their count is wrong, not their homes: an apartment complex of
+    twenty buildings whose roll states 1 to 8 units, or whose count
+    came from one address point per building. The per-home view shows
+    them as homes of unknown count, with no value per home
+    (maintainer, 2026-10-24).
+    Measured 2026-10-24 on boston: 1,313 lots
+    """
+    least = implied_min_homes(lots)
+    dwellings = lots['n_dwellings'].to_numpy(dtype=float)
+    return np.isfinite(least) & (np.nan_to_num(dwellings) < least)
 
 
 def downtown_stop(downtown, admin) -> dict | None:
@@ -3463,6 +3734,7 @@ def build_web_scene(
     lots_file=None,
     models_public=False,
     notes=None,
+    land_mask=True,
     verbose=True,
 ) -> Path:
     """Write the static web scene of a region's delivery bundles.
@@ -3556,6 +3828,10 @@ def build_web_scene(
     notes : sequence of dict, optional
         Further `name` and `credit` notes for the Sources panel, e.g.
         which units of the circle are left out and why.
+    land_mask : bool
+        Draw only the land of lots that reach into open water mapped by
+        NHD (`mask_water`); their values are unchanged. Where a state's
+        NHD files are missing, its lots are drawn whole.
     verbose : bool
 
     Returns
@@ -3673,6 +3949,16 @@ def build_web_scene(
                             layer.recipe, name, [layer.recorded_column]
                         )
                         part = part.join(extra, how='left')
+                    if layer.per_dwelling_label and layer.stack_on is None:
+                        # The lots' subgroup and open-space owner, for
+                        # `residential_lots`.
+                        wanted_evidence = [
+                            c for c in LOT_EVIDENCE_COLUMNS if c not in part
+                        ]
+                        extra = read_evidence_columns(
+                            layer.recipe, name, wanted_evidence
+                        )
+                        part = part.join(extra, how='left')
                     parts.append(part)
                     used.append(name)
             if not parts:
@@ -3695,6 +3981,16 @@ def build_web_scene(
         if 'occupancy_type' in gdf.columns:
             gdf = gdf.assign(**{BUILDING_CLASS: building_class(gdf)})
         gdfs[layer.name] = merge_identical_outlines(gdf, layer)
+    if land_mask:
+        bottom = layers[0]
+        above = next((u for u in layers if u.stack_on == bottom.name), None)
+        lots = gdfs[bottom.name]
+        if not lots.empty:
+            gdfs[bottom.name] = mask_water(
+                lots,
+                water_polygons(admin_ids, lots.to_crs(4326).total_bounds),
+                gdfs[above.name] if above is not None else None,
+            )
     _mark_exempt_ground(gdfs, layers)
     _count_dwellings_from_above(gdfs, layers)
     mark_land_ghosts(gdfs, layers)
@@ -3758,6 +4054,12 @@ def build_web_scene(
             )
             geometry = work
         geometry = geometry.to_crs(4326).to_numpy()
+        if LAND_SHAPE in out.columns:
+            # The land part of a lot reaching into water (`mask_water`).
+            land_shapes = out[LAND_SHAPE].to_numpy()
+            wet = np.array([shape is not None for shape in land_shapes], dtype=bool)
+            geometry = geometry.copy()
+            geometry[wet] = shapely.from_wkb(land_shapes[wet].tolist())
         raw_value = out[layer.value_column].to_numpy(dtype=float)
         views = {}
         extra = {}
@@ -3777,6 +4079,21 @@ def build_web_scene(
             else:
                 residential = residential_lots(out)
                 known = np.ones(len(out), dtype=bool)
+                # Homes of unknown count: no value per home, and not
+                # drawn as non-residential either (`undercounted_lots`).
+                unknown_count = residential & undercounted_lots(out)
+                residential = residential & ~unknown_count
+                known = ~unknown_count
+                # The tooltip's "Homes": the roll's own count, or the
+                # count from outlines on a lot shown as homes; never an
+                # outline count on a lot that is not (a monument on a
+                # cemetery lot read "Homes 1"; maintainer, 2026-10-24).
+                roll = (
+                    out[ROLL_DWELLINGS].to_numpy(dtype=float)
+                    if ROLL_DWELLINGS in out
+                    else np.full(len(out), np.nan)
+                )
+                out['n_dwellings'] = out['n_dwellings'].where(residential | (roll > 0))
             # Everything that is not a home and carries a value, accessory
             # types included: campus buildings classed "Secondary" on a
             # one-lot university carry $3M-$146M each (Harvard Yard,
