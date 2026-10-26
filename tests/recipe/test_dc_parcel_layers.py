@@ -12,7 +12,7 @@ DC = 'US-DC-DC'
 LAYERS = [
     'US-DC_parcel-dcgovtaxlots-2026',
     'US-DC_parcel-dcgovrecordlots-2026',
-    'US-DC_parcel-dcgovunplattedparcels-2026',
+    'US-DC_parcel-dcunplatted-2026',
     'US-DC_parcel-dcgovreservations-2026',
     'US-DC_parcel-dcgovstratalots-2026',
 ]

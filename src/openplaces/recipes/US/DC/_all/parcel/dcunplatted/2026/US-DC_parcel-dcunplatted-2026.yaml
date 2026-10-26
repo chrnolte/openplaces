@@ -8,11 +8,18 @@
 # source_id. Parcels occur only in the old County of Washington, north
 # of Florida Ave and east of the Anacostia (the layer's description).
 #
-# NAME. `dcgovunplattedparcels`, after the roll's own word for these
-# accounts, rather than the layer's title: among DC's same-scope
-# parcel recipes `find_reference_recipe_id` picks the alphabetically
-# first id, and that must stay `dcgovrecordlots` so the footprint
-# geospine's parcel link keeps its name (a test pins it).
+# NAME. `dcunplatted`, after the roll's own word for these accounts,
+# rather than the layer's title: among DC's same-scope parcel recipes
+# `find_reference_recipe_id` picks the alphabetically first id, and
+# that must stay `dcgovrecordlots` so the footprint geospine's parcel
+# link keeps its name (a test pins it). A source id is kept to 12
+# letters or fewer (maintainer's rule, 2026-10-26).
+#
+# Z. Every outline of this layer carries a z coordinate and no other DC
+# lot layer does, which mixed 2D and 3D outlines in the delivered
+# bundle and broke the page's coverage simplification. `force_2d`
+# drops it at ingest.
+# Measured 2026-10-26 on US-DC: 1,124 of 1,124 outlines carry z.
 #
 # WHY. OTR's roll (`dcgovitspe`) bills about 1,420 accounts on an SSL
 # of the shape 'PAR 99999999' (fabricated), which neither the record
@@ -55,7 +62,7 @@ admin_id: US-DC
 entity:
   entity_type: parcel
   source:
-    source_id: dcgovunplattedparcels
+    source_id: dcunplatted
     portal_url: "https://opendata.dc.gov/datasets/DCGIS::parcel-lots/about"
     download_url: "https://hub.arcgis.com/api/v3/datasets/f07d97c6fc9543d5987fa026636661d7_33/downloads/data?format=geojson&spatialRefId=4326"
     license: "CC BY 4.0 (item); DC's general data policy also states CC0"
@@ -65,6 +72,8 @@ entity:
   version: "2026"
 
 uncompressed_file_name: "dc_parcel_lots.geojson"
+
+force_2d: true
 
 columns:
   parcel_id_admin2: SSL

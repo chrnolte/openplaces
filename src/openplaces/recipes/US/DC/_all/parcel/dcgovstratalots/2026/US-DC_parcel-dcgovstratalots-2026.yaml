@@ -29,7 +29,7 @@
 # BULK vs REST (equivalence test, 2026-10-24). The Hub item
 # (a235278a48fe40d59cb49fcc48027733, layer 3) lists the live
 # service's fields, so the bulk GeoJSON export is read rather than
-# REST paging (see `dcgovunplattedparcels`).
+# REST paging (see `dcunplatted`).
 # Measured 2026-10-24 on US-DC: REST returnCountOnly 1,020 features.
 #
 # Mapped: SSL and STATEDAREA, as on the siblings. Left unmapped, as on
@@ -38,7 +38,7 @@
 # date field (Esri epoch milliseconds). The layer carries no owner
 # field.
 #
-# License: as `dcgovunplattedparcels`: CC BY 4.0 (Hub item), CC0 1.0
+# License: as `dcunplatted`: CC BY 4.0 (Hub item), CC0 1.0
 # under DC's district-data terms; no resale clause, no click-through.
 
 description: >-
