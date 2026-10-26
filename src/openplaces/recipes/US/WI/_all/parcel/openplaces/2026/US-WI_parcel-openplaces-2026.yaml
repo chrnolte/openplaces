@@ -1,0 +1,40 @@
+# Patch: Wisconsin parcel curation.
+#
+# The occupancy group of a parcel (group_parcel) comes from a fixed
+# table of the state's property classes, written from their statutory
+# definitions (US_parcel-openplaces-2026_group-parcel-wi.csv), not from
+# the cohort fill the national recipe uses (the most common NSI group
+# among parcels sharing a use label). The statewide layer's use label is
+# the list of property classes a parcel holds (PROPCLASS: "1", "4,5M",
+# "1,4"), so the fill read eight digits and their combinations as
+# cohorts: undeveloped land (class 5) took Single Family, commercial
+# property (class 2) Retail, apartments included. The table names a
+# group only where the definition does: agricultural land and forest
+# (classes 4 and 5m, whatever else the parcel holds) and manufacturing
+# (class 3). Residential, commercial, undeveloped, forest and "other"
+# land name no building type and leave the group empty, so the
+# footprint evidence decides there.
+#
+# Design limits checked: L25 (no fill from a co-occurring value; this
+# patch removes one), L6 (no provider weights: one roll, one vote, as
+# before), L19 (no vectorized use-code text), L22 (use_group, the source
+# column, is read and never overwritten).
+
+admin_id: US-WI
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - replace: impute_from_group_statistic
+    step:
+      step: translate_descriptions
+      output: group_parcel
+      columns: [use_group]
+      keywords: group-parcel-wi
+      fill_only: false
