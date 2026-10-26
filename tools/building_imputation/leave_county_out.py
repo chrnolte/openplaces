@@ -65,13 +65,11 @@ ABLATIONS = {
 def build_imputer(
     folder: Path,
     without: tuple[str, ...] = (),
-    extensions: str | None = None,
     use_location: str | None = None,
 ):
     """The delivery's imputer, from captured inputs.
 
     *without* names inputs to leave out of every model, for an ablation;
-    *extensions* ('module:attribute') overrides the captured recipe's;
     *use_location* (a location recipe id) adds the captured land-market
     inputs to a recipe that does not read them, to measure what leaving
     them out costs.
@@ -107,7 +105,6 @@ def build_imputer(
         location=location,
         census=census or None,
         without=without,
-        extensions=extensions,
         log=lambda message: None,
     )
     return imputer, bi.delivery_config(spec)
@@ -123,16 +120,6 @@ def main():
         default=[],
         choices=sorted(ABLATIONS),
         help='input groups to leave out (ablation); scores get a suffix',
-    )
-    parser.add_argument(
-        '--extensions',
-        help="'module:attribute' of ImputationExtensions, or 'none'; "
-        "default: the captured recipe's",
-    )
-    parser.add_argument(
-        '--thin-heldout',
-        action='store_true',
-        help="give held-out rows real gap patterns (the extensions' held-out hook)",
     )
     parser.add_argument(
         '--with-location',
@@ -155,11 +142,6 @@ def main():
 
     without = tuple(c for group in args.without for c in ABLATIONS[group])
     suffix = ''.join(f'_without_{group}' for group in args.without)
-    extensions = '' if args.extensions == 'none' else args.extensions
-    if args.extensions:
-        suffix += f'_ext_{(args.extensions.split(":")[-1] or "none").lower()}'
-    if args.thin_heldout:
-        suffix += '_thin'
     if args.with_location:
         suffix += '_with_location'
     if args.targets != 'per-county':
@@ -167,7 +149,6 @@ def main():
     imputer, config = build_imputer(
         args.folder,
         without,
-        extensions,
         use_location=args.with_location,
     )
     filled, _ = imputer.run(log=lambda message: None)
@@ -179,7 +160,7 @@ def main():
             if spec.per_county:
                 continue
             results = imputer.leave_county_out_pooled(
-                spec, args.counties, filled, log=log, thin_heldout=args.thin_heldout
+                spec, args.counties, filled, log=log
             )
             results.to_parquet(args.folder / f'loco_{spec.column}{suffix}.parquet')
             table = bi.score_pooled(results, spec.kind)
@@ -195,7 +176,6 @@ def main():
             [config],
             filled,
             log=log,
-            thin_heldout=args.thin_heldout,
         )
         results.to_parquet(args.folder / f'loco_{column}{suffix}.parquet')
         table = bi.score(results, kind)
