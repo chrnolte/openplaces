@@ -67,9 +67,11 @@ record, "the best source available at build time" is not reproducible.
 - `pipeline` - ordered named steps for harmonization, enrichment, or curation
 - `patches` / `pipeline_patch` - a patch recipe: a file at a county's or
   state's scope that names a national harmonize or curate recipe and
-  lists operations on its pipeline (`set`, `extend`, `insert_before`,
-  `insert_after`, `replace`, `remove`, each addressing a step by name,
-  `occurrence` when the name repeats). `recipe.apply_recipe_patches`
+  lists operations on its pipeline (`set`, `extend`, `discard`,
+  `insert_before`, `insert_after`, `replace`, `remove`, each addressing a
+  step by name, `occurrence` when the name repeats). `discard` removes
+  entries from a list parameter, naming a mapping entry by its
+  `recipe_id`, and refuses a value the list does not hold. `recipe.apply_recipe_patches`
   applies the patches whose scope covers the unit, coarse to fine, once
   per unit inside the harmonizer and the curator; the output footer
   records them (`openplaces:recipe_patches`). Auto-discovery never picks

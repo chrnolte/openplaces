@@ -1,0 +1,60 @@
+# Patch: Pitt County's footprints come from Microsoft's global layer and
+# NC DPS, never from an ODbL source.
+#
+# Pitt's parcels and sales are CC-BY-SA-4.0 (US-NC-PIT_parcel-pittcounty-
+# 2026), and the greenville-nc bundle ships Pitt alone under CC BY-SA.
+# ODbL and CC BY-SA are both share-alike and never mix in one bundle
+# (maintainer, 2026-10-23). The national geospine ranks two ODbL layers
+# first, OpenBuildingMap (footprint-obm-2025) and Microsoft's legacy US
+# layer (US_footprint-microsoft-v2), and its parcel links, morphology and
+# inferred outlines carry them into Pitt's buildings, parcels and sales.
+#
+# Here the sources are a closed list: Microsoft's global release
+# (US_footprint-microsoftglobal-2026, CDLA-Permissive-2.0) and the NC
+# DPS state layer (US-NC_footprint-ncdps-2023, NC OneMap free and
+# unrestricted use). `auto_discover: false` keeps any other footprint
+# ingest out, so a future ODbL state or county layer cannot enter
+# Pitt's spine by discovery. Neighbor reads follow the same list: a
+# touching county's outlines join only the sources Pitt reads
+# (io/harmonizer/neighbors.py), so no OBM outline from Beaufort or
+# Edgecombe reaches Pitt through the unit-line reconciliation.
+#
+# The label is `microsoftglobal`, not `microsoft`: it becomes each
+# outline's geometry_source, and io.delivery.terms resolves that token
+# by source id. `microsoft` is the legacy layer's id and reads ODbL.
+#
+# The national stale check (stale_check_labels) is left off: it removes
+# a Microsoft outline that disagrees with the accepted outlines around
+# it, and here Microsoft is the first source, so nothing was accepted
+# before it. The other thresholds are the national ones.
+#
+# Measured 2026-10-23 on US-NC-PIT: see the numbers in the handoff of
+# branch pitt-footprint-source.
+
+admin_id: US-NC-PIT
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - set: resolve_spine
+    params:
+      sources:
+        - recipe_id: US_footprint-microsoftglobal-2026
+          label: microsoftglobal
+        - recipe_id: US-NC_footprint-ncdps-2023
+          label: ncdps
+        - auto_discover: false
+      thresholds:
+        min_area_m2: 10.0
+        overlap_iou_max: 0.02
+        elongated_aspect_min: 2.5
+        elongated_angle_tol: 15.0
+        elongated_long_overlap_min: 0.5
+        elongated_lateral_sep_ratio: 2.0
+        overlap_share_max: 0.1

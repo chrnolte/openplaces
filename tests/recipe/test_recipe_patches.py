@@ -107,6 +107,69 @@ def test_set_insert_replace_and_remove():
     assert indicators['indicators'] == [{'output': 'x'}]
 
 
+def test_discard_drops_named_entries_and_keeps_the_rest():
+    pipeline = [
+        {
+            'step': 'merge_enrichments',
+            'recipes': [
+                {'recipe_id': 'US_x_one-2026', 'columns': ['a']},
+                {'recipe_id': 'US_x_two-2026'},
+            ],
+        },
+        {'step': 'exclude_by_value', 'column': 'id', 'values': ['WATER', 'ROW']},
+    ]
+    recipe = _national(pipeline)
+    patch = _patch(
+        'US-XX-YY',
+        [
+            {
+                'discard': 'merge_enrichments',
+                'key': 'recipes',
+                'values': ['US_x_one-2026'],
+            },
+            {'discard': 'exclude_by_value', 'key': 'values', 'values': ['ROW']},
+        ],
+    )
+    patched, _ = apply_recipe_patches(recipe, 'US-XX-YY', patches=[patch])
+    assert patched['pipeline'][0]['recipes'] == [{'recipe_id': 'US_x_two-2026'}]
+    assert patched['pipeline'][1]['values'] == ['WATER']
+    # The national recipe is not edited in place.
+    assert len(recipe['pipeline'][0]['recipes']) == 2
+    assert recipe['pipeline'][1]['values'] == ['WATER', 'ROW']
+
+
+def test_discard_refuses_a_value_the_list_does_not_hold_and_a_non_list():
+    recipe = _national()
+    with pytest.raises(ValueError, match='discard found no'):
+        apply_recipe_patches(
+            recipe,
+            'US-XX-YY',
+            patches=[
+                _patch(
+                    'US-XX-YY',
+                    [{'discard': 'exclude_by_value', 'key': 'values', 'values': ['X']}],
+                )
+            ],
+        )
+    with pytest.raises(ValueError, match='needs a list'):
+        apply_recipe_patches(
+            recipe,
+            'US-XX-YY',
+            patches=[
+                _patch(
+                    'US-XX-YY',
+                    [
+                        {
+                            'discard': 'exclude_by_value',
+                            'key': 'column',
+                            'values': ['id'],
+                        }
+                    ],
+                )
+            ],
+        )
+
+
 def test_a_repeated_step_name_needs_an_occurrence():
     pipeline = [
         {'step': 'derive_indicators', 'indicators': [1]},

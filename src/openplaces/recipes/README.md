@@ -60,6 +60,9 @@ pipeline_patch:
   - extend: exclude_by_value          # append to a list parameter
     key: values
     values: [CALO]
+  - discard: merge_enrichments         # drop entries from a list parameter
+    key: recipes                       # (a mapping is named by recipe_id)
+    values: [US_parcel_parcel-placeslab-fmv2026]
   - set: impute_land_value             # override parameters
     params: {min_rows: 50}
   - insert_after: derive_indicators    # add a step (insert_before too)
