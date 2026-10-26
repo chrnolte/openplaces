@@ -169,6 +169,11 @@ def place_extent(place, radius_km, slug):
     The crop is None for a place shown as whole units. Stops when no
     bundle covers the place; reports units without bundles.
     """
+    if place.get('lots_in_model_file') and 'extent' in place:
+        raise SystemExit(
+            f'{slug}: `extent` with `lots_in_model_file` is not supported; '
+            'list `admin_ids` or use a circle.'
+        )
     if place.get('lots_in_model_file'):
         # Units with no bundle: their lots come from the model files.
         # A circle reads every unit it touches, in each of `states`

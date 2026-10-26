@@ -1479,6 +1479,37 @@ def test_a_city_page_is_its_limits_and_stays_under_the_cap(tmp_path, monkeypatch
     assert local.check_page_size(circle, tmp_path, 'c') == pytest.approx(1.5)
 
 
+def test_an_extent_place_with_model_file_lots_is_refused_plainly():
+    from openplaces.viz.web_scene import local
+
+    place = {
+        'slug': 'city-a',
+        'state': 'US-XX',
+        'extent': {'recipe': 'r', 'id': '0000001'},
+        'lots_in_model_file': True,
+    }
+    with pytest.raises(SystemExit, match='not supported'):
+        local.place_extent(place, 7.0, 'city-a')
+
+
+def test_a_page_that_stops_does_not_stop_the_places_after_it(monkeypatch):
+    from openplaces.viz.web_scene import site
+
+    built = []
+
+    def fake_page(place, radius_km, slug, phone_scene=None):
+        if slug == 'big-city':
+            raise SystemExit('big-city: too large')
+        built.append(slug)
+
+    monkeypatch.setattr(site, '_page', fake_page)
+    extent = {'recipe': 'r', 'id': '1'}
+    places = [{'slug': slug, 'extent': extent} for slug in ('big-city', 'small-city')]
+    with pytest.raises(SystemExit, match='big-city: too large'):
+        site.build(places, {'radius_km': 15.0, 'phone_radius_km': 7.0})
+    assert built == ['small-city']
+
+
 def test_downtown_stop_names_the_unit_holding_it():
     admin = gpd.GeoDataFrame(
         {'admin3_id': ['US-XX-AAA', 'US-XX-BBB']},
