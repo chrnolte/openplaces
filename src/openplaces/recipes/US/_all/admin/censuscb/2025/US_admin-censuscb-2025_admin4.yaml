@@ -1,0 +1,81 @@
+# Recipe to import land-only county subdivisions for the United States
+# (2025, 500k)
+
+description: >-
+  U.S. county subdivision boundaries clipped to the shoreline, Census
+  cartographic boundary files 2025 at 1:500,000 (admin level 4).
+
+# Land-only boundaries for drawing, not for joining. The Census
+# cartographic boundary files are TIGER/Line generalized in the interior
+# and clipped to the shoreline, so the Great Lakes and coastal waters sit
+# outside the polygons that TIGER draws out to the state water
+# boundaries. AWATER still reports the TIGER water area and does not
+# describe the clipped geometry. Pass geom='land' to get_admin() to read
+# this layer. It is withdrawn from auto-discovery so that no spine, join
+# or clip takes its polygons: generalizing and clipping at the shore
+# would move shoreline and island points out of their unit.
+# Only the 500k file exists for county subdivisions, so geom='land'
+# and geom='land_coarse' read the same layer at this level.
+admin_id: US
+
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: admin
+  source:
+    source_id: censuscb
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_{admin2_id_admin1}_cousub_500k.zip"
+  version: 2025
+
+compressed_file_name: "cb_2025_{admin2_id_admin1}_cousub_500k.zip"
+
+download_by:
+  admin_level: 2
+  admin_recipe_id: 'US_admin-census-2025_admin2'
+
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin4_id_admin1: GEOID
+  admin4_id_ansi: COUSUBNS
+  admin2_id_admin1: STATEFP
+  stats_area_id_legal: LSAD
+
+# New England is excluded for the reason given in
+# US_admin-censuscb-2025_admin3: there a subdivision is the level-3 town.
+query: >-
+  admin2_id_admin1 <= '56'
+  and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
+  and name != 'County subdivisions not defined'
+
+transformations:
+  # Get county FIPS: first 5 characters of county subdivision FIPS
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: admin4_id_admin1
+    args:
+      start: 0
+      end: 5
+
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-censuscb-2025_admin3"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+
+save_to:
+  data_dir: core
+  filename: admin4
+  admin_level: 1

@@ -146,6 +146,14 @@ city,City or place name,,string,first,,,ingest
 admin3_name,Raw admin-3 (county) name as given by the source,,string,first,,,ingest
 school_district_name,School district name,,string,first,,,ingest
 school_district_id,School district identifier or code,,string,first,,,ingest
+school_district_id_nces,"NCES local education agency id (LEAID, 7 digits: 2-digit state FIPS plus a 5-digit agency code); equals the TIGER school district GEOID",,string,first,,,ingest
+school_id_nces,"NCES public school id (NCESSCH, 12 digits: the school's 7-digit LEAID plus a 5-digit school number)",,string,first,,,ingest
+school_name,School name as the source records it,,string,first,,,ingest
+school_level,"School level as NCES reports it (Elementary, Middle, High, Secondary, Prekindergarten, Ungraded, Other)",,categorical,first,,,ingest
+school_type,"School type as NCES reports it (Regular, Special Education, Career and Technical, Alternative Education)",,categorical,first,,,ingest
+school_status,"Operational status in the school year as NCES reports it (Open, New, Future, Inactive, Changed Boundary/Agency)",,categorical,first,,,ingest
+grade_lowest,"Lowest grade offered or served, in NCES codes (PK, KG, 01-13, UG ungraded, AE adult)",,categorical,first,,,ingest
+grade_highest,"Highest grade offered or served, in NCES codes (PK, KG, 01-13, UG ungraded, AE adult)",,categorical,first,,,ingest
 postal_code,Postal (ZIP) code,,string,first,,,ingest
 legal_description,Legal description of the property,,string,first,,,ingest
 subdivision,Subdivision name,,string,first,,parcel,ingest
