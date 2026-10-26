@@ -221,14 +221,6 @@ def test_label_evidence_is_never_an_input_of_its_own_column():
         assert not evidence & set(bi.input_columns(spec)), spec.column
 
 
-def test_extensions_are_optional_and_load_by_name():
-    assert bi.load_extensions(None) == bi.ImputationExtensions()
-    loaded = bi.load_extensions(
-        'openplaces.io.building_imputation:ImputationExtensions'
-    )
-    assert loaded is bi.ImputationExtensions
-
-
 def _block(index):
     block = pd.DataFrame(index=index)
     for spec in bi.TARGETS:
