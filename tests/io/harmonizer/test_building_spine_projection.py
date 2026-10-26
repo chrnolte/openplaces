@@ -148,8 +148,10 @@ def test_foreign_links_are_restored_with_the_source_key_and_rekeyed(monkeypatch)
     )
     calls = []
 
-    def fake_restore(state, geospine, step_index, step_cfg, spine_id_col):
-        calls.append((step_index, spine_id_col))
+    def fake_restore(
+        state, geospine, step_index, step_cfg, spine_id_col, labeled_crosswalk=False
+    ):
+        calls.append((step_index, spine_id_col, labeled_crosswalk))
         state.crosswalks['US_parcel-x-2026'] = pd.DataFrame(
             {'link': ['unique parcel']},
             index=pd.MultiIndex.from_tuples(
@@ -171,7 +173,9 @@ def test_foreign_links_are_restored_with_the_source_key_and_rekeyed(monkeypatch)
     state = _restore_foreign_links(
         state, 'US_footprint-geospine-2026', None, 'building_id'
     )
-    assert calls == [(1, 'footprint_id')]
+    # The attribute recipe's loader rebuilds the crosswalk from the
+    # overlay, as the other geospine's own attribute recipe would.
+    assert calls == [(1, 'footprint_id', False)]
     assert state.crosswalks['US_parcel-x-2026'].index.tolist() == [('b0', 'p1')]
     assert state.crosswalks['US_parcel-x-2026'].index.names == [
         'building_id',
@@ -183,6 +187,16 @@ def test_foreign_links_are_restored_with_the_source_key_and_rekeyed(monkeypatch)
     ]
     # A crosswalk that was there before is not this recipe's to re-key.
     assert list(state.crosswalks['kept'].columns) == ['footprint_id']
+
+    # load_links, in a geospine, takes the labeled pairs: the point joins
+    # ran against the crosswalk the other geospine held, condo-cluster
+    # pairs included, not against the rebuild.
+    calls.clear()
+    state = load_module.load_links(
+        _building_state(['f1', None]), 'US_footprint-geospine-2026'
+    )
+    assert calls == [(1, 'footprint_id', True)]
+    assert state.crosswalks['US_parcel-x-2026'].index.tolist() == [('b0', 'p1')]
 
 
 def _footprint_state():

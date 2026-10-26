@@ -940,7 +940,7 @@ VALUE_SCENE_LAYERS = (
     SceneLayer(
         name='buildings',
         label='Building value',
-        recipe='US_footprint-openplaces-2026',
+        recipe='US_footprint-cheer-2026',
         value_column='structure_value',
         area_unit='sqft',
         # Measured 2026-10-15 on boston-inner-core: structure value per
@@ -3675,19 +3675,31 @@ def fill_withheld_values(part, recipe, units) -> tuple[pd.DataFrame, int]:
 
 def ghost_rule(recipe) -> dict | None:
     """The parameters of a recipe's `flag_unconfirmed_height` step, or
-    None where its pipeline has none (the parcel recipe)."""
+    None where its pipeline has none (the parcel recipe).
+
+    A recipe that carries another curate whole (the footprint curate
+    CHEER ships folds the building curate with `aggregate_from_entities`,
+    `columns: all`) decides nothing itself, so its check is the folded
+    recipe's.
+    """
     from openplaces.recipe import get_recipe_by_id
 
     spec = get_recipe_by_id(recipe) if isinstance(recipe, str) else recipe
+    pipeline = (spec or {}).get('pipeline', [])
     step = next(
+        (s for s in pipeline if s.get('step') == 'flag_unconfirmed_height'), None
+    )
+    if step is not None:
+        return {k: v for k, v in step.items() if k != 'step'}
+    fold = next(
         (
             s
-            for s in (spec or {}).get('pipeline', [])
-            if s.get('step') == 'flag_unconfirmed_height'
+            for s in pipeline
+            if s.get('step') == 'aggregate_from_entities' and s.get('columns') == 'all'
         ),
         None,
     )
-    return None if step is None else {k: v for k, v in step.items() if k != 'step'}
+    return None if fold is None else ghost_rule(fold['recipe_id'])
 
 
 def flag_model_heights(part, recipe, taken_rows) -> pd.DataFrame:

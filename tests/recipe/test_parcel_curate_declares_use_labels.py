@@ -14,7 +14,7 @@ from openplaces.io.curator.formatters import declare_columns
 from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
 
 PARCEL = 'US_parcel-openplaces-2026'
-FOOTPRINT = 'US_footprint-openplaces-2026'
+FOOTPRINT = 'US_building-openplaces-2026'
 
 
 def _steps(recipe_id, admin):

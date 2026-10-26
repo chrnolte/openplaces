@@ -1,6 +1,6 @@
 """Regressions for the CHEER footprint occupancy vote, on the shipped recipe.
 
-Loads `US_footprint-openplaces-2026`'s own `derive_indicators` and both
+Loads `US_building-openplaces-2026`'s own `derive_indicators` and both
 `resolve_by_vote` blocks rather than hand-copied fixtures, so a recipe edit
 that reintroduces one of these behaviors fails here.
 
@@ -22,7 +22,7 @@ from openplaces.io.curator.inferers import derive_indicators
 from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import get_recipe_by_id
 
-RECIPE_ID = 'US_footprint-openplaces-2026'
+RECIPE_ID = 'US_building-openplaces-2026'
 
 # The recipe's votes, in pipeline order. n_sections gates on the occupancy
 # class, so it has to run after the vote that decides it.
@@ -695,29 +695,40 @@ def test_restricted_shovels_columns_are_never_published(recipe):
     """
     from openplaces.io.curator.formatters import order_columns
 
+    # The counts are named for the building in the building curate and
+    # for the footprint in the curate that ships, and the footprint spine
+    # carries them as evidence too: both recipes' drop lists have to
+    # remove both spellings.
     restricted = [
         'occupancy_type_property_shovels',
         'occupancy_type_property_shovels_source',
         'n_permits_per_footprint',
         'n_permits_per_footprint_address',
     ]
-    frame = pd.DataFrame(
-        {'occupancy_type': ['Single-Family'], **{c: [1] for c in restricted}}
-    )
-    state = CurateState(
-        recipe=recipe,
-        entity_recipe={},
-        admin_id=None,
-        verbose=False,
-        timer=None,
-        curated=frame,
-    )
-    step = next(s for s in recipe['pipeline'] if s['step'] == 'order_columns')
-    out = order_columns(
-        state, overrides=step.get('overrides'), drop=step.get('drop')
-    ).curated
-    leaked = [c for c in out.columns if 'shovels' in c or 'permit' in c]
-    assert not leaked, f'restricted permit columns survive order_columns: {leaked}'
+    for shipped in (recipe, get_recipe_by_id('US_footprint-cheer-2026')):
+        names = restricted
+        if shipped is recipe:
+            names = [c.replace('_footprint', '_building') for c in restricted]
+        frame = pd.DataFrame(
+            {'occupancy_type': ['Single-Family'], **{c: [1] for c in names}}
+        )
+        state = CurateState(
+            recipe=shipped,
+            entity_recipe={},
+            admin_id=None,
+            verbose=False,
+            timer=None,
+            curated=frame,
+        )
+        step = next(s for s in shipped['pipeline'] if s['step'] == 'order_columns')
+        out = order_columns(
+            state, overrides=step.get('overrides'), drop=step.get('drop')
+        ).curated
+        leaked = [c for c in out.columns if 'shovels' in c or 'permit' in c]
+        assert not leaked, (
+            f'restricted permit columns survive order_columns of '
+            f'{shipped.get("entity")}: {leaked}'
+        )
 
 
 # Manufactured-home section count (n_sections).
@@ -1612,7 +1623,9 @@ class TestRvDwelling:
 
     def test_rv_dwelling_is_a_residential_and_single_dwelling_class(self, recipe):
         assert 'RV Dwelling' in recipe['occupancy']['residential_classes']
-        assert 'RV Dwelling' in recipe['validation']['single_dwelling_classes']
+        # Validation lives with the footprint curate that ships.
+        validation = get_recipe_by_id('US_footprint-cheer-2026')['validation']
+        assert 'RV Dwelling' in validation['single_dwelling_classes']
         vote = next(
             v
             for v in _votes(recipe, 'occupancy_type')

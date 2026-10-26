@@ -27,7 +27,7 @@ from pathlib import Path
 
 from openplaces.io.delivery import delivery_paths
 
-RECIPE = 'US_footprint-openplaces-2026'
+RECIPE = 'US_footprint-cheer-2026'
 
 
 def imputed_dir(region: str) -> Path:

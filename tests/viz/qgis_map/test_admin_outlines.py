@@ -11,7 +11,7 @@ from openplaces.viz import qgis_map
 @pytest.fixture
 def bundle(tmp_path, monkeypatch):
     """A delivery bundle of two New England towns, in a temporary folder."""
-    canonical = tmp_path / 'US-MA_footprint-openplaces-2026.parquet'
+    canonical = tmp_path / 'US-MA_footprint-cheer-2026.parquet'
     members = ['US-MA-BOS', 'US-MA-CAM']
     admin = gpd.GeoDataFrame(
         {'name': ['Boston', 'Cambridge'], 'type': ['City', 'Town']},

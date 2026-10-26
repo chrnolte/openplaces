@@ -51,6 +51,110 @@ def properties(monkeypatch):
     return calls
 
 
+def test_all_columns_carry_a_building_curate_onto_its_outlines(monkeypatch, tmp_path):
+    """b3 step 2: the footprint curate reads the building curate through
+    the footprint-to-building link, which link_entities_by_id names after
+    the building geospine. One building per outline: its values and
+    sources, cell for cell. Two in one outline (an envelope): sums add,
+    a class they disagree on keeps both values, the earliest year wins by
+    override, and an imputed marker on either survives in the sidecar.
+    Fabricated ids and values throughout."""
+    import openplaces.geo.link as link_module
+    import openplaces.io.harmonizer.entity_links as entity_links
+
+    buildings = pd.DataFrame(
+        {
+            'footprint_id': ['f1', 'f2', 'f2'],
+            'occupancy_type': ['Single-Family', 'Single-Family', 'Multi-Family'],
+            'occupancy_type_source': ['parcel', 'parcel', 'nsi'],
+            'structure_value': [100.0, 30.0, 50.0],
+            'structure_value_source': ['parcel', 'parcel', 'parcel+imputed'],
+            'year_built': [1950.0, 1990.0, 1970.0],
+            'lat': [1.0, 2.0, 2.0],
+        },
+        index=pd.Index(['b1', 'b2', 'b3'], name='building_id'),
+    )
+    links = pd.DataFrame(
+        {
+            'building_id': ['b1', 'b2', 'b3'],
+            'footprint_id': ['f1', 'f2', 'f2'],
+            'link_method': 'footprint_id',
+            'link_source': 'footprint',
+            'share': pd.Series([pd.NA] * 3, dtype='Float64'),
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': buildings[
+            [c for c in columns if c in buildings.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=buildings.columns),
+    )
+    monkeypatch.setattr(
+        aggregation, '_linked_recipe_id', lambda recipe_id: 'US_building-spine-2026'
+    )
+    monkeypatch.setattr(
+        link_module,
+        'get_link_owner_recipe_id',
+        lambda recipe: (
+            'US_building-geospine-2026'
+            if recipe == 'US_building-spine-2026'
+            else 'US_footprint-geospine-2026'
+        ),
+    )
+    monkeypatch.setattr(
+        link_module,
+        'get_entity_link_path',
+        lambda a, b, admin_id=None: tmp_path / f'{a}__{b}.parquet',
+    )
+    # Only the geospine-named table exists, as link_entities_by_id writes it.
+    (tmp_path / 'US_building-geospine-2026__US_footprint-geospine-2026.parquet').touch()
+    monkeypatch.setattr(
+        entity_links,
+        'read_entity_link',
+        lambda path: links if path.name.startswith('US_building-geospine') else None,
+    )
+
+    curated = pd.DataFrame(
+        {'lat': [1.5, 2.5]}, index=pd.Index(['f1', 'f2'], name='footprint_id')
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'US_building-openplaces-2026',
+        columns='all',
+        key=None,
+        aggregations={'year_built': 'min'},
+        count_as='n_buildings_per_footprint',
+    )
+    out = state.curated
+    assert out['occupancy_type'].tolist()[0] == 'Single-Family'
+    # A class the buildings disagree on keeps both, in row order.
+    assert out['occupancy_type']['f2'] == 'Single-Family | Multi-Family'
+    assert out['occupancy_type_source']['f2'] == 'parcel+nsi'
+    assert out['occupancy_type_source'].tolist()[0] == 'parcel'
+    assert out['structure_value'].tolist() == [100.0, 80.0]
+    assert out['structure_value_source'].tolist() == ['parcel', 'parcel+imputed']
+    assert out['year_built'].tolist() == [1950.0, 1970.0]
+    assert out['n_buildings_per_footprint'].tolist() == [1.0, 2.0]
+    # The outline's own value stays (fill_only), and the link key column
+    # is not carried onto the table it names.
+    assert out['lat'].tolist() == [1.5, 2.5]
+    assert 'footprint_id' not in out.columns
+
+
+def test_an_override_needs_columns_all(properties):
+    curated = pd.DataFrame({'parcel_id_local': ['p1']})
+    with pytest.raises(ValueError, match='columns: all'):
+        aggregation.aggregate_from_entities(
+            _state(curated), 'r', columns=['year_built'], aggregations={'x': 'min'}
+        )
+
+
 def test_each_column_is_reduced_with_its_own_rule(properties):
     curated = pd.DataFrame(
         {'parcel_id_local': ['p1', 'p2', 'p3'], 'year_built': [None, None, 1977]}

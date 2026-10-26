@@ -52,9 +52,9 @@ def test_pitt_labels_its_microsoft_outlines_apart_from_the_odbl_layer():
 
 
 def test_pitt_curated_footprints_read_no_overture_evidence():
-    national = get_recipe_by_id('US_footprint-openplaces-2026')
+    national = get_recipe_by_id('US_building-openplaces-2026')
     patched, applied = apply_recipe_patches(national, PITT)
-    assert applied == ['US-NC-PIT_footprint-openplaces-2026']
+    assert applied == ['US-NC-PIT_building-openplaces-2026']
 
     def merged(recipe):
         return [

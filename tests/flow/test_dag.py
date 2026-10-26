@@ -20,7 +20,7 @@ from openplaces.io.delivery import (
 )
 from openplaces.recipe import get_output_path
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BRU'
 # The recipe ships several regions; these tests exercise the Carolina one,
 # which COUNTY belongs to.
@@ -83,15 +83,19 @@ def test_output_path_matches_recipe_layer(dag):
 
 def test_extra_outputs_include_link_sidecar(dag):
     # Persistence is default-on: every link_to_reference step that does not
-    # opt out with save_link: false declares its sidecar, the spatial_point
-    # joins (NSI, Overture) alongside the parcel overlay.
+    # opt out with save_link: false declares its sidecar. The footprint
+    # geospine keeps the parcel overlay; the spatial_point joins (NSI,
+    # Overture) are the building geospine's.
     extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
     parcel_sidecar = get_entity_link_path(
         'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
     )
-    assert parcel_sidecar in extras
-    assert len(extras) == 3
-    assert len(set(extras)) == 3
+    assert extras == [parcel_sidecar]
+    extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
+    assert extras == [
+        get_entity_link_path('US_building-geospine-2026', ref, COUNTY)
+        for ref in ('US_building-nsi-2026', 'dwelling-overture-2025')
+    ]
     # The attribute recipe runs no link steps of its own.
     assert dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY) == []
 
@@ -108,11 +112,12 @@ def test_a_link_step_a_patch_removed_declares_no_sidecar(dag, monkeypatch):
             for s in recipe['pipeline']
             if s.get('recipe_id') != 'US_building-nsi-2026'
         ]
-        return patched, ['US-NC-BRU_footprint-geospine-2026']
+        return patched, ['US-NC-BRU_building-geospine-2026']
 
     monkeypatch.setattr(dag_mod, 'apply_recipe_patches', _drop_nsi)
-    extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
-    assert len(extras) == 2
+    # The point joins run on the building geospine (b3 step 1).
+    extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
+    assert len(extras) == 1
     assert not any('building-nsi' in p.name for p in extras)
 
 
@@ -126,6 +131,15 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     )
     assert spine_path in inputs
     assert sidecar in inputs
+
+
+def test_the_shipped_footprints_are_curated_after_the_buildings(dag):
+    # b3 step 3: curated parcels, then the building curate (which votes),
+    # then the footprint curate CHEER ships (which folds it).
+    building = get_output_path('US_building-openplaces-2026', admin_id=COUNTY)
+    parcel = get_output_path('US_parcel-openplaces-2026', admin_id=COUNTY)
+    assert building in dag.input_paths('curate', 'US_footprint-cheer-2026', COUNTY)
+    assert parcel in dag.input_paths('curate', 'US_building-openplaces-2026', COUNTY)
 
 
 def test_property_parcel_link_is_written_after_both_of_its_sides(dag):
@@ -155,8 +169,9 @@ def test_the_building_spine_sits_between_the_footprint_geospine_and_spine(dag):
     # Slice b2: the footprint geospine feeds the building geospine, the
     # building spine reads both (its own geospine and the footprint
     # geospine's links) and writes the footprint-to-building link, and
-    # the footprint spine projects the building spine, so the parcel
-    # geospine, which reads the footprint spine, comes after all of them.
+    # the footprint spine projects the building spine. The parcel
+    # geospine reads the building spine (b3 step 4), not the footprint
+    # spine, so it comes after the building chain.
     footprint_geospine = get_output_path('US_footprint-geospine-2026', admin_id=COUNTY)
     building_geospine = get_output_path('US_building-geospine-2026', admin_id=COUNTY)
     building_spine = get_output_path('US_building-spine-2026', admin_id=COUNTY)
@@ -175,9 +190,11 @@ def test_the_building_spine_sits_between_the_footprint_geospine_and_spine(dag):
     )
     assert building_spine in footprint_spine_inputs
     assert footprint_geospine in footprint_spine_inputs
-    assert footprint_spine in dag.input_paths(
+    parcel_geospine_inputs = dag.input_paths(
         'harmonize', 'US_parcel-geospine-2026', COUNTY
     )
+    assert building_spine in parcel_geospine_inputs
+    assert footprint_spine not in parcel_geospine_inputs
 
     link = get_entity_link_path(
         'US_footprint-geospine-2026', 'US_building-geospine-2026', COUNTY

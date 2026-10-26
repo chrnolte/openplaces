@@ -15,7 +15,7 @@ from pathlib import Path
 from openplaces.flow.dag import RecipeDAG
 from openplaces.io.cleanup import write_receipt
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BRU'
 
 

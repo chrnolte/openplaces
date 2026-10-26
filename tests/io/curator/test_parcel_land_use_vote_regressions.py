@@ -38,9 +38,9 @@ def _classify(recipe, rows: list[dict]) -> pd.Series:
         'use_group_combined': None,
         'group_parcel': None,
         'group_footprint_fema': None,
-        'n_small_elongated_footprints_per_parcel': 0,
-        'n_footprints_per_parcel': 0,
-        'n_primary_footprints_per_parcel': 0,
+        'n_small_elongated_buildings_per_parcel': 0,
+        'n_buildings_per_parcel': 0,
+        'n_primary_buildings_per_parcel': 0,
         'max_parcels_per_footprint': 0,
         'max_footprint_area_m2': 100.0,
         'footprint_area_m2_in_parcel': 100.0,
@@ -87,7 +87,7 @@ def test_manufactured_home_without_park_scale_is_not_a_park(recipe):
                 'use_group_combined': 'MANUFACTURED HOME',
                 'group_parcel': 'Manufactured Home',
                 'group_footprint_fema': 'Manufactured Home',
-                'n_small_elongated_footprints_per_parcel': 1,
+                'n_small_elongated_buildings_per_parcel': 1,
             }
         ],
     )
@@ -104,7 +104,7 @@ def test_park_scale_footprint_count_still_yields_a_park(recipe):
                 'use_group_combined': 'MOBILE HOME PARK',
                 'group_parcel': 'Manufactured Home',
                 'group_footprint_fema': 'Manufactured Home',
-                'n_small_elongated_footprints_per_parcel': 12,
+                'n_small_elongated_buildings_per_parcel': 12,
             }
         ],
     )
@@ -384,8 +384,8 @@ def test_manufactured_home_evidence_vetoes_a_multi_family_land_use(recipe):
 # its own: two primary outlines, none small and elongated, a FEMA
 # single-family reading, and any land share.
 _TWO_HOUSES_FROM_ABOVE = {
-    'n_footprints_per_parcel': 2,
-    'n_primary_footprints_per_parcel': 2,
+    'n_buildings_per_parcel': 2,
+    'n_primary_buildings_per_parcel': 2,
     'group_parcel': 'Single Family',
     'group_footprint_fema': 'Single Family',
 }

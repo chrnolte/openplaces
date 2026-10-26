@@ -13,15 +13,15 @@ admin_id: US-MA-CAM
 stage: curate
 
 entity:
-  entity_type: footprint
+  entity_type: building
   source:
     source_id: openplaces
   version: 2026
 
-patches: US_footprint-openplaces-2026
+patches: US_building-openplaces-2026
 pipeline_patch:
   - insert_before: cast_categoricals
     step:
       step: apply_reviewed_corrections
-      corrections_id: US-MA-CAM_footprint-openplaces-2026_reviewed-corrections
+      corrections_id: US-MA-CAM_building-openplaces-2026_reviewed-corrections
       id_column: footprint_id

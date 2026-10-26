@@ -8,23 +8,32 @@ def _upstream_ids(edges):
 
 
 def test_curate_recipe_edges():
-    edges = get_recipe_dependencies('US_footprint-openplaces-2026')
+    edges = get_recipe_dependencies('US_building-openplaces-2026')
     upstream = _upstream_ids(edges)
-    assert 'US_footprint-spine-2026' in upstream
+    assert 'US_building-spine-2026' in upstream
     assert 'US_parcel-openplaces-2026' in upstream
     assert 'US_footprint_built-roof-shape-brails-2026' in upstream
     assert 'US_footprint_built-n-stories-brails-2026' in upstream
     kinds = {e.kind for e in edges}
     assert 'entity_recipe' in kinds
+    # The footprint curate CHEER ships reads the building curate (b3
+    # step 3), so the graph builds that first.
+    upstream = _upstream_ids(get_recipe_dependencies('US_footprint-cheer-2026'))
+    assert {'US_footprint-spine-2026', 'US_building-openplaces-2026'} <= upstream
 
 
 def test_footprint_spine_literal_edges():
-    # The geometry phase (geospine) hosts resolve_spine and the spatial
-    # links, so the raw footprint sources are its literal edges now.
+    # The geometry phase (geospine) hosts resolve_spine and the parcel
+    # overlay, so the raw footprint sources are its literal edges now.
     edges = get_recipe_dependencies('US_footprint-geospine-2026')
     upstream = _upstream_ids(edges)
     assert 'footprint-obm-2025' in upstream
     assert 'US_footprint-microsoft-v2' in upstream
+    # The point joins moved to the building geospine (b3 step 1).
+    assert 'US_building-nsi-2026' not in upstream
+    assert 'dwelling-overture-2025' not in upstream
+    edges = get_recipe_dependencies('US_building-geospine-2026')
+    upstream = _upstream_ids(edges)
     assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
     # Value crosswalks are not data dependencies
@@ -110,8 +119,8 @@ def test_admin_id_crosswalk_is_not_an_edge():
 
 
 def test_edges_carry_consumer_id():
-    edges = get_recipe_dependencies('US_footprint-openplaces-2026')
-    assert all(e.recipe_id == 'US_footprint-openplaces-2026' for e in edges)
+    edges = get_recipe_dependencies('US_building-openplaces-2026')
+    assert all(e.recipe_id == 'US_building-openplaces-2026' for e in edges)
 
 
 def test_admin3_create_index_declares_admin2_edge():

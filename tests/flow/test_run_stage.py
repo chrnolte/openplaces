@@ -125,10 +125,10 @@ def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
     monkeypatch.setattr(delivery_mod, 'export_delivery', _fake_export)
     graph = _fake_graph(monkeypatch)
     run_stage.main(
-        ['deliver', 'US_footprint-openplaces-2026', 'cheer-eastern-nc', '--verbose']
+        ['deliver', 'US_footprint-cheer-2026', 'cheer-eastern-nc', '--verbose']
     )
 
-    assert calls['recipe'] == 'US_footprint-openplaces-2026'
+    assert calls['recipe'] == 'US_footprint-cheer-2026'
     assert calls['admin_id'] is None
     assert calls['kwargs'] == {
         'region': 'cheer-eastern-nc',
@@ -137,7 +137,7 @@ def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
         'graph': graph.return_value,
     }
     graph.assert_called_once_with(
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         region='cheer-eastern-nc',
         exclude_recipe_ids=set(),
     )
@@ -166,7 +166,7 @@ def test_deliver_graph_takes_the_run_exclusions(monkeypatch, no_orchestrated_env
     run_stage.main(
         [
             'deliver',
-            'US_footprint-openplaces-2026',
+            'US_footprint-cheer-2026',
             '--exclude-recipe-ids',
             'ZZ_lane-a-2026,ZZ_lane-b-2026',
         ]
@@ -186,7 +186,7 @@ def test_deliver_allow_stale_skips_the_graph(monkeypatch, no_orchestrated_env):
         delivery_mod, 'export_delivery', lambda recipe, **kw: calls.update(kw)
     )
     graph = _fake_graph(monkeypatch)
-    run_stage.main(['deliver', 'US_footprint-openplaces-2026', '--allow-stale'])
+    run_stage.main(['deliver', 'US_footprint-cheer-2026', '--allow-stale'])
 
     assert calls['allow_stale'] is True
     assert calls['graph'] is None
@@ -205,6 +205,6 @@ def test_deliver_without_admin_id_leaves_it_to_the_recipe(
         lambda recipe, admin_id=None, **kw: calls.update(admin_id=admin_id),
     )
     _fake_graph(monkeypatch)
-    run_stage.main(['deliver', 'US_footprint-openplaces-2026'])
+    run_stage.main(['deliver', 'US_footprint-cheer-2026'])
 
     assert calls['admin_id'] is None

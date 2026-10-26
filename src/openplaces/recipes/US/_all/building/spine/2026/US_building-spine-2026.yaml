@@ -2,9 +2,10 @@
 #
 # The attribute half of the building spine. Loads the building geospine
 # (US_building-geospine-2026, one building per footprint outline in
-# this slice) together with the footprint geospine's link sidecars,
-# re-keyed from footprint to building ids (load_geospine's
-# links_recipe_id), writes the footprint-to-building link table, and
+# this slice) with its point links, together with the footprint
+# geospine's parcel overlay, re-keyed from footprint to building ids
+# (load_geospine's links_recipe_id), writes the footprint-to-building
+# link table, and
 # runs the attribute steps that ran on the footprint spine until slice
 # b2 (plans/core-schema-and-stage-contracts-review.md, deliverable 3b,
 # 2026-09-29): parcel priority, the parcel / Overture / NSI evidence,
@@ -57,14 +58,21 @@ save_to:
 
 pipeline:
 
-  # The building geospine's rows, plus the footprint geospine's parcel
-  # overlay, NSI and Overture point links restored from their sidecars
-  # and re-keyed footprint_id -> building_id (a rename while the two are
-  # equal). Which links exist, and with what thresholds, is read from
-  # the footprint geospine's own pipeline, so the YAMLs cannot drift.
+  # The building geospine's rows and its own NSI and Overture point
+  # links, plus the footprint geospine's parcel overlay restored from
+  # its sidecar and re-keyed footprint_id -> building_id (a rename while
+  # the two are equal). Which links exist, and with what thresholds, is
+  # read from the two geospines' own pipelines, so the YAMLs cannot
+  # drift. persist_links writes the re-keyed parcel sidecar beside the
+  # building geospine's output, where the curate steps that read a link
+  # by the curated entity's geospine (link_curated_entity,
+  # apportion_curated_values, collect_link_ids) look for it, so a
+  # building curate finds its parcel pairs
+  # (plans/building-spine-consumers-and-footprint-projection.md).
   - step: load_geospine
     links_recipe_id: US_footprint-geospine-2026
     links_key: footprint_id
+    persist_links: true
 
   # One row per (footprint, building) pair, keyed on the footprint id the
   # geospine kept on each building row against the footprint geospine's
@@ -129,7 +137,7 @@ pipeline:
           # NSI assigns foundation from regional/flood-zone rules, so it is
           # a prior rather than a per-building observation -- but a stable
           # one, which a per-building classifier is not guaranteed to be
-          # (see the foundation_type reconciliation in US_footprint-openplaces-2026).
+          # (see the foundation_type reconciliation in US_building-openplaces-2026).
           - foundation_type
           # Same prior-not-observation caveat: NSI derives bldgtype from
           # occupancy statistics. Still the only national source, and the
@@ -178,7 +186,7 @@ pipeline:
   # Independent occupancy_type evidence from NC building permits: APN-based
   # linking first (parcel_id_local, computed by both sides at ingest time),
   # then an address fallback for buildings the APN pass missed. Deliberately
-  # not yet added to US_footprint-openplaces-2026's occupancy vote -- that vote/
+  # not yet added to US_building-openplaces-2026's occupancy vote -- that vote/
   # kernel mechanism is mid-overhaul on a separate branch. Harmonize
   # writes evidence only; the vote is curate's.
   #

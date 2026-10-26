@@ -389,7 +389,7 @@ def test_cheer_eastern_nc_withholds_cc_by_sa_in_public_only():
     """Its team twin keeps Pitt (maintainer, 2026-10-22, option A)."""
     regions = {
         spec['region_id']: spec
-        for spec in delivery_module.delivery_regions('US_footprint-openplaces-2026')
+        for spec in delivery_module.delivery_regions('US_footprint-cheer-2026')
     }
     assert regions['cheer-eastern-nc']['withhold_share_alike'] == ['CC BY-SA']
     assert regions['cheer-eastern-nc.team']['withhold_share_alike'] == []

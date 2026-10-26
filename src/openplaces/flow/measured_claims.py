@@ -89,7 +89,7 @@ def newest_build(scope: str) -> date | None:
 
     stamps: list[float] = []
     if ADMIN_ID.match(scope):
-        for recipe in ('US_parcel-openplaces-2026', 'US_footprint-openplaces-2026'):
+        for recipe in ('US_parcel-openplaces-2026', 'US_footprint-cheer-2026'):
             try:
                 path = get_output_path(recipe, admin_id=scope)
             except Exception:
@@ -100,7 +100,7 @@ def newest_build(scope: str) -> date | None:
         try:
             from openplaces.io.delivery import delivery_paths
 
-            paths = delivery_paths('US_footprint-openplaces-2026', region=scope)
+            paths = delivery_paths('US_footprint-cheer-2026', region=scope)
             canonical = Path(paths['canonical'])
             if canonical.exists():
                 stamps.append(canonical.stat().st_mtime)

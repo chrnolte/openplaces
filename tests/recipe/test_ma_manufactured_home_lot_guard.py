@@ -7,7 +7,7 @@ from openplaces.io.curator import CurateState
 from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
 
-RID = 'US_footprint-openplaces-2026'
+RID = 'US_building-openplaces-2026'
 GUARD = 'manufactured_home_stated_guard'
 
 

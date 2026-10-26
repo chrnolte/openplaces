@@ -24,12 +24,12 @@ admin_id: US-MA-BOS
 stage: curate
 
 entity:
-  entity_type: footprint
+  entity_type: building
   source:
     source_id: openplaces
   version: 2026
 
-patches: US_footprint-openplaces-2026
+patches: US_building-openplaces-2026
 pipeline_patch:
   - set: apportion_curated_values
     params:

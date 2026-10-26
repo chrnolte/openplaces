@@ -37,7 +37,14 @@ rejected on 2026-09-29: gathering is 7% to 35% of a county's curate time
 
 Steps are organized by the nature of the transformation:
 
-- `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
+- `evidence.py` — incorporate enrichment evidence (`merge_enrichments`).
+  An enrichment's output is found under the spine it ran on, which is
+  the curated entity's own unless an entry names `entity_recipe`: the
+  building curate reads the outline enrichments (roof shape, CHEER v0,
+  NCDPS years, Overture and FEMA heights) under
+  `US_footprint-spine-2026` and joins them on its `key`, the building's
+  `footprint_id`. Without it the output is looked for under the
+  building spine and skipped as if the enrichment had not run.
 - `indicators.py` — the shared voting vocabulary and scoring cores
   (`evaluate_indicator` predicates; `score_decisions` enumerated votes;
   `vote_dynamic_values` open-vocabulary votes). Pure functions over a
@@ -72,7 +79,15 @@ Steps are organized by the nature of the transformation:
   property-to-parcel table, a curated sale its parcels' rows through the
   transaction-to-parcel table (`key: null`, link only, each parcel's sums
   scaled by the sale's `share` of it, a class kept only where the deed's
-  parcels agree). A parcel's `year_built` is
+  parcels agree), and the footprint curate CHEER ships
+  (`US_footprint-cheer-2026`) takes every column of the building curate
+  through the footprint-to-building link (`columns: all`): sums add, a
+  class the buildings disagree on keeps each value joined by " | "
+  (`distinct`), a number they disagree on stays missing (`agree`),
+  provenance tokens are a union so an `imputed` marker survives, and
+  `n_buildings_per_footprint` counts them. One building per outline is
+  a copy. Measured 2026-10-26 on US-MA-SOM: the fold equals the
+  footprint curate it replaced in all 113 columns. A parcel's `year_built` is
   the earliest of its properties', its `living_area_sqft` and
   `gross_floor_area_sqft` their sums, read from
   `US_property-spine-2026` by `parcel_id_local` with the registry's rule

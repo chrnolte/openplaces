@@ -1,7 +1,7 @@
 # Building imputation tools
 
 Run scripts for the delivery bundles that impute building attributes
-(`share: delivery: impute:` in `US_footprint-openplaces-2026`; the
+(`share: delivery: impute:` in `US_footprint-cheer-2026`; the
 models live in `src/openplaces/io/building_imputation.py`). Run them in
 the `openplaces` environment from the repository root.
 

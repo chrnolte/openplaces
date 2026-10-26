@@ -92,7 +92,13 @@ class ValidationContext:
         self.derived_source_columns = dict(config.get('derived_source_columns') or {})
         self.dwelling_count_column = config.get('dwelling_count_column')
         self.inventory_suffix = config.get('inventory_suffix', '_inv')
-        occupancy = dict(recipe.get('occupancy') or {})
+        # The rulesets and the occupancy block belong to the recipe whose
+        # vote used them; a footprint curate that folds a building
+        # curate validates against the building curate's
+        # (`rules_recipe:`), so the two read one copy of each file.
+        rules_recipe = config.get('rules_recipe')
+        self.rules_recipe = get_recipe_by_id(rules_recipe) if rules_recipe else recipe
+        occupancy = dict(self.rules_recipe.get('occupancy') or {})
         self.secondary_class = occupancy.get('secondary_class')
         self.residential_classes = tuple(occupancy.get('residential_classes') or ())
         self.references_state = references_state
@@ -375,7 +381,7 @@ class ValidationContext:
     def class_from_ruleset(self, terms, ruleset=None, **kwargs):
         """Recipe-bound wrapper for the module-level class_from_ruleset."""
         return class_from_ruleset(
-            self.recipe, terms, ruleset or self.class_map, **kwargs
+            self.rules_recipe, terms, ruleset or self.class_map, **kwargs
         )
 
     # Survey ground truth

@@ -31,7 +31,7 @@ from openplaces.io import building_imputation as bi
 from openplaces.io.delivery import delivery_paths, export_delivery, imputation_spec
 from openplaces.recipe import get_recipe_by_id
 
-RECIPE = 'US_footprint-openplaces-2026'
+RECIPE = 'US_footprint-cheer-2026'
 PRIMARY = [
     'area_m2',
     'year_built',

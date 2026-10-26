@@ -5,7 +5,7 @@
 # source and its terms, and the _improvement-detail sibling's header
 # for the class families.
 #
-# Why: the occupancy vote of US_footprint-openplaces-2026 needs to know
+# Why: the occupancy vote of US_building-openplaces-2026 needs to know
 # what kind of dwelling the roll lists on a parcel. Cameron is the one
 # CHEER district whose roll codes travel trailers and park-model RVs
 # as dwellings (plans/travel-trailers-in-building-inventory.md,

@@ -70,7 +70,7 @@ def test_an_id_not_in_the_table_is_reported(monkeypatch):
 
 def test_cambridge_sidecar_names_columns_the_step_reads():
     table = get_recipe_by_id(
-        'US-MA-CAM_footprint-openplaces-2026_reviewed-corrections', dtype=str
+        'US-MA-CAM_building-openplaces-2026_reviewed-corrections', dtype=str
     )
     assert list(table.columns) == ['footprint_id', 'column', 'value', 'reason']
     assert reconcilers.REVIEWED_CORRECTION_SOURCE == 'reviewed_correction'

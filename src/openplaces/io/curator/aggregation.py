@@ -107,7 +107,19 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
 
     try:
         owner = get_link_owner_recipe_id(state.recipe)
-        path = get_entity_link_path(_linked_recipe_id(recipe_id), owner, state.admin_id)
+        linked_id = _linked_recipe_id(recipe_id)
+        # A link table is named after the spine on that side (the
+        # transaction-to-parcel table names US_parcel-spine-2026) or,
+        # where link_entities_by_id wrote it, after the recipe that
+        # mints the rows, its geospine (the footprint-to-building table
+        # names US_building-geospine-2026). The spine's name is tried
+        # first, so every link read before the geospine name was
+        # accepted resolves as it did.
+        path = None
+        for name in dict.fromkeys([linked_id, get_link_owner_recipe_id(linked_id)]):
+            path = get_entity_link_path(name, owner, state.admin_id)
+            if path.exists():
+                break
         links = read_entity_link(path)
     except Exception:
         # No resolvable link for this recipe and unit (a curate recipe
@@ -172,6 +184,11 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
 #: agree on it (see `_reduce`).
 AGREE = 'agree'
 
+#: Reduction for a class an outline states for all of its buildings:
+#: every distinct value, joined by `DISTINCT_SEPARATOR` (see `_reduce`).
+DISTINCT = 'distinct'
+DISTINCT_SEPARATOR = ' | '
+
 
 def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
     """Reduce *values* per group, one function per column.
@@ -182,8 +199,17 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
     units, and it exists for a class such as a foundation type: a
     parcel with a slab house and a crawl-space house has no single
     foundation, and `first` would name whichever row came first.
+
+    `distinct` keeps every value the group's rows state, once each in
+    order of first appearance, joined by `DISTINCT_SEPARATOR`; a group
+    stating one value keeps it as it is. It is the rule for an outline's
+    classes (maintainer, 2026-10-26): a townhome row whose buildings are
+    'Single-Family' and 'Multi-Family' reads 'Single-Family |
+    Multi-Family', which says what stands there, where `agree` would
+    leave it missing.
     """
-    plain = {c: f for c, f in functions.items() if f != AGREE}
+    special = (AGREE, DISTINCT)
+    plain = {c: f for c, f in functions.items() if f not in special}
     grouped = values[list(functions)].groupby(group_key)
     if plain:
         reduced = grouped.agg(plain)
@@ -193,10 +219,22 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
     else:
         reduced = pd.DataFrame(index=grouped.size().index)
     for column in functions:
-        if functions[column] != AGREE:
-            continue
         by_group = values[column].groupby(group_key)
-        reduced[column] = by_group.first().where(by_group.nunique() == 1)
+        if functions[column] == AGREE:
+            reduced[column] = by_group.first().where(by_group.nunique() == 1)
+        elif functions[column] == DISTINCT:
+            single = by_group.first().where(by_group.nunique() == 1)
+            several = by_group.nunique() > 1
+            if several.any():
+                stated = values[column].notna()
+                joined = (
+                    values.loc[stated, column]
+                    .astype(str)
+                    .groupby(group_key[stated])
+                    .agg(lambda s: DISTINCT_SEPARATOR.join(dict.fromkeys(s)))
+                )
+                single = single.astype(object).where(~several, joined)
+            reduced[column] = single
     return reduced[list(functions)]
 
 
@@ -209,19 +247,26 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
     """
     stating = values[column].notna() & values[sidecar].notna()
     tokens = values.loc[stating, sidecar].astype(str)
+    keys = group_key[stating]
+    if not keys.duplicated().any():
+        # One stating row per group (one building per outline): its own
+        # tokens, without a Python call per group. `columns: all` asks
+        # for every sidecar of a wide table, where the call per group
+        # costs minutes.
+        return pd.Series(tokens.to_numpy(), index=keys.to_numpy())
 
     def union(series):
         parts = dict.fromkeys(t for v in series for t in v.split('+') if t)
         return '+'.join(parts) or None
 
-    return tokens.groupby(group_key[stating]).agg(union)
+    return tokens.groupby(keys).agg(union)
 
 
 @_register('aggregate_from_entities', phase='gather')
 def aggregate_from_entities(
     state: CurateState,
     recipe_id: str,
-    columns: list | dict,
+    columns: list | dict | str,
     key: str | list[str] | None = 'parcel_id_local',
     reference_key: str | list[str] | None = None,
     fill_only: bool = True,
@@ -229,6 +274,10 @@ def aggregate_from_entities(
     where: dict | None = None,
     row_minimum: dict | None = None,
     prefer: list[str] | None = None,
+    aggregations: dict | None = None,
+    count_as: str | None = None,
+    rename: dict | None = None,
+    keep: list[str] | None = None,
 ) -> CurateState:
     """Reduce a reference entity's rows onto the curated rows they belong to.
 
@@ -265,12 +314,21 @@ def aggregate_from_entities(
     taxes business personal property and manufactured homes on their own
     rolls, so its gaps are mostly real).
 
+    *recipe_id* may name a curate recipe: the footprint curate takes
+    every column of the building curate through the footprint-to-building
+    link (`columns: all`), so an outline carries what its buildings were
+    curated to, and under one building per outline equals its building
+    cell for cell. A link `link_entities_by_id` wrote is found under the
+    name of the geospine that mints the rows when none exists under the
+    spine's (plans/building-spine-consumers-and-footprint-projection.md).
+
     Parameters
     ----------
     recipe_id : str
-        The entity recipe to reduce (`US_property-spine-2026`). Named here
-        so the recipe graph sees the dependency.
-    columns : list of str or dict
+        The entity recipe to reduce (`US_property-spine-2026`), a spine
+        or a curate recipe. Named here so the recipe graph sees the
+        dependency.
+    columns : list of str or dict or 'all'
         Columns to reduce. A list uses the registry's aggregation for each
         column; a mapping gives a per-column override (`{year_built: min,
         n_stories: max}`), for a column whose registry rule (a mean for
@@ -280,7 +338,18 @@ def aggregate_from_entities(
         a `{column}_source` sidecar, the curated column gets one too,
         naming the tokens of the rows its value came from. A column
         with no sidecar takes its tokens from the reference's per-row
-        `source` (a property spine's), reduced to source ids.
+        `source` (a property spine's), reduced to source ids. 'all'
+        reduces every column of the reference except its sidecars, its
+        row `source`, the keys and the curated table's index column:
+        by the registry's rule, except that `first`, and a column the
+        registry does not list, become `distinct` for a class and
+        `agree` for a number, because a group of rows has no first one
+        to speak for it: a townhome row's buildings stating two
+        occupancy types give the outline 'Single-Family |
+        Multi-Family', and two disagreeing latitudes give it none. The
+        sidecars come along as above; their tokens are a union, never an
+        agreement, so an `imputed` marker on any contributing row stays
+        on the reduced cell.
     key : str or list of str or None, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both
@@ -314,8 +383,38 @@ def aggregate_from_entities(
         states a value, and the curated value kept wherever it does not
         (first non-null, reduction ahead of the curated column). Takes
         precedence over *fill_only* for the columns it names.
+    aggregations : dict, optional
+        With `columns: all`, per-column overrides of the rule
+        (`{year_built: min}`: an outline's buildings date from the
+        earliest of them, where the registry's mean would state a year
+        none was built in). Default None.
+    count_as : str, optional
+        Also write the number of reference rows each curated row takes
+        (`n_buildings_per_footprint`), 0 where it takes none. Default
+        None.
+    rename : dict, optional
+        Reference column to the curated name it is written under, its
+        sidecar following (`n_permits_per_building:
+        n_permits_per_footprint`, so a count keeps the name of the
+        entity it is written on). Default None.
+    keep : list of str, optional
+        With `columns: all`, curated columns left as they are: an
+        outline's own centroid, area, geographic ids and geometry
+        provenance describe the outline, not its buildings. Default
+        None.
     """
     curated = state.curated
+    all_columns = columns == 'all'
+    if isinstance(columns, str) and not all_columns:
+        raise ValueError(
+            "aggregate_from_entities: columns is a list, a mapping or 'all'; "
+            f'got {columns!r}.'
+        )
+    if aggregations and not all_columns:
+        raise ValueError(
+            'aggregate_from_entities: aggregations overrides the rule of '
+            'columns: all; a list or mapping names its rules itself.'
+        )
     link_only = key is None
     keys_ = [] if link_only else [key] if isinstance(key, str) else list(key)
     reference_keys = (
@@ -325,9 +424,8 @@ def aggregate_from_entities(
         if isinstance(reference_key, str)
         else list(reference_key)
     )
-    spec = {c: None for c in columns} if isinstance(columns, list) else dict(columns)
     try:
-        available = set(describe_recipe(recipe_id, state.admin_id).index)
+        described = list(describe_recipe(recipe_id, state.admin_id).index)
     except (FileNotFoundError, OSError, ValueError) as exc:
         warnings.warn(
             f'aggregate_from_entities: could not read {recipe_id} for '
@@ -335,6 +433,24 @@ def aggregate_from_entities(
             stacklevel=2,
         )
         return state
+    available = set(described)
+    if all_columns:
+        sidecar_names = {source_column(c) for c in described}
+        left_out = {
+            ROW_SOURCE_COLUMN,
+            'geometry',
+            curated.index.name,
+            *keys_,
+            *reference_keys,
+            *(keep or ()),
+        }
+        spec = {
+            c: None for c in described if c not in sidecar_names and c not in left_out
+        }
+    elif isinstance(columns, list):
+        spec = {c: None for c in columns}
+    else:
+        spec = dict(columns)
     pair = next(
         (
             (k, r)
@@ -395,6 +511,11 @@ def aggregate_from_entities(
     )
     if reference is None or len(reference) == 0:
         return state
+    if all_columns:
+        # A recipe's description lists its index too (a curate recipe's
+        # `building_id`), which arrives as the index, not a column.
+        present = [c for c in present if c in reference.columns]
+        sidecars = {c: s for c, s in sidecars.items() if c in present}
     if where_column is not None:
         matches = (
             reference[where_column]
@@ -417,11 +538,19 @@ def aggregate_from_entities(
     functions = {}
     for column in present:
         override = spec[column]
+        if all_columns:
+            override = (aggregations or {}).get(column)
         if override is not None:
             functions[column] = override
         else:
             canonical = resolve_attribute_name(column)
             fname = get_agg_func(canonical)
+            if all_columns and (fname == 'first' or not _has_agg_func(fname)):
+                # See `columns`: no row of a group speaks for it. A
+                # class keeps each value, a number only an agreed one.
+                numeric_column = pd.api.types.is_numeric_dtype(reference[column])
+                functions[column] = AGREE if numeric_column else DISTINCT
+                continue
             if not _has_agg_func(fname):
                 warnings.warn(
                     f'aggregate_from_entities: {column!r} has no registry '
@@ -467,36 +596,44 @@ def aggregate_from_entities(
     written = []
     recover = set(recover or ())
     prefer = set(prefer or ())
+    rename = dict(rename or {})
     for column in reduced.columns:
         incoming = keys.map(reduced[column])
+        target = rename.get(column, column)
         if column in prefer:
             wrote = incoming.notna()
-            if column in curated.columns:
-                curated[column] = incoming.where(wrote, curated[column])
+            if target in curated.columns:
+                curated[target] = incoming.where(wrote, curated[target])
             else:
-                curated[column] = incoming
+                curated[target] = incoming
         elif column in recover:
             positive = pd.to_numeric(incoming, errors='coerce').gt(0).fillna(False)
-            if column in curated.columns:
-                existing = curated[column]
+            if target in curated.columns:
+                existing = curated[target]
                 stated = pd.to_numeric(existing, errors='coerce').gt(0).fillna(False)
                 wrote = positive & ~stated
-                curated[column] = existing.where(~wrote, incoming)
+                curated[target] = existing.where(~wrote, incoming)
             else:
                 wrote = positive
-                curated[column] = incoming.where(positive)
-        elif column in curated.columns and fill_only:
-            existing = curated[column]
+                curated[target] = incoming.where(positive)
+        elif target in curated.columns and fill_only:
+            existing = curated[target]
             wrote = existing.isna() & incoming.notna()
-            curated[column] = existing.where(existing.notna(), incoming)
+            curated[target] = existing.where(existing.notna(), incoming)
         else:
             wrote = incoming.notna()
-            curated[column] = incoming
+            curated[target] = incoming
         if column in sidecars and wrote.any():
             tokens = _union_tokens(values, group_key, column, sidecars[column])
-            record_sources(curated, column, keys.map(tokens).where(wrote))
-        written.append(column)
-    state.curated = curated
+            record_sources(curated, target, keys.map(tokens).where(wrote))
+        written.append(target)
+    if count_as:
+        counts = pd.Series(group_key).value_counts()
+        curated[count_as] = keys.map(counts).fillna(0).astype('float64')
+        written.append(count_as)
+    # One column at a time fragments a wide table (columns: all writes
+    # well over a hundred); one copy consolidates it.
+    state.curated = curated.copy() if all_columns else curated
     if state.verbose:
         print(
             f'  aggregate_from_entities: {recipe_id} -> {", ".join(written)} '

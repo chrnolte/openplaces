@@ -433,6 +433,25 @@ def _explicit_outputs(recipe: dict, upstream_id: str) -> set[str] | None:
     return _spec_outputs(_referencing_specs(recipe.get('pipeline'), upstream_id))
 
 
+def _carries_whole(recipe: dict, upstream_id: str) -> bool:
+    """Whether *recipe* carries *upstream_id*'s table whole, sidecars too.
+
+    The footprint curate that ships folds the building curate
+    (`aggregate_from_entities` with `columns: all`), and each cell
+    arrives with the `_source` tokens the building curate wrote. Those
+    tokens name the layers the building curate read (`parcel` for a
+    county roll inside the curated parcels), so the walk names a layer
+    below such a fold as the folded recipe would, and not by the fold's
+    own entity: named `building`, a cell whose sidecar says only
+    `parcel` no longer matched its layer, and Arlington's restricted
+    structure values would have reached the washington-dc bundles.
+    """
+    return any(
+        spec.get('step') == 'aggregate_from_entities' and spec.get('columns') == 'all'
+        for spec in _referencing_specs(recipe.get('pipeline'), upstream_id)
+    )
+
+
 def _discovered_outputs(recipe: dict, edge, entity_type: str) -> set[str] | None:
     """Column names an auto-discovering step takes, or None for a layer.
 
@@ -592,8 +611,12 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
             )
             # The first recipe below the bundle's names the layer for
             # everything beneath it; the bundle's recipe reads that
-            # recipe itself directly.
-            frontier.append((upstream, reach, via or upstream_entity or None))
+            # recipe itself directly. A fold that carries a recipe whole
+            # names no layer of its own (`_carries_whole`).
+            next_via = via or upstream_entity or None
+            if via is None and _carries_whole(as_run, upstream_id):
+                next_via = None
+            frontier.append((upstream, reach, next_via))
 
             source = getattr(entity, 'source', None) or (
                 entity.get('source') if isinstance(entity, dict) else None

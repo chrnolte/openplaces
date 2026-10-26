@@ -14,7 +14,7 @@ from openplaces.io.curator.imputers import impute_from_group_statistic
 
 def _state(df: pd.DataFrame) -> CurateState:
     return CurateState(
-        recipe={'entity': 'footprint-openplaces-2026', 'admin_id': 'US'},
+        recipe={'entity': 'building-openplaces-2026', 'admin_id': 'US'},
         entity_recipe={},
         admin_id=AdminId('US'),
         verbose=False,

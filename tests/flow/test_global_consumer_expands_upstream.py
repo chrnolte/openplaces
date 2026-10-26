@@ -15,7 +15,7 @@ import openplaces.flow.dag as dag_module
 from openplaces.core.schema import AdminId
 from openplaces.flow.dag import RecipeDAG
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 
 
 def _admin_nodes(dag, recipe_id):

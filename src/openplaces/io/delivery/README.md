@@ -159,7 +159,13 @@ where a recipe declares that source id (`terms.known_source_ids`); a
 tier name used to pass for one and exonerate an estimate inside the
 restricted county. The walk records, per source, the entity of the
 layer it reaches the recipe through (`via_entities`, `parcel` for a
-county roll reaching footprints). A withheld structure value stays
+county roll reaching footprints). A fold that carries another curate
+whole (`aggregate_from_entities` with `columns: all`, the footprint
+curate taking the building curate) names no layer of its own: its cells
+keep the tokens the folded recipe wrote, so the layer is named one level
+further down (`terms._carries_whole`). Named `building` instead, a cell
+saying only `parcel` no longer matched, and Arlington's restricted
+structure values would have shipped. A withheld structure value stays
 empty in a public bundle: no other source stands in for it, since
 NSI's is not right at the building level (maintainer, 2026-10-24).
 `RestrictedInputError` is only the

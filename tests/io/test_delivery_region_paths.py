@@ -50,7 +50,7 @@ DELIVERING = _delivering_recipe_ids()
 def test_the_delivering_recipes_are_found():
     assert {
         'US_parcel-openplaces-2026',
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         'US_transaction-openplaces-2026',
     } <= set(DELIVERING)
 
@@ -154,16 +154,16 @@ def test_declared_regions_and_their_team_twins_have_their_own_paths(recipe_id):
         ),
         # Regions already filed in a folder of their own stay there.
         (
-            'US_footprint-openplaces-2026',
+            'US_footprint-cheer-2026',
             'cheer-eastern-nc',
-            'NC/_all/footprint/openplaces/2026/cheer-eastern-nc/'
-            'US-NC_footprint-openplaces-2026.parquet',
+            'NC/_all/footprint/cheer/2026/cheer-eastern-nc/'
+            'US-NC_footprint-cheer-2026.parquet',
         ),
         (
-            'US_footprint-openplaces-2026',
+            'US_footprint-cheer-2026',
             'cheer-eastern-nc.team',
-            'NC/_all/footprint/openplaces/2026/cheer-eastern-nc/team/'
-            'US-NC_footprint-openplaces-2026.parquet',
+            'NC/_all/footprint/cheer/2026/cheer-eastern-nc/team/'
+            'US-NC_footprint-cheer-2026.parquet',
         ),
         (
             'US_parcel-openplaces-2026',
@@ -179,10 +179,10 @@ def test_declared_regions_and_their_team_twins_have_their_own_paths(recipe_id):
         ),
         # A sub-state region that used to sit flat on its state's path.
         (
-            'US_footprint-openplaces-2026',
+            'US_footprint-cheer-2026',
             'cheer-coastal-tx',
-            'TX/_all/footprint/openplaces/2026/cheer-coastal-tx/'
-            'US-TX_footprint-openplaces-2026.parquet',
+            'TX/_all/footprint/cheer/2026/cheer-coastal-tx/'
+            'US-TX_footprint-cheer-2026.parquet',
         ),
     ],
 )

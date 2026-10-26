@@ -154,7 +154,7 @@ def test_region_registry_is_read_once_per_call(monkeypatch):
         return real(region_id)
 
     monkeypatch.setattr(readers, 'get_regions', counted)
-    regions = delivery_regions('US_footprint-openplaces-2026')
+    regions = delivery_regions('US_footprint-cheer-2026')
 
     assert len(regions) > 1
     assert calls == [None]

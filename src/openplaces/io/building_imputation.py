@@ -70,7 +70,7 @@ VALUE_CAP = 5e8
 VALUE_PER_AREA_QUANTILE = 0.999
 LOCATION = {'x_km', 'y_km'}
 # Evidence each canonical column is reconciled from in the curate
-# recipe (US_footprint-openplaces-2026), hence its labels' source.
+# recipe (US_building-openplaces-2026), hence its labels' source.
 LABEL_EVIDENCE = {
     'n_stories': {
         'n_stories_building_nsi',

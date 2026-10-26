@@ -16,7 +16,7 @@ def estimate_property_counts(
     property_count_column: str = 'n_properties_per_parcel',
     source_column: str = 'property_source',
     dwelling_column: str = 'n_dwellings',
-    footprint_dwelling_column: str = 'max_dwellings_per_footprint',
+    footprint_dwelling_column: str = 'max_dwellings_per_building',
 ) -> HarmonizeState:
     """Fill in ``property_source``/``n_properties_per_parcel`` where still unset.
 
@@ -53,7 +53,7 @@ def estimate_property_counts(
         Parcel's own recorded dwelling-unit count (default ``'n_dwellings'``).
     footprint_dwelling_column : str, optional
         Confirmed dwelling count on a single footprint on the parcel (default
-        ``'max_dwellings_per_footprint'``).
+        ``'max_dwellings_per_building'``).
     """
     if state.spine is None:
         return state

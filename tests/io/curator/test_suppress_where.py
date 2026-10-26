@@ -105,7 +105,7 @@ def test_absent_column_is_skipped():
 
 
 def test_the_footprint_recipe_guards_sliver_clusters_after_the_ratio_exists():
-    steps = get_recipe_by_id('US_footprint-openplaces-2026')['pipeline']
+    steps = get_recipe_by_id('US_building-openplaces-2026')['pipeline']
     names = [s['step'] for s in steps]
     guard = next(
         i

@@ -330,12 +330,12 @@ def test_a_derivation_needs_its_inputs_listed():
 
 
 def test_the_footprint_recipe_declares_its_roll_classification():
-    derived = share_derived_from(get_recipe_by_id('US_footprint-openplaces-2026'))
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
     assert set(derived['occupancy_type_parcel']) == {
         'use_group_combined_parcel',
         'group_parcel',
     }
-    assert 'fallback' not in get_recipe_by_id('US_footprint-openplaces-2026')['share']
+    assert 'fallback' not in get_recipe_by_id('US_footprint-cheer-2026')['share']
 
 
 # The bundle: public and team.

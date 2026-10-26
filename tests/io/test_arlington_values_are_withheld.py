@@ -20,7 +20,7 @@ from openplaces.io.delivery.terms import restricted_inputs
 from openplaces.recipe import get_recipe_by_id
 
 ASSESSMENT = 'US-VA-AR_property-arlington-2026_assessment'
-FOOTPRINT = 'US_footprint-openplaces-2026'
+FOOTPRINT = 'US_footprint-cheer-2026'
 UNIT = 'US-VA-AR'
 
 

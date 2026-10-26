@@ -17,7 +17,7 @@ from openplaces.recipe import get_output_path
 # The fabricated recipe root of the held-recipe tests
 held_root = lane.held_root
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 BUILDING_SPINE = 'US_building-spine-2026'
 NSI = 'US_building-nsi-2026'
 COUNTY = 'US-NC-BRU'

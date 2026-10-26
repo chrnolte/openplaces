@@ -95,6 +95,108 @@ def test_a_key_neither_side_has_yields_no_links():
     assert build_id_links(frame, other, 'nope', 'nope', 'b', 'f', 'm').empty
 
 
+def test_a_rekeyed_sidecar_keeps_its_rows_labels_and_footer(tmp_path):
+    """b3 step 1: the building spine persists the footprint geospine's
+    sidecars under building ids, with the link label the curate readers
+    need and the footer fingerprint intact."""
+    import json
+
+    from openplaces.io import to_parquet
+    from openplaces.io.aggregate import read_file_metadata
+    from openplaces.io.harmonizer.links._shared import _LINK_METADATA_KEY
+    from openplaces.io.harmonizer.load import (
+        LINK_REKEYED_FROM_KEY,
+        _persist_rekeyed_sidecar,
+    )
+
+    source = tmp_path / 'fp_parcel.parquet'
+    to_parquet(
+        pd.DataFrame(
+            {
+                'footprint_id': ['f1', 'f2', 'f9'],
+                'parcel_id': ['p1', 'p2', 'p3'],
+                'area_intersection_m2': [10.0, 20.0, 1.0],
+                'link': ['unique parcel', 'dominant parcel', None],
+            }
+        ),
+        source,
+        file_metadata={_LINK_METADATA_KEY: json.dumps({'format': 2})},
+        index=False,
+    )
+    mapping = pd.Series(['b1', 'b2'], index=['f1', 'f2'])
+    target = tmp_path / 'nested' / 'bld_parcel.parquet'
+    _persist_rekeyed_sidecar(
+        source,
+        target,
+        'US_footprint-geospine-2026',
+        'footprint_id',
+        'building_id',
+        mapping,
+    )
+    out = pd.read_parquet(target)
+    # Renamed and re-keyed; the row no spine row names keeps its id.
+    assert list(out.columns) == [
+        'building_id',
+        'parcel_id',
+        'area_intersection_m2',
+        'link',
+    ]
+    assert out['building_id'].tolist() == ['b1', 'b2', 'f9']
+    assert out['link'].tolist()[:2] == ['unique parcel', 'dominant parcel']
+    footer = read_file_metadata(target)
+    assert json.loads(footer[_LINK_METADATA_KEY]) == {'format': 2}
+    assert footer[LINK_REKEYED_FROM_KEY] == 'US_footprint-geospine-2026'
+    # A missing source writes nothing.
+    _persist_rekeyed_sidecar(
+        tmp_path / 'absent.parquet', tmp_path / 'never.parquet', 'x', 'a', 'b', mapping
+    )
+    assert not (tmp_path / 'never.parquet').exists()
+
+
+def test_a_point_link_after_load_links_is_fingerprinted_by_the_parcel_overlay(
+    mock_data_root,
+):
+    """b3 step 1: the building geospine's point joins read the footprint
+    geospine's parcel overlay, a harmonize product no ingest entry of the
+    fingerprint covers, so a rewritten overlay must make them stale."""
+    from openplaces.geo.link import get_entity_link_path
+    from openplaces.io.harmonizer.links.sidecars import _link_fingerprint
+
+    unit = 'US-NC-BRU'
+    building = get_recipe_by_id('US_building-geospine-2026')
+    steps = [s['step'] for s in building['pipeline']]
+    nsi_index = steps.index('link_to_reference')
+    assert steps.index('load_links') < nsi_index
+
+    def fingerprint(recipe, step_index, ref):
+        state = HarmonizeState(recipe=recipe, admin_id=unit, verbose=False, timer=None)
+        state.step_index = step_index
+        return _link_fingerprint(state, ref, {'join': 'spatial_point'})
+
+    overlay = get_entity_link_path(
+        'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', unit
+    )
+    absent = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    assert absent['restored_links'] == {overlay.name: None}
+
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_bytes(b'one')
+    first = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    overlay.write_bytes(b'two')
+    second = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    assert first['restored_links'][overlay.name] is not None
+    assert first['restored_links'] != second['restored_links']
+
+    # No other link gets the key: the footprint geospine's own overlay
+    # fingerprint is the one already stored in every sidecar on disk.
+    footprint = get_recipe_by_id('US_footprint-geospine-2026')
+    overlay_index = [s['step'] for s in footprint['pipeline']].index(
+        'link_to_reference'
+    )
+    plain = fingerprint(footprint, overlay_index, 'US-NC_parcel-nconemap-2025')
+    assert 'restored_links' not in plain
+
+
 def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
     geospine = get_recipe_by_id('US_building-geospine-2026')
     spine = get_recipe_by_id('US_building-spine-2026')
@@ -104,9 +206,14 @@ def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
         'resolve_spine',
         'adopt_source_entity_id',
         'derive_geometry_attributes',
+        'load_links',
+        'link_to_reference',
+        'link_to_reference',
     ]
     upstream = {e.upstream_recipe_id for e in get_recipe_dependencies(geospine)}
     assert 'US_footprint-geospine-2026' in upstream
+    # b3 step 1: the point joins run on the building's own polygon.
+    assert {'US_building-nsi-2026', 'dwelling-overture-2025'} <= upstream
     upstream = {e.upstream_recipe_id for e in get_recipe_dependencies(spine)}
     assert {'US_building-geospine-2026', 'US_footprint-geospine-2026'} <= upstream
     # The footprint spine is downstream of the building spine (it projects
@@ -129,6 +236,9 @@ def test_the_footprint_spine_projects_the_building_spine():
     building_steps = [s['step'] for s in building['pipeline']]
     assert building_steps[:2] == ['load_geospine', 'link_entities_by_id']
     assert building['pipeline'][0]['links_recipe_id'] == 'US_footprint-geospine-2026'
+    # The re-keyed sidecars are written beside the building geospine for
+    # the curate steps that read a link by the curated entity's geospine.
+    assert building['pipeline'][0]['persist_links'] is True
     for moved in (
         'classify_footprint_priority',
         'reconcile_attributes',

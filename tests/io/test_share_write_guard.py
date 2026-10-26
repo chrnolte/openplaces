@@ -112,7 +112,7 @@ def test_a_recipe_saving_to_share_does_not_load(tmp_path):
     [
         'US_parcel-openplaces-2026',
         'US_property-openplaces-2026',
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         'US_transaction-openplaces-2026',
     ],
 )

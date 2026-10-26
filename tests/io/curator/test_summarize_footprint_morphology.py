@@ -3,7 +3,7 @@
 Covers: joining by the globally-unique `parcel_id` (the parcel spine's own true
 id lives on its index at this point in the pipeline, not a plain column -- see
 `resolve_spine`), the `min_overlap_m2` sliver floor, the `priority_on_parcel`
-exclusion feeding `n_primary_footprints_per_parcel`, and the synthetic-fallback
+exclusion feeding `n_primary_buildings_per_parcel`, and the synthetic-fallback
 bypass of both.
 """
 
@@ -54,7 +54,7 @@ def _footprints(rows):
         'area_intersection_m2_parcel': 1000.0,
         'priority_on_parcel': 'primary',
         'n_dwellings_overture': 0,
-        'n_parcels_per_footprint': 1,
+        'n_parcels_per_building': 1,
     }
     keys = set(defaults) | {k for r in rows for k in r if k != 'geometry'}
     data = {k: [r.get(k, defaults.get(k)) for r in rows] for k in keys}
@@ -81,8 +81,8 @@ def test_joins_by_parcel_id_not_parcel_id_local(monkeypatch):
 
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 1
-    assert state.spine.loc['B', 'n_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 1
+    assert state.spine.loc['B', 'n_buildings_per_parcel'] == 1
 
 
 def test_sliver_below_floor_excluded_from_all_counts(monkeypatch):
@@ -102,9 +102,9 @@ def test_sliver_below_floor_excluded_from_all_counts(monkeypatch):
         state, footprint_recipe_id='fp', min_overlap_m2=10.0
     )
 
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 0
-    assert state.spine.loc['A', 'n_small_elongated_footprints_per_parcel'] == 0
-    assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 0
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 0
+    assert state.spine.loc['A', 'n_small_elongated_buildings_per_parcel'] == 0
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 0
 
 
 def test_overlap_at_or_above_floor_counted(monkeypatch):
@@ -124,8 +124,8 @@ def test_overlap_at_or_above_floor_counted(monkeypatch):
         state, footprint_recipe_id='fp', min_overlap_m2=10.0
     )
 
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 1
-    assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 1
 
 
 def test_synthetic_fallback_bypasses_floor(monkeypatch):
@@ -149,17 +149,17 @@ def test_synthetic_fallback_bypasses_floor(monkeypatch):
         state, footprint_recipe_id='fp', min_overlap_m2=10.0
     )
 
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 1
     # Synthetic rows bypass the priority exclusion too.
-    assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 1
     # But size/shape aggregates still exclude synthetic rows.
-    assert state.spine.loc['A', 'n_small_elongated_footprints_per_parcel'] == 0
+    assert state.spine.loc['A', 'n_small_elongated_buildings_per_parcel'] == 0
 
 
 def test_secondary_priority_excluded_from_primary_count_only(monkeypatch):
     # A parcel with one primary home and one legitimate, substantial (not a
-    # sliver) accessory structure: n_footprints_per_parcel should count both,
-    # n_primary_footprints_per_parcel only the primary one.
+    # sliver) accessory structure: n_buildings_per_parcel should count both,
+    # n_primary_buildings_per_parcel only the primary one.
     state = _parcel_spine(['A'])
     footprints = _footprints(
         [
@@ -179,8 +179,8 @@ def test_secondary_priority_excluded_from_primary_count_only(monkeypatch):
 
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 2
-    assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 2
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 1
 
 
 def test_primary_footprint_area_excludes_secondary(monkeypatch):
@@ -225,13 +225,13 @@ def test_dwelling_confirmed_footprint_sets_span_and_dwelling_maxima(monkeypatch)
             {
                 'parcel_id': 'A',
                 'n_dwellings_overture': 3,
-                'n_parcels_per_footprint': 2,
+                'n_parcels_per_building': 2,
                 'geometry': box(0, 0, 10, 10),
             },
             {
                 'parcel_id': 'A',
                 'n_dwellings_overture': 0,
-                'n_parcels_per_footprint': 9,
+                'n_parcels_per_building': 9,
                 'geometry': box(20, 0, 30, 10),
             },
         ]
@@ -240,7 +240,7 @@ def test_dwelling_confirmed_footprint_sets_span_and_dwelling_maxima(monkeypatch)
 
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
-    assert state.spine.loc['A', 'max_dwellings_per_footprint'] == 3
+    assert state.spine.loc['A', 'max_dwellings_per_building'] == 3
     assert state.spine.loc['A', 'max_parcels_per_footprint'] == 2
 
 
@@ -254,7 +254,7 @@ def test_no_dwelling_confirmation_leaves_maxima_zero(monkeypatch):
             {
                 'parcel_id': 'A',
                 'n_dwellings_overture': 0,
-                'n_parcels_per_footprint': 2,
+                'n_parcels_per_building': 2,
                 'geometry': box(0, 0, 10, 10),
             },
         ]
@@ -263,7 +263,7 @@ def test_no_dwelling_confirmation_leaves_maxima_zero(monkeypatch):
 
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
-    assert state.spine.loc['A', 'max_dwellings_per_footprint'] == 0
+    assert state.spine.loc['A', 'max_dwellings_per_building'] == 0
     assert state.spine.loc['A', 'max_parcels_per_footprint'] == 0
 
 
@@ -278,7 +278,7 @@ def test_missing_dwelling_and_span_columns_does_not_crash(monkeypatch):
 
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
-    assert state.spine.loc['A', 'max_dwellings_per_footprint'] == 0
+    assert state.spine.loc['A', 'max_dwellings_per_building'] == 0
     assert state.spine.loc['A', 'max_parcels_per_footprint'] == 0
 
 
@@ -345,8 +345,8 @@ def test_missing_overlap_and_priority_columns_does_not_crash(monkeypatch):
 
     # No floor/priority columns available -> no filtering applied, matching
     # prior (pre-fix) behavior.
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 1
-    assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 1
     # This fixture's spine (EPSG:4326, near-origin unit boxes) and footprint
     # (EPSG:32617, a UTM-meter box) never spatially coincide -- the new
     # overlay-based column must degrade to NaN, not crash or silently 0-fill.
@@ -432,7 +432,7 @@ def test_in_parcel_sum_excludes_a_sub_floor_sliver_on_a_non_dominant_parcel(
     # C only overlaps a 0.5 x 10 = 5 m2 sliver, below the 10 m2 floor.
     # The floor says that is no footprint, so the count is 0 and the
     # area agrees at 0.0 rather than reading as unknown.
-    assert state.spine.loc['C', 'n_footprints_per_parcel'] == 0
+    assert state.spine.loc['C', 'n_buildings_per_parcel'] == 0
     assert state.spine.loc['C', 'footprint_area_m2_in_parcel'] == 0.0
 
 
@@ -452,4 +452,4 @@ def test_parcel_with_no_footprints_has_zero_area_not_unknown(monkeypatch):
     ):
         assert state.spine.loc['A', column] == 0.0, column
         assert state.spine.loc['B', column] > 0.0, column
-    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 0
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 0

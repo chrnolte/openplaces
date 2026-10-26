@@ -31,7 +31,7 @@ def _state(curated):
 def test_confidence_columns_stay_numeric_and_comparable():
     """The shipping roof-shape confidence columns must not become Categorical.
 
-    US_footprint-openplaces-2026 merges roof_shape_confidence_building_cheer
+    US_building-openplaces-2026 merges roof_shape_confidence_building_cheer
     onto roof_shape_confidence and then runs cast_categoricals. A bare
     startswith('roof_shape') match cast the float column to an unordered
     Categorical over its own values, and every later `> 0.6` comparison
