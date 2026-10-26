@@ -47,6 +47,7 @@ from openplaces.viz.web_scene import (
     known_issues,
 )
 from openplaces.viz.web_scene.local import (
+    check_page_size,
     downtown_of,
     extent_label,
     has_circle,
@@ -93,6 +94,7 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
             f'in {time.time() - started:.0f}s',
             flush=True,
         )
+        check_page_size(place, site_root() / name, name)
 
 
 def build(places, config) -> None:
