@@ -61,7 +61,7 @@ _LAND_USE_RULES = [
             },
             {
                 'type': 'count_at_least',
-                'column': 'n_small_elongated_footprints_per_parcel',
+                'column': 'n_small_elongated_buildings_per_parcel',
                 'min': 4,
             },
         ],
@@ -90,7 +90,7 @@ def test_classify_parcel_land_use_separates_mh_park_from_rv_park():
                 'SINGLE FAMILY',
             ],
             'group_parcel': ['Manufactured Home', 'Recreation', 'Single-Family'],
-            'n_small_elongated_footprints_per_parcel': [8, 1, 0],
+            'n_small_elongated_buildings_per_parcel': [8, 1, 0],
         }
     )
     out = _classify(

@@ -197,7 +197,7 @@ def test_flag_column_still_works():
 # min_score raised from 2 to 3 so the two indicators true for almost any
 # ordinary single-family parcel (no small-elongated footprints, group is
 # Single Family) can't satisfy the rule without a genuine multiplicity signal
-# (the keyword or n_primary_footprints_per_parcel) also being true.
+# (the keyword or n_primary_buildings_per_parcel) also being true.
 MULTIPLE_SF_RULE = {
     'class': 'Multiple Single-Family',
     'min_score': 3,
@@ -209,12 +209,12 @@ MULTIPLE_SF_RULE = {
         },
         {
             'type': 'count_at_least',
-            'column': 'n_primary_footprints_per_parcel',
+            'column': 'n_primary_buildings_per_parcel',
             'min': 2,
         },
         {
             'type': 'numeric_at_most',
-            'column': 'n_small_elongated_footprints_per_parcel',
+            'column': 'n_small_elongated_buildings_per_parcel',
             'max': 0,
         },
         {'type': 'in_set', 'column': 'group_parcel', 'values': ['Single Family']},
@@ -227,8 +227,8 @@ def _ordinary_single_family_frame(**overrides) -> pd.DataFrame:
         {
             'use_group_combined': ['RESIDENTIAL PRIMARY'],
             'group_parcel': ['Single Family'],
-            'n_primary_footprints_per_parcel': [1],
-            'n_small_elongated_footprints_per_parcel': [0],
+            'n_primary_buildings_per_parcel': [1],
+            'n_small_elongated_buildings_per_parcel': [0],
         }
     )
     for key, value in overrides.items():
@@ -245,19 +245,19 @@ def test_multiple_single_family_does_not_fire_on_two_weak_indicators_alone():
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
-def test_multiple_single_family_ignores_stale_n_footprints_per_parcel():
-    # n_footprints_per_parcel=2 (the old, noisier signal -- e.g. inflated by a
+def test_multiple_single_family_ignores_stale_n_buildings_per_parcel():
+    # n_buildings_per_parcel=2 (the old, noisier signal -- e.g. inflated by a
     # sliver or an accessory structure) must not affect the outcome; only
-    # n_primary_footprints_per_parcel (here 1) is read.
-    df = _ordinary_single_family_frame(n_footprints_per_parcel=[2])
+    # n_primary_buildings_per_parcel (here 1) is read.
+    df = _ordinary_single_family_frame(n_buildings_per_parcel=[2])
     out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
 def test_multiple_single_family_fires_with_genuine_multiplicity_evidence():
-    # A genuine multi-home parcel: n_primary_footprints_per_parcel=2 supplies
+    # A genuine multi-home parcel: n_primary_buildings_per_parcel=2 supplies
     # the third indicator alongside the two weak ones -> score 3 = min_score.
-    df = _ordinary_single_family_frame(n_primary_footprints_per_parcel=[2])
+    df = _ordinary_single_family_frame(n_primary_buildings_per_parcel=[2])
     out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Multiple Single-Family'
 
@@ -507,7 +507,7 @@ TOWNHOME_RULE = {
     'class': 'Townhome',
     'min_score': 4,
     'indicators': [
-        {'type': 'numeric_at_most', 'column': 'n_footprints_per_parcel', 'max': 1},
+        {'type': 'numeric_at_most', 'column': 'n_buildings_per_parcel', 'max': 1},
         {
             'type': 'any_of',
             'indicators': [
@@ -518,7 +518,7 @@ TOWNHOME_RULE = {
                 },
                 {
                     'type': 'numeric_at_least',
-                    'column': 'max_dwellings_per_footprint',
+                    'column': 'max_dwellings_per_building',
                     'min': 2,
                 },
                 {
@@ -558,7 +558,7 @@ def _townhome_shaped_frame(**overrides) -> pd.DataFrame:
         {
             'use_group_combined': ['RESIDENTIAL PRIMARY'],
             'group_parcel': ['Single Family'],
-            'n_footprints_per_parcel': [1],
+            'n_buildings_per_parcel': [1],
             'max_parcels_per_footprint': [2],
         }
     )
@@ -628,7 +628,7 @@ def test_multiple_single_family_does_not_fire_on_zero_land_value_condo_shape():
     # score 3, but the new value_share_at_least indicator fails, capping the
     # total at 3 < min_score 4 -- must not fire.
     df = _ordinary_single_family_frame(
-        n_primary_footprints_per_parcel=[2], land_value=[0], improvement_value=[200_000]
+        n_primary_buildings_per_parcel=[2], land_value=[0], improvement_value=[200_000]
     )
     out = _classify(_state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
@@ -636,7 +636,7 @@ def test_multiple_single_family_does_not_fire_on_zero_land_value_condo_shape():
 
 def test_multiple_single_family_fires_with_genuine_multiplicity_and_normal_land_value():
     df = _ordinary_single_family_frame(
-        n_primary_footprints_per_parcel=[2],
+        n_primary_buildings_per_parcel=[2],
         land_value=[50_000],
         improvement_value=[150_000],
     )
@@ -697,7 +697,7 @@ MH_PARK_RULE = {
         {'type': 'in_set', 'column': 'group_parcel', 'values': ['Manufactured Home']},
         {
             'type': 'count_at_least',
-            'column': 'n_small_elongated_footprints_per_parcel',
+            'column': 'n_small_elongated_buildings_per_parcel',
             'min': 4,
         },
         {
@@ -718,7 +718,7 @@ def test_manufactured_home_park_fires_on_group_and_fema_vote():
         {
             'use_group_combined': ['WVC'],
             'group_parcel': ['Manufactured Home'],
-            'n_small_elongated_footprints_per_parcel': [1],
+            'n_small_elongated_buildings_per_parcel': [1],
             'group_footprint_fema': ['Manufactured Home'],
         }
     )

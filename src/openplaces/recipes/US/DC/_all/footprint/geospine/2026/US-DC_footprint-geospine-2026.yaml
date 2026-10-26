@@ -8,7 +8,7 @@
 # (the parcel geospine patch beside this file's twin), so before this
 # patch no outline linked to a tax lot: the 8,015 tax lots the old
 # ranking kept, the White House and the Capitol among them, had
-# `n_footprints_per_parcel` 0 (plans/findings/
+# `n_buildings_per_parcel` 0 (plans/findings/
 # dc-public-land-zero-values.md, F2).
 #
 # `kept_by` makes the link's reference the rows the parcel geospine's

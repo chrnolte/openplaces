@@ -21,23 +21,34 @@ def summarize_footprint_morphology(
     overlap_column: str = 'area_intersection_m2_parcel',
     priority_column: str = 'priority_on_parcel',
     dwelling_column: str = 'n_dwellings_overture',
-    span_column: str = 'n_parcels_per_footprint',
+    span_column: str = 'n_parcels_per_building',
 ) -> HarmonizeState:
     """Attach per-parcel footprint morphology aggregates to the parcel spine.
+
+    Reads the building spine (`US_building-spine-2026`): the land-use
+    rules ask how many structures stand on a parcel, so the counts are
+    named for buildings (`n_buildings_per_parcel`, renamed from
+    `n_footprints_per_parcel` with the others on 2026-10-26,
+    plans/building-spine-consumers-and-footprint-projection.md). The
+    areas are each building's own polygon, its building footprint, and
+    keep their names. `max_parcels_per_footprint` keeps its name too: it
+    is the span of the drawn outline, which equals the building's while
+    one building is one outline; once buildings are cut at parcel lines
+    it has to come from the footprint geospine's parcel overlay instead.
 
     Footprint-to-parcel linkage is the harmonizer's job; this reads the footprint
     entity, assigns each footprint to a parcel (by a shared id column when *on* is
     present on both sides, else by spatial containment of the footprint's
     representative point), and writes the per-parcel counts the parcel land-use
-    classifier consumes downstream: ``n_footprints_per_parcel``,
-    ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
+    classifier consumes downstream: ``n_buildings_per_parcel``,
+    ``n_small_elongated_buildings_per_parcel`` (manufactured-home-shaped),
     ``max_footprint_area_m2``, ``footprint_area_m2_dominant``,
-    ``footprint_area_m2_in_parcel``, ``n_primary_footprints_per_parcel``,
+    ``footprint_area_m2_in_parcel``, ``n_primary_buildings_per_parcel``,
     ``footprint_area_m2_primary``, ``max_parcels_per_footprint``, and
-    ``max_dwellings_per_footprint``. The classification itself is parcel-curate
+    ``max_dwellings_per_building``. The classification itself is parcel-curate
     work.
 
-    ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` are scoped
+    ``max_parcels_per_footprint`` and ``max_dwellings_per_building`` are scoped
     to *dwelling-confirmed* footprints only (*is_primary_candidate* — see below —
     AND a positive *dwelling_column*): ``priority_on_parcel == 'primary'`` alone
     is not evidence of a real dwelling — it's also assigned to a sole footprint
@@ -45,7 +56,7 @@ def summarize_footprint_morphology(
     row, none of which confirm occupancy. ``max_parcels_per_footprint`` is the
     largest *span_column* value among those confirmed footprints (does any of
     this parcel's confirmed footprints span multiple parcels — a real,
-    non-FEMA-geometry building-shape signal); ``max_dwellings_per_footprint`` is
+    non-FEMA-geometry building-shape signal); ``max_dwellings_per_building`` is
     the largest confirmed dwelling count on any single one of them (a footprint
     itself holding multiple dwellings, independent of parcel boundaries).
 
@@ -55,19 +66,19 @@ def summarize_footprint_morphology(
     unit of a condo complex sharing one assessor PIN), which would silently
     merge their footprint counts together.
 
-    ``n_footprints_per_parcel`` counts every footprint row that clears
+    ``n_buildings_per_parcel`` counts every footprint row that clears
     *min_overlap_m2* (its overlap with this parcel, via *overlap_column*, when
     present), including a parcel-derived synthetic fallback geometry
     (``geometry_source`` containing ``.``, set by :func:`infer_spine_additions`)
     regardless of overlap size when that is the parcel's only footprint — a
     fallback's geometry is the parcel boundary, so its "overlap" is trivially the
-    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``,
+    whole parcel and it needs no floor. ``n_small_elongated_buildings_per_parcel``,
     ``max_footprint_area_m2``, and ``footprint_area_m2_dominant`` additionally
     exclude synthetic rows entirely: a fallback's area/aspect ratio are not
     meaningful size/shape evidence. Like ``max_footprint_area_m2``,
     ``footprint_area_m2_dominant`` stays ``NaN`` (not ``0``) for a parcel with no
     real, non-synthetic footprint at all.
-    ``n_primary_footprints_per_parcel`` additionally excludes footprints whose
+    ``n_primary_buildings_per_parcel`` additionally excludes footprints whose
     *priority_column* value (when present) is ``'secondary'`` — a real, but
     accessory, structure (garage, shed) that clears the overlap floor but isn't a
     distinct home; synthetic fallback rows still count here too.
@@ -131,17 +142,15 @@ def summarize_footprint_morphology(
     dwelling_column : str, optional
         Footprint-entity column holding each footprint's confirmed dwelling
         count (default ``n_dwellings_overture``). A footprint counts toward
-        ``max_parcels_per_footprint``/``max_dwellings_per_footprint`` only when
+        ``max_parcels_per_footprint``/``max_dwellings_per_building`` only when
         this is positive. Ignored (neither output is set) if absent from the
         footprint entity.
     span_column : str, optional
-        Footprint-entity column holding how many parcels that footprint spans
-        (default ``n_parcels_per_footprint``: the building spine's
-        ``n_parcels_per_building``, written by
-        :func:`_attribute_polygon_reference`, renamed when the footprint
-        spine projects the building spine). Ignored
-        (``max_parcels_per_footprint`` not set) if absent from the footprint
-        entity.
+        Column holding how many parcels each row spans (default
+        ``n_parcels_per_building``, the building spine's count, written by
+        :func:`_attribute_polygon_reference`; the footprint spine's name
+        for it is ``n_parcels_per_footprint``). Ignored
+        (``max_parcels_per_footprint`` not set) if absent.
     """
     import geopandas as gpd
 
@@ -175,8 +184,8 @@ def summarize_footprint_morphology(
     # Parcel-derived synthetic fallback geometries (geometry_source containing
     # '.', set by infer_spine_additions) are the parcel boundary, not a building
     # outline, so their area/aspect are excluded from the size/shape aggregates
-    # (max_footprint_area_m2, n_small_elongated_footprints_per_parcel). They
-    # still count toward n_footprints_per_parcel below: that count exists
+    # (max_footprint_area_m2, n_small_elongated_buildings_per_parcel). They
+    # still count toward n_buildings_per_parcel below: that count exists
     # because independent value evidence already implied a building is there.
     if 'geometry_source' in footprints.columns:
         is_synthetic = (
@@ -205,7 +214,7 @@ def summarize_footprint_morphology(
     # A footprint marked 'secondary' (an accessory structure, per
     # classify_footprint_priority's dwelling/NSI-point evidence) clears the floor
     # but isn't a distinct home; excluded only from the stricter
-    # n_primary_footprints_per_parcel below. Synthetic rows bypass this too.
+    # n_primary_buildings_per_parcel below. Synthetic rows bypass this too.
     if priority_column in footprints.columns:
         not_secondary = (
             is_synthetic
@@ -216,7 +225,7 @@ def summarize_footprint_morphology(
     is_primary_candidate = meets_floor & not_secondary
 
     # Confirmed-dwelling subset for max_parcels_per_footprint/
-    # max_dwellings_per_footprint: is_primary_candidate alone lets through
+    # max_dwellings_per_building: is_primary_candidate alone lets through
     # sole-footprint-on-parcel, NSI-only, and synthetic rows with no dwelling
     # evidence at all, so a positive dwelling_column is required on top of it.
     if dwelling_column in footprints.columns:
@@ -379,21 +388,21 @@ def summarize_footprint_morphology(
     in_parcel_sum = in_parcel_sum.mask((n_fp == 0) & in_parcel_sum.isna(), 0.0)
     sum_a_primary = sum_a_primary.mask((n_primary == 0) & sum_a_primary.isna(), 0.0)
 
-    spine['n_footprints_per_parcel'] = n_fp
-    spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
+    spine['n_buildings_per_parcel'] = n_fp
+    spine['n_small_elongated_buildings_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
     spine['footprint_area_m2_dominant'] = sum_a
     spine['footprint_area_m2_in_parcel'] = in_parcel_sum
-    spine['n_primary_footprints_per_parcel'] = n_primary
+    spine['n_primary_buildings_per_parcel'] = n_primary
     spine['footprint_area_m2_primary'] = sum_a_primary
-    spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
+    spine['max_dwellings_per_building'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')
     state.spine = spine
 
     if state.verbose:
         print(
             '  summarize_footprint_morphology: '
-            f'{int((spine["n_small_elongated_footprints_per_parcel"] > 0).sum()):,} '
+            f'{int((spine["n_small_elongated_buildings_per_parcel"] > 0).sum()):,} '
             f'parcels with manufactured-home-shaped footprints.'
         )
     if state.timer:

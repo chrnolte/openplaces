@@ -169,8 +169,9 @@ def test_the_building_spine_sits_between_the_footprint_geospine_and_spine(dag):
     # Slice b2: the footprint geospine feeds the building geospine, the
     # building spine reads both (its own geospine and the footprint
     # geospine's links) and writes the footprint-to-building link, and
-    # the footprint spine projects the building spine, so the parcel
-    # geospine, which reads the footprint spine, comes after all of them.
+    # the footprint spine projects the building spine. The parcel
+    # geospine reads the building spine (b3 step 4), not the footprint
+    # spine, so it comes after the building chain.
     footprint_geospine = get_output_path('US_footprint-geospine-2026', admin_id=COUNTY)
     building_geospine = get_output_path('US_building-geospine-2026', admin_id=COUNTY)
     building_spine = get_output_path('US_building-spine-2026', admin_id=COUNTY)
@@ -189,9 +190,11 @@ def test_the_building_spine_sits_between_the_footprint_geospine_and_spine(dag):
     )
     assert building_spine in footprint_spine_inputs
     assert footprint_geospine in footprint_spine_inputs
-    assert footprint_spine in dag.input_paths(
+    parcel_geospine_inputs = dag.input_paths(
         'harmonize', 'US_parcel-geospine-2026', COUNTY
     )
+    assert building_spine in parcel_geospine_inputs
+    assert footprint_spine not in parcel_geospine_inputs
 
     link = get_entity_link_path(
         'US_footprint-geospine-2026', 'US_building-geospine-2026', COUNTY

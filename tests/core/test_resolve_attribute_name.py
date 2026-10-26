@@ -20,7 +20,7 @@ def test_exact_registry_row_wins():
         'parcel_id_local',
         'occupancy_type_review',
         'max_parcels_per_footprint',
-        'max_dwellings_per_footprint',
+        'max_dwellings_per_building',
         'year_first_buildup_hisdac',
     ]:
         assert resolve_attribute_name(name) == name

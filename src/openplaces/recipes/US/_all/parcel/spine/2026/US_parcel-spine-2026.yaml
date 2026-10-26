@@ -62,13 +62,15 @@ pipeline:
       - recipe_id: dwelling-overture-2025
         columns: [address_street, address_number, postal_code, city]
 
-  # Relay dwelling evidence via each parcel's primary footprint (per
-  # classify_footprint_priority on the footprint spine) -- the cleaner,
+  # Relay dwelling evidence via each parcel's primary building (per
+  # classify_footprint_priority on the building spine) -- the cleaner,
   # per-building-anchored signal, prioritized above the direct link above
   # in reconcile_addresses below. A no-op wherever a state has no dwelling
-  # coverage at all.
+  # coverage at all. Read from the building spine, where the dwelling
+  # points link (b3 step 4); its columns keep their _dwelling_footprint
+  # names, which reconcile_addresses below reads.
   - step: attribute_dwelling_address
-    footprint_recipe_id: US_footprint-spine-2026
+    footprint_recipe_id: US_building-spine-2026
 
   # Standardize addresses and generate clean street names for down-stream imputation blocks.
   - step: reconcile_addresses
@@ -229,6 +231,6 @@ pipeline:
   # Classify property_source and, where no property-spine source exists (see
   # the count-only link_by_id in the geospine), estimate a property/unit
   # count from evidence that already implies internal multiplicity
-  # (n_dwellings/max_dwellings_per_footprint) rather than leaving a
+  # (n_dwellings/max_dwellings_per_building) rather than leaving a
   # multi-unit parcel looking like a single, unverified property.
   - step: estimate_property_counts

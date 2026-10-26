@@ -74,7 +74,7 @@ occupancy:
   # cutoff is stated exactly once even though classify_manufactured_homes
   # reads it here and the vote scores it there. One deliberate cousin lives
   # elsewhere: the harmonize-stage per-parcel candidate count
-  # (n_small_elongated_footprints_per_parcel, US_parcel-spine-2026) uses
+  # (n_small_elongated_buildings_per_parcel, US_parcel-spine-2026) uses
   # aspect >= 2.0 with the same 185 m2 -- a looser net for counting shapes,
   # not this per-building cutoff; see the comment there.
   rules:
@@ -1267,7 +1267,7 @@ pipeline:
                   - {type: not_null, column: parcel_id}
           # The parcel lane's park classification, restricted to its rule
           # route. That route carries a hard require on
-          # n_small_elongated_footprints_per_parcel >= 4 -- footprint
+          # n_small_elongated_buildings_per_parcel >= 4 -- footprint
           # morphology, independent of NSI. Rows filled by reconcile_land_use
           # instead are an NSI/FEMA re-vote under a second name and are
           # excluded by the source check. Read here rather than the joined

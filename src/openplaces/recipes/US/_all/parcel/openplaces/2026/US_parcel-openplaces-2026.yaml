@@ -372,7 +372,7 @@ pipeline:
         min_score: 2
         require:
           - type: count_at_least
-            column: n_small_elongated_footprints_per_parcel
+            column: n_small_elongated_buildings_per_parcel
             min: 4
         indicators:
           - type: any_of
@@ -402,7 +402,7 @@ pipeline:
               - {type: equals, column: keyword_class, value: RV Park}
               - {type: equals, column: style_class, value: RV Park}
           - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
-          - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
+          - {type: count_at_least, column: n_buildings_per_parcel, min: 4}
 
       # Standalone Manufactured Home (excludes multi-unit parks).
       - class: Manufactured Home
@@ -455,8 +455,8 @@ pipeline:
             indicators:
               - {type: equals, column: keyword_class, value: Multiple Single-Family}
               - {type: equals, column: style_class, value: Multiple Single-Family}
-          - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
-          - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
+          - {type: count_at_least, column: n_primary_buildings_per_parcel, min: 2}
+          - {type: numeric_at_most, column: n_small_elongated_buildings_per_parcel, max: 0}
           # Backing occupancy classification.
           - type: any_of
             indicators:
@@ -493,7 +493,7 @@ pipeline:
       # Townhomes: single-footprint structures genuinely spanning multiple
       # separately-parceled units (horizontally adjacent, each with its own
       # parcel) -- max_parcels_per_footprint confirms that separation
-      # directly. max_dwellings_per_footprint alone (multiple confirmed
+      # directly. max_dwellings_per_building alone (multiple confirmed
       # dwellings on ONE footprint, regardless of how many parcels it spans)
       # is deliberately excluded here: that pattern is a vertically-stacked
       # condo/multi-family building on a single parcel, not a townhome --
@@ -502,7 +502,7 @@ pipeline:
       - class: Townhome
         min_score: 4
         indicators:
-          - {type: numeric_at_most, column: n_footprints_per_parcel, max: 1}
+          - {type: numeric_at_most, column: n_buildings_per_parcel, max: 1}
           - type: any_of
             indicators:
               - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
@@ -606,7 +606,7 @@ pipeline:
             indicators:
               - {type: equals, column: keyword_class, value: Vacant}
               - {type: equals, column: style_class, value: Vacant}
-          - {type: numeric_at_most, column: n_footprints_per_parcel, max: 0}
+          - {type: numeric_at_most, column: n_buildings_per_parcel, max: 0}
 
       # Vacant in area, not just improvement value: this parcel's total real
       # footprint coverage is a vanishingly small share of its own area --
@@ -626,7 +626,7 @@ pipeline:
       # existing Vacant rule cannot: its footprint z-score is computed
       # relative to its own near-empty assessor-use cohort, so a few small
       # structures look anomalously *large* there, not small, and it has
-      # some real footprints (n_footprints_per_parcel=9), so Vacant's
+      # some real footprints (n_buildings_per_parcel=9), so Vacant's
       # zero-footprint indicator doesn't fire either.
       - class: Mostly Vacant
         min_score: 2

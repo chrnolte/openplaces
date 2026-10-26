@@ -26,7 +26,7 @@ def test_recreation_group_and_footprints_alone_are_not_an_rv_park():
             'keyword_class': [None, 'RV Park'],
             'style_class': [None, None],
             'group_parcel': ['Entertainment/Recreation'] * 2,
-            'n_footprints_per_parcel': [12, 12],
+            'n_buildings_per_parcel': [12, 12],
         }
     )
     winner = score_decisions(curated, [_rv_decision()])[0]
