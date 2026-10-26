@@ -549,7 +549,12 @@ The step sub-modules:
 - `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
   prepared references from its persisted output and link sidecars
   (`load_geospine`); which links to restore is read from the geospine
-  recipe's own pipeline, so the two YAMLs cannot drift. A spine built
+  recipe's own pipeline, so the two YAMLs cannot drift. It reads that
+  pipeline with the unit's patches applied, as the geospine ran it, and
+  so do the DAG's declared sidecars (`RecipeDAG.extra_outputs`) and the
+  harmonizer's owed-sidecar check: a link step a county's patch removed
+  owes no sidecar. Harmonize outputs record their applied patches in the
+  footer (`openplaces:recipe_patches`), as curate outputs do. A spine built
   from another entity's geospine has no links of its own:
   `links_recipe_id` names the geospine whose sidecars apply, and they
   are restored keyed by that entity's id and re-keyed to this spine

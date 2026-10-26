@@ -40,6 +40,7 @@ from openplaces.io.harmonizer.links import (
 )
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
+    apply_recipe_patches,
     get_output_path,
     get_recipe_by_id,
     get_recipe_id,
@@ -112,6 +113,12 @@ def load_geospine(
         )
     if isinstance(geospine, str):
         geospine = get_recipe_by_id(geospine)
+    # The geospine's pipeline as this unit ran it: a county's patch
+    # that removed a link step left no sidecar to restore, and the
+    # fingerprints of the rest were computed from the patched step
+    # positions.
+    if state.admin_id is not None:
+        geospine, _ = apply_recipe_patches(geospine, state.admin_id)
     geospine_id = get_recipe_id(geospine)
 
     spine = get_entities(geospine, state.admin_id, geom=True, missing='raise')
@@ -163,6 +170,8 @@ def _restore_foreign_links(
     are rebuilt from this spine's own provenance columns.
     """
     other = get_recipe_by_id(links_recipe_id)
+    if state.admin_id is not None:
+        other, _ = apply_recipe_patches(other, state.admin_id)
     other_id = get_recipe_id(other)
     if links_key is None:
         entity = other.get('entity')

@@ -24,6 +24,7 @@ from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.cleanup import _relative_posix, _walk_dag
 from openplaces.recipe import (
+    apply_recipe_patches,
     get_output_path,
     get_recipe_by_id,
     get_recipe_dependencies,
@@ -967,6 +968,11 @@ class RecipeDAG:
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)
+        # The pipeline the job runs, patches included, as the edges are
+        # derived (get_recipe_dependencies): a link step a patch removed
+        # writes no sidecar, and declaring one would fail the job.
+        if node_admin is not None:
+            recipe, _ = apply_recipe_patches(recipe, node_admin)
         for step in recipe.get('pipeline') or []:
             if not isinstance(step, dict):
                 continue
