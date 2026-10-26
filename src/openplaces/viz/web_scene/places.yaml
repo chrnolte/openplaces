@@ -28,36 +28,14 @@ places:
     center_note: Boston University, Marsh Plaza
     downtown: [-71.05801, 42.36028]
     downtown_note: City hall lot, 1 City Hall Sq
-  - slug: charlotte
-    title: Charlotte, North Carolina
-    around: downtown Charlotte
-    state: US-NC
-    center: [-80.83927, 35.22128]
-    center_note: City hall lot, 600 E 4th St
+  # North Carolina keeps three places on the site: Raleigh, Asheville
+  # and Wilmington (maintainer, 2026-10-25).
   - slug: raleigh
     title: Raleigh, North Carolina
     around: downtown Raleigh
     state: US-NC
     center: [-78.64298, 35.77873]
     center_note: City hall lot, 222 W Hargett St
-  - slug: greensboro
-    title: Greensboro, North Carolina
-    around: downtown Greensboro
-    state: US-NC
-    center: [-79.79281, 36.07090]
-    center_note: City hall lot, 300 W Washington St
-  - slug: winston-salem
-    title: Winston-Salem, North Carolina
-    around: downtown Winston-Salem
-    state: US-NC
-    center: [-80.24304, 36.09527]
-    center_note: City hall lot, 101 N Main St
-  - slug: durham
-    title: Durham, North Carolina
-    around: downtown Durham
-    state: US-NC
-    center: [-78.8986, 35.9940]
-    center_note: City hall
   - slug: asheville
     title: Asheville, North Carolina
     around: downtown Asheville

@@ -802,13 +802,13 @@ def test_site_publishes_each_phone_page_first_and_the_landing_last(monkeypatch):
         site, 'deploy_landing', lambda root, go: calls.append(('/', go))
     )
     monkeypatch.setattr(site.time, 'sleep', lambda seconds: None)
-    site.main(['publish', 'durham', 'nantucket', 'boston'])
+    site.main(['publish', 'raleigh', 'nantucket', 'boston'])
     # A dry run unless --go; the phone page before the page that sends
     # phones to it; a place of whole units has none; the landing page
     # last.
     assert calls == [
-        ('durham-phone', False),
-        ('durham', False),
+        ('raleigh-phone', False),
+        ('raleigh', False),
         ('nantucket', False),
         ('boston-phone', False),
         ('boston', False),

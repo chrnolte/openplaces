@@ -2,7 +2,7 @@
 
 The published counterpart of `local` (maintainer, 2026-10-18)::
 
-    python -m openplaces.viz.web_scene.site build boston durham
+    python -m openplaces.viz.web_scene.site build boston raleigh
     python -m openplaces.viz.web_scene.site build --all
     python -m openplaces.viz.web_scene.site landing [--no-thumbs]
     python -m openplaces.viz.web_scene.site refresh

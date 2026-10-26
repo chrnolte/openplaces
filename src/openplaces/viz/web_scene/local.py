@@ -3,7 +3,7 @@
 One command for a local look at a place (maintainer, 2026-10-18)::
 
     python -m openplaces.viz.web_scene.local boston
-    python -m openplaces.viz.web_scene.local durham --phone
+    python -m openplaces.viz.web_scene.local raleigh --phone
 
 It builds the place's page (and with ``--phone`` its phone page) from
 the delivered bundles into ``<share>/web/values-local/<slug>``, marks
