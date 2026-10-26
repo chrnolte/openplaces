@@ -72,7 +72,7 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
 - `models.py` — pretrained-model download and cache handling
 
 Raster-consuming steps name their raster by a path relative to the configured
-`rasters` directory, resolved by `path.resolve_raster_path()`, so a recipe
+`external` directory, resolved by `path.resolve_raster_path()`, so a recipe
 stays portable across machines. An absolute path passes through unchanged.
 
 Examples include roof-shape, occupancy, and story-count evidence from imagery,

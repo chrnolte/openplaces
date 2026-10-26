@@ -38,7 +38,7 @@ def resolve_raster_reference(
     """Return the raster file a step should sample, by path or by recipe.
 
     A recipe names a raster in one of two ways. *raster_path* is a
-    location under the configured raster root (or absolute), for products
+    location under the configured external directory (or absolute), for products
     placed by hand. *raster_recipe_id* names a raster dataset recipe,
     optionally with a derived *layer* and *year* (a ``{layer}_{year}``
     partition written by the Ingester's ``derived_layers``); the file is
@@ -97,7 +97,8 @@ def sample_raster(
     Parameters
     ----------
     raster_path : str, optional
-        Path to the raster file, relative to the raster root or absolute.
+        Path to the raster file, relative to the external directory or
+        absolute.
         Alternatively name a recipe through *raster_recipe_id*.
     raster_key : str
         Label used to build the default column name and (for

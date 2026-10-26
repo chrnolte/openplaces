@@ -309,7 +309,7 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
     level : int
         Admin level to build.
     raster : str, optional
-        Population raster, relative to the configured rasters directory.
+        Population raster, relative to the configured external directory.
     verbose : bool, optional
         Print coverage and the summed total.
 
@@ -417,7 +417,7 @@ def build_population_from_entity(
     join_column : str, optional
         Spine column holding the source's own code.
     raster : str, optional
-        Population raster, relative to the rasters directory.
+        Population raster, relative to the external directory.
     key : callable, optional
         Normalizes a code on both sides before joining. Needed where a
         code is renumbered under a stable name: Connecticut replaced its

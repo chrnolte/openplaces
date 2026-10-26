@@ -367,16 +367,18 @@ def external_dir(*args, **kwargs):
 def resolve_raster_path(raster_path) -> Path:
     """Resolve a recipe's raster reference against the configured root.
 
-    Recipes name rasters by a path relative to the ``rasters`` directory, so
-    the same recipe runs on any machine: only the root differs, and it is set
-    once per user or project in the configuration. An absolute path is
-    returned unchanged, which keeps ad-hoc callers and one-off notebooks
-    working.
+    Recipes name rasters by a path relative to the ``external`` directory
+    (for example ``_all/population/ghsl/r2023a/population-ghsl-r2023a.tif``,
+    where an ingest leaves it), so the same recipe runs on any machine: only
+    the root differs, and it is set once per user or project in the
+    configuration. An absolute path is returned unchanged, which keeps ad-hoc
+    callers and one-off notebooks working.
 
     Parameters
     ----------
     raster_path : str or pathlib.Path
-        Relative path under the configured raster root, or an absolute path.
+        Relative path under the configured external directory, or an
+        absolute path.
 
     Returns
     -------
@@ -387,7 +389,7 @@ def resolve_raster_path(raster_path) -> Path:
     candidate = Path(raster_path)
     if candidate.is_absolute():
         return candidate
-    return cfg.rasters_dir / candidate
+    return cfg.external_dir / candidate
 
 
 def raw_path(*args, root=cfg.raw_dir, use_prefix=False, **kwargs):
