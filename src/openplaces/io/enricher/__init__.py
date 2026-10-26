@@ -392,7 +392,7 @@ class Enricher:
             reprocess=reprocess,
         )
 
-        for step_cfg in expand_year_steps(pipeline):
+        for step_index, step_cfg in enumerate(expand_year_steps(pipeline)):
             step_name = step_cfg.get('step')
             if not step_name:
                 raise ValueError(
@@ -416,6 +416,9 @@ class Enricher:
                 )
             params = {k: v for k, v in step_cfg.items() if k not in ('step', 'enabled')}
             state = fn(state, **params)
+            # One mark per recipe step (see the harmonizer's loop).
+            if state.timer:
+                state.timer.mark(f'step {step_index:02d} {step_name}')
 
         out_path = get_output_path(
             self.recipe,
