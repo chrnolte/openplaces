@@ -83,15 +83,19 @@ def test_output_path_matches_recipe_layer(dag):
 
 def test_extra_outputs_include_link_sidecar(dag):
     # Persistence is default-on: every link_to_reference step that does not
-    # opt out with save_link: false declares its sidecar, the spatial_point
-    # joins (NSI, Overture) alongside the parcel overlay.
+    # opt out with save_link: false declares its sidecar. The footprint
+    # geospine keeps the parcel overlay; the spatial_point joins (NSI,
+    # Overture) are the building geospine's.
     extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
     parcel_sidecar = get_entity_link_path(
         'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
     )
-    assert parcel_sidecar in extras
-    assert len(extras) == 3
-    assert len(set(extras)) == 3
+    assert extras == [parcel_sidecar]
+    extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
+    assert extras == [
+        get_entity_link_path('US_building-geospine-2026', ref, COUNTY)
+        for ref in ('US_building-nsi-2026', 'dwelling-overture-2025')
+    ]
     # The attribute recipe runs no link steps of its own.
     assert dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY) == []
 

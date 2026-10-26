@@ -85,10 +85,10 @@ def load_geospine(
     recipe rather than silently recomputing geometry here.
 
     A spine established from another entity's geospine (the building
-    geospine from the footprint geospine) has no links of its own; the
-    links it needs were computed against the rows it was built from.
+    geospine from the footprint geospine) computes its point links
+    itself but takes its parcel overlay from the rows it was built from.
     *links_recipe_id* names that geospine, and its sidecars are restored
-    the same way and re-keyed to this spine through *links_key*, the
+    first, the same way, and re-keyed to this spine through *links_key*, the
     column holding each row's id in that geospine (`footprint_id`). The
     re-keying is a rename while the relation is one to one; a row without
     a source id gets no links, and several rows sharing one source id are
@@ -106,7 +106,7 @@ def load_geospine(
     resolves, so that the curate steps that read a link sidecar by the
     curated entity's geospine (`link_curated_entity`,
     `apportion_curated_values`, `collect_link_ids`) find the building's
-    parcel, point and FEMA pairs where they look for them. The written
+    parcel pairs where they look for them. The written
     copy is the source sidecar's rows with the id column renamed and
     re-keyed, its footer fingerprint kept, and `LINK_REKEYED_FROM_KEY`
     naming the geospine it came from; the harmonize-side loader never
@@ -155,15 +155,10 @@ def load_geospine(
     state.spine = spine
     spine_id_col = spine.index.name
 
-    for step_index, step_cfg in enumerate(geospine.get('pipeline') or []):
-        if not isinstance(step_cfg, dict):
-            continue
-        if step_cfg.get('step') != 'link_to_reference':
-            continue
-        if step_cfg.get('save_link') is False:
-            continue
-        state = _restore_link(state, geospine, step_index, step_cfg, spine_id_col)
-
+    # The other geospine's links first: they were computed first (that
+    # geospine runs before this one), and the attribute steps iterate the
+    # crosswalks in the order they arrive, so the parcel overlay keeps
+    # its place ahead of the point links this geospine computed itself.
     if links_recipe_id is not None:
         state = _restore_foreign_links(
             state,
@@ -178,9 +173,106 @@ def load_geospine(
             'own sidecars are already beside its output.'
         )
 
+    for step_index, step_cfg in enumerate(geospine.get('pipeline') or []):
+        if not isinstance(step_cfg, dict):
+            continue
+        if step_cfg.get('step') != 'link_to_reference':
+            continue
+        if step_cfg.get('save_link') is False:
+            continue
+        state = _restore_link(state, geospine, step_index, step_cfg, spine_id_col)
+
     if state.timer:
         state.timer.mark('Load (geospine)')
     return state
+
+
+@_register('load_links', phase='geometry')
+def load_links(
+    state: HarmonizeState,
+    links_recipe_id: str,
+    links_key: str | None = None,
+):
+    """Restore another geospine's links onto this geospine's rows.
+
+    The geometry-phase counterpart of `load_geospine`'s
+    *links_recipe_id*, for a geospine built from another one's rows
+    (the building geospine from the footprint geospine). It restores
+    that geospine's link sidecars, re-keyed to this spine's index
+    through *links_key*, as crosswalks, overlays and prepared
+    references, so that a later `link_to_reference` step finds them
+    where it would find a link this recipe computed: the point joins
+    read the first polygon overlay for their same-parcel pass, their
+    cross-parcel filter and the parcel id they attach. Reading the
+    persisted link, rather than overlaying parcels again, keeps one
+    parcel overlay per outline, computed where the outline geometry
+    steps need it (plans/building-spine-consumers-and-footprint-projection.md).
+
+    Nothing is written. A link computed after this step depends on what
+    it restored, so its fingerprint records each restored sidecar's
+    content hash (`restored_link_hashes`): a rerun of the other geospine
+    makes it stale even where no ingest input of this recipe moved.
+
+    Parameters
+    ----------
+    links_recipe_id : str
+        The geospine whose link sidecars are restored.
+    links_key : str, optional
+        Column of this spine holding the row's id in *links_recipe_id*.
+        Defaults to that recipe's `{entity_type}_id`.
+    """
+    # The labeled crosswalk, not the rebuilt one: the point joins ran
+    # against the geospine's in-memory crosswalk, which keeps every
+    # 'condo cluster' pair, and the rebuild trims the small ones by
+    # min_fraction_of_largest. Measured 2026-10-26 on US-NC-CUR: the
+    # rebuild drops 44 labeled pairs and adds 1, which moved one
+    # building's Overture address aggregation.
+    state = _restore_foreign_links(
+        state,
+        links_recipe_id,
+        links_key,
+        state.spine.index.name,
+        labeled_crosswalk=True,
+    )
+    if state.timer:
+        state.timer.mark('Load (links)')
+    return state
+
+
+def restored_link_hashes(recipe: dict, step_index: int, admin_id) -> dict:
+    """Content hashes of the sidecars `load_links` steps restore.
+
+    Covers the `load_links` steps of *recipe* before *step_index*, keyed
+    by sidecar file name; empty when there are none, which is every
+    recipe but a geospine built from another one. Computed from the
+    recipe and the files alone, so the geospine loader recomputes the
+    same value the writing run stored. A sidecar that does not exist
+    hashes to None (a link the other geospine skipped for a coverage
+    gap).
+    """
+    from openplaces.io.harmonizer.links.sidecars import _hash_file
+
+    hashes = {}
+    for step_cfg in (recipe.get('pipeline') or [])[:step_index]:
+        if not isinstance(step_cfg, dict) or step_cfg.get('step') != 'load_links':
+            continue
+        other = _as_run_for(get_recipe_by_id(step_cfg['links_recipe_id']), admin_id)
+        other_id = get_recipe_id(other)
+        for other_cfg in other.get('pipeline') or []:
+            if not isinstance(other_cfg, dict):
+                continue
+            if other_cfg.get('step') != 'link_to_reference':
+                continue
+            if other_cfg.get('save_link') is False:
+                continue
+            resolved_id, _ = _resolve_reference_recipe(
+                other_cfg.get('recipe_id'), other_cfg.get('entity_type'), admin_id
+            )
+            if resolved_id is None:
+                continue
+            path = get_entity_link_path(other_id, resolved_id, admin_id)
+            hashes[path.name] = _hash_file(path) if path.exists() else None
+    return hashes
 
 
 def _as_run_for(geospine: dict, admin_id) -> dict:
@@ -205,6 +297,7 @@ def _restore_foreign_links(
     links_key: str | None,
     spine_id_col: str,
     persist_to: str | None = None,
+    labeled_crosswalk: bool = False,
 ) -> HarmonizeState:
     """Restore another geospine's links and re-key them to this spine.
 
@@ -213,7 +306,9 @@ def _restore_foreign_links(
     its fingerprints), keyed by *links_key*; every crosswalk and overlay
     that arrives is then re-keyed to this spine's index through the
     *links_key* column. The inferred-row frames need no re-keying: they
-    are rebuilt from this spine's own provenance columns.
+    are rebuilt from this spine's own provenance columns. With
+    *labeled_crosswalk* each overlay's crosswalk is taken from the
+    sidecar's link labels (see `_restore_link`).
     """
     other = _as_run_for(get_recipe_by_id(links_recipe_id), state.admin_id)
     other_id = get_recipe_id(other)
@@ -247,7 +342,14 @@ def _restore_foreign_links(
             continue
         if step_cfg.get('save_link') is False:
             continue
-        state = _restore_link(state, other, step_index, step_cfg, links_key)
+        state = _restore_link(
+            state,
+            other,
+            step_index,
+            step_cfg,
+            links_key,
+            labeled_crosswalk=labeled_crosswalk,
+        )
 
     for recipe_id in list(state.crosswalks):
         if recipe_id in already:
@@ -518,8 +620,16 @@ def _restore_link(
     step_index: int,
     step_cfg: dict,
     spine_id_col: str,
+    labeled_crosswalk: bool = False,
 ) -> HarmonizeState:
-    """Rebuild one link_to_reference step's state from its sidecar."""
+    """Rebuild one link_to_reference step's state from its sidecar.
+
+    An overlay's crosswalk is rebuilt from the overlay by the link
+    step's own thresholds. With *labeled_crosswalk* it is instead the
+    sidecar's labeled rows, in file order: the pairs the geospine's
+    crosswalk held when it wrote the file, including the 'condo
+    cluster' pairs that consolidation adds without the trim.
+    """
     resolved_id, resolved_et = _resolve_reference_recipe(
         step_cfg.get('recipe_id'), step_cfg.get('entity_type'), state.admin_id
     )
@@ -607,6 +717,10 @@ def _restore_link(
                 spine_id_col,
                 fraction_max=float(thresholds.get('chain_fraction_max', 0.75)),
             )
+        if labeled_crosswalk:
+            flat = pd.read_parquet(sidecar_path)
+            flat = flat[flat['link'].notna()].set_index([spine_id_col, 'parcel_id'])
+            crosswalk = flat[[c for c in crosswalk.columns if c in flat.columns]]
         state.references[resolved_id] = ref_polys
         state.crosswalks[resolved_id] = crosswalk
         state.overlays[resolved_id] = overlay

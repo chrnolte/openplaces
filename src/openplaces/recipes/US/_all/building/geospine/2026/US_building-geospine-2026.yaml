@@ -14,11 +14,13 @@
 # `footprint_id` and indexes the spine by `building_id`, which takes
 # the footprint id's value (adopt_source_entity_id), so the two ids are
 # equal while the relation is one to one; a building that is not one
-# outline gets its id from the step that adds it. The footprint-to-building link table is
-# written by the attribute recipe (US_building-spine-2026), which also
-# runs every attribute step that used to run on the footprint spine
-# (slice b2), against the footprint geospine's link sidecars re-keyed
-# to building ids.
+# outline gets its id from the step that adds it. It then links the NSI
+# and dwelling points to the buildings and owns those link tables. The
+# footprint-to-building link table is written by the attribute recipe
+# (US_building-spine-2026), which also runs every attribute step that
+# used to run on the footprint spine (slice b2), against these point
+# links and the footprint geospine's parcel overlay re-keyed to
+# building ids.
 #
 # What it does not do yet, by slice: point sources without an outline
 # (NSI buildings the footprint layers miss) become rows in b3, as do
@@ -28,7 +30,8 @@
 
 description: >-
   Building geometry spine, one building per footprint of the footprint
-  geospine, keeping each footprint's id and the geographic ids.
+  geospine, keeping each footprint's id and the geographic ids, with
+  persisted NSI and dwelling link tables.
 
 stage: harmonize
 admin_id: US
@@ -91,3 +94,40 @@ pipeline:
 
   # Centroid and area of the building's own outline.
   - step: derive_geometry_attributes
+
+  # NSI and dwelling points link to the building through its own
+  # polygon (decided 2026-10-04), so the two point joins run here and
+  # this recipe owns their link tables. Each join reads the parcel
+  # overlay for its same-parcel pass, its cross-parcel filter and the
+  # parcel id it attaches; the overlay stays on the footprint geospine,
+  # whose outline steps need it, and is restored here re-keyed to
+  # building ids rather than computed a second time. The thresholds
+  # are the ones the footprint geospine ran with, so while one building
+  # is one outline the joins return what they returned there
+  # (plans/building-spine-consumers-and-footprint-projection.md).
+  - step: load_links
+    links_recipe_id: US_footprint-geospine-2026
+    links_key: footprint_id
+
+  - step: link_to_reference
+    recipe_id: US_building-nsi-2026
+    source_geometry_type: single_building_point
+    join: spatial_point
+    remap_id: US_building-nsi-2026_occupancy-type-remap
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 100
+      # Resolve NSI duplicate points at the same location by ignoring low-rank duplicates.
+      resolve_duplicates:
+        key: building_id_ubid
+        ignore_sources: [ESRI, HAZUS/NSI-2015]
+
+  - step: link_to_reference
+    recipe_id: dwelling-overture-2025
+    source_geometry_type: single_dwelling_point
+    join: spatial_point
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 50
+      aggregate_multipoint: true
+      dedup_addresses: true

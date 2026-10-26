@@ -153,6 +153,50 @@ def test_a_rekeyed_sidecar_keeps_its_rows_labels_and_footer(tmp_path):
     assert not (tmp_path / 'never.parquet').exists()
 
 
+def test_a_point_link_after_load_links_is_fingerprinted_by_the_parcel_overlay(
+    mock_data_root,
+):
+    """b3 step 1: the building geospine's point joins read the footprint
+    geospine's parcel overlay, a harmonize product no ingest entry of the
+    fingerprint covers, so a rewritten overlay must make them stale."""
+    from openplaces.geo.link import get_entity_link_path
+    from openplaces.io.harmonizer.links.sidecars import _link_fingerprint
+
+    unit = 'US-NC-BRU'
+    building = get_recipe_by_id('US_building-geospine-2026')
+    steps = [s['step'] for s in building['pipeline']]
+    nsi_index = steps.index('link_to_reference')
+    assert steps.index('load_links') < nsi_index
+
+    def fingerprint(recipe, step_index, ref):
+        state = HarmonizeState(recipe=recipe, admin_id=unit, verbose=False, timer=None)
+        state.step_index = step_index
+        return _link_fingerprint(state, ref, {'join': 'spatial_point'})
+
+    overlay = get_entity_link_path(
+        'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', unit
+    )
+    absent = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    assert absent['restored_links'] == {overlay.name: None}
+
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_bytes(b'one')
+    first = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    overlay.write_bytes(b'two')
+    second = fingerprint(building, nsi_index, 'US_building-nsi-2026')
+    assert first['restored_links'][overlay.name] is not None
+    assert first['restored_links'] != second['restored_links']
+
+    # No other link gets the key: the footprint geospine's own overlay
+    # fingerprint is the one already stored in every sidecar on disk.
+    footprint = get_recipe_by_id('US_footprint-geospine-2026')
+    overlay_index = [s['step'] for s in footprint['pipeline']].index(
+        'link_to_reference'
+    )
+    plain = fingerprint(footprint, overlay_index, 'US-NC_parcel-nconemap-2025')
+    assert 'restored_links' not in plain
+
+
 def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
     geospine = get_recipe_by_id('US_building-geospine-2026')
     spine = get_recipe_by_id('US_building-spine-2026')
@@ -162,9 +206,14 @@ def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
         'resolve_spine',
         'adopt_source_entity_id',
         'derive_geometry_attributes',
+        'load_links',
+        'link_to_reference',
+        'link_to_reference',
     ]
     upstream = {e.upstream_recipe_id for e in get_recipe_dependencies(geospine)}
     assert 'US_footprint-geospine-2026' in upstream
+    # b3 step 1: the point joins run on the building's own polygon.
+    assert {'US_building-nsi-2026', 'dwelling-overture-2025'} <= upstream
     upstream = {e.upstream_recipe_id for e in get_recipe_dependencies(spine)}
     assert {'US_building-geospine-2026', 'US_footprint-geospine-2026'} <= upstream
     # The footprint spine is downstream of the building spine (it projects

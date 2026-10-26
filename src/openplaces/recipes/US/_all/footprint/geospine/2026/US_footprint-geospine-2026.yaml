@@ -2,8 +2,10 @@
 #
 # The expensive geometry half of what used to be one US_footprint-spine-2026
 # pipeline: spine resolution, the parcel identity overlay, condo
-# consolidation, parcel-inferred additions, overlap cleanup, and the NSI /
-# Overture point joins. Every link product is persisted as an n:m sidecar
+# consolidation, parcel-inferred additions and overlap cleanup. The NSI
+# and Overture point joins run on the building geospine (US_building-
+# geospine-2026), against this recipe's parcel overlay re-keyed to
+# building ids. Every link product is persisted as an n:m sidecar
 # beside this recipe's output (save_link is default-on), so the attribute
 # recipe (US_footprint-spine-2026, which declares this recipe as its
 # entity_recipe and starts with load_geospine) and the curate stage's
@@ -12,7 +14,7 @@
 
 description: >-
   Footprint geometry spine merging OBM, Microsoft, and state footprints,
-  with persisted parcel, NSI, and dwelling link tables.
+  with a persisted parcel link table.
 
 stage: harmonize
 admin_id: US
@@ -151,25 +153,5 @@ pipeline:
         output_column: zcta5_id
         id_column: zcta5_geoid
 
-  - step: link_to_reference
-    recipe_id: US_building-nsi-2026
-    source_geometry_type: single_building_point
-    join: spatial_point
-    remap_id: US_building-nsi-2026_occupancy-type-remap
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 100
-      # Resolve NSI duplicate points at the same location by ignoring low-rank duplicates.
-      resolve_duplicates:
-        key: building_id_ubid
-        ignore_sources: [ESRI, HAZUS/NSI-2015]
-
-  - step: link_to_reference
-    recipe_id: dwelling-overture-2025
-    source_geometry_type: single_dwelling_point
-    join: spatial_point
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 50
-      aggregate_multipoint: true
-      dedup_addresses: true
+  # The NSI and dwelling point joins run on the building geospine, which
+  # restores this recipe's parcel overlay for them (load_links).

@@ -66,6 +66,7 @@ n_parcels_per_footprint,Number of parcels the footprint overlaps,,float,first,,f
 shared_wall_m,"Longest run of the footprint outline's boundary lying on or inside another outline of at least 20 m2, found by strict intersection (no buffer, no distance tolerance); 0 where no such outline touches it, missing on a synthetic geometry. A party wall of a drawn rowhouse; read by the Manufactured Home decision's guard",m,float,max,,footprint,curate
 envelope_id,"Open Location Code of the envelope a footprint piece was cut from, where a building crossing a unit line was reconciled to one envelope and cut at the line; the pieces of one building share it",,string,first,,footprint,harmonize
 n_parcels_per_building,Number of parcels the building overlaps; the building spine's name for n_parcels_per_footprint,,float,first,,building,harmonize
+n_buildings_per_footprint,"Number of buildings the footprint outline holds, by the footprint-to-building link: one while each building is one outline, several where one outline draws a row of townhomes",,float,sum,,footprint,curate
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize

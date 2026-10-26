@@ -19,12 +19,17 @@ def test_curate_recipe_edges():
 
 
 def test_footprint_spine_literal_edges():
-    # The geometry phase (geospine) hosts resolve_spine and the spatial
-    # links, so the raw footprint sources are its literal edges now.
+    # The geometry phase (geospine) hosts resolve_spine and the parcel
+    # overlay, so the raw footprint sources are its literal edges now.
     edges = get_recipe_dependencies('US_footprint-geospine-2026')
     upstream = _upstream_ids(edges)
     assert 'footprint-obm-2025' in upstream
     assert 'US_footprint-microsoft-v2' in upstream
+    # The point joins moved to the building geospine (b3 step 1).
+    assert 'US_building-nsi-2026' not in upstream
+    assert 'dwelling-overture-2025' not in upstream
+    edges = get_recipe_dependencies('US_building-geospine-2026')
+    upstream = _upstream_ids(edges)
     assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
     # Value crosswalks are not data dependencies

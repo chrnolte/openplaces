@@ -135,6 +135,18 @@ def _link_fingerprint(
         'prior_geometry_steps': prior_geometry_steps,
         'sources': sources,
     }
+    # A link computed against links another geospine persisted (the
+    # building geospine's point joins read the footprint geospine's
+    # parcel overlay through load_links) is valid only while those are
+    # the same. They are a harmonize product, which `sources` does not
+    # cover, so their content hashes are recorded. Only such a recipe
+    # gets the key, so no other sidecar changes.
+    if state.step_index is not None:
+        from openplaces.io.harmonizer.load import restored_link_hashes
+
+        restored = restored_link_hashes(state.recipe, state.step_index, state.admin_id)
+        if restored:
+            fingerprint['restored_links'] = restored
     # A spine reconciling buildings across unit lines reads its touching
     # units' inputs too: a neighbor's re-ingest must make these links
     # stale, and so must a build made with the reads turned off. Only
