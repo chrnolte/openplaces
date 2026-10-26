@@ -45,5 +45,7 @@ uncompressed_file_name: "GHS_POP_E2020_GLOBE_R2023A_54009_1000_V1_0.tif"
 # Declaring admin level 0 would instead require callers to name the unit to
 # download, which for a global raster is a unit that does not exist.
 
+# The extracted raster stays beside the archive it came from, under the
+# admin-scoped layout `io.admin_codes` reads it from.
 save_to:
-  data_dir: rasters
+  data_dir: external
