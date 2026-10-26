@@ -1,0 +1,23 @@
+# Wisconsin property classes (PROPCLASS of the statewide parcel layer,
+# held in use_group) -> occupancy group (group_parcel), written from the
+# classes' statutory definitions, never from the groups that co-occur
+# with a class in the data. Read by translate_descriptions in the US-WI
+# patch of US_parcel-openplaces-2026, which replaces the cohort fill
+# (impute_from_group_statistic) there.
+# Classes: Wis. Stat. s. 70.32(2)(a): 1 residential, 2 commercial,
+# 3 manufacturing, 4 agricultural, 5 undeveloped, 5m agricultural
+# forest, 6 productive forest land, 7 other. Definitions, s. 70.32(2)(c):
+# agricultural land is land devoted primarily to agricultural use,
+# exclusive of buildings and improvements; agricultural forest is
+# forest land tied to agricultural land; "other" is the buildings and
+# improvements on agricultural land, the farm family's residences
+# included; residential is untilled land holding a dwelling. Commercial
+# and manufacturing are not defined there; the Department of Revenue
+# assesses manufacturing property (s. 70.995).
+# A parcel lists every class it holds, comma-separated ("1,4", "4,5M,7").
+# Patterns match one class within that list; the first row wins.
+# Classes 1, 2, 5, 6 and 7 name no building type and have no row: a
+# parcel holding none of 3, 4 and 5m keeps group_parcel empty.
+pattern,match_type,group_parcel,reviewed,definition
+"(^|,)\s*3\s*(,|$)",regex,Light Industrial,true,Manufacturing
+"(^|,)\s*(4|5m)\s*(,|$)",regex,Agricultural,true,Agricultural land or agricultural forest
