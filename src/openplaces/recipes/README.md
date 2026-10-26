@@ -105,7 +105,13 @@ back at 500k at any setting. These recipes carry
 shoreline-clipped polygon moves boundaries by up to a few hundred meters
 and drops shoreline and island points out of their unit, which is fine
 for a picture and wrong for a join. Never read them for anything but
-drawing.
+drawing. The Census Bureau says the same of its own files: they are
+"specifically designed for small scale thematic mapping" and should not
+be used for geographic analysis including area or perimeter calculation,
+for geocoding addresses, or for determining precise geographic area
+relationships (Cartographic Boundary File description page, read
+2026-10-26). The Michigan areas quoted in `get_admin` compare the two
+layers for documentation and are not an analysis.
 
 ## Column names come from the registry
 

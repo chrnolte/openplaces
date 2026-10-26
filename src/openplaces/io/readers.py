@@ -159,7 +159,10 @@ def get_admin(
         for drawing maps of US states (level 2), counties and New
         England towns (level 3) and county subdivisions (level 4), never
         for assigning or clipping data: the polygons are generalized and
-        move boundaries by up to a few hundred meters at 500k. Units a
+        move boundaries by up to a few hundred meters at 500k. The
+        Census Bureau also advises against these files for area or
+        perimeter calculation, geocoding and precise area relationships.
+        Units a
         resolution does not cover (subdivisions and towns exist at 500k
         only) come back at 500k. `recipe` must not be given.
         Measured 2026-10-03 on US-MI: 'land' covers 150,910 km2 against
