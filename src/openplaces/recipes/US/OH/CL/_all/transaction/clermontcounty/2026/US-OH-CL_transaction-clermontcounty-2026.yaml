@@ -1,0 +1,104 @@
+# Recipe: Clermont County, OH Auditor sales, 2016 to date, from the
+# Auditor's Socrata portal (opendata.clermontauditor.org, dataset
+# gnjq-xf8x "SALES"): "all sales from January 1, 2016 to Current ...
+# sale date, sale price, type of sale, sale validity". One row per
+# parcel of a sale: a sale of several parcels is several rows, and
+# `nopar` states how many.
+#
+# PRIVACY. The table carries the current and previous owners' names
+# (own1, own2, oldown, oldown2). The download URL requests an
+# allow-list of columns ($select), so the names are never fetched.
+#
+# MAPPED. parid -> parcel_id_assessor (11 characters, filled on every
+# row; the Auditor's parcel number, as the roll recipe
+# US-OH-CL_property-clermontcounty-2026 keys it); saledt ->
+# recorded_date (the sale date, as the North Carolina county recipes
+# map theirs); price -> price; transno -> transaction_id_source (the
+# Auditor's conveyance number; 8,586 distinct values over 62,650 rows,
+# so it is not unique and is never a key on its own); salevaldesc ->
+# sale_qualification_code, the Auditor's own validity label (VALID
+# SALE, NOT VALID, LIQUIDATION/FORECLOSURE, ...; 16 values), graded by
+# US-OH-CL_transaction-openplaces-2026; saletypedesc -> sale_vacant
+# (LAND, LAND & BUILDING, BUILDING); luc -> use_group_code and lucdesc
+# -> use_group (the Ohio land-use code and its label).
+# Kept as received (`keep_unnamed_columns`): nopar (parcels in the
+# sale), class and classdesc (property class), saleyear.
+#
+# MEASURED 2026-10-22 (SoQL counts): 62,650 rows, 2016-01-04 to
+# 2026-10-21, 4,824 to 6,961 per year; price above 0 on every row (the
+# table holds priced sales only); 43,306 distinct parcels. Validity:
+# VALID SALE 27,405, VALID SALE INVOLVING MULTIPLE PARCELS 13,889, NOT
+# VALID 10,611, INVALID MULTI PARCEL SALE 7,974,
+# LIQUIDATION/FORECLOSURE 1,153, smaller labels below 700 each, 2
+# blank. Parcel key against the Auditor's public-domain parcel table
+# (dh49-9zqk), tax year 2026: 98.61% of sale rows found.
+#
+# RECONCILED, ingest of 2026-10-23: 62,675 rows, every one priced,
+# dated (2016-01-04 to 2026-10-22) and keyed (43,324 distinct
+# parcels). Each year 2016-2025 equals the counts above; 2026 holds 25
+# more rows, sales added by the portal's update since. No owner column
+# reaches the output.
+#
+# GEOMETRY. No Clermont parcel outline carries an open licence: the
+# Auditor's ArcGIS items state none and the statewide OGRIP layer is
+# disclaimer-only. The parcel table's coordinates are filled for tax
+# year 2010 only (86,646 parcels), which 70.7% of these sales reach
+# (56.6% of 2026's: new subdivisions postdate them).
+#
+# LICENCE. Socrata licenseId PUBLIC_DOMAIN, attribution "Clermont
+# County Auditor" (checked 2026-10-22). No click-through.
+
+description: >-
+  Clermont County, OH Auditor sales since 2016: price, sale date, sale
+  validity, land or building, land-use code, per parcel of a sale.
+
+admin_id: US-OH-CL
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: clermontcounty
+    portal_url: "https://opendata.clermontauditor.org/d/gnjq-xf8x"
+    download_url: "https://opendata.clermontauditor.org/resource/gnjq-xf8x.csv?%24select=parid%2C%20saledt%2C%20price%2C%20transno%2C%20saletypedesc%2C%20salevaldesc%2C%20nopar%2C%20luc%2C%20lucdesc%2C%20class%2C%20classdesc%2C%20saleyear&%24order=saledt%2C%20parid&%24limit=500000"
+    license: "Public Domain (opendata.clermontauditor.org dataset licence)"
+    terms_url: "https://opendata.clermontauditor.org/d/gnjq-xf8x"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "clermont_sales.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: parid
+  recorded_date: saledt
+  price_raw: price
+  transaction_id_source: transno
+  sale_qualification_code: salevaldesc
+  sale_vacant: saletypedesc
+  use_group_code: luc
+  use_group: lucdesc
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price_raw, output: price}
+  - {type: unary, operation: to_datetime, input: recorded_date,
+     output: recorded_date}
+
+keep_unnamed_columns: true
+
+columns_to_categorical:
+  - sale_qualification_code
+  - sale_vacant
+  - use_group_code
+  - use_group
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

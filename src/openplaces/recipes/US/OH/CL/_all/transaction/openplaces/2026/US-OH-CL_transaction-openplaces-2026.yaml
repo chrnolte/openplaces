@@ -1,0 +1,85 @@
+# Patch: Clermont County, OH transaction curation, grading the
+# Auditor's sale validity (US-OH-CL_transaction-clermontcounty-2026).
+#
+# The Auditor states a validity for every sale, with a label; the
+# ingest keeps the label as received. A county's vocabulary, so a
+# county patch. Measured 2026-10-22 on the 62,650 sales rows; counts
+# in brackets.
+#
+# Grades, on the national scale (0, 0.7, 1):
+#   1.0  VALID SALE (27,405); SALE GOOD FOR MKT MODEL NOT FOR RATIO
+#        (100): valid, used for the market model.
+#   0.7  VALID SALE INVOLVING MULTIPLE PARCELS (13,889) and MULTI
+#        PARCEL NEW CONSTRUCTION SALE (678), group
+#        qualified_multi_parcel, as Florida's multi-parcel code;
+#        NEW CONSTRUCTION SALE (613) and PROPERTY CHANGED AFTER SALE
+#        (49), group qualified_parcel_changed: valid, but the roll does
+#        not yet describe what sold; VALID RESALE/NOT FOR MKT MODEL
+#        (12), no group.
+#   0.0  NOT VALID (10,611) and INVALID MULTI PARCEL SALE (7,974),
+#        LIQUIDATION/FORECLOSURE (1,153), LAND CONTRACT OR UNUSUAL
+#        FINANCING (63), NOT OPEN MARKET (58), EXCESS PERSONAL
+#        PROPERTY/NOT ARMS LENGTH (6), SHORT SALE/DEED IN LIEU OF
+#        FORECLOSURE (2): group disqualified; RELATED INDIVIDUALS OR
+#        CORPORATIONS (10): group related_parties.
+#   BYPASS FOR MODELING (25) says nothing about the sale and a blank
+#   label (2) is absence of evidence: both stay missing; no default.
+# No ratio is computed here (design limits L7, L29); the labels are
+# the Auditor's own judgment, graded as stated.
+
+admin_id: US-OH-CL
+stage: curate
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_transaction-openplaces-2026
+pipeline_patch:
+  - insert_after: derive_indicators
+    occurrence: 1
+    step:
+      step: derive_indicators
+      indicators:
+        - output: sale_arms_length_confidence
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "VALID SALE": 1.0
+            "SALE GOOD FOR MKT MODEL NOT FOR RATIO": 1.0
+            "VALID SALE INVOLVING MULTIPLE PARCELS": 0.7
+            "MULTI PARCEL NEW CONSTRUCTION SALE": 0.7
+            "NEW CONSTRUCTION SALE": 0.7
+            "PROPERTY CHANGED AFTER SALE": 0.7
+            "VALID RESALE/NOT FOR MKT MODEL": 0.7
+            "NOT VALID": 0.0
+            "INVALID MULTI PARCEL SALE": 0.0
+            "LIQUIDATION/FORECLOSURE": 0.0
+            "LAND CONTRACT OR UNUSUAL FINANCING": 0.0
+            "NOT OPEN MARKET": 0.0
+            "EXCESS PERSONAL PROPERTY/NOT ARMS LENGTH": 0.0
+            "SHORT SALE/DEED IN LIEU OF FORECLOSURE": 0.0
+            "RELATED INDIVIDUALS OR CORPORATIONS": 0.0
+        - output: sale_qualification_group
+          type: value_map
+          fill_only: true
+          column: sale_qualification_code
+          mapping:
+            "VALID SALE": qualified
+            "SALE GOOD FOR MKT MODEL NOT FOR RATIO": qualified
+            "VALID SALE INVOLVING MULTIPLE PARCELS": qualified_multi_parcel
+            "MULTI PARCEL NEW CONSTRUCTION SALE": qualified_multi_parcel
+            "NEW CONSTRUCTION SALE": qualified_parcel_changed
+            "PROPERTY CHANGED AFTER SALE": qualified_parcel_changed
+            "VALID RESALE/NOT FOR MKT MODEL": null
+            "NOT VALID": disqualified
+            "INVALID MULTI PARCEL SALE": disqualified
+            "LIQUIDATION/FORECLOSURE": disqualified
+            "LAND CONTRACT OR UNUSUAL FINANCING": disqualified
+            "NOT OPEN MARKET": disqualified
+            "EXCESS PERSONAL PROPERTY/NOT ARMS LENGTH": disqualified
+            "SHORT SALE/DEED IN LIEU OF FORECLOSURE": disqualified
+            "RELATED INDIVIDUALS OR CORPORATIONS": related_parties
