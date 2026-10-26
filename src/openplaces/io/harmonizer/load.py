@@ -42,6 +42,7 @@ from openplaces.io.harmonizer.links import (
 )
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
+    apply_recipe_patches,
     get_output_path,
     get_recipe_by_id,
     get_recipe_id,
@@ -114,6 +115,10 @@ def load_geospine(
         )
     if isinstance(geospine, str):
         geospine = get_recipe_by_id(geospine)
+    # The geospine's pipeline as this unit ran it: a county's patch
+    # that removed a link step left no sidecar to restore, and the
+    # fingerprints of the rest were computed from the patched step
+    # positions.
     geospine = _as_run_for(geospine, state.admin_id)
     geospine_id = get_recipe_id(geospine)
 
@@ -160,8 +165,6 @@ def _as_run_for(geospine: dict, admin_id) -> dict:
     """
     if admin_id is None:
         return geospine
-    from openplaces.recipe import apply_recipe_patches
-
     patched, _ = apply_recipe_patches(geospine, admin_id)
     return patched
 

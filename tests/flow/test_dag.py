@@ -96,6 +96,26 @@ def test_extra_outputs_include_link_sidecar(dag):
     assert dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY) == []
 
 
+def test_a_link_step_a_patch_removed_declares_no_sidecar(dag, monkeypatch):
+    # The job runs the patched pipeline, so the graph declares only the
+    # sidecars it writes; one for a removed step would fail the job.
+    import openplaces.flow.dag as dag_mod
+
+    def _drop_nsi(recipe, admin_id):
+        patched = dict(recipe)
+        patched['pipeline'] = [
+            s
+            for s in recipe['pipeline']
+            if s.get('recipe_id') != 'US_building-nsi-2026'
+        ]
+        return patched, ['US-NC-BRU_footprint-geospine-2026']
+
+    monkeypatch.setattr(dag_mod, 'apply_recipe_patches', _drop_nsi)
+    extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
+    assert len(extras) == 2
+    assert not any('building-nsi' in p.name for p in extras)
+
+
 def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     inputs = dag.input_paths('curate', TARGET, COUNTY)
     spine_path = get_output_path('US_footprint-spine-2026', admin_id=COUNTY)
