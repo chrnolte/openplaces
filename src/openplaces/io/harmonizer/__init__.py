@@ -846,6 +846,11 @@ class Harmonizer:
                 k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
             }
             state = fn(state, **params)
+            # One mark per recipe step, so a step's time is never folded
+            # into the next label a step happens to set itself. Marks a
+            # step sets inside itself still split its own work.
+            if state.timer:
+                state.timer.mark(f'step {step_index:02d} {step_name}')
             if not spine_checked and state.spine is not None:
                 require_unique_index(
                     state.spine,
