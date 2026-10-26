@@ -115,7 +115,7 @@ def test_auto_discovered_county_sources_are_checked():
     bundle and read as absent. Checked on the real recipes because the
     defect was in the walk, not in any one source.
     """
-    recipe = 'US_footprint-openplaces-2026'
+    recipe = 'US_footprint-cheer-2026'
     unscoped = {e['source_id'] for e in restricted_inputs(recipe)}
     scoped = restricted_inputs(recipe, ['US-NC-EDG'])
     edgecombe = [e for e in scoped if e['source_id'] == 'edgecombecounty']
@@ -294,7 +294,7 @@ def test_the_gate_refuses_values_redaction_missed(
 
 
 def test_team_regions_are_declared_beside_their_region():
-    specs = delivery_module.delivery_regions('US_footprint-openplaces-2026')
+    specs = delivery_module.delivery_regions('US_footprint-cheer-2026')
     team = {spec['region_id']: spec for spec in specs if spec['audience'] == 'team'}
     base = next(spec for spec in specs if spec['region_id'] == 'cheer-eastern-nc')
 
@@ -304,7 +304,7 @@ def test_team_regions_are_declared_beside_their_region():
 
 
 def test_a_team_bundle_lands_beside_the_public_one_without_moving_it():
-    recipe = 'US_footprint-openplaces-2026'
+    recipe = 'US_footprint-cheer-2026'
     public = delivery_module.delivery_paths(recipe, region='cheer-eastern-nc')
     team = delivery_module.delivery_paths(recipe, region='cheer-eastern-nc.team')
 

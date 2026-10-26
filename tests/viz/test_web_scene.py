@@ -189,7 +189,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     )
     bundles = {
         'US_parcel-openplaces-2026': parcels,
-        'US_footprint-openplaces-2026': buildings,
+        'US_footprint-cheer-2026': buildings,
     }
     monkeypatch.setattr(
         web_scene, 'read_bundle', lambda recipe, region, admin_ids: bundles[recipe]
@@ -301,7 +301,7 @@ def test_large_unclassed_lot_with_one_counted_home_is_not_residential(tmp_path):
 def test_sources_document_drops_the_recipe_folders():
     notice = '\n'.join(
         [
-            'Data licence and attribution for US_footprint-openplaces-2026 (US-XX)',
+            'Data licence and attribution for US_footprint-cheer-2026 (US-XX)',
             '=' * 70,
             '',
             'Sources',
@@ -439,8 +439,8 @@ def test_imputed_twin_supplies_only_the_models_cells(tmp_path, monkeypatch):
     twin_dir = tmp_path / 'region-x.imputed'
     regular_dir.mkdir()
     twin_dir.mkdir()
-    name = 'US-XX_footprint-openplaces-2026.parquet'
-    notice = 'US-XX_footprint-openplaces-2026_LICENSE.txt'
+    name = 'US-XX_footprint-cheer-2026.parquet'
+    notice = 'US-XX_footprint-cheer-2026_LICENSE.txt'
     monkeypatch.setattr(
         web_scene,
         'delivery_paths',
@@ -1391,7 +1391,7 @@ def test_the_people_file_is_kept_and_uploaded_with_the_layers():
 
 
 def test_the_page_reads_the_height_check_from_the_footprint_recipe():
-    rule = web_scene.ghost_rule('US_footprint-openplaces-2026')
+    rule = web_scene.ghost_rule('US_footprint-cheer-2026')
     assert rule['min_value_per_sqft'] > 0
     assert rule['max_value_per_floor_sqft'] > 0
     assert web_scene.ghost_rule('US_parcel-openplaces-2026') is None

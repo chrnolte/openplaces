@@ -477,14 +477,19 @@ properties together is separated at ingest (an `additional_layers` entry
 writes its own property table), so by harmonize every property table exists
 independently of any parcel spine. Per admin unit the order is: every
 ingest; `US_property-spine-2026`; the footprint geospine; the building
-geospine (one building per outline) and the building spine, which runs
-the evidence, address and permit steps against the footprint geospine's
-links re-keyed to building ids; the footprint spine, a projection of the
-building spine onto the outlines (`adopt_entity_attributes`, so its
-consumers read unchanged values until they read the building spine); the
-parcel geospine, which reads the ingest-level property tables for
-parcel-level values and the property spine for a count; the parcel spine;
-enrichment; parcel curation; footprint curation. That is one order the
+geospine (one building per outline), which restores the footprint
+geospine's parcel overlay under building ids (`load_links`) and links the
+NSI and dwelling points to the buildings itself; the building spine,
+which runs the evidence, address and permit steps against those links;
+the footprint spine, a projection of the building spine onto the outlines
+(`adopt_entity_attributes`, so its consumers read unchanged values until
+they read the building spine); the parcel geospine, which reads the
+ingest-level property tables for parcel-level values and the property
+spine for a count; the parcel spine; enrichment; parcel curation;
+building curation (`US_building-openplaces-2026`, the occupancy vote and
+the imputations); the footprint curate CHEER ships
+(`US_footprint-cheer-2026`), which carries the building curate onto the
+outlines. That is one order the
 DAG allows: `RecipeDAG` derives the edges the recipes declare, so the
 property spine and the footprint chain are not ordered against each other,
 and footprint enrichments wait for the footprint spine only. Tests pin the

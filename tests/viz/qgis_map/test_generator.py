@@ -108,7 +108,7 @@ def basic_specs(tmp_path):
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-CAR_footprint-openplaces-2026',
+            display_name='US-NC-CAR_footprint-cheer-2026',
             depth=0,
         ),
         _spec(
@@ -185,13 +185,13 @@ def _find_legendlayer(root: ET.Element, name: str) -> ET.Element:
 class TestDefaultOutputPath:
     def test_admin_entity_prefix_appears_once(self, mock_data_root):
         recipe = {
-            'recipe_id': 'US_footprint-openplaces-2026',
-            'entity': Entity('footprint', 'openplaces', '2026'),
+            'recipe_id': 'US_footprint-cheer-2026',
+            'entity': Entity('footprint', 'cheer', '2026'),
         }
         output_path = generator_module._default_output_path(
             recipe, AdminId('US', 'NC', 'CAR')
         )
-        assert output_path.name == 'US-NC-CAR_footprint-openplaces-2026_map.qgz'
+        assert output_path.name == 'US-NC-CAR_footprint-cheer-2026_map.qgz'
         assert output_path == (
             mock_data_root
             / 'data'
@@ -201,9 +201,9 @@ class TestDefaultOutputPath:
             / 'CAR'
             / '_all'
             / 'footprint'
-            / 'openplaces'
+            / 'cheer'
             / '2026'
-            / 'US-NC-CAR_footprint-openplaces-2026_map.qgz'
+            / 'US-NC-CAR_footprint-cheer-2026_map.qgz'
         )
 
 
@@ -392,7 +392,7 @@ class TestStyleVariants:
 
     def test_combined_spec_variant_has_no_join(self, tmp_path, basic_specs):
         # Combined specs have no attr sibling, but variants are still cloned
-        # (e.g. footprint-openplaces-2026's own curate output is combined) — the
+        # (e.g. footprint-cheer-2026's own curate output is combined) — the
         # variant clone just shares the base's datasource with no join.
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
@@ -432,7 +432,7 @@ class TestStyleVariants:
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-CAR_footprint-openplaces-2026',
+            display_name='US-NC-CAR_footprint-cheer-2026',
         )
         with pytest.raises(ValueError, match='does_not_exist_in_template'):
             _run(tmp_path, [spec])

@@ -20,7 +20,7 @@ from openplaces.io.delivery import (
 )
 from openplaces.recipe import get_output_path
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BRU'
 # The recipe ships several regions; these tests exercise the Carolina one,
 # which COUNTY belongs to.
@@ -131,6 +131,15 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     )
     assert spine_path in inputs
     assert sidecar in inputs
+
+
+def test_the_shipped_footprints_are_curated_after_the_buildings(dag):
+    # b3 step 3: curated parcels, then the building curate (which votes),
+    # then the footprint curate CHEER ships (which folds it).
+    building = get_output_path('US_building-openplaces-2026', admin_id=COUNTY)
+    parcel = get_output_path('US_parcel-openplaces-2026', admin_id=COUNTY)
+    assert building in dag.input_paths('curate', 'US_footprint-cheer-2026', COUNTY)
+    assert parcel in dag.input_paths('curate', 'US_building-openplaces-2026', COUNTY)
 
 
 def test_property_parcel_link_is_written_after_both_of_its_sides(dag):

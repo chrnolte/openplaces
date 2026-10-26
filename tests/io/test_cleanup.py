@@ -22,14 +22,17 @@ FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 BUILDING_SPINE = 'US_building-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
 FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
+BUILDING_GEOSPINE = 'US_building-geospine-2026'
 PARCEL_GEOSPINE = 'US_parcel-geospine-2026'
 COUNTY = 'US-NC-BRU'
 # Every recipe in the cheer tree that consumes NSI directly: under the
 # geometry/attribute split, the geospine halves link it and the attribute
 # halves attribute it, so a valid NSI receipt must record all four. Since
 # slice b2 (2026-09-29) the building spine attributes it, not the
-# footprint spine, which projects the building spine.
-NSI_CONSUMERS = [BUILDING_SPINE, PARCEL_SPINE, FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE]
+# footprint spine, which projects the building spine; since b3 step 1
+# (2026-10-26) the building geospine links it, not the footprint
+# geospine.
+NSI_CONSUMERS = [BUILDING_SPINE, PARCEL_SPINE, BUILDING_GEOSPINE, PARCEL_GEOSPINE]
 
 
 @pytest.fixture
@@ -67,7 +70,7 @@ def _spine_paths(admin=COUNTY):
     return (
         get_output_path(get_recipe_by_id(BUILDING_SPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(PARCEL_SPINE), admin_id=admin),
-        get_output_path(get_recipe_by_id(FOOTPRINT_GEOSPINE), admin_id=admin),
+        get_output_path(get_recipe_by_id(BUILDING_GEOSPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(PARCEL_GEOSPINE), admin_id=admin),
     )
 
@@ -458,9 +461,7 @@ def test_data_lock_exclusive(data_root):
 
 def test_cleanup_dry_run_defaults_and_blocked(data_root):
     _write_parquet(_nsi_path())
-    report = cl.cleanup(
-        'US_footprint-openplaces-2026', admin_ids=[COUNTY], verbose=False
-    )
+    report = cl.cleanup('US_footprint-cheer-2026', admin_ids=[COUNTY], verbose=False)
     nsi_rows = report[report['recipe_id'] == NSI]
     assert not nsi_rows.empty
     # Spines missing: NSI is blocked, not deletable
@@ -473,15 +474,13 @@ def test_cleanup_deletes_consumed_input(data_root):
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
 
-    report = cl.cleanup(
-        'US_footprint-openplaces-2026', admin_ids=[COUNTY], verbose=False
-    )
+    report = cl.cleanup('US_footprint-cheer-2026', admin_ids=[COUNTY], verbose=False)
     nsi_rows = report[report['recipe_id'] == NSI]
     assert (nsi_rows['action'] == 'would_delete').all()
     assert _nsi_path().exists()  # dry run never deletes
 
     report = cl.cleanup(
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         admin_ids=[COUNTY],
         dry_run=False,
         verbose=False,
@@ -500,7 +499,7 @@ def test_cleanup_stage_filter(data_root):
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
     report = cl.cleanup(
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         admin_ids=[COUNTY],
         stages=('harmonize',),
         verbose=False,
@@ -715,7 +714,7 @@ def test_aggressive_keeps_explicit_retention(data_root):
         _write_parquet(spine_path)
     # The curated consumer exists, so an until_consumed spine is deletable.
     curated = get_output_path(
-        get_recipe_by_id('US_footprint-openplaces-2026'), admin_id=COUNTY
+        get_recipe_by_id('US_footprint-cheer-2026'), admin_id=COUNTY
     )
     _write_parquet(curated)
     parcel_curated = get_output_path(
@@ -724,13 +723,15 @@ def test_aggressive_keeps_explicit_retention(data_root):
     _write_parquet(parcel_curated)
 
     report = cl.cleanup(
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         admin_ids=[COUNTY],
         aggressive=True,
         verbose=False,
     )
     geospine_rows = report[
-        report['recipe_id'].isin([FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE])
+        report['recipe_id'].isin(
+            [FOOTPRINT_GEOSPINE, BUILDING_GEOSPINE, PARCEL_GEOSPINE]
+        )
     ]
     assert not geospine_rows.empty
     assert (geospine_rows['class'] == 'keep').all()
@@ -753,11 +754,11 @@ def test_aggressive_keeps_config_protected_recipe(data_root, monkeypatch):
     )
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
-    for curated_id in ('US_footprint-openplaces-2026', 'US_parcel-openplaces-2026'):
+    for curated_id in ('US_footprint-cheer-2026', 'US_parcel-openplaces-2026'):
         _write_parquet(get_output_path(get_recipe_by_id(curated_id), admin_id=COUNTY))
 
     report = cl.cleanup(
-        'US_footprint-openplaces-2026',
+        'US_footprint-cheer-2026',
         admin_ids=[COUNTY],
         aggressive=True,
         dry_run=False,

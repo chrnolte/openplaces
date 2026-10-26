@@ -12,7 +12,7 @@ import pytest
 
 from openplaces.io.delivery.terms import bundle_terms, format_notice
 
-RECIPE = 'US_footprint-openplaces-2026'
+RECIPE = 'US_footprint-cheer-2026'
 
 # The measured composition of the shipped NC bundle, 2026-08-18.
 _COMPOSITION = ['obm'] * 858 + ['ncdps'] * 69 + ['microsoft'] * 33
@@ -374,7 +374,7 @@ def test_a_source_linked_for_named_columns_reaches_only_those(monkeypatch):
             }
         ],
     }
-    curate = {'id': 'US_footprint-openplaces-2026', 'entity_recipe': spine['id']}
+    curate = {'id': 'US_footprint-cheer-2026', 'entity_recipe': spine['id']}
     _fake_recipes(
         monkeypatch,
         {r['id']: r for r in (vendor, spine, curate)},
@@ -408,7 +408,7 @@ def _sales_graph(monkeypatch, link_step):
     }
     parcel = {'id': 'US_parcel-openplaces-2026', 'entity_recipe': spine['id']}
     footprint = {
-        'id': 'US_footprint-openplaces-2026',
+        'id': 'US_footprint-cheer-2026',
         'pipeline': [
             {
                 'step': 'link_by_id',

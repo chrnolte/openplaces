@@ -41,7 +41,7 @@ from openplaces.viz.web_scene import (
 
 PLACES_FILE = files('openplaces.viz.web_scene') / 'places.yaml'
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
-FOOTPRINT_RECIPE = 'US_footprint-openplaces-2026'
+FOOTPRINT_RECIPE = 'US_footprint-cheer-2026'
 ELEVATION_RECIPE = 'US_land-elevation-usgs-3dep'
 
 

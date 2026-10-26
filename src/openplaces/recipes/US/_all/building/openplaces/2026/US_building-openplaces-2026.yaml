@@ -1,26 +1,37 @@
-# The single national curate recipe for the openplaces footprint
-# inventory. Unified 2026-08-25 from US_footprint-cheer-2026 and its
+# The single national curate recipe for the openplaces building
+# inventory: it votes, imputes and resolves every attribute of a
+# structure. Unified 2026-08-25 from US_footprint-cheer-2026 and its
 # genesis-region fork: the curation logic was never regional, and every
 # regional variation it needs is data, not structure - admin-scoped
 # remap rows, registry regions, enrichment merges that skip units
 # without evidence, and the declared-null columns below. Projects
 # (cheer, lakesense, places-fmv-conus) are delivery groupings in the
 # region registry, not curation forks.
+#
+# Moved 2026-10-26 from the footprint curate, whose pipeline this is,
+# unchanged in logic (plans/building-spine-consumers-and-footprint-
+# projection.md, step 3): the building, not the outline, is what
+# parcels, NSI and dwellings describe. US_footprint-cheer-2026 carries
+# the result onto the outlines and ships it; delivery and validation
+# live there. Two differences from the footprint pipeline it was:
+# counts are named for the building (n_permits_per_building), and an
+# enrichment computed on the outlines is read under the footprint spine
+# and joined through each building's footprint_id.
 
 description: >-
-  Canonical openplaces footprint inventory: one national curation, delivered
-  per registered region.
+  Canonical openplaces building inventory: one national curation of every
+  structure attribute, carried onto the outlines by US_footprint-cheer-2026.
 
 stage: curate
 admin_id: US
 
 entity:
-  entity_type: footprint
+  entity_type: building
   source:
     source_id: openplaces
   version: 2026
 
-entity_recipe: US_footprint-spine-2026
+entity_recipe: US_building-spine-2026
 
 process_by:
   admin_level: 3
@@ -34,330 +45,6 @@ save_to:
   # Save as a single combined GeoParquet (attributes + geometry) without sidecars,
   # for direct GIS client consumption.
   combined: true
-
-# Region-wide delivery bundle (io/delivery/: export_delivery). Names the
-# canonical attributes the shared file carries; every other curated column
-# ships in the `_evidence` supplement, so the bundle still holds the complete
-# curated schema. Deliberately far shorter than the full set of canonical
-# columns -- this is the compact inventory a modeller works from, not
-# everything the curate stage can produce. Each listed column's
-# `{column}_source` sidecar is appended automatically, plus geometry_source.
-# How this inventory is validated: the hand-labelled reference, the class
-# vocabulary both sides are compared on, and the linkage thresholds. Read
-# by io.curator.validation.ValidationContext, the same declarative role
-# `share:` plays for delivery. Licence-restricted reference tables are
-# declared in the untracked sidecar
-# `US_footprint-openplaces-2026_validation-references.yaml` beside this file,
-# never here.
-validation:
-  classes: [Single-Family, Multi-Family, Manufactured Home]
-  # The reference records one residential class per building; the
-  # inventory resolves Multi-Family into height bands. Collapse them so
-  # the vocabularies are comparable.
-  collapse:
-    Low-Rise Multi-Family: Multi-Family
-    Mid-Rise Multi-Family: Multi-Family
-    High-Rise Multi-Family: Multi-Family
-  # Manufactured Home counts as single: a double wide is one home. So
-  # does RV Dwelling, one unit, one dwelling. It is not in `classes`
-  # because neither the survey nor the permits label it; the matrices
-  # keep it in a column of its own (ValidationContext.matrix_labels),
-  # never under Non-residential. Add it to `classes` for a reference
-  # that labels it (a Cameron CAD roll reference, not yet declared).
-  single_dwelling_classes: [Single-Family, Manufactured Home, RV Dwelling]
-  link:
-    # Street View pins land just off the roof polygon (Brunswick median
-    # 1.7 m, 98% under 20 m); 15 m clears the offsets without grabbing
-    # the neighbouring building.
-    max_distance_m: 15
-    street_threshold: 80.0
-    # A house and its garage share one address; the survey only labels
-    # habitable buildings, so ties break toward the parcel's primary.
-    prefer_column: priority_on_parcel
-    prefer_values: [primary, unknown]
-  # Identifies a surveyed building by where it sits in the source
-  # workbook, which no pipeline change can move.
-  prediction_key: [source_sheet, source_row]
-  class_map: occupancy-class-map.csv
-  keyword_ruleset: parcel-occupancy-keywords.csv
-  inventory_suffix: _inv
-  # Overture carries a count, not a class: two or more dwellings reads
-  # as Multi-Family, one or zero as Single-Family. An entity with no
-  # Overture record at all is scored as no prediction, not as an
-  # asserted Single-Family, so its recall reflects coverage.
-  dwelling_count_column: n_dwellings_overture_inv
-  source_columns:
-    final_vote: predicted
-    nsi: occupancy_type_nsi_class_inv
-    fema: occupancy_type_fema_class_inv
-    keyword: occupancy_keyword_class_inv
-    parcel: occupancy_type_parcel_inv
-  # order_columns drops the derived class columns from published output;
-  # they are reconstructed from raw evidence through the same rulesets
-  # the vote used, so scoring cannot silently lose those blocks.
-  # `keep_unmapped` keeps a raw value the class map leaves unmapped (a
-  # non-residential NSI or FEMA class), so the matrices score it as a
-  # Non-residential assertion rather than as no prediction. The keyword
-  # lane does not set it: assessor text no keyword matched asserts
-  # nothing.
-  derived_source_columns:
-    nsi: {column: occupancy_type_building_nsi, keep_unmapped: true}
-    fema: {column: group_footprint_fema, keep_unmapped: true}
-    keyword:
-      column: use_group_combined_parcel
-      ruleset: parcel-occupancy-keywords.csv
-      # Mirrors the vote's own flag: without it, unreviewed rules would
-      # assert classes on rows the vote never saw a keyword claim for.
-      reviewed_only: true
-  ground_truth:
-    entity_type: footprint
-    source: cheer
-    version: summerscholars2026
-    admin_id: US-NC
-    filename: US-NC_footprint-cheer-summerscholars.csv
-    # The delivery region whose accuracies/ folder the survey scores
-    # land in, and whose `validate` job runs the survey notebooks.
-    region: cheer-eastern-nc
-    regenerate_hint: >-
-      Run notebooks/02_ingest/footprints/prepare_cheer_ground_truth.ipynb
-      to regenerate it from the source workbook.
-  # Notebooks the orchestrated `validate` job executes after a region
-  # ships (flow.dag, run_stage validate). `reference` is `ground_truth`
-  # or a key of the sidecar's `references:`; each resolves to the
-  # delivery region it scores, and an entry whose reference is not
-  # declared on this machine is skipped. Every notebook writes its
-  # confusion matrices through io.curator.validation.
-  notebooks:
-    - notebook: notebooks/05_curate/validate_occupancy.ipynb
-      reference: ground_truth
-    - notebook: notebooks/05_curate/validate_delivery.ipynb
-      reference: NC
-    - notebook: notebooks/05_curate/validate_occupancy_against_permits.ipynb
-      reference: NC
-    - notebook: notebooks/05_curate/validate_occupancy_against_permits_tx.ipynb
-      reference: TX
-
-
-share:
-  columns:
-    - admin3_id
-    # The federal twin of admin3_id, so a bundle survives an internal
-    # admin-id re-mint and joins to Census/FEMA without our spine.
-    - county_fips
-    - address
-    - census_tract_id
-    - census_blockgroup_id
-    - lat
-    - long
-    # Denominator of the structure_value_per_area column delivered on the
-    # points below; without it that ratio cannot be reproduced or rescaled.
-    - area_m2
-    - occupancy_type
-    # The roll's class for the parcel the footprint stands on, kept
-    # beside occupancy_type because that one folds condominiums and
-    # townhomes into the multi-family classes.
-    - land_use_class_parcel
-    - year_built
-    - n_stories
-    # Dwelling count on the verified footprint: overture markers linked
-    # to this footprint, NSI's unit count behind them, imputed where
-    # both are silent -- not the raw overture marker count, which ships
-    # in the evidence file.
-    - n_dwellings
-    # Populated for manufactured homes only, and missing wherever the two
-    # shape tests disagree -- so a null here means "not asked" or "not
-    # resolved", never "one section".
-    - n_sections
-    - structure_value
-    # The recorded improvement value this footprint's share comes
-    # from, before the land split.
-    - improvement_value_parcel
-    # Value per area that no measured height explains
-    # (flag_unconfirmed_height, Massachusetts patch); empty elsewhere.
-    # The 3D value page draws such outlines see-through.
-    - height_unconfirmed
-    - construction_type
-    - foundation_type
-    - roof_shape
-    - has_garage
-  # Added to the `_point` file only, where lat/long become the point geometry
-  # and a ready-to-symbolize ratio is what the file is for.
-  point_columns:
-    - structure_value_per_area
-  # Columns computed from others without a `_source` sidecar of their
-  # own: a bundle withholds such a cell wherever it withholds one of its
-  # inputs (io/delivery/redaction.py, rule 7). occupancy_type_parcel is
-  # the roll's use class in occupancy terms (resolve_occupancy below,
-  # its keyword proposal from use_group_combined_parcel, else
-  # group_parcel), so it ships only where the roll's class may
-  # (maintainer, 2026-10-24); occupancy_type_conflict names the
-  # parcel's class beside NSI's and FEMA's.
-  derived_from:
-    occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
-    occupancy_type_conflict: [group_parcel]
-  # Which admin units the region-wide bundles cover, and which units feed
-  # them. Named in the recipe rather than passed at run time so `snakemake`
-  # with no admin_ids builds and ships every region unattended -- and so a
-  # scoped debug run can be recognized as not covering one, and skip
-  # shipping it.
-  #
-  # This recipe ships more than one region from identical curation logic
-  # (44 of North Carolina's 100 counties, 42 of Texas's 254; Lee County
-  # rode along 2026-08-17 to 2026-08-24 from an LE/LN code mix-up in a
-  # commit that meant to add Lenoir, and was removed). Named here,
-  # defined once in the shared region registry
-  # (_all/admin/regions/2026/admin-regions-2026.csv, read by
-  # `op.get_regions`) rather than inline: neither region is derivable from
-  # the admin hierarchy, and the same county lists are wanted by mapping
-  # and ad-hoc analysis, where three copies would drift. A grouping used
-  # in exactly one place may still be listed inline as `admin_ids:`.
-  delivery:
-    admin_level: 2
-    regions:
-      - cheer-eastern-nc
-      - western-nc
-      - cheer-coastal-tx
-      - boston-inner-core
-      - boston-outer-rings
-      - central-florida-lakes
-      - northern-wisconsin
-      # Madison WI, Dane County, for the value pages (2026-10-17).
-      - madison-wi
-      # Nantucket MA, the whole island, for the value pages (2026-10-18).
-      - nantucket-ma
-      # Washington DC and the counties within 15 km of the Wilson
-      # Building (2026-10-19).
-      - washington-dc
-    # Also shipped as a team-internal bundle (`<region>.team`, in a
-    # `team/` subdirectory beside the region's own): it keeps values of
-    # sources cleared for team sharing only (Edgecombe County's parcels),
-    # which every other bundle withholds. Never publish a team bundle.
-    team_regions:
-      - cheer-eastern-nc
-      # Fairfax County values, cleared for the team (2026-10-20).
-      - washington-dc
-    # The outlines are ODbL (OBM, Microsoft, Overture), and Pitt
-    # County's parcel values are CC-BY-SA-4.0; one published bundle
-    # cannot carry both, so the public cheer-eastern-nc bundle withholds
-    # Pitt's share-alike values the way a restricted source's are
-    # withheld. The team bundle keeps them: share-alike binds only on
-    # publication, and a team bundle is never published (maintainer,
-    # 2026-10-22 option A and 2026-10-23). The values are withheld
-    # before the imputation reads the bundle, so no model of a public
-    # bundle sees them.
-    withhold_share_alike:
-      cheer-eastern-nc: [cc-by-sa]
-    # An outline two units both curated is cut at the line between
-    # them and each piece keeps its own unit's assessed values
-    # (io/delivery/slicing.py; maintainer, 2026-10-17). Curated files
-    # are unchanged; only the bundle is.
-    slice_at_unit_lines: true
-    # Fill the primary columns of these regions' bundles at delivery
-    # (io/building_imputation.py; method and evaluation in
-    # plans/building-imputation-report.md). Filled cells' `_source`
-    # reads `<version>+open+imputed`, and
-    # `<version>+clipped+open+imputed` for a structure value held to
-    # its occupancy's value per m2 bound. `open`: the models are fitted
-    # on the public bundle's rows after every restricted and
-    # share-alike value was withheld, so no such value reaches a filled
-    # cell (io/delivery/redaction.py, rule 5). A team bundle reuses the
-    # public bundle's imputation and puts its own values back only
-    # where the public bundle withheld the cell or lacks the row. No
-    # year built or structure value ships from NSI. Structure value is
-    # also given in `common_year` dollars (structure_value_adjusted)
-    # using `price_index` and the sidecar `..._appraisal-years.csv`.
-    #
-    # What the models do (decided with the maintainer, 2026-10-14 to
-    # 2026-10-24):
-    # - Labels are parcel-recorded values only; NSI fields are named
-    #   inputs, never labels (NSI years are area lookups).
-    # - Year built and structure value: one model per county, trained
-    #   on its own labels plus donor counties weighted by centroid
-    #   distance and county similarity (`donors`). A county whose own
-    #   labels cover under 30% of the buildings the attribute applies
-    #   to is filled from donors only (MIN_OWN_LABEL_SHARE): such labels
-    #   are the buildings a recent record reached, not a sample. The
-    #   other attributes: one regional model each, in a fixed chain
-    #   order.
-    # - Classes and counts are one draw from the predicted class
-    #   probabilities, not the likeliest class, so county class shares
-    #   stay right.
-    # - Structure value is moved to `common_year` before fitting,
-    #   modeled in two parts (zero or not; log value with smearing per
-    #   band and a factor matching training totals), and filled with a
-    #   draw from the band's residuals. Rejected: Poisson loss (median
-    #   county total +0.6%, building MAE $172,488) and gamma loss
-    #   (-8.8%, unstable leaves), 2026-10-21; the expected value per
-    #   building (Wake's imputed single-family median was $4,840).
-    # - A manufactured home the roll does not list (personal property,
-    #   or a park of five or more homes) is valued by a model of listed
-    #   homes, park homes scaled by the park factor.
-    # - Counties without value labels get their price level from the
-    #   ACS median home value (`price_anchor: acs`). Rejected: an NSI
-    #   anchor and a blend, 2026-10-24: NSI is near the roll on the
-    #   coast and 1.3 to 2.7 times it inland, so its level does not
-    #   carry from donors (typical county miss 20.1% and 17.5%
-    #   against 12.8%).
-    # - Every delivery checks each county's scaled single-family roll
-    #   median against its ACS median home value and warns outside 0.3
-    #   to 1.3 (ROLL_LEVEL_RANGE). Pender's roll carries its 2026
-    #   reappraisal; v0.5 took it for 2019 and inflated every Pender
-    #   label 71% (parcel-sourced median 1.60 of ACS; the other 32
-    #   counties 0.44 to 1.05). The check on v0.6: Pender 0.76, the
-    #   36 counties 0.23 to 0.86, Hyde 0.27 and Tyrrell 0.23 flagged
-    #   (no county price index; their scale is a fallback median).
-    #
-    # Measured 2026-10-24 on cheer-eastern-nc, v0.6, 14 counties held
-    # out whole, held-out buildings as incomplete as the real gaps
-    # (Stage 2b; NSI is the inventory before imputation):
-    # - structure value: county totals -12.8% at the median county
-    #   and a 12.8% typical miss (NSI +42.8%);
-    # - year built: MAE 15.4 years (NSI 16.6), median county mean
-    #   bias -0.9 years (NSI +6.5);
-    # - the seven other attributes: macro F1 above the most common
-    #   class for each (construction 0.34 against 0.18, roof 0.32
-    #   against 0.06), and county class shares off by 0.01 to 0.23
-    #   (most common class: 0.05 to 0.71).
-    impute:
-      regions:
-        - cheer-eastern-nc
-        - cheer-coastal-tx
-      # v0.6 (2026-10-24): Pender's appraisal year, no land-market
-      # inputs, the roll level check, the recorded seed.
-      version: building-imputation-v0.6
-      common_year: 2025
-      # Base seed of every random step; a delivery with the same seed,
-      # inputs and code reproduces its filled values.
-      seed: 2026
-      price_index: US_built-prices-fhfa-2025
-      price_anchor: acs
-      # No land-market inputs (location_recipe): the PLACES lab regions
-      # and their 2010 land values are held pending review
-      # (redistribution_restricted), and restricted evidence never
-      # reaches a shipped value, not even through the county summaries
-      # that weigh donors. Leaving all three out moved the typical
-      # county miss of structure value from 8.1% to 9.4% (2026-10-24,
-      # Pender's labels still inflated).
-      # Census levels (public domain), read at delivery as model inputs;
-      # the bundle does not carry them: ACS median home value, year
-      # built, income and population, and the Gazetteer's land areas
-      # and place locations for density and settlement distances.
-      census_recipe: US_population-acs-2024
-      gazetteer_recipe: US_population-gazetteer-2024
-      # Printed in the licence notice's imputation section.
-      credit: >-
-        Method: the choice of gradient-boosted trees, spatially blocked
-        testing and treating NSI-assigned years as area lookups follow
-        Mohammad Askari (UCLA), "Imputation Model Selection for
-        CoPe-CHEER: North Carolina" (2026-09-10) and "Imputing All Nine
-        Building Attributes in CHEER Places North Carolina"
-        (2026-10-15). The production pipeline (donor counties,
-        common-year values, census inputs and price anchor, residual
-        draws) is openplaces' own.
-      donors:
-        mode: km
-        bandwidth_km: 100
-        similarity_bandwidth: 1.0
 
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
@@ -503,8 +190,8 @@ pipeline:
       - occupancy_type_dwelling_overture
       - n_dwellings_overture
       - occupancy_type_property_shovels
-      - n_permits_per_footprint
-      - n_permits_per_footprint_address
+      - n_permits_per_building
+      - n_permits_per_building_address
       - use_group_combined_parcel
       - address_parcel
       - address
@@ -627,6 +314,8 @@ pipeline:
     # $3,500 per sq ft, 7 fell below it and 7 were explained by floors.
     floor_weight:
       recipe_id: US_footprint_footprint-overture-2026
+      entity_recipe: US_footprint-spine-2026
+      key: footprint_id
       stories_column: n_stories_footprint_overture
       height_column: height_footprint_overture
       story_height_m: 3.5
@@ -681,13 +370,22 @@ pipeline:
   # own provenance there), so its own sidecar would be dead weight.
   # A gather step, so it runs with the other gathers before any decision
   # (moved up from after the occupancy resolution 2026-09-29).
+  # Every entry is an enrichment of the outlines, so each names the
+  # footprint spine it ran on and joins through the building's
+  # footprint_id: without that, its output is looked for under the
+  # building spine and skipped as if never run. Street view stories
+  # move to the building in step 5 of the plan.
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         record_source: true
         columns:
           roof_shape_brails: roof_shape
       - recipe_id: US_footprint_built-n-stories-brails-2026
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           n_stories_brails: n_stories_brails
       # CHEER Inventory v0: the same BRAILS attributes, already computed
@@ -703,6 +401,8 @@ pipeline:
       # below, and the rest are single-source (record_source would be
       # bookkeeping with nothing to reconcile against).
       - recipe_id: US-NC_footprint_building-cheer-v0
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           roof_shape_building_cheer: roof_shape_building_cheer
           roof_shape_confidence_building_cheer: roof_shape_confidence
@@ -721,6 +421,8 @@ pipeline:
           # it is reconciled behind NSI below.
           foundation_type_building_cheer: foundation_type_building_cheer
       - recipe_id: US-TX_footprint_building-cheer-v0
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           roof_shape_building_cheer: roof_shape_building_cheer
           roof_shape_confidence_building_cheer: roof_shape_confidence
@@ -736,6 +438,8 @@ pipeline:
       # against block-level variance 2026-08-25: real records, not a
       # broadcast statistic). NC-only; skipped where absent.
       - recipe_id: US-NC_footprint_footprint-ncdps-2023
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           year_built_footprint_ncdps: year_built_footprint_ncdps
           year_built_source_footprint_ncdps: year_built_source_footprint_ncdps
@@ -743,6 +447,8 @@ pipeline:
       # floors of the floor-area split above and of the height check
       # (flag_unconfirmed_height) below.
       - recipe_id: US_footprint_footprint-overture-2026
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           height_footprint_overture: height_footprint_overture
           n_stories_footprint_overture: n_stories_footprint_overture
@@ -750,6 +456,8 @@ pipeline:
       # flights, NGA outlines only); a story count is derived from it
       # before n_stories is reconciled below.
       - recipe_id: US_footprint_footprint-fema-2023
+        entity_recipe: US_footprint-spine-2026
+        key: footprint_id
         columns:
           height_footprint_fema: height_footprint_fema
 
@@ -2012,8 +1720,8 @@ pipeline:
       # test_restricted_shovels_columns_are_never_published.
       - occupancy_type_property_shovels
       - occupancy_type_property_shovels_source
-      - n_permits_per_footprint
-      - n_permits_per_footprint_address
+      - n_permits_per_building
+      - n_permits_per_building_address
       - occupancy_type_dwelling_overture
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base

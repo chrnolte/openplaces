@@ -16,7 +16,7 @@ from openplaces.flow.dag import (
 from openplaces.io.curator.validation import validation_notebooks
 from openplaces.io.delivery import delivery_accuracy_dir, delivery_paths
 
-TARGET = 'US_footprint-openplaces-2026'
+TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BRU'
 # The committed recipe declares the survey notebooks for this region;
 # permit notebooks join them only where the untracked sidecar exists.

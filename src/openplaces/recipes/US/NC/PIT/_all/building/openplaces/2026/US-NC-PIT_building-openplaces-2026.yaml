@@ -20,12 +20,12 @@ admin_id: US-NC-PIT
 stage: curate
 
 entity:
-  entity_type: footprint
+  entity_type: building
   source:
     source_id: openplaces
   version: 2026
 
-patches: US_footprint-openplaces-2026
+patches: US_building-openplaces-2026
 pipeline_patch:
   - discard: merge_enrichments
     key: recipes

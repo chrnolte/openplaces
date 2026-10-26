@@ -503,7 +503,11 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
     gathers evidence into the curated table. Floors are the larger of
     the stated count and the height over *story_height_m* rounded to
     the nearest floor, at least one (`_measured_floors`). None when the
-    unit has no such evidence.
+    unit has no such evidence. As in `merge_enrichments`, an
+    ``entity_recipe`` names the spine an outline enrichment was computed
+    on and ``key`` the curated column holding that spine's id (the
+    building curate reads Overture's outline heights through each
+    building's ``footprint_id``).
     """
     unknown = set(floor_weight) - {
         'recipe_id',
@@ -511,15 +515,22 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
         'height_column',
         'story_height_m',
         'unmeasured_max_m2',
+        'entity_recipe',
+        'key',
     }
     if unknown or 'recipe_id' not in floor_weight:
         raise ValueError(
             'apportion_curated_values: floor_weight takes recipe_id, '
-            'stories_column, height_column, story_height_m and '
-            f'unmeasured_max_m2; got {sorted(floor_weight)}.'
+            'stories_column, height_column, story_height_m, '
+            'unmeasured_max_m2, entity_recipe and key; got '
+            f'{sorted(floor_weight)}.'
         )
     recipe = get_recipe_by_id(floor_weight['recipe_id'])
-    path = get_output_path(recipe, state.admin_id, entity_recipe_id=state.entity_recipe)
+    path = get_output_path(
+        recipe,
+        state.admin_id,
+        entity_recipe_id=floor_weight.get('entity_recipe') or state.entity_recipe,
+    )
     if not path.exists():
         if state.verbose:
             print(
@@ -535,7 +546,12 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
         floor_weight.get('height_column'),
         floor_weight.get('story_height_m', 3.5),
     )
-    floors = floors[~floors.index.duplicated()].reindex(index)
+    floors = floors[~floors.index.duplicated()]
+    key = floor_weight.get('key')
+    if key is None:
+        floors = floors.reindex(index)
+    else:
+        floors = state.curated[key].reindex(index).map(floors)
     # An unmeasured outline too small to hold a tower's floor area counts
     # as one floor instead of returning its whole lot to the area split:
     # a lot with a measured tower and a few unmeasured kiosks or roof
@@ -1143,6 +1159,16 @@ def merge_enrichments(
     ``PerformanceWarning: DataFrame is highly fragmented`` -- exactly the
     pattern a large ``merge_enrichments`` call (e.g. ~45 columns from one
     enrichment source) produces.
+
+    An enrichment's output is found under the spine it enriched, which is
+    the curated entity's own unless a spec names another with
+    ``entity_recipe``. The building curate reads the enrichments of
+    outlines that way (``entity_recipe: US_footprint-spine-2026``), and
+    joins them on its ``key`` column, the building's ``footprint_id``,
+    rather than on its index: an outline's roof shape is what every
+    building under that outline stands under. Without ``entity_recipe``
+    such an output is looked for under the building spine, found missing
+    and skipped as if the enrichment had not run.
     """
     from openplaces.io.curator.provenance import _apply_source_mask, source_column
 
@@ -1163,10 +1189,16 @@ def merge_enrichments(
         enrichment_recipe = get_recipe_by_id(recipe_id)
         if enrichment_recipe.get('stage') != 'enrich':
             raise ValueError(f"Evidence recipe '{recipe_id}' must have stage 'enrich'.")
+        key = recipe_spec.get('key')
+        if key is not None and key not in curated.columns:
+            raise ValueError(
+                f"merge_enrichments: '{recipe_id}' joins on '{key}', which the "
+                'curated table does not have.'
+            )
         evidence_path = get_output_path(
             enrichment_recipe,
             state.admin_id,
-            entity_recipe_id=state.entity_recipe,
+            entity_recipe_id=recipe_spec.get('entity_recipe') or state.entity_recipe,
         )
         if not evidence_path.exists():
             if state.verbose:
@@ -1197,7 +1229,10 @@ def merge_enrichments(
                         'skipping.'
                     )
                 continue
-            values = evidence[evidence_column].reindex(curated.index)
+            if key is None:
+                values = evidence[evidence_column].reindex(curated.index)
+            else:
+                values = curated[key].map(evidence[evidence_column])
 
             # A prior recipe_spec in this same call may have already
             # queued a value for this column -- read that first so

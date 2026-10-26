@@ -16,7 +16,7 @@ ADMIN_ID = 'US-MA-MI'
 @pytest.fixture
 def share_to_tmp(tmp_path, monkeypatch):
     """Redirect the curated recipe's bucket to a fresh folder per test."""
-    bucket = get_recipe_by_id('US_footprint-openplaces-2026')['save_to']['data_dir']
+    bucket = get_recipe_by_id('US_footprint-cheer-2026')['save_to']['data_dir']
     monkeypatch.setitem(cfg.config['directories'], bucket, tmp_path)
     return tmp_path
 
@@ -28,10 +28,10 @@ def _gdf():
 
 
 def test_combined_layout_has_geometry_without_a_sidecar(share_to_tmp):
-    # US_footprint-openplaces-2026 saves with save_to.combined: true -- geometry
+    # US_footprint-cheer-2026 saves with save_to.combined: true -- geometry
     # merged into the one file, no _geo sidecar at all (see read_parquet's
     # own schema-peek handling of this layout).
-    recipe = get_recipe_by_id('US_footprint-openplaces-2026')
+    recipe = get_recipe_by_id('US_footprint-cheer-2026')
     out_path = get_output_path(recipe, ADMIN_ID)
     save_parquet(_gdf(), out_path, combined=True)
 
@@ -40,7 +40,7 @@ def test_combined_layout_has_geometry_without_a_sidecar(share_to_tmp):
 
 
 def test_split_layout_has_geometry_via_sidecar(share_to_tmp):
-    recipe = get_recipe_by_id('US_footprint-openplaces-2026')
+    recipe = get_recipe_by_id('US_footprint-cheer-2026')
     out_path = get_output_path(recipe, ADMIN_ID)
     save_parquet(_gdf(), out_path)  # default split layout: writes a _geo sidecar
 
@@ -49,7 +49,7 @@ def test_split_layout_has_geometry_via_sidecar(share_to_tmp):
 
 
 def test_attribute_only_output_has_no_geometry(share_to_tmp):
-    recipe = get_recipe_by_id('US_footprint-openplaces-2026')
+    recipe = get_recipe_by_id('US_footprint-cheer-2026')
     out_path = get_output_path(recipe, ADMIN_ID)
     save_parquet(pd.DataFrame({'name': ['a']}), out_path)
 
@@ -57,5 +57,5 @@ def test_attribute_only_output_has_no_geometry(share_to_tmp):
 
 
 def test_missing_output_has_no_geometry(share_to_tmp):
-    recipe = get_recipe_by_id('US_footprint-openplaces-2026')
+    recipe = get_recipe_by_id('US_footprint-cheer-2026')
     assert _has_geometry_output(recipe, ADMIN_ID, None) is False

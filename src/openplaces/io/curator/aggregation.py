@@ -276,6 +276,8 @@ def aggregate_from_entities(
     prefer: list[str] | None = None,
     aggregations: dict | None = None,
     count_as: str | None = None,
+    rename: dict | None = None,
+    keep: list[str] | None = None,
 ) -> CurateState:
     """Reduce a reference entity's rows onto the curated rows they belong to.
 
@@ -390,6 +392,16 @@ def aggregate_from_entities(
         Also write the number of reference rows each curated row takes
         (`n_buildings_per_footprint`), 0 where it takes none. Default
         None.
+    rename : dict, optional
+        Reference column to the curated name it is written under, its
+        sidecar following (`n_permits_per_building:
+        n_permits_per_footprint`, so a count keeps the name of the
+        entity it is written on). Default None.
+    keep : list of str, optional
+        With `columns: all`, curated columns left as they are: an
+        outline's own centroid, area, geographic ids and geometry
+        provenance describe the outline, not its buildings. Default
+        None.
     """
     curated = state.curated
     all_columns = columns == 'all'
@@ -430,6 +442,7 @@ def aggregate_from_entities(
             curated.index.name,
             *keys_,
             *reference_keys,
+            *(keep or ()),
         }
         spec = {
             c: None for c in described if c not in sidecar_names and c not in left_out
@@ -498,6 +511,11 @@ def aggregate_from_entities(
     )
     if reference is None or len(reference) == 0:
         return state
+    if all_columns:
+        # A recipe's description lists its index too (a curate recipe's
+        # `building_id`), which arrives as the index, not a column.
+        present = [c for c in present if c in reference.columns]
+        sidecars = {c: s for c, s in sidecars.items() if c in present}
     if where_column is not None:
         matches = (
             reference[where_column]
@@ -578,40 +596,44 @@ def aggregate_from_entities(
     written = []
     recover = set(recover or ())
     prefer = set(prefer or ())
+    rename = dict(rename or {})
     for column in reduced.columns:
         incoming = keys.map(reduced[column])
+        target = rename.get(column, column)
         if column in prefer:
             wrote = incoming.notna()
-            if column in curated.columns:
-                curated[column] = incoming.where(wrote, curated[column])
+            if target in curated.columns:
+                curated[target] = incoming.where(wrote, curated[target])
             else:
-                curated[column] = incoming
+                curated[target] = incoming
         elif column in recover:
             positive = pd.to_numeric(incoming, errors='coerce').gt(0).fillna(False)
-            if column in curated.columns:
-                existing = curated[column]
+            if target in curated.columns:
+                existing = curated[target]
                 stated = pd.to_numeric(existing, errors='coerce').gt(0).fillna(False)
                 wrote = positive & ~stated
-                curated[column] = existing.where(~wrote, incoming)
+                curated[target] = existing.where(~wrote, incoming)
             else:
                 wrote = positive
-                curated[column] = incoming.where(positive)
-        elif column in curated.columns and fill_only:
-            existing = curated[column]
+                curated[target] = incoming.where(positive)
+        elif target in curated.columns and fill_only:
+            existing = curated[target]
             wrote = existing.isna() & incoming.notna()
-            curated[column] = existing.where(existing.notna(), incoming)
+            curated[target] = existing.where(existing.notna(), incoming)
         else:
             wrote = incoming.notna()
-            curated[column] = incoming
+            curated[target] = incoming
         if column in sidecars and wrote.any():
             tokens = _union_tokens(values, group_key, column, sidecars[column])
-            record_sources(curated, column, keys.map(tokens).where(wrote))
-        written.append(column)
+            record_sources(curated, target, keys.map(tokens).where(wrote))
+        written.append(target)
     if count_as:
         counts = pd.Series(group_key).value_counts()
         curated[count_as] = keys.map(counts).fillna(0).astype('float64')
         written.append(count_as)
-    state.curated = curated
+    # One column at a time fragments a wide table (columns: all writes
+    # well over a hundred); one copy consolidates it.
+    state.curated = curated.copy() if all_columns else curated
     if state.verbose:
         print(
             f'  aggregate_from_entities: {recipe_id} -> {", ".join(written)} '

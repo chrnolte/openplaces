@@ -111,7 +111,7 @@ def test_harmonizer_honors_receipt_and_reprocess_discards(data_root, monkeypatch
     recipe = get_recipe_by_id(FOOTPRINT_SPINE)
     out_path = get_output_path(recipe, admin_id=COUNTY)
     cheer_out = get_output_path(
-        get_recipe_by_id('US_footprint-openplaces-2026'), admin_id=COUNTY
+        get_recipe_by_id('US_footprint-cheer-2026'), admin_id=COUNTY
     )
     _write_parquet(cheer_out)
     cl.write_receipt(
@@ -121,7 +121,7 @@ def test_harmonizer_honors_receipt_and_reprocess_discards(data_root, monkeypatch
             'admin_id': COUNTY,
             'consumers_verified': [
                 {
-                    'recipe_id': 'US_footprint-openplaces-2026',
+                    'recipe_id': 'US_footprint-cheer-2026',
                     'admin_id': COUNTY,
                     'path': cl._relative_posix(cheer_out),
                 }

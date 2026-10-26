@@ -137,7 +137,7 @@ pipeline:
           # NSI assigns foundation from regional/flood-zone rules, so it is
           # a prior rather than a per-building observation -- but a stable
           # one, which a per-building classifier is not guaranteed to be
-          # (see the foundation_type reconciliation in US_footprint-openplaces-2026).
+          # (see the foundation_type reconciliation in US_building-openplaces-2026).
           - foundation_type
           # Same prior-not-observation caveat: NSI derives bldgtype from
           # occupancy statistics. Still the only national source, and the
@@ -186,7 +186,7 @@ pipeline:
   # Independent occupancy_type evidence from NC building permits: APN-based
   # linking first (parcel_id_local, computed by both sides at ingest time),
   # then an address fallback for buildings the APN pass missed. Deliberately
-  # not yet added to US_footprint-openplaces-2026's occupancy vote -- that vote/
+  # not yet added to US_building-openplaces-2026's occupancy vote -- that vote/
   # kernel mechanism is mid-overhaul on a separate branch. Harmonize
   # writes evidence only; the vote is curate's.
   #

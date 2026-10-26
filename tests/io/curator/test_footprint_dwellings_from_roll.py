@@ -16,7 +16,7 @@ from openplaces.io.curator import CurateState, reconcilers
 from openplaces.io.harmonizer.apportion import apportion_reference_values
 from openplaces.recipe import get_recipe_by_id
 
-RECIPE = 'US_footprint-openplaces-2026'
+RECIPE = 'US_building-openplaces-2026'
 
 
 def _pairs(rows):
