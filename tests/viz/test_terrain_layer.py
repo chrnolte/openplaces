@@ -664,3 +664,14 @@ def test_show_value_terrain_layer_elevation_column_honors_the_datum():
     np.testing.assert_allclose(
         terrain_layer.total_elevation, [165.0 + 10.0, 0.0 + 50.0]
     )
+
+
+def test_simplifying_a_table_that_mixes_flat_and_z_outlines():
+    from openplaces.viz.terrain import _simplify_coverage
+
+    flat = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+    raised = Polygon([(10, 0, 5), (20, 0, 5), (20, 10, 5), (10, 10, 5)])
+    shapes = gpd.GeoSeries([flat, raised], crs='EPSG:26986')
+    out = _simplify_coverage(shapes, 0.5)
+    assert len(out) == 2
+    assert not shapely.has_z(out.to_numpy()).any()

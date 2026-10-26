@@ -137,10 +137,13 @@ structure value apportioned from the roll, the roll's year copied onto
 a footprint), is withheld too. An estimate looked up from a place
 reference (a city from its ZIP code, `zipcodes+imputed`) is tied to a
 place, not to the roll's values, and stays. So does an estimate marked
-`open` (`<version>+open+imputed`, written by the delivery's building
-imputation): its models were fit on the bundle's frame after every
-restricted and share-alike value had been withheld from it, so none of
-them reached the cell. A `{col}_per_area` ratio
+`open`, in either of two places. The delivery's building imputation
+writes `<version>+open+imputed`: its models were fit on the bundle's
+frame after every restricted and share-alike value had been withheld
+from it, so none of them reached the cell. Curate's `impute_land_value`
+with `open_only: true` writes `<tier>+open+imputed`: it learns only from
+rows these rules withhold nothing from, and estimates only such rows,
+so no restricted value reached the cell. A `{col}_per_area` ratio
 goes with its `{col}`, since times the shipped area it is the value,
 and a column the recipe declares under `share: derived_from:` (the
 footprint's `occupancy_type_parcel`, the roll's use class in occupancy

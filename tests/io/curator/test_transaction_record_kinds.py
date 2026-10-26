@@ -495,6 +495,44 @@ def test_maryland_how_conveyed_is_graded_and_no_data_stays_missing():
     ]
 
 
+def test_clermont_sale_validity_is_graded_and_bypass_stays_missing():
+    from openplaces.io.curator.inferers import derive_indicators
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    recipe, applied = apply_recipe_patches(
+        get_recipe_by_id('US_transaction-openplaces-2026'), AdminId('US-OH-CL')
+    )
+    assert 'US-OH-CL_transaction-openplaces-2026' in applied
+    wanted = {'sale_arms_length_confidence', 'sale_qualification_group'}
+    specs = [
+        spec
+        for step in recipe['pipeline']
+        for spec in step.get('indicators', [])
+        if spec['output'] in wanted
+    ]
+    codes = [
+        'VALID SALE',
+        'VALID SALE INVOLVING MULTIPLE PARCELS',
+        'NEW CONSTRUCTION SALE',
+        'NOT VALID',
+        'RELATED INDIVIDUALS OR CORPORATIONS',
+        'BYPASS FOR MODELING',
+        None,
+    ]
+    df = pd.DataFrame({'sale_qualification_code': codes})
+    out = derive_indicators(_state(df), indicators=specs).curated
+    conf = out['sale_arms_length_confidence']
+    assert conf.tolist()[:5] == [1.0, 0.7, 0.7, 0.0, 0.0]
+    assert conf.isna().tolist()[5:] == [True, True]
+    assert out['sale_qualification_group'].tolist()[:5] == [
+        'qualified',
+        'qualified_multi_parcel',
+        'qualified_parcel_changed',
+        'disqualified',
+        'related_parties',
+    ]
+
+
 def test_a_second_source_fills_only_what_the_first_left_missing():
     from openplaces.io.curator.inferers import derive_indicators
 

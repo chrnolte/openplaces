@@ -135,6 +135,12 @@ def _apportioned_sources(
     direction: a value wrongly called original is a false claim, a value
     wrongly called derived is only a lost guarantee.
 
+    The open marker (an estimate learned only from values a public
+    bundle may carry, `impute_land_value`'s *open_only*) is kept only
+    where **every** contributing reference that was derived carries it,
+    and added where they all do: one estimate learned from restricted
+    values makes the sum one too.
+
     Parameters
     ----------
     lane : str, optional
@@ -187,16 +193,65 @@ def _apportioned_sources(
         tokens = tokens.map(
             lambda t: t if pd.isna(t) or str(t).startswith(lane) else f'{lane}.{t}'
         )
-        contributed = is_imputed(pairs['parcel_id'].map(lookup[side]))
-        any_imputed = (
-            contributed.groupby(pairs[spine_id_col].to_numpy())
-            .any()
-            .reindex(index)
-            .fillna(False)
-            .astype(bool)
+        pair_tokens = pairs['parcel_id'].map(lookup[side])
+        contributed = is_imputed(pair_tokens)
+        closed = contributed & ~_has_open_marker(pair_tokens)
+
+        def _by_entity(flags):
+            return (
+                pd.Series(flags.to_numpy())
+                .groupby(pairs[spine_id_col].to_numpy())
+                .any()
+                .reindex(index)
+                .fillna(False)
+                .astype(bool)
+            )
+
+        any_imputed = _by_entity(contributed)
+        any_closed = _by_entity(closed)
+        tokens = tokens.where(~any_imputed, tokens.map(_strip_open_marker))
+        marked = tokens.map(mark_imputed)
+        out[col] = tokens.where(
+            ~any_imputed, marked.where(any_closed, marked.map(_with_open_marker))
         )
-        out[col] = tokens.where(~any_imputed, tokens.map(mark_imputed))
     return out
+
+
+def _token_parts(token) -> list[str]:
+    from openplaces.core.provenance import TOKEN_SEPARATOR
+
+    return [] if pd.isna(token) else str(token).split(TOKEN_SEPARATOR)
+
+
+def _has_open_marker(tokens) -> pd.Series:
+    """True where a token carries the open marker as a whole part."""
+    from openplaces.io.delivery.redaction import OPEN
+
+    return pd.Series(
+        [OPEN in _token_parts(t) for t in pd.Series(tokens).astype(object)],
+        index=pd.Series(tokens).index,
+        dtype=bool,
+    )
+
+
+def _strip_open_marker(token):
+    """*token* without the open marker, or as it is."""
+    from openplaces.core.provenance import TOKEN_SEPARATOR
+    from openplaces.io.delivery.redaction import OPEN
+
+    if pd.isna(token):
+        return token
+    return TOKEN_SEPARATOR.join(p for p in _token_parts(token) if p != OPEN)
+
+
+def _with_open_marker(token):
+    """An imputed *token* with the open marker before the imputed one
+    (`parcel.tier+open+imputed`)."""
+    from openplaces.core.provenance import IMPUTED_MARKER, TOKEN_SEPARATOR
+    from openplaces.io.delivery.redaction import OPEN
+
+    parts = [p for p in _token_parts(token) if p not in (OPEN, IMPUTED_MARKER)]
+    return TOKEN_SEPARATOR.join([*parts, OPEN, IMPUTED_MARKER])
 
 
 def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2, orphaned_refs=()):

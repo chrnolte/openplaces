@@ -760,7 +760,9 @@ def test_local_command_never_uploads():
         if local.has_circle(p):
             assert len(p['center']) == 2 and p['around']
         else:
-            assert p['admin_ids'] and p['extent_note'] and 'center' not in p
+            # Whole units, or a named boundary (a city's limits).
+            assert (p.get('admin_ids') or p.get('extent')) and p['extent_note']
+            assert 'center' not in p
     # A team page is a separate place, never the public one.
     team = [p for p in places['places'] if p.get('team')]
     assert all(p['slug'].endswith('-team') for p in team)
@@ -1443,6 +1445,69 @@ def test_tiny_lots_carrying_an_accounts_value_are_land_ghosts(monkeypatch):
     ghosts = gdfs['parcels'][web_scene.GHOST_COLUMN].to_numpy()
     assert ghosts[-3] and not ghosts[-2] and not ghosts[-1]
     assert not ghosts[:-3].any()
+
+
+def test_a_city_page_is_its_limits_and_stays_under_the_cap(tmp_path, monkeypatch):
+    from openplaces.io import readers
+    from openplaces.viz.web_scene import local
+
+    # Fabricated places: the city sought and a neighbor.
+    cities = gpd.GeoDataFrame(
+        {'census_place_geoid': ['0000001', '0000002']},
+        geometry=[box(0, 0, 0.1, 0.1), box(0.1, 0, 0.2, 0.1)],
+        crs=4326,
+    )
+    monkeypatch.setattr(readers, 'get_dataset', lambda recipe, admin_id, geom: cities)
+    place = {
+        'slug': 'city-a',
+        'state': 'US-XX',
+        'extent': {'recipe': 'r', 'id': '0000001'},
+        'extent_note': 'The city of A',
+    }
+    assert not local.has_circle(place)
+    shape, _ = local.extent_shape(place)
+    assert shape.equals(box(0, 0, 0.1, 0.1))
+    # A page above the cap stops the build; a circle page is reported.
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'f.bin').write_bytes(b'0' * int(1.5 * 2**20))
+    manifest = {'layers': [{'files': {'US-XX-AAA': {'geometry': 'data/f.bin'}}}]}
+    (tmp_path / 'scene.json').write_text(json.dumps(manifest), encoding='utf-8')
+    monkeypatch.setattr(local, 'PAGE_DATA_CAP_MB', 1.0)
+    with pytest.raises(SystemExit, match='split the place'):
+        local.check_page_size(place, tmp_path, 'city-a')
+    circle = {'slug': 'c', 'center': [0, 0]}
+    assert local.check_page_size(circle, tmp_path, 'c') == pytest.approx(1.5)
+
+
+def test_an_extent_place_with_model_file_lots_is_refused_plainly():
+    from openplaces.viz.web_scene import local
+
+    place = {
+        'slug': 'city-a',
+        'state': 'US-XX',
+        'extent': {'recipe': 'r', 'id': '0000001'},
+        'lots_in_model_file': True,
+    }
+    with pytest.raises(SystemExit, match='not supported'):
+        local.place_extent(place, 7.0, 'city-a')
+
+
+def test_a_page_that_stops_does_not_stop_the_places_after_it(monkeypatch):
+    from openplaces.viz.web_scene import site
+
+    built = []
+
+    def fake_page(place, radius_km, slug, phone_scene=None):
+        if slug == 'big-city':
+            raise SystemExit('big-city: too large')
+        built.append(slug)
+
+    monkeypatch.setattr(site, '_page', fake_page)
+    extent = {'recipe': 'r', 'id': '1'}
+    places = [{'slug': slug, 'extent': extent} for slug in ('big-city', 'small-city')]
+    with pytest.raises(SystemExit, match='big-city: too large'):
+        site.build(places, {'radius_km': 15.0, 'phone_radius_km': 7.0})
+    assert built == ['small-city']
 
 
 def test_downtown_stop_names_the_unit_holding_it():

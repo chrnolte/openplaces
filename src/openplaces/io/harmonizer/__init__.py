@@ -36,6 +36,7 @@ from openplaces.io.cleanup import (
 from openplaces.io.readers import get_admin, get_admin_ids
 from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
+    RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
     get_output_path,
     get_recipe_by_id,
@@ -551,6 +552,10 @@ def _missing_link_sidecars(recipe, admin_id) -> list[Path]:
         except Exception:  # noqa: BLE001 - unresolvable is "not built"
             return False
 
+    # The pipeline the unit runs, patches included: a sidecar of a link
+    # step a county's patch removed is owed by no run.
+    if admin_id is not None:
+        recipe, _ = apply_recipe_patches(recipe, admin_id)
     owed: list[Path] = []
     for step in recipe.get('pipeline') or []:
         if not isinstance(step, dict):
@@ -841,6 +846,11 @@ class Harmonizer:
                 k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
             }
             state = fn(state, **params)
+            # One mark per recipe step, so a step's time is never folded
+            # into the next label a step happens to set itself. Marks a
+            # step sets inside itself still split its own work.
+            if state.timer:
+                state.timer.mark(f'step {step_index:02d} {step_name}')
             if not spine_checked and state.spine is not None:
                 require_unique_index(
                     state.spine,
@@ -880,9 +890,17 @@ class Harmonizer:
         # survive the geometry/attribute recipe split, so the small,
         # JSON-able keys ride in the attribute parquet's footer.
         handoff = _handoff_metadata(state)
-        file_metadata = (
-            {HARMONIZE_METADATA_KEY: json.dumps(handoff)} if handoff else None
-        )
+        file_metadata = {}
+        if handoff:
+            file_metadata[HARMONIZE_METADATA_KEY] = json.dumps(handoff)
+        # Which patches shaped this unit's pipeline, as the curator
+        # records them, so a reader can tell which county rules shaped
+        # this output.
+        if state.metadata.get('recipe_patches'):
+            file_metadata[RECIPE_PATCHES_METADATA_KEY] = json.dumps(
+                state.metadata['recipe_patches']
+            )
+        file_metadata = file_metadata or None
 
         # An attribute-only recipe (save_to: geometry: false) writes a plain
         # table; its geometry lives with the entity_recipe predecessor and

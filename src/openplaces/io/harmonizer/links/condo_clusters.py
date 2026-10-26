@@ -522,6 +522,8 @@ def consolidate_condo_cluster_footprints(
         superseded_spine_ids.update(ev['linked_spine_ids'])
         consolidated_pids.update(cluster_pids)
 
+    if state.timer:
+        state.timer.mark('Condo clusters: build consolidated rows')
     if not new_rows:
         return state
 

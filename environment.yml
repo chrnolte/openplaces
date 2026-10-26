@@ -44,6 +44,7 @@ dependencies:
   # Optional: viz
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.viz]
   - matplotlib>=3.7.0
+  - cmasher>=1.6.0
   - plotly>=5.15.0
   - folium>=0.15.0
   - seaborn>=0.12.0

@@ -47,6 +47,7 @@ from openplaces.viz.web_scene import (
     known_issues,
 )
 from openplaces.viz.web_scene.local import (
+    check_page_size,
     downtown_of,
     extent_label,
     has_circle,
@@ -93,20 +94,30 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
             f'in {time.time() - started:.0f}s',
             flush=True,
         )
+        check_page_size(place, site_root() / name, name)
 
 
 def build(places, config) -> None:
     """Each place's phone page, then its page, which sends phones there.
 
-    A place shown as whole units has no phone page.
+    A place shown as whole units has no phone page. A page that stops
+    (above the size cap, say) does not stop the places after it; the
+    stops are raised together at the end, and the folder of a page over
+    the cap stays where it was written, so do not deploy after a stop.
     """
+    stops = []
     for place in places:
         slug = place['slug']
-        if not has_circle(place):
-            _page(place, config['radius_km'], slug)
-            continue
-        _page(place, config['phone_radius_km'], f'{slug}-phone')
-        _page(place, config['radius_km'], slug, phone_scene=f'../{slug}-phone/')
+        try:
+            if not has_circle(place):
+                _page(place, config['radius_km'], slug)
+                continue
+            _page(place, config['phone_radius_km'], f'{slug}-phone')
+            _page(place, config['radius_km'], slug, phone_scene=f'../{slug}-phone/')
+        except SystemExit as stop:
+            stops.append(str(stop))
+    if stops:
+        raise SystemExit('\n'.join(stops))
 
 
 def parcel_count(scene_dir) -> int:

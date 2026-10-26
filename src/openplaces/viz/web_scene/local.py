@@ -112,13 +112,43 @@ def units_and_regions(state, circle_metric=None, admin_ids=None):
     return built, regions, missing
 
 
+# Most data a page of whole units or a city's limits may load, in MB
+# (maintainer, 2026-10-19). Boston's 7 km phone page loads 24 MB and
+# works on the maintainer's Pixel 9; its 15 km page loads 80 MB and
+# crashed it (measured 2026-10-19).
+PAGE_DATA_CAP_MB = 25.0
+
+
 def has_circle(place) -> bool:
     """Whether a place's page is a circle (and has a phone page).
 
     A place listing `admin_ids` shows those units whole instead, such
-    as an island, and is small enough to need no phone page.
+    as an island; a place naming an `extent` shows that boundary whole
+    (a city's limits). Either kind stays under `PAGE_DATA_CAP_MB` and
+    needs no phone page.
     """
-    return 'admin_ids' not in place
+    return 'admin_ids' not in place and 'extent' not in place
+
+
+def extent_shape(place):
+    """A place's named boundary, in EPSG:4326 and 5070.
+
+    `extent` names a boundary recipe, its id column and the id: a city's
+    limits from Census places (maintainer, 2026-10-19: city pages show
+    their limits, so neighboring cities never overlap).
+    """
+    from openplaces.io.readers import get_dataset
+
+    spec = place['extent']
+    units = get_dataset(spec['recipe'], admin_id=place['state'], geom=True)
+    column = spec.get('column', 'census_place_geoid')
+    match = units[units[column].astype(str) == str(spec['id'])]
+    if match.empty:
+        raise SystemExit(
+            f'{place["slug"]}: no {column} {spec["id"]} in {spec["recipe"]}.'
+        )
+    shape = match.to_crs(4326).union_all()
+    return shape, gpd.GeoSeries([shape], crs=4326).to_crs(5070).iloc[0]
 
 
 def units_touched(states, circle_metric) -> list:
@@ -139,6 +169,11 @@ def place_extent(place, radius_km, slug):
     The crop is None for a place shown as whole units. Stops when no
     bundle covers the place; reports units without bundles.
     """
+    if place.get('lots_in_model_file') and 'extent' in place:
+        raise SystemExit(
+            f'{slug}: `extent` with `lots_in_model_file` is not supported; '
+            'list `admin_ids` or use a circle.'
+        )
     if place.get('lots_in_model_file'):
         # Units with no bundle: their lots come from the model files.
         # A circle reads every unit it touches, in each of `states`
@@ -153,6 +188,12 @@ def place_extent(place, radius_km, slug):
         )
     if has_circle(place):
         circle, metric = circle_around(place['center'], radius_km)
+        built, regions, missing = units_and_regions(
+            place.get('states') or place['state'], metric
+        )
+    elif 'extent' in place:
+        # Features by their center inside the boundary, as for a circle.
+        circle, metric = extent_shape(place)
         built, regions, missing = units_and_regions(
             place.get('states') or place['state'], metric
         )
@@ -229,7 +270,36 @@ def downtown_of(place):
 
 def extent_label(place, radius_km) -> str:
     """The extent in words, for build messages."""
-    return f'{radius_km:g} km' if has_circle(place) else ', '.join(place['admin_ids'])
+    if has_circle(place):
+        return f'{radius_km:g} km'
+    if 'extent' in place:
+        return f'limits {place["extent"]["id"]}'
+    return ', '.join(place['admin_ids'])
+
+
+def page_data_mb(folder) -> float:
+    """MB of data a built page loads (its manifest's files)."""
+    import json
+
+    from openplaces.viz.web_scene import manifest_files
+
+    folder = Path(folder)
+    manifest = json.loads((folder / 'scene.json').read_text(encoding='utf-8'))
+    return sum((folder / f).stat().st_size for f in manifest_files(manifest)) / 2**20
+
+
+def check_page_size(place, folder, slug) -> float:
+    """A page's data size; above `PAGE_DATA_CAP_MB` for a page of whole
+    units or a city's limits, the build stops (split it into ZIP
+    pages). Circle pages, which have phone pages, are reported only."""
+    size = page_data_mb(folder)
+    print(f'{slug}: {size:.1f} MB of data')
+    if not has_circle(place) and size > PAGE_DATA_CAP_MB:
+        raise SystemExit(
+            f'{slug}: {size:.1f} MB is above the {PAGE_DATA_CAP_MB:g} MB a phone '
+            'handles; split the place into smaller pages.'
+        )
+    return size
 
 
 def page_variants(place, slug) -> list[tuple[str, dict]]:
@@ -317,6 +387,7 @@ def build_place(place, radius_km, slug, phone_scene=None, preview_team=False) ->
             verbose=False,
             **extra,
         )
+        check_page_size(place, output, name)
     return local_root() / slug
 
 

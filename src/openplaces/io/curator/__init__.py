@@ -293,7 +293,7 @@ class Curator:
             save_statistics=self.save_statistics,
         )
 
-        for step_cfg in pipeline:
+        for step_index, step_cfg in enumerate(pipeline):
             step_name = step_cfg.get('step')
             if not step_name:
                 raise ValueError(
@@ -324,6 +324,9 @@ class Curator:
                 if key not in ('step', 'enabled', 'phase_override')
             }
             state = fn(state, **params)
+            # One mark per recipe step (see the harmonizer's loop).
+            if state.timer:
+                state.timer.mark(f'step {step_index:02d} {step_name}')
 
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
         save_kwargs = {'combined': combined}
