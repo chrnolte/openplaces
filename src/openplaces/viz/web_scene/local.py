@@ -313,6 +313,7 @@ def build_place(place, radius_km, slug, phone_scene=None, preview_team=False) ->
             model_files=models,
             lots_file=place_lots_file(place, built),
             models_public=bool(place.get('models_public')),
+            people_basis=place.get('people_basis', 'homes'),
             verbose=False,
             **extra,
         )

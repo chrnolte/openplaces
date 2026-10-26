@@ -2739,6 +2739,12 @@ PEOPLE_PER_DOT = 5
 # spread through at random (m).
 PEOPLE_GAP_M = 25.0
 PEOPLE_BAND_M = 50.0
+# What the cloud floats over (`build_web_scene(people_basis=...)`):
+# the residential lots, which reads the roll's use codes and values; or
+# the block's building outlines, at a fixed height, which reads no roll
+# column, code or value (maintainer, 2026-10-26: Philadelphia's roll
+# may not reach a shipped file).
+PEOPLE_BASES = ('homes', 'footprints')
 # The page fades the cloud out closer than this zoom, where single
 # houses can be told apart and a dot could read as one household.
 PEOPLE_MAX_ZOOM = 16.0
@@ -2751,7 +2757,7 @@ PEOPLE_NOTE = {
     'credit': (
         'U.S. Census Bureau, 2020 Census Redistricting Data (P.L. 94-171), '
         'table P2, by census block; public domain. One dot per {per_dot} '
-        'people, placed at random over the homes of its block, never on a '
+        'people, placed at random over the {over} of its block, never on a '
         "single house. Block counts carry the Bureau's disclosure-avoidance "
         'noise. After the Racial Dot Map (Dustin Cable, University of '
         'Virginia, 2013).'
@@ -2809,7 +2815,17 @@ def _random_points(area, n, rng) -> np.ndarray:
     return np.concatenate(found)
 
 
-def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFrame:
+def _polygons_of(shape):
+    """The polygonal parts of `shape`, as one geometry (an intersection
+    may also return lines or points)."""
+    return shapely.union_all(
+        [p for p in shapely.get_parts(shape) if p.geom_type.endswith('Polygon')]
+    )
+
+
+def race_dot_cloud(
+    blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0, land=None
+) -> pd.DataFrame:
     """One dot per `per_dot` people of each census block, placed at
     random over the block's homes (maintainer, 2026-10-24: a cloud
     above residential lots, after the Racial Dot Map).
@@ -2817,8 +2833,9 @@ def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFram
     A dot is drawn uniformly within the union of the block's
     residential lots, cut to the block, so it belongs to no lot,
     building or household: the census counts people per block, not per
-    house. A block with people and no residential lot spreads its dots
-    over the whole block, so counts stay whole. Each group's count is
+    house. A block with people and nothing in `homes` spreads its dots
+    over its land when `land` is given, else over the whole block, so
+    counts stay whole. Each group's count is
     divided by `per_dot` and rounded at random (the remainder becomes
     one more dot with that probability), so small groups in small
     blocks are neither dropped nor inflated on average. The generator
@@ -2832,11 +2849,15 @@ def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFram
         Census blocks (`PEOPLE_KEY`) with a count per group
         (`PEOPLE_GROUPS` columns).
     homes : geopandas.GeoSeries
-        Residential lots, as drawn (land shapes).
+        Shapes the dots float over: residential lots as drawn (land
+        shapes), or building outlines. Geometry only.
     per_dot : int
         People per dot.
     seed : int
         Added to every block's seed.
+    land : geopandas.GeoSeries, optional
+        Land shapes (after the water mask) of a block with nothing in
+        `homes`, so its dots do not fall on water. Geometry only.
 
     Returns
     -------
@@ -2866,6 +2887,15 @@ def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFram
         )
         for b, h in zip(hit_block, hit_home, strict=True):
             by_block.setdefault(b, []).append(h)
+    land_shapes = np.array([], dtype=object)
+    land_by_block = {}
+    if land is not None and len(land):
+        land_shapes = land.to_crs(5070).to_numpy()
+        hit_block, hit_land = shapely.STRtree(land_shapes).query(
+            metric.geometry.to_numpy(), predicate='intersects'
+        )
+        for b, h in zip(hit_block, hit_land, strict=True):
+            land_by_block.setdefault(b, []).append(h)
     counts = metric[columns].fillna(0).to_numpy(dtype=float)
     points, groups = [], []
     for i, block in enumerate(metric.geometry.to_numpy()):
@@ -2883,8 +2913,13 @@ def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFram
             area = shapely.intersection(
                 shapely.union_all(home_shapes[by_block[i]]), shapely.make_valid(block)
             )
-            area = shapely.union_all(
-                [p for p in shapely.get_parts(area) if p.geom_type.endswith('Polygon')]
+            area = _polygons_of(area)
+        if (area is None or area.is_empty or area.area < 1.0) and i in land_by_block:
+            area = _polygons_of(
+                shapely.intersection(
+                    shapely.union_all(land_shapes[land_by_block[i]]),
+                    shapely.make_valid(block),
+                )
             )
         if area is None or area.is_empty or area.area < 1.0:
             area = shapely.make_valid(block)
@@ -2926,9 +2961,25 @@ def people_heights(dots, lots, tops, homes, seed=0) -> np.ndarray:
     return np.where(np.isfinite(base), base, fallback) + lift
 
 
-def _people_cloud(admin_ids, crop, layers, rendered, homes, data_dir) -> dict | None:
+def people_fixed_heights(n, seed=0) -> np.ndarray:
+    """`n` dot heights above the ground for a cloud that reads no values:
+    `PEOPLE_GAP_M` and a random lift within `PEOPLE_BAND_M`."""
+    rng = np.random.default_rng(seed)
+    return PEOPLE_GAP_M + rng.random(n) * PEOPLE_BAND_M
+
+
+def _people_cloud(
+    admin_ids, crop, layers, rendered, homes, data_dir, basis='homes'
+) -> dict | None:
     """The people cloud's manifest entry, its file written, or None
-    where the census counts are missing or nobody lives in view."""
+    where the census counts are missing or nobody lives in view.
+
+    With basis `footprints` the cloud reads geometry alone: building
+    outlines (`homes` is unused), lot land shapes for blocks with no
+    building, and a fixed height, so no roll column, code or value
+    reaches it. With `homes` it floats over the residential lots at
+    their drawn heights.
+    """
     lot_layer = rendered[layers[0].name]
     lots = lot_layer.gdf
     blocks = read_people_blocks(admin_ids, lots.to_crs(4326).total_bounds)
@@ -2941,6 +2992,16 @@ def _people_cloud(admin_ids, crop, layers, rendered, homes, data_dir) -> dict | 
         land = lots[LAND_SHAPE].to_numpy()
         wet = np.array([shape is not None for shape in land], dtype=bool)
         shapes[wet] = shapely.from_wkb(land[wet].tolist())
+    if basis == 'footprints':
+        above = next((u for u in layers if u.stack_on == layers[0].name), None)
+        if above is None or above.name not in rendered:
+            return None
+        outlines = rendered[above.name].gdf.geometry.to_crs(4326)
+        dots = race_dot_cloud(blocks, outlines, land=gpd.GeoSeries(shapes, crs=4326))
+        if dots.empty:
+            return None
+        data, origin = encode_people_file(dots, people_fixed_heights(len(dots)))
+        return _people_entry(data_dir, data, origin, len(dots))
     dots = race_dot_cloud(blocks, gpd.GeoSeries(shapes[homes], crs=4326))
     if dots.empty:
         return None
@@ -2959,9 +3020,14 @@ def _people_cloud(admin_ids, crop, layers, rendered, homes, data_dir) -> dict | 
         )
     heights = people_heights(dots, lots, tops, homes)
     data, origin = encode_people_file(dots, heights)
+    return _people_entry(data_dir, data, origin, len(dots))
+
+
+def _people_entry(data_dir, data, origin, count) -> dict:
+    """The people cloud's manifest entry, its file written."""
     return {
         'file': _write_content_file(data_dir, 'people', data),
-        'count': len(dots),
+        'count': count,
         'origin': [round(origin[0], 7), round(origin[1], 7)],
         'per_dot': PEOPLE_PER_DOT,
         'max_zoom': PEOPLE_MAX_ZOOM,
@@ -4102,6 +4168,7 @@ def build_web_scene(
     notes=None,
     land_mask=True,
     people_cloud=True,
+    people_basis='homes',
     preview_team=False,
     restricted_units=None,
     restricted_page=None,
@@ -4208,6 +4275,13 @@ def build_web_scene(
         counts are on this machine and the page's audience is in
         `PEOPLE_AUDIENCES` (team pages only); the page shows it behind
         a switch, off by default.
+    people_basis : {'homes', 'footprints'}
+        What the cloud floats over. 'homes' (default): the residential
+        lots at their drawn heights, which reads the roll's use codes
+        and values. 'footprints': the block's building outlines (the
+        lots' land where a block has none) at a fixed height; it reads
+        census counts, NHD water and geometry only, no roll column,
+        code or value.
     preview_team : bool
         Mark the page a team page though it reads public bundles, so a
         local preview can show the people cloud before any team region
@@ -4249,6 +4323,8 @@ def build_web_scene(
     # Model files make a team page whatever bundles it reads.
     if models_public and model_files is None:
         raise ValueError('Public model views come only from handed-over model files.')
+    if people_basis not in PEOPLE_BASES:
+        raise ValueError(f'people_basis is one of {PEOPLE_BASES}: {people_basis!r}.')
     if preview_team and not local_only:
         raise ValueError('A team preview of public bundles is local only.')
     audience = (
@@ -4709,16 +4785,28 @@ def build_web_scene(
         )
 
     people = None
-    if people_cloud and audience in PEOPLE_AUDIENCES and layers[0].name in home_lots:
+    # The footprints basis reads no roll column, so it needs no lot
+    # classed as a home.
+    has_basis = people_basis == 'footprints' or layers[0].name in home_lots
+    if people_cloud and audience in PEOPLE_AUDIENCES and has_basis:
         people = _people_cloud(
-            admin_ids, crop, layers, rendered, home_lots[layers[0].name], data_dir
+            admin_ids,
+            crop,
+            layers,
+            rendered,
+            home_lots.get(layers[0].name),
+            data_dir,
+            basis=people_basis,
         )
     if people is not None:
+        over = 'buildings' if people_basis == 'footprints' else 'homes'
         notes = [
             *(notes or []),
             {
                 'name': PEOPLE_NOTE['name'],
-                'credit': PEOPLE_NOTE['credit'].format(per_dot=people['per_dot']),
+                'credit': PEOPLE_NOTE['credit'].format(
+                    per_dot=people['per_dot'], over=over
+                ),
             },
         ]
     land = rendered[layers[0].name].gdf
