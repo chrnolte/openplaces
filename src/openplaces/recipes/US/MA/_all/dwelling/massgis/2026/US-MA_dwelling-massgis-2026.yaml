@@ -38,9 +38,13 @@
 # suffix ('12A', '12-14'). address_street: STREET_NAME, the full street
 # name with type and direction. address_unit: UNIT. postal_code:
 # POSTCODE. city: PC_NAME, the postal village (Overture's postal_city
-# is the same notion). Not mapped: the parsed street parts (PRE_DIR,
-# STR_NAME_BASE, POST_TYPE, ...), FLOOR, BUILDING_NAME, the MSAG
-# community, and POINT_TYPE, which have no registry home.
+# is the same notion). unit_floor: FLOOR, the floor of the address's
+# unit as MassGIS numbers it, kept as an independent check on the
+# assessors' unit floors (Boston CD_FLOOR, Cambridge
+# Exterior_FloorLocation), which number ground and garden levels
+# differently. Not mapped: the parsed street parts (PRE_DIR,
+# STR_NAME_BASE, POST_TYPE, ...), BUILDING_NAME, the MSAG community,
+# and POINT_TYPE, which have no registry home.
 #
 # LICENCE. From the item page, read by the maintainer 2026-10-24: "This
 # GIS web service is a public resource and may be used by anyone for
@@ -75,7 +79,7 @@ uncompressed_file_name: "mad_points_{admin3_id_admin1}.geojson"
 
 scraper_options:
   layer_url: "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/MassGIS_Master_Address_Points/FeatureServer/0"
-  out_fields: "OBJECTID,FULL_NUMBER_STANDARDIZED,STREET_NAME,UNIT,POSTCODE,PC_NAME,GEOGRAPHIC_TOWN_ID"
+  out_fields: "OBJECTID,FULL_NUMBER_STANDARDIZED,STREET_NAME,UNIT,FLOOR,POSTCODE,PC_NAME,GEOGRAPHIC_TOWN_ID"
   where_admin_column: GEOGRAPHIC_TOWN_ID
   where_admin_numeric: true
   admin_key_crosswalk: "US-MA_parcel-massgis-2025_admin3-crosswalk"
@@ -91,6 +95,7 @@ columns:
   address_number: FULL_NUMBER_STANDARDIZED
   address_street: STREET_NAME
   address_unit: UNIT
+  unit_floor: FLOOR
   postal_code: POSTCODE
   city: PC_NAME
 
