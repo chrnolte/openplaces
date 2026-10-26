@@ -19,6 +19,7 @@ module.
 
 import argparse
 import sys
+from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
@@ -29,7 +30,7 @@ import shapely
 import yaml
 
 from openplaces.config import cfg
-from openplaces.io.delivery import TEAM_SUFFIX
+from openplaces.io.delivery import TEAM_SUFFIX, delivery_paths
 from openplaces.io.readers import get_admin
 from openplaces.viz.web_scene import (
     RESTRICTED_SUFFIX,
@@ -258,12 +259,42 @@ def page_variants(place, slug) -> list[tuple[str, dict]]:
     ]
 
 
-def build_place(place, radius_km, slug, phone_scene=None) -> Path:
+def bundle_date(regions) -> str | None:
+    """Date the newest public parcel bundle of `regions` was written
+    (YYYY-MM-DD), or None where none is on this machine."""
+    stamps = []
+    for region in regions or []:
+        try:
+            path = delivery_paths(PARCEL_RECIPE, region=region)['canonical']
+        except KeyError:
+            continue
+        if path.exists():
+            stamps.append(path.stat().st_mtime)
+    if not stamps:
+        return None
+    return datetime.fromtimestamp(max(stamps)).strftime('%Y-%m-%d')
+
+
+def build_place(place, radius_km, slug, phone_scene=None, preview_team=False) -> Path:
     """Build one local page of a place, and its restricted twin where it
-    has one (`page_variants`); returns the page's folder."""
+    has one (`page_variants`); returns the page's folder.
+
+    `preview_team` marks the page a team page though it reads the public
+    bundles (`build_web_scene`), and names the bundle date in its notes.
+    """
     circle, built, regions = place_extent(place, radius_km, slug)
     models = place_models(place, built, slug)
     for name, extra in page_variants(place, slug):
+        if preview_team:
+            extra = dict(extra, preview_team=True)
+            extra['notes'] = [
+                *extra['notes'],
+                {
+                    'name': 'Local preview',
+                    'credit': 'Built from the public bundles of '
+                    f'{bundle_date(regions) or "an unknown date"}; not published.',
+                },
+            ]
         output = local_root() / name
         print(
             f'Building {name} ({extent_label(place, radius_km)}, {len(built)} units) '
@@ -320,6 +351,12 @@ def main(argv=None) -> None:
         action='store_true',
         help='serve the last local build without rebuilding',
     )
+    parser.add_argument(
+        '--people-preview',
+        action='store_true',
+        help='build <place>-people, a team page of the public bundles with '
+        'the people cloud, for a local look only',
+    )
     parser.add_argument('--deploy', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.deploy:
@@ -328,7 +365,7 @@ def main(argv=None) -> None:
             "deploy_web_scene, on the maintainer's word."
         )
     place = places[args.place]
-    slug = args.place
+    slug = f'{args.place}-people' if args.people_preview else args.place
     if args.phone and not has_circle(place):
         print(f'{slug} is shown as whole units and has no phone page.')
         args.phone = False
@@ -341,6 +378,7 @@ def main(argv=None) -> None:
             args.radius_km,
             slug,
             phone_scene=f'../{phone_slug}/' if args.phone else None,
+            preview_team=args.people_preview,
         )
     root = local_root()
     if not (root / slug / 'scene.json').exists():

@@ -1850,12 +1850,15 @@ def manifest_files(manifest: dict | None) -> set[str]:
     """Data paths (`data/...`) a scene manifest loads."""
     if not manifest:
         return set()
-    return {
+    files = {
         path
         for layer in manifest.get('layers', [])
         for paths in layer.get('files', {}).values()
         for path in paths.values()
     }
+    if manifest.get('people'):
+        files.add(manifest['people']['file'])
+    return files
 
 
 def _prune_local_data(output_dir: Path, keep: set[str]) -> None:
@@ -2195,6 +2198,13 @@ class Palette:
 # Matte, a wall's shade depends on the direction it faces alone.
 MATTE = {'ambient': 0.35, 'diffuse': 0.6, 'shininess': 32, 'specularColor': [0, 0, 0]}
 
+# A lot valued at $0 on a dark page: white at 50% opacity over the
+# page's dark ground (#0a1222), not bright white, which glared out of
+# Earth and Sunset (maintainer, 2026-10-25). Mixed here rather than
+# drawn translucent: translucent slabs depend on the order deck.gl
+# draws them in (`Palette.blend`).
+DARK_ZERO_VALUE_RGBA = (133, 137, 145, 255)
+
 
 def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
     """The page's color options (maintainer's choice, 2026-10-16).
@@ -2226,6 +2236,7 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             # `landscape`, so stored choices and `?palette=` still work.
             label='Earth',
             material=MATTE,
+            zero_value_rgba=DARK_ZERO_VALUE_RGBA,
             layers={
                 'parcels': PaletteLayer(
                     (
@@ -2271,6 +2282,10 @@ def default_palettes(layers=VALUE_SCENE_LAYERS) -> list[Palette]:
             id='sunset',
             label='Sunset',
             material=MATTE,
+            # Black, as on Neon: the land ramp ends near white at the
+            # dearest land, so a white or gray $0 read as the most
+            # valuable homes (maintainer, 2026-10-25).
+            zero_value_rgba=(0, 0, 0, 255),
             layers={
                 'parcels': PaletteLayer(
                     'cmr.ocean',
@@ -2689,6 +2704,285 @@ def mask_water(lots, water, buildings=None) -> gpd.GeoDataFrame:
     keep = np.ones(len(lots), dtype=bool)
     keep[rows[drop]] = False
     return lots[keep]
+
+
+# The people cloud (`race_dot_cloud`): the 2020 Census groups of race and
+# Hispanic origin that the Racial Dot Map (Dustin Cable, University of
+# Virginia, 2013) drew, in its colors. Every group but Hispanic or
+# Latino counts non-Hispanic people only, so each person is in one
+# group. `column` names the count in the census dataset.
+PEOPLE_GROUPS = (
+    {'key': 'white', 'label': 'White', 'color': '#73b2ff', 'column': 'n_people_white'},
+    {'key': 'black', 'label': 'Black', 'color': '#9fd400', 'column': 'n_people_black'},
+    {'key': 'asian', 'label': 'Asian', 'color': '#ff4a4a', 'column': 'n_people_asian'},
+    {
+        'key': 'hispanic',
+        'label': 'Hispanic or Latino',
+        'color': '#ffaa00',
+        'column': 'n_people_hispanic',
+    },
+    {
+        'key': 'other',
+        'label': 'Other or two or more races',
+        'color': '#b08060',
+        'column': 'n_people_other',
+    },
+)
+# Census block counts (P.L. 94-171, table P2) and the 2020 tabulation
+# blocks they key on (`census_block_geoid`, GEOID20).
+PEOPLE_RECIPE = 'US_population-census-2020pl'
+PEOPLE_BLOCK_RECIPE = 'US_tile-census-2025_block'
+PEOPLE_KEY = 'census_block_geoid'
+# People per dot as built; the page may show every second or fourth.
+PEOPLE_PER_DOT = 5
+# The cloud's height over a lot's top: a gap, then a band the dots
+# spread through at random (m).
+PEOPLE_GAP_M = 25.0
+PEOPLE_BAND_M = 50.0
+# The page fades the cloud out closer than this zoom, where single
+# houses can be told apart and a dot could read as one household.
+PEOPLE_MAX_ZOOM = 16.0
+# Pages that may carry the cloud: team pages only, until counsel has
+# seen the fair-housing question of race shown beside home values on a
+# public page (maintainer, 2026-10-24).
+PEOPLE_AUDIENCES = frozenset({'team'})
+PEOPLE_NOTE = {
+    'name': 'People (dot cloud)',
+    'credit': (
+        'U.S. Census Bureau, 2020 Census Redistricting Data (P.L. 94-171), '
+        'table P2, by census block; public domain. One dot per {per_dot} '
+        'people, placed at random over the homes of its block, never on a '
+        "single house. Block counts carry the Bureau's disclosure-avoidance "
+        'noise. After the Racial Dot Map (Dustin Cable, University of '
+        'Virginia, 2013).'
+    ),
+}
+
+
+def read_people_blocks(admin_ids, bounds) -> gpd.GeoDataFrame | None:
+    """Census blocks within `bounds` (longitude and latitude) in the
+    units' states, with their people per group (`PEOPLE_GROUPS`), or
+    None where the census counts are not on this machine."""
+    from openplaces.core.schema import AdminId
+    from openplaces.recipe import get_output_path, get_recipe_by_id
+
+    states = sorted({str(AdminId(a).truncate_to_level(2)) for a in admin_ids})
+    try:
+        people_recipe = get_recipe_by_id(PEOPLE_RECIPE)
+    except OSError:
+        # No such recipe yet on this checkout.
+        return None
+    block_recipe = get_recipe_by_id(PEOPLE_BLOCK_RECIPE)
+    columns = [PEOPLE_KEY] + [g['column'] for g in PEOPLE_GROUPS]
+    parts = []
+    for state in states:
+        counts_path = get_output_path(people_recipe, state)
+        attributes_path = get_output_path(block_recipe, state)
+        geo_path = get_output_path(block_recipe, state, geo=True)
+        if not all(p.exists() for p in (counts_path, attributes_path, geo_path)):
+            continue
+        counts = pd.read_parquet(counts_path, columns=columns)
+        keys = pd.read_parquet(attributes_path, columns=[PEOPLE_KEY, '_join_id'])
+        geo = gpd.read_parquet(geo_path, bbox=tuple(bounds))
+        blocks = geo.merge(keys, on='_join_id').merge(counts, on=PEOPLE_KEY)
+        parts.append(blocks[columns + ['geometry']].to_crs(4326))
+    if not parts:
+        return None
+    return gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=4326)
+
+
+def _random_points(area, n, rng) -> np.ndarray:
+    """`n` points drawn uniformly inside polygon `area`, as an (n, 2)
+    array, by rejection from its bounding box."""
+    xmin, ymin, xmax, ymax = area.bounds
+    shapely.prepare(area)
+    fill = max(area.area / max((xmax - xmin) * (ymax - ymin), 1e-9), 0.01)
+    found = []
+    left = n
+    while left > 0:
+        size = int(left / fill * 1.3) + 16
+        x = rng.uniform(xmin, xmax, size)
+        y = rng.uniform(ymin, ymax, size)
+        inside = shapely.contains_xy(area, x, y)
+        found.append(np.column_stack([x[inside], y[inside]])[:left])
+        left -= len(found[-1])
+    return np.concatenate(found)
+
+
+def race_dot_cloud(blocks, homes, per_dot=PEOPLE_PER_DOT, seed=0) -> pd.DataFrame:
+    """One dot per `per_dot` people of each census block, placed at
+    random over the block's homes (maintainer, 2026-10-24: a cloud
+    above residential lots, after the Racial Dot Map).
+
+    A dot is drawn uniformly within the union of the block's
+    residential lots, cut to the block, so it belongs to no lot,
+    building or household: the census counts people per block, not per
+    house. A block with people and no residential lot spreads its dots
+    over the whole block, so counts stay whole. Each group's count is
+    divided by `per_dot` and rounded at random (the remainder becomes
+    one more dot with that probability), so small groups in small
+    blocks are neither dropped nor inflated on average. The generator
+    is seeded by the block's id, so a rebuild draws the same cloud.
+    The dots come out shuffled: any first part of them is an even
+    sample of the whole, which the page uses to thin the cloud.
+
+    Parameters
+    ----------
+    blocks : geopandas.GeoDataFrame
+        Census blocks (`PEOPLE_KEY`) with a count per group
+        (`PEOPLE_GROUPS` columns).
+    homes : geopandas.GeoSeries
+        Residential lots, as drawn (land shapes).
+    per_dot : int
+        People per dot.
+    seed : int
+        Added to every block's seed.
+
+    Returns
+    -------
+    pandas.DataFrame
+        `longitude`, `latitude` and `group` (the index into
+        `PEOPLE_GROUPS`, uint8); no id of any kind.
+    """
+    columns = [g['column'] for g in PEOPLE_GROUPS]
+    empty = pd.DataFrame(
+        {
+            'longitude': np.array([], dtype=float),
+            'latitude': np.array([], dtype=float),
+            'group': np.array([], dtype=np.uint8),
+        }
+    )
+    if blocks.empty:
+        return empty
+    metric = blocks.to_crs(5070).reset_index(drop=True)
+    home_shapes = (
+        homes.to_crs(5070).to_numpy() if len(homes) else np.array([], dtype=object)
+    )
+    by_block = {}
+    if len(home_shapes):
+        tree = shapely.STRtree(home_shapes)
+        hit_block, hit_home = tree.query(
+            metric.geometry.to_numpy(), predicate='intersects'
+        )
+        for b, h in zip(hit_block, hit_home, strict=True):
+            by_block.setdefault(b, []).append(h)
+    counts = metric[columns].fillna(0).to_numpy(dtype=float)
+    points, groups = [], []
+    for i, block in enumerate(metric.geometry.to_numpy()):
+        if counts[i].sum() <= 0 or block is None or block.is_empty:
+            continue
+        key = str(metric[PEOPLE_KEY].iloc[i])
+        block_seed = int(key) if key.isdigit() else i
+        rng = np.random.default_rng([seed, block_seed])
+        share = counts[i] / per_dot
+        n = (np.floor(share) + (rng.random(len(share)) < share % 1)).astype(int)
+        if n.sum() == 0:
+            continue
+        area = None
+        if i in by_block:
+            area = shapely.intersection(
+                shapely.union_all(home_shapes[by_block[i]]), shapely.make_valid(block)
+            )
+            area = shapely.union_all(
+                [p for p in shapely.get_parts(area) if p.geom_type.endswith('Polygon')]
+            )
+        if area is None or area.is_empty or area.area < 1.0:
+            area = shapely.make_valid(block)
+        points.append(_random_points(area, int(n.sum()), rng))
+        groups.append(np.repeat(np.arange(len(n), dtype=np.uint8), n))
+    if not points:
+        return empty
+    xy = np.concatenate(points)
+    group = np.concatenate(groups)
+    order = np.random.default_rng(seed).permutation(len(xy))
+    lonlat = gpd.GeoSeries(gpd.points_from_xy(xy[order, 0], xy[order, 1]), crs=5070)
+    lonlat = lonlat.to_crs(4326)
+    return pd.DataFrame(
+        {
+            'longitude': lonlat.x.to_numpy(),
+            'latitude': lonlat.y.to_numpy(),
+            'group': group[order],
+        }
+    )
+
+
+def people_heights(dots, lots, tops, homes, seed=0) -> np.ndarray:
+    """Each dot's height: over the top of what stands under it (the lot,
+    or the tallest building on that lot), plus `PEOPLE_GAP_M` and a
+    random lift within `PEOPLE_BAND_M`, so the dots hang as one cloud
+    over the homes. A dot over no lot takes the median top of the
+    homes."""
+    rng = np.random.default_rng(seed)
+    lift = PEOPLE_GAP_M + rng.random(len(dots)) * PEOPLE_BAND_M
+    if not len(dots):
+        return lift
+    shapes = lots.geometry.to_crs(4326).to_numpy()
+    tree = shapely.STRtree(shapes)
+    points = shapely.points(dots['longitude'].to_numpy(), dots['latitude'].to_numpy())
+    hit_dot, hit_lot = tree.query(points, predicate='within')
+    base = np.full(len(dots), np.nan)
+    base[hit_dot] = tops[hit_lot]
+    fallback = np.nanmedian(tops[homes]) if homes.any() else 0.0
+    return np.where(np.isfinite(base), base, fallback) + lift
+
+
+def _people_cloud(admin_ids, crop, layers, rendered, homes, data_dir) -> dict | None:
+    """The people cloud's manifest entry, its file written, or None
+    where the census counts are missing or nobody lives in view."""
+    lot_layer = rendered[layers[0].name]
+    lots = lot_layer.gdf
+    blocks = read_people_blocks(admin_ids, lots.to_crs(4326).total_bounds)
+    if blocks is None or blocks.empty:
+        return None
+    if crop is not None:
+        blocks = crop_to_area(blocks, crop)
+    shapes = lots.geometry.to_crs(4326).to_numpy().copy()
+    if LAND_SHAPE in lots.columns:
+        land = lots[LAND_SHAPE].to_numpy()
+        wet = np.array([shape is not None for shape in land], dtype=bool)
+        shapes[wet] = shapely.from_wkb(land[wet].tolist())
+    dots = race_dot_cloud(blocks, gpd.GeoSeries(shapes[homes], crs=4326))
+    if dots.empty:
+        return None
+    # A lot's top, raised to its tallest building's top.
+    tops = np.asarray(lot_layer.total_elevation, dtype=float).copy()
+    above = next((u for u in layers if u.stack_on == layers[0].name), None)
+    if above is not None and above.name in rendered:
+        buildings = rendered[above.name]
+        centers = buildings.gdf.geometry.to_crs(5070).centroid.to_crs(4326)
+        tree = shapely.STRtree(lots.geometry.to_crs(4326).to_numpy())
+        hit_building, hit_lot = tree.query(centers.to_numpy(), predicate='within')
+        np.maximum.at(
+            tops,
+            hit_lot,
+            np.asarray(buildings.total_elevation, dtype=float)[hit_building],
+        )
+    heights = people_heights(dots, lots, tops, homes)
+    data, origin = encode_people_file(dots, heights)
+    return {
+        'file': _write_content_file(data_dir, 'people', data),
+        'count': len(dots),
+        'origin': [round(origin[0], 7), round(origin[1], 7)],
+        'per_dot': PEOPLE_PER_DOT,
+        'max_zoom': PEOPLE_MAX_ZOOM,
+        'groups': [{k: g[k] for k in ('key', 'label', 'color')} for g in PEOPLE_GROUPS],
+    }
+
+
+def encode_people_file(dots, heights) -> tuple[bytes, list]:
+    """The cloud as the page reads it: float32 longitude and latitude
+    offsets from an origin, float32 heights (m), then uint8 groups;
+    returns the bytes and the origin [longitude, latitude]."""
+    origin = [float(dots['longitude'].mean()), float(dots['latitude'].mean())]
+    lon = (dots['longitude'].to_numpy() - origin[0]).astype('<f4')
+    lat = (dots['latitude'].to_numpy() - origin[1]).astype('<f4')
+    data = (
+        lon.tobytes()
+        + lat.tobytes()
+        + np.asarray(heights, dtype='<f4').tobytes()
+        + dots['group'].to_numpy(dtype=np.uint8).tobytes()
+    )
+    return data, origin
 
 
 def land_borders(
@@ -3807,6 +4101,8 @@ def build_web_scene(
     models_public=False,
     notes=None,
     land_mask=True,
+    people_cloud=True,
+    preview_team=False,
     restricted_units=None,
     restricted_page=None,
     unrestricted_page=None,
@@ -3907,6 +4203,16 @@ def build_web_scene(
         Draw only the land of lots that reach into open water mapped by
         NHD (`mask_water`); their values are unchanged. Where a state's
         NHD files are missing, its lots are drawn whole.
+    people_cloud : bool
+        Add the people cloud (`race_dot_cloud`) where the census block
+        counts are on this machine and the page's audience is in
+        `PEOPLE_AUDIENCES` (team pages only); the page shows it behind
+        a switch, off by default.
+    preview_team : bool
+        Mark the page a team page though it reads public bundles, so a
+        local preview can show the people cloud before any team region
+        is declared. Allowed only with `local_only`, so such a page is
+        never published.
     restricted_units : sequence of str, optional
         Units whose withheld cells are filled from the curated files
         (`fill_withheld_values`). The page is then a restricted page
@@ -3943,9 +4249,11 @@ def build_web_scene(
     # Model files make a team page whatever bundles it reads.
     if models_public and model_files is None:
         raise ValueError('Public model views come only from handed-over model files.')
+    if preview_team and not local_only:
+        raise ValueError('A team preview of public bundles is local only.')
     audience = (
         'team'
-        if model_files is not None and not models_public
+        if preview_team or (model_files is not None and not models_public)
         else scene_audience(region)
     )
     restricted_units = list(restricted_units or [])
@@ -3982,6 +4290,8 @@ def build_web_scene(
         }
 
     rendered = {}
+    # Per layer offering a per-home view: which features are homes.
+    home_lots = {}
     # Cells the building imputation supplied (`overlay_imputed_values`).
     imputed_cells = 0
     # The model code lines their bundles' notices state.
@@ -4174,6 +4484,9 @@ def build_web_scene(
                 known = occupancy.notna().to_numpy()
             else:
                 residential = residential_lots(out)
+                # The lots the people cloud floats over, homes of
+                # unknown count included (`race_dot_cloud`).
+                home_lots[layer.name] = residential.copy()
                 known = np.ones(len(out), dtype=bool)
                 # Homes of unknown count: no value per home, and not
                 # drawn as non-residential either (`undercounted_lots`).
@@ -4395,6 +4708,19 @@ def build_web_scene(
             }
         )
 
+    people = None
+    if people_cloud and audience in PEOPLE_AUDIENCES and layers[0].name in home_lots:
+        people = _people_cloud(
+            admin_ids, crop, layers, rendered, home_lots[layers[0].name], data_dir
+        )
+    if people is not None:
+        notes = [
+            *(notes or []),
+            {
+                'name': PEOPLE_NOTE['name'],
+                'credit': PEOPLE_NOTE['credit'].format(per_dot=people['per_dot']),
+            },
+        ]
     land = rendered[layers[0].name].gdf
     borders = land_borders(admin_ids, land=land, lakes=lake_polygons(admin_ids))
     if crop is not None:
@@ -4502,6 +4828,8 @@ def build_web_scene(
         ),
         'tour': foci,
         'tour_contrast': contrast,
+        # The people cloud (`race_dot_cloud`), or None.
+        'people': people,
         'tour_downtown': downtown_stop(downtown, admin),
         # The nationwide color bounds per display unit, beside the
         # scene's own (local) ones in the palettes and views.

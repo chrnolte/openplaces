@@ -241,6 +241,10 @@
   .legend-source { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
   /* What area a value is per: "of land", "of footprint". */
   .legend-of { color: var(--muted); font-weight: 400; }
+  /* The people cloud: one dot per group, in rows as they fit. */
+  .legend-people-groups { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; }
+  .legend-people-groups span { display: inline-flex; align-items: center; gap: 4px; }
+  .legend-people-groups i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
   .legend-other-note span { width: 18px; height: 5px; border-radius: 1px; flex: none; }
   .legend.hidden .legend-other-note { opacity: 0.4; }
   /* The type view: swatches in rows, as many per row as fit. */

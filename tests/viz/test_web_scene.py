@@ -209,6 +209,12 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     monkeypatch.setattr(web_scene, '_admin_names', lambda admin_ids: towns)
     monkeypatch.setattr(web_scene, 'land_borders', lambda admin_ids, **kwargs: [])
     monkeypatch.setattr(web_scene, 'lake_polygons', lambda admin_ids: None)
+
+    # A public page never reads the census counts for the people cloud.
+    def no_census(*args, **kwargs):
+        raise AssertionError('a public page read the census counts')
+
+    monkeypatch.setattr(web_scene, 'read_people_blocks', no_census)
     # The default parcel layer drops corridors; these squares are none.
     layers = (
         SceneLayer(
@@ -230,6 +236,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     )
 
     manifest = json.loads((out / 'scene.json').read_text(encoding='utf-8'))
+    assert manifest['audience'] == 'public' and manifest['people'] is None
     assert [layer['name'] for layer in manifest['layers']] == ['parcels', 'buildings']
     assert set(manifest['layers'][0]['files']) == {'US-XX-AAA', 'US-XX-BBB'}
     assert set(manifest['layers'][1]['files']) == {'US-XX-AAA'}
@@ -1236,6 +1243,79 @@ def test_lots_are_drawn_only_on_land():
     assert masked[web_scene.LAND_SHAPE].iloc[1] is None
     # The drawn outline changes; the lot's own geometry does not.
     assert masked.geometry.iloc[0].equals(box(0, 0, 100, 100))
+
+
+def _people_blocks():
+    # Two fabricated census blocks of 200 m squares (meters): the first
+    # with two house lots, the second with none.
+    counts = {g['column']: [0, 0] for g in web_scene.PEOPLE_GROUPS}
+    counts['n_people_white'] = [500, 40]
+    counts['n_people_black'] = [250, 0]
+    counts['n_people_hispanic'] = [3, 0]
+    return gpd.GeoDataFrame(
+        {web_scene.PEOPLE_KEY: ['111110001001000', '111110001001001'], **counts},
+        geometry=[box(0, 0, 200, 200), box(300, 0, 500, 200)],
+        crs='EPSG:26986',
+    )
+
+
+def test_the_people_cloud_floats_over_the_homes_of_each_block():
+    blocks = _people_blocks()
+    homes = gpd.GeoSeries(
+        [box(10, 10, 60, 60), box(120, 120, 190, 190)], crs='EPSG:26986'
+    )
+    dots = web_scene.race_dot_cloud(blocks, homes, per_dot=5)
+    # Only positions and groups, nothing that names a lot or a house.
+    assert list(dots.columns) == ['longitude', 'latitude', 'group']
+    points = gpd.GeoSeries(
+        gpd.points_from_xy(dots['longitude'], dots['latitude']), crs=4326
+    ).to_crs(26986)
+    first = points.within(box(0, 0, 200, 200)).to_numpy()
+    # The first block's dots lie over its homes, the second's over the
+    # block itself, which has no home lot.
+    assert points[first].within(homes.union_all().buffer(0.01)).all()
+    assert points[~first].within(box(300, 0, 500, 200).buffer(0.01)).all()
+    groups = dots['group'].to_numpy()
+    assert (groups[first] == 0).sum() == 100
+    assert (groups[first] == 1).sum() == 50
+    assert (groups[~first] == 0).sum() == 8
+    # Three people at one dot per five: no dot or one, at random.
+    assert (groups == 3).sum() in (0, 1)
+
+
+def test_the_people_cloud_is_the_same_on_every_build():
+    blocks = _people_blocks()
+    homes = gpd.GeoSeries([box(10, 10, 60, 60)], crs='EPSG:26986')
+    first = web_scene.race_dot_cloud(blocks, homes)
+    again = web_scene.race_dot_cloud(blocks, homes)
+    pd.testing.assert_frame_equal(first, again)
+
+
+def test_the_people_file_holds_offsets_heights_and_groups():
+    dots = pd.DataFrame(
+        {
+            'longitude': [-71.0, -71.002],
+            'latitude': [42.0, 42.001],
+            'group': np.array([0, 4], dtype=np.uint8),
+        }
+    )
+    data, origin = web_scene.encode_people_file(dots, [30.0, 60.0])
+    assert len(data) == 2 * 4 * 3 + 2
+    lon = np.frombuffer(data[:8], dtype='<f4')
+    assert origin[0] + lon[1] == pytest.approx(-71.002, abs=1e-6)
+    assert list(np.frombuffer(data[16:24], dtype='<f4')) == [30.0, 60.0]
+    assert list(data[24:]) == [0, 4]
+
+
+def test_the_people_file_is_kept_and_uploaded_with_the_layers():
+    manifest = {
+        'layers': [{'files': {'US-XX-AAA': {'data': 'data/lots.aaaa.bin'}}}],
+        'people': {'file': 'data/people.bbbb.bin', 'count': 2},
+    }
+    assert web_scene.manifest_files(manifest) == {
+        'data/lots.aaaa.bin',
+        'data/people.bbbb.bin',
+    }
 
 
 def test_the_page_reads_the_height_check_from_the_footprint_recipe():
