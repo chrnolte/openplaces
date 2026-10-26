@@ -1,0 +1,95 @@
+# Recipe: NCES EDGE School District Composites, SY 2024-25 (TIGER 2025)
+#
+# One national shapefile of the unified, elementary and secondary school
+# districts the Census Bureau collected for NCES through the School
+# District Review Program, on the TIGER/Line 2025 base and clipped to
+# the shoreline. One row is one district polygon. Elementary and
+# secondary districts overlap each other where a state has both, so
+# rows of one file are not a partition of the state: MTFCC (kept as
+# feature_code_tiger) says which kind a row is, G5400 elementary, G5410
+# secondary, G5420 unified.
+#
+# Measured 2026-10-18 on the national file (13,368 rows, EPSG:4269):
+# GEOID unique on every row and identical to the NCES LEAID, so it
+# joins US_built-school-nces-sy2425_school's school_district_id_nces.
+# US-MA: 306 rows (212 unified, 64 elementary, 30 secondary). US-NC:
+# 118 rows, all unified (county and city systems).
+#
+# Theme: no entity type fits a school district (it is not one of the
+# admin spine's units, and its units overlap), so it is a dataset under
+# the `built` theme, beside the school points, as one service layer of
+# public infrastructure.
+#
+# Left unmapped: ELSDLEA/SCSDLEA/UNSDLEA (the GEOID's last five digits,
+# split by district kind), SDADMLEA (empty in MA and NC), LSAD (always
+# 00), SDTYP and FUNCSTAT (TIGER status codes; FUNCSTAT is F, a
+# fictitious district, on 15 MA rows), ALAND/AWATER (the geometry's
+# own area serves), INTPTLAT/INTPTLON, GEO_YEAR and SCHOOLYEAR
+# (constant). The zip also carries spatial-index members (.sbn, .sbx)
+# that are not extracted.
+#
+# Alternatives rejected: the hub shapefile export and the MapServer
+# layer serve the same features; the NCES zip is the agency's own bulk
+# file, so no REST paging is needed.
+
+description: >-
+  NCES EDGE school district boundaries for school year 2024-25 (unified,
+  elementary and secondary districts on the TIGER 2025 base).
+
+admin_id: US
+
+dataset:
+  theme: built-school
+  source:
+    source_id: nces
+    # Read 2026-10-18 in the file's own metadata (.shp.xml): its use
+    # constraint links the U.S. public domain label
+    # (https://www.usa.gov/publicdomain/label/1.0/) and states "The
+    # TIGER/Line Shapefile products are not copyrighted ... These
+    # products are free to use in a product or publication, however
+    # acknowledgement must be given to the U.S. Census Bureau as the
+    # source." The data.gov record names
+    # https://resources.data.gov/open-licenses/ as its licence.
+    license: >-
+      public-domain (US Government work, 17 U.S.C. 105); acknowledge the
+      U.S. Census Bureau and NCES EDGE as the source
+    terms_url: "https://www.usa.gov/publicdomain/label/1.0/"
+    redistribution_restricted: false
+    portal_url: "https://nces.ed.gov/programs/edge/Geographic/DistrictBoundaries"
+    download_url: "https://nces.ed.gov/programs/edge/data/EDGE_SCHOOLDISTRICT_TL25_SY2425.zip"
+  version: sy2425
+
+compressed_file_name: "EDGE_SCHOOLDISTRICT_TL25_SY2425.zip"
+# The zip nests the shapefile in a folder named
+# "EDGE_SCHOOLDISTRICT_TL25_SY2425 (1)"; the ingester finds the file
+# below the heap directory by name.
+uncompressed_file_name: "EDGE_SCHOOLDISTRICT_TL25_SY2425.shp"
+extract_members:
+  - "*.shp"
+  - "*.shx"
+  - "*.dbf"
+  - "*.prj"
+  - "*.cpg"
+
+# One national download, read one state at a time by its FIPS code.
+process_by:
+  admin_level: 2
+  admin_id_column: STATEFP
+  admin_id_crosswalk:
+    admin_level: 2
+    admin_id_column: admin2_id_admin1
+    admin_recipe_id: "US_admin-census-2025_admin2"
+
+columns:
+  school_district_id_nces: GEOID
+  school_district_name: NAME
+  feature_code_tiger: MTFCC
+  grade_lowest: LOGRADE
+  grade_highest: HIGRADE
+
+set_index: school_district_id_nces
+
+save_to:
+  data_dir: core
+  filename: district
+  admin_level: 2

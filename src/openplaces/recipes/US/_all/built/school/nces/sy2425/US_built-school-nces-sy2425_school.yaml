@@ -1,0 +1,98 @@
+# Recipe: NCES EDGE Public School Characteristics, SY 2024-25
+#
+# Point locations of U.S. public elementary and secondary schools in
+# the 2024-25 Common Core of Data (CCD), geocoded by the NCES EDGE
+# program, with the CCD directory attributes. One row is one school.
+#
+# Layer choice: NCES publishes the points twice for the year. The
+# "Public School Locations 2024-25" file
+# (https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_PUBLICSCH_2425.zip)
+# is the agency's own bulk zip but carries no grade span (fields
+# NCESSCH, LEAID, NAME, address, county, locale, CBSA, legislative
+# districts). The "Public School Characteristics 2024-25" layer
+# (MapServer EDGE_ADMINDATA_PUBLICSCH_2425, layer 1) adds GSLO/GSHI,
+# school level, type and status, so it is read instead, through the
+# NCES open-data hub's shapefile export of that layer (one 14.6 MB
+# zip) rather than paging the MapServer 2,000 rows at a time.
+#
+# Measured 2026-10-18 on the national export (101,110 rows,
+# EPSG:4269): NCESSCH unique on every row; LEAID 7 digits, matching
+# the district layer's GEOID. US-MA: 1,824 schools. US-NC: 2,736
+# schools. The state is read from LSTATE (postal code). LEAID is an
+# agency, not always a district polygon: MA schools carry 397 distinct
+# LEAIDs against 306 district polygons, NC schools 348 against 118,
+# because charter schools and some state agencies are LEAs of their
+# own with no boundary.
+#
+# Missing-value codes (from the layer's metadata): -1 or M missing,
+# -2 or N not applicable, -9 fails NCES quality standards. In NC, GSLO
+# and GSHI are M on 29 rows and SCHOOL_LEVEL is "Not Reported" on the
+# same 29; these become null.
+#
+# Left unmapped: the street address, ZIP and phone of each school
+# (public institutional contact data, not personal, but nothing here
+# uses them and the point carries the location), ST_LEAID, CHARTER_TEXT
+# and VIRTUAL (no registry home yet), ULOCALE, county name and code,
+# and the enrollment, free-lunch, teacher and race/ethnicity counts by
+# grade (aggregate statistics about students, no registry home yet).
+
+description: >-
+  NCES EDGE public school points for school year 2024-25, with NCES id,
+  district id, grade span, school level, type and status.
+
+admin_id: US
+
+dataset:
+  theme: built-school
+  source:
+    source_id: nces
+    # Read 2026-10-18 in the layer's metadata (the .xml in the
+    # download) and on its data.gov record: "All information contained
+    # in this file is in the public domain. Data users are advised to
+    # review NCES program documentation and feature class metadata to
+    # understand the limitations and appropriate use of these data."
+    # The data.gov record names https://resources.data.gov/open-licenses/
+    # as its licence.
+    license: >-
+      public-domain ("All information contained in this file is in the
+      public domain."); cite NCES EDGE as the source
+    terms_url: "https://catalog.data.gov/dataset/public-school-locations-2024-25"
+    redistribution_restricted: false
+    portal_url: "https://data-nces.opendata.arcgis.com/datasets/nces::public-school-characteristics-2024-25"
+    download_url: "https://data-nces.opendata.arcgis.com/api/download/v1/items/b05af34a43c44a9b86ab45534e9f2724/shapefile?layers=1"
+  version: sy2425
+
+compressed_file_name: "Public_School_Characteristics_2024-25.zip"
+uncompressed_file_name: "Public_School_Characteristics_2024-25.shp"
+
+# One national download, read one state at a time by postal code.
+process_by:
+  admin_level: 2
+  admin_id_column: LSTATE
+  admin_id_crosswalk:
+    admin_level: 2
+    admin_id_column: admin2_id_leaf
+    admin_recipe_id: "US_admin-census-2025_admin2"
+
+columns:
+  school_id_nces: NCESSCH
+  school_name: SCH_NAME
+  school_district_id_nces: LEAID
+  school_district_name: LEA_NAME
+  grade_lowest: GSLO
+  grade_highest: GSHI
+  school_level: SCHOOL_LEV
+  school_type: SCHOOL_TYP
+  school_status: SY_STATUS_
+
+null_value_strings:
+  - "M"
+  - "N"
+  - "Not Reported"
+
+set_index: school_id_nces
+
+save_to:
+  data_dir: core
+  filename: school
+  admin_level: 2
