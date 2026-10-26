@@ -112,11 +112,12 @@ def test_a_link_step_a_patch_removed_declares_no_sidecar(dag, monkeypatch):
             for s in recipe['pipeline']
             if s.get('recipe_id') != 'US_building-nsi-2026'
         ]
-        return patched, ['US-NC-BRU_footprint-geospine-2026']
+        return patched, ['US-NC-BRU_building-geospine-2026']
 
     monkeypatch.setattr(dag_mod, 'apply_recipe_patches', _drop_nsi)
-    extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
-    assert len(extras) == 2
+    # The point joins run on the building geospine (b3 step 1).
+    extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
+    assert len(extras) == 1
     assert not any('building-nsi' in p.name for p in extras)
 
 
