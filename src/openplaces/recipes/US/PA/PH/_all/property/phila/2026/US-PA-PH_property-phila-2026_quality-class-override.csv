@@ -1,0 +1,37 @@
+# Per-source override for US-PA-PH_property-phila-2026:
+# quality_grade (quality_grade) -> quality_class. Draft 2026-09-13, read
+# by the curate translation step specified in
+# plans/curate-translation-tables.md. A row here beats the shared table
+# US_property-openplaces-2026_quality-class-keywords.csv for the value it
+# names; every other value falls through to it.
+#
+# Evidence: The city catalog (quality_grade) lists 1 LOW, 2 BELOW
+#   AVERAGE, 3 AVERAGE, 4 ABOVE AVERAGE, 5 SUPERIOR, 6 HIGHEST and a
+#   crossed-out zero for none. Digits are about 0.2% of rows; the rest
+#   carry letter grades (C, C+, B ...) that the catalog does not define
+#   and the shared table reads as CAMA letters. The digits map by
+#   position, not by the words: the shared table reads the word SUPERIOR
+#   as 6, but here SUPERIOR is the second step and HIGHEST the sixth.
+#
+# Columns:
+#   column      source column the row applies to; empty means
+#               every input column of this target
+#   pattern     the source value, or a regular expression
+#   match_type  exact (the whole value, trimmed, case-insensitive)
+#               or regex
+#   quality_class
+#                1 low to 6 excellent, as in the shared table. Empty is
+#                a stop row: the value stays missing and the shared
+#                table is not consulted
+#   reviewed    true where a published decoder or the source's
+#               own labels state the meaning; the step fills from
+#               reviewed rows only
+#   note        the reading and where it comes from
+column,pattern,match_type,quality_class,reviewed,note
+,0,exact,,true,Catalog: none
+,1,exact,1,true,Catalog: LOW
+,2,exact,2,true,Catalog: BELOW AVERAGE
+,3,exact,3,true,Catalog: AVERAGE
+,4,exact,4,true,Catalog: ABOVE AVERAGE
+,5,exact,5,true,Catalog: SUPERIOR (fifth of six steps)
+,6,exact,6,true,Catalog: HIGHEST
