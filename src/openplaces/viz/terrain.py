@@ -1022,7 +1022,12 @@ def _simplify_coverage(geometry: gpd.GeoSeries, tolerance: float) -> gpd.GeoSeri
         geometry.crs if geometry.crs.is_projected else geometry.estimate_utm_crs()
     )
     metric = geometry.to_crs(metric_crs)
-    simplified = shapely.coverage_simplify(metric.to_numpy(), tolerance)
+    # Flat: a table mixing outlines with and without a z coordinate
+    # (1,107 of the Washington DC parcels, 2026-10-26) comes back from
+    # the simplification with rings the CRS change refuses to read.
+    simplified = shapely.coverage_simplify(
+        shapely.force_2d(metric.to_numpy()), tolerance
+    )
     return gpd.GeoSeries(simplified, index=geometry.index, crs=metric_crs).to_crs(
         geometry.crs
     )
