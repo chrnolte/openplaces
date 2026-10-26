@@ -1283,6 +1283,76 @@ def test_the_people_cloud_floats_over_the_homes_of_each_block():
     assert (groups == 3).sum() in (0, 1)
 
 
+def test_a_block_without_buildings_keeps_its_dots_on_land():
+    blocks = _people_blocks()
+    # No outline anywhere; land only on the left half of the second block.
+    nothing = gpd.GeoSeries([], crs='EPSG:26986')
+    land = gpd.GeoSeries([box(300, 0, 400, 200)], crs='EPSG:26986')
+    dots = web_scene.race_dot_cloud(blocks, nothing, land=land)
+    points = gpd.GeoSeries(
+        gpd.points_from_xy(dots['longitude'], dots['latitude']), crs=4326
+    ).to_crs(26986)
+    second = points.x.to_numpy() > 250
+    assert second.sum() == 8
+    assert points[second].within(box(300, 0, 400, 200).buffer(0.01)).all()
+
+
+def test_the_footprint_cloud_reads_no_roll_column_and_no_value_height(
+    tmp_path, monkeypatch
+):
+    blocks = _people_blocks().to_crs(4326)
+    monkeypatch.setattr(web_scene, 'read_people_blocks', lambda a, b: blocks)
+
+    class Rendered:
+        def __init__(self, gdf):
+            self.gdf = gdf
+
+        @property
+        def total_elevation(self):
+            raise AssertionError('the footprint cloud read a drawn value height')
+
+    lots = gpd.GeoDataFrame(geometry=[box(0, 0, 200, 200)], crs='EPSG:26986').to_crs(
+        4326
+    )
+    outline = gpd.GeoDataFrame(geometry=[box(20, 20, 60, 60)], crs='EPSG:26986').to_crs(
+        4326
+    )
+    # No use group, class, dwellings or value column on either frame.
+    assert list(lots.columns) == ['geometry']
+    rendered = {'parcels': Rendered(lots), 'buildings': Rendered(outline)}
+    layers = (
+        SceneLayer(
+            name='parcels',
+            label='Land',
+            recipe='r1',
+            value_column='v',
+            area_unit='ac',
+            vmin=1,
+            vmax=2,
+        ),
+        SceneLayer(
+            name='buildings',
+            label='Buildings',
+            recipe='r2',
+            value_column='v',
+            area_unit='sqft',
+            vmin=1,
+            vmax=2,
+            stack_on='parcels',
+        ),
+    )
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    entry = web_scene._people_cloud(
+        ['US-XX-AAA'], None, layers, rendered, None, data_dir, basis='footprints'
+    )
+    assert entry['count'] > 0
+    heights = web_scene.people_fixed_heights(1000)
+    assert heights.min() >= web_scene.PEOPLE_GAP_M
+    assert heights.max() <= web_scene.PEOPLE_GAP_M + web_scene.PEOPLE_BAND_M
+    assert 'footprints' in web_scene.PEOPLE_BASES
+
+
 def test_the_people_cloud_is_the_same_on_every_build():
     blocks = _people_blocks()
     homes = gpd.GeoSeries([box(10, 10, 60, 60)], crs='EPSG:26986')
