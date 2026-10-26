@@ -21,6 +21,7 @@ RECIPE_PATCHES_METADATA_KEY = 'openplaces:recipe_patches'
 _PATCH_OPERATIONS = (
     'set',
     'extend',
+    'discard',
     'insert_before',
     'insert_after',
     'replace',
@@ -94,8 +95,9 @@ def apply_recipe_patches(recipe: dict, admin_id, patches=None) -> tuple[dict, li
     ValueError
         On a patch whose stage or entity type differs from the recipe's,
         an unknown operation, a step name the pipeline does not hold (or
-        holds more than once without ``occurrence``), or ``extend`` on a
-        parameter that is not a list.
+        holds more than once without ``occurrence``), ``extend`` or
+        ``discard`` on a parameter that is not a list, or ``discard`` of a
+        value the list does not hold.
     """
     import copy
 
@@ -192,5 +194,34 @@ def _apply_patch_operation(pipeline: list, operation: dict, patch_id: str) -> li
                 f'found {type(current).__name__}.'
             )
         step[key] = [*current, *(operation.get('values') or [])]
+        pipeline[index] = step
+    elif kind == 'discard':
+        step = dict(pipeline[index])
+        key = operation['key']
+        current = step.get(key)
+        if not isinstance(current, list):
+            raise ValueError(
+                f'{patch_id}: discard needs a list under {name!r}.{key}, '
+                f'found {type(current).__name__}.'
+            )
+        values = list(operation.get('values') or [])
+        # An entry is named by its `recipe_id` when it is a mapping (a
+        # merge_enrichments entry), else by itself. Removing one entry
+        # through `set` would restate the whole list, and the county
+        # would then miss every entry added nationally later.
+        named = [
+            item.get('recipe_id') if isinstance(item, dict) else item
+            for item in current
+        ]
+        # A value naming nothing is refused: the national entry was
+        # renamed, and a silent no-op would let it back in.
+        missing = [value for value in values if value not in named]
+        if missing:
+            raise ValueError(
+                f'{patch_id}: discard found no {missing} under {name!r}.{key}.'
+            )
+        step[key] = [
+            item for item, n in zip(current, named, strict=True) if n not in values
+        ]
         pipeline[index] = step
     return pipeline

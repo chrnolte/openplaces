@@ -1,0 +1,39 @@
+# Patch: Pitt County's curated footprints read no Overture building.
+#
+# Pitt's parcels and sales are CC-BY-SA-4.0 and the greenville-nc bundle
+# ships under CC BY-SA, which cannot carry ODbL data (maintainer,
+# 2026-10-23). The county's geospine patch keeps ODbL outlines out of
+# the spine; this one keeps the ODbL attributes out. Overture's
+# buildings theme (footprint-overture-2026) is ODbL-1.0, and the
+# national curate reads it through US_footprint_footprint-overture-2026
+# three times: its height and floor count are merged as evidence, they
+# weight the split of a lot's value among its outlines by floor area,
+# and they confirm drawn heights in flag_unconfirmed_height. Here the
+# merge is discarded, the value split goes by outline area (the
+# national fallback where no Overture evidence exists), and the height
+# check counts an outline's floors from the reconciled n_stories only.
+#
+# Overture's addresses theme (dwelling-overture-2025) stays: it records
+# CC-BY-4.0, CC0 and national open data, no share-alike.
+
+admin_id: US-NC-PIT
+stage: curate
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_footprint-openplaces-2026
+pipeline_patch:
+  - discard: merge_enrichments
+    key: recipes
+    values: [US_footprint_footprint-overture-2026]
+  - set: apportion_curated_values
+    params:
+      floor_weight: null
+  - set: flag_unconfirmed_height
+    params:
+      stories_column: null
+      height_column: null
