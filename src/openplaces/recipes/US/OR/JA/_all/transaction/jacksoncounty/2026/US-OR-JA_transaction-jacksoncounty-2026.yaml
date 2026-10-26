@@ -1,0 +1,103 @@
+# Recipe: Jackson County, OR Assessor "Latest Sales", the latest sale
+# per tax lot account that the Assessor counts as valid for assessment.
+#
+# SOURCE. JCGIS_Owner item f62d5a2326544c0aa954ae2175df53fb, service
+# Assessment/LatestSales/MapServer/0, 60,508 rows (2026-10-23), one per
+# account and per map tax lot. The item: "the latest sale information
+# on a property if it was sold since 2002. The data does not show all
+# sales, but only shows sales that are valid for assessment purposes.
+# Sales for no value, between relatives, and a few other cases are
+# often excluded ... subdivided parcels usually inherit the same sale
+# over multiple parcels." A last-sale table, not a history.
+#
+# PRIVACY, AND WHY REST. The layer carries Grantee and Grantor names
+# and a site address. The REST query names an allow-list (`out_fields`)
+# and asks for no geometry (the rows are drawn as the lot polygons,
+# which the parcel recipe already supplies), so the names are never
+# downloaded.
+#
+# LINKING. maptaxlot (13 characters) is the county's map number padded
+# with zeros to 8 characters followed by the tax lot number padded to
+# 5; US-OR-JA_parcel-jacksoncountygis-2026 builds the same key from the
+# Tax Lots layer. Measured 2026-10-23 on the live services: every
+# maptaxlot is among the keys built from the tax lots, and on the
+# 60,299 accounts found in both layers the rebuilt key equals maptaxlot
+# on every one.
+#
+# MAPPED. AccountId -> property_id_assessor; maptaxlot ->
+# parcel_id_assessor; DocumentNumber -> instrument_number (year and
+# sequence); SalesPrice -> price (above 0 on 58,848, 0 on 1,621, empty
+# on 39); SalesDate -> recorded_date (the sale date, as the Adams CO
+# and North Carolina county recipes map theirs);
+# DocumentTypeDescription -> doc_type (WARRANTY DEED 55,817, UNKNOWN
+# 1,869, BARGAIN & SALE 1,521, empty 673, QUIT CLAIM 220 and 21
+# smaller). StatClass and the value, area and building fields describe
+# the property, not the sale, and are left to a roll.
+#
+# DATES. Esri epoch milliseconds, read by epoch_ms_to_datetime. The
+# item says "since 2002", but SalesDate runs from 1935 to 2621 on the
+# live layer; kept as received.
+#
+# TERMS. The item licence: "CC BY 4.0" (linked to
+# creativecommons.org/licenses/by/4.0); the item gives no attribution
+# text of its own. The county's Tax Lots item asks: "Please extend
+# credit to Jackson County GIS in any subsequent works derived from its
+# data, such as maps." No click-through.
+
+description: >-
+  Jackson County, OR Assessor latest sale per account since 2002, valid
+  for assessment purposes: price, sale date, document number and type,
+  keyed by map tax lot and account.
+
+admin_id: US-OR-JA
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: jacksoncounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=f62d5a2326544c0aa954ae2175df53fb"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Credit
+      requested by the county on its GIS items: "Please extend credit to
+      Jackson County GIS in any subsequent works derived from its data,
+      such as maps."
+    terms_url: "https://www.arcgis.com/home/item.html?id=f62d5a2326544c0aa954ae2175df53fb"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "jackson_latest_sales.geojson"
+
+scraper_options:
+  layer_url: "https://spatial.jacksoncountyor.gov/arcgis/rest/services/Assessment/LatestSales/MapServer/0"
+  where: "1=1"
+  out_fields: "AccountId,maptaxlot,DocumentNumber,SalesDate,SalesPrice,DocumentTypeDescription"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  instrument_number: DocumentNumber
+  property_id_assessor: AccountId
+  parcel_id_assessor: maptaxlot
+  price: SalesPrice
+  recorded_date: SalesDate
+  doc_type: DocumentTypeDescription
+
+transformations:
+  - {type: unary, operation: to_numeric, input: price, output: price}
+  - {type: unary, operation: epoch_ms_to_datetime, input: recorded_date,
+     output: recorded_date}
+
+columns_to_categorical:
+  - doc_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,93 @@
+# Recipe: Jackson County, OR tax lot polygons from the county's own
+# "Tax Lots" layer.
+#
+# SOURCE. JCGIS_Owner item 58ae5e6d9699445bad7ad78528785690, service
+# OpenData/ReferenceData/MapServer/3, 104,748 polygons (2026-10-23),
+# "Updated Weekly". The item: "Where there are several different owners
+# on an individual parcel, multiple parcels polygons will exist since
+# parcel to ownership is not a one to one relationship." Such rows share
+# the outline and the map tax lot and differ by ACCOUNT; the ingest's
+# stacked-units split turns them into one lot and one property per
+# account.
+#
+# SOURCE ID. `jacksoncountygis`, not `jacksoncounty`: the split writes
+# an implicit property layer named property-<source>-<version>, which
+# would otherwise take the id a county roll would use.
+#
+# PRIVACY. The layer carries owner names and mailing addresses
+# (FEEOWNER, CONTRACT, INCAREOF, ADDRESS1, ADDRESS2, OWNERSORT and the
+# like). The REST query names an allow-list (`out_fields`), so they are
+# never downloaded; only the lot keys, the account and the situs
+# address are.
+#
+# KEY. parcel_id_assessor is rebuilt in the form the Assessor's sales
+# table (US-OR-JA_transaction-jacksoncounty-2026) uses for maptaxlot:
+# MAPNUMBER padded with zeros to 8 characters, then TAXLOT padded to 5
+# digits. MAPNUMBER is 4, 6, 7 or 8 characters long, so appending four
+# zeros and keeping the first 8 pads it; TAXLOT is never empty and
+# never above 99,999. Measured 2026-10-23 on the live services: the
+# rebuilt key equals the sales table's maptaxlot on all 60,299 accounts
+# found in both layers, and every one of its 60,508 keys is found here.
+# MAPLOT (the unpadded form) -> parcel_id_admin3.
+#
+# MAPPED. ACCOUNT -> property_id_assessor (the account each stacked row
+# stands for); SITEADD -> address. Values, class and building fields
+# are the roll's and are left out.
+#
+# TERMS. The item licence: "CC BY 4.0" (linked to
+# creativecommons.org/licenses/by/4.0); its access information: "Please
+# extend credit to Jackson County GIS in any subsequent works derived
+# from its data, such as maps." No click-through.
+
+description: >-
+  Jackson County, OR tax lot polygons with map tax lot, account and situs
+  address, from the county's CC BY tax lot layer.
+
+admin_id: US-OR-JA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: jacksoncountygis
+    portal_url: "https://www.arcgis.com/home/item.html?id=58ae5e6d9699445bad7ad78528785690"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). "Please
+      extend credit to Jackson County GIS in any subsequent works derived
+      from its data, such as maps."
+    terms_url: "https://www.arcgis.com/home/item.html?id=58ae5e6d9699445bad7ad78528785690"
+    redistribution_restricted: false
+    resale_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "jackson_tax_lots.geojson"
+
+scraper_options:
+  layer_url: "https://spatial.jacksoncountyor.gov/arcgis/rest/services/OpenData/ReferenceData/MapServer/3"
+  where: "1=1"
+  out_fields: "MAPNUMBER,TAXLOT,MAPLOT,ACCOUNT,SITEADD"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_admin3: MAPLOT
+  property_id_assessor: ACCOUNT
+  address: SITEADD
+
+transformations:
+  - {type: string, operation: add_suffix, input: MAPNUMBER,
+     args: {suffix: "0000"}, output: map8}
+  - {type: string, operation: substring, input: map8,
+     args: {start: 0, end: 8}, output: map8}
+  - {type: string, operation: zfill, input: TAXLOT, args: {width: 5},
+     output: lot5}
+  - {type: string, operation: concat, inputs: [map8, lot5],
+     args: {sep: ""}, output: parcel_id_assessor}
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
