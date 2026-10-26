@@ -59,6 +59,55 @@ def _incoming_source(curated, column: str) -> pd.Series:
     return pd.Series(column, index=curated.index, dtype=object)
 
 
+def _open_token(token: str) -> str:
+    """*token* with the open marker, as in `<tier>+open` (marked imputed
+    when written). The marker is the one delivery-time imputation writes
+    and `io.delivery.redaction` reads, so an estimate carrying it may
+    ship where the unit's restricted values are withheld."""
+    from openplaces.core.provenance import TOKEN_SEPARATOR
+    from openplaces.io.delivery.redaction import OPEN
+
+    parts = str(token).split(TOKEN_SEPARATOR)
+    return token if OPEN in parts else f'{token}{TOKEN_SEPARATOR}{OPEN}'
+
+
+def _open_rows(state: CurateState, curated, columns) -> pd.Series:
+    """Rows none of whose *columns* a public bundle would withhold.
+
+    Asks the delivery's own redaction rules
+    (`redaction.find_restricted`, over the restricted inputs
+    `terms.restricted_inputs` lists for this unit) rather than a second
+    reading of the tokens, so an estimate learned only from these rows
+    saw nothing a public bundle may not carry. A missing cell is never
+    withheld, so a candidate whose land value is empty is open when
+    the values it is estimated from are.
+    """
+    from openplaces.core.attribute_registry import PROVENANCE_SOURCE_SUFFIX
+    from openplaces.io.delivery.redaction import find_restricted
+    from openplaces.io.delivery.terms import restricted_inputs
+
+    is_open = pd.Series(True, index=curated.index)
+    recipe = state.recipe.get('recipe_id') or state.recipe
+    sources = restricted_inputs(recipe, [str(state.admin_id)])
+    if not sources:
+        return is_open
+    columns = [c for c in dict.fromkeys(columns) if c in curated.columns]
+    keep = columns + [
+        f'{c}{PROVENANCE_SOURCE_SUFFIX}'
+        for c in [*columns, 'geometry']
+        if f'{c}{PROVENANCE_SOURCE_SUFFIX}' in curated.columns
+    ]
+    frame = pd.DataFrame(curated[keep])
+    admin_column = '_open_rows_admin_id'
+    frame[admin_column] = str(state.admin_id)
+    found = find_restricted(frame, sources, admin_column)
+    is_open &= ~found['rows']
+    for column in columns:
+        if column in found['cells']:
+            is_open &= ~found['cells'][column]
+    return is_open
+
+
 def _lot_key(curated) -> pd.Series | None:
     """Identical-geometry key per record, or None where none can be formed.
 
@@ -748,11 +797,17 @@ def _write_outputs(
     improvement_value_column: str,
     output_land_value: str,
     output_improvement_value: str,
+    open_estimate: bool = False,
 ) -> pd.Series:
     """Write the two coalesced outputs and their provenance; return the
-    mask of rows this step estimated."""
+    mask of rows this step estimated. With *open_estimate*, every
+    estimate's token also carries the open marker (`_open_token`)."""
     from openplaces.io.curator.provenance import record_sources
 
+    recorded_token = 'total_minus_improvement'
+    if open_estimate:
+        tier_used = tier_used.map(_open_token, na_action='ignore')
+        recorded_token = _open_token(recorded_token)
     land_value, improvement_value = inputs.land_value, inputs.improvement_value
     has_recorded_land = inputs.has_recorded_land
     has_estimate = inputs.candidate & shared.notna() & ~has_recorded_land
@@ -806,7 +861,7 @@ def _write_outputs(
     record_sources(
         curated,
         output_land_value,
-        pd.Series('total_minus_improvement', index=curated.index),
+        pd.Series(recorded_token, index=curated.index),
         mask=has_recorded_land,
         imputed=True,
     )
@@ -832,6 +887,202 @@ def _write_outputs(
         imputed=True,
     )
     return has_estimate
+
+
+def _impute_frame(
+    state: CurateState,
+    curated,
+    *,
+    estimate: bool,
+    open_estimate: bool,
+    land_value_column,
+    improvement_value_column,
+    total_value_column,
+    other_value_column,
+    footprint_area_column,
+    parcel_area_column,
+    land_use_column,
+    residential_classes,
+    peer_group_column,
+    footprint_ratio_threshold,
+    city_column,
+    group_tiers,
+    fallback_group_column,
+    statistic,
+    min_donor_area_ha,
+    min_group_size,
+    output_land_value,
+    output_improvement_value,
+    rate_exponent,
+    floor_area_columns,
+    density_bins,
+    share_group_tiers,
+    size_bands,
+    coverage_bins,
+    share_classes,
+    share_min_floor_area_ratio,
+    share_when_rate_reaches,
+    choose_estimator_by_admin_unit,
+    choice_admin_level,
+    choice_min_donors,
+    use_rate,
+    use_share,
+) -> pd.Series:
+    """Run `impute_land_value` on *curated*, in place; return the mask
+    of rows it estimated. Without *estimate*, only the passthrough and
+    the recorded-total land are written, which read nothing beyond the
+    row itself."""
+    inputs = _read_inputs(
+        curated,
+        land_value_column=land_value_column,
+        improvement_value_column=improvement_value_column,
+        footprint_area_column=footprint_area_column,
+        parcel_area_column=parcel_area_column,
+        total_value_column=total_value_column,
+        other_value_column=other_value_column,
+        land_use_column=land_use_column,
+        peer_group_column=peer_group_column,
+        residential_classes=residential_classes,
+        footprint_ratio_threshold=footprint_ratio_threshold,
+        min_donor_area_ha=min_donor_area_ha,
+        rate_exponent=rate_exponent,
+        city_column=city_column,
+        use_share=use_share,
+    )
+    bands = _derive_bands(
+        curated,
+        inputs,
+        use_share=use_share,
+        floor_area_columns=floor_area_columns,
+        density_bins=density_bins,
+        city_column=city_column,
+        size_bands=size_bands,
+        footprint_area_column=footprint_area_column,
+        coverage_bins=coverage_bins,
+    )
+    learner = _TierLearner(
+        curated,
+        bands.derived(),
+        inputs.is_residential,
+        fallback_group_column,
+        statistic,
+        min_group_size,
+    )
+
+    # land_value_imputed/improvement_value_imputed are the parcel's final,
+    # best-available land/improvement value: a passthrough of the real value
+    # wherever one exists, overridden only on the rows this step itself
+    # derived an estimate for. Subtraction (in _write_outputs) must never
+    # apply to a passthrough row: a normally, separately-assessed parcel's
+    # improvement_value was never conflated with land in the first place.
+    shared = pd.Series(np.nan, index=curated.index)
+    tier_used = pd.Series(pd.NA, index=curated.index, dtype=object)
+    by_rate = rate_tier = None
+    if estimate and use_rate:
+        by_rate, rate_tier = _estimate_by_rate(learner, inputs, group_tiers)
+        shared, tier_used = by_rate, rate_tier
+    if estimate and use_share:
+        in_share_class = curated[land_use_column].astype(object).isin(share_classes)
+        by_share, share_tier = _estimate_by_share(
+            learner,
+            inputs,
+            in_share_class=in_share_class,
+            share_group_tiers=share_group_tiers,
+            group_tiers=group_tiers,
+        )
+        if use_rate:
+            # Hybrid: the rate stays wherever it is reliable and the
+            # share takes over where the rate is known to fail. Scored
+            # 2026-09-17 on a 20% holdout of recorded land values (NC
+            # 84,214, TX 91,896, Boston area 31,791): the share cut the
+            # median absolute error on Condominium records from 0.67 to
+            # 0.23 (NC) and 0.43 to 0.20 (TX), removed the rate's -45% to
+            # -96% bias at floor-area ratios of 1.5 and above, and never
+            # erased a structure where the rate erased 2.6-3.6%; but the
+            # rate stayed better on low-density TX Single-Family (0.05
+            # against 0.15), whose appraisal districts price land by
+            # area. The switch was never worse than the rate in any
+            # class and region tested.
+            switch = by_share.notna() & (
+                in_share_class
+                | (bands.far >= share_min_floor_area_ratio).fillna(False)
+                | by_rate.isna()
+                | (
+                    by_rate >= share_when_rate_reaches * inputs.improvement_value
+                ).fillna(False)
+            )
+            if choose_estimator_by_admin_unit:
+                prefers = _prefers_share_by_unit(
+                    state,
+                    learner,
+                    inputs,
+                    group_tiers=group_tiers,
+                    share_group_tiers=share_group_tiers,
+                    choice_admin_level=choice_admin_level,
+                    choice_min_donors=choice_min_donors,
+                )
+                switch = switch | (prefers & by_share.notna())
+            shared = by_rate.where(~switch, by_share)
+            tier_used = rate_tier.where(~switch, share_tier)
+        else:
+            shared, tier_used = by_share, share_tier
+
+    has_estimate = _write_outputs(
+        curated,
+        inputs,
+        shared,
+        tier_used,
+        land_value_column=land_value_column,
+        improvement_value_column=improvement_value_column,
+        output_land_value=output_land_value,
+        output_improvement_value=output_improvement_value,
+        open_estimate=open_estimate,
+    )
+
+    return has_estimate
+
+
+def _impute_open_only(state: CurateState, curated, columns, settings) -> pd.Series:
+    """`impute_land_value` with *open_only*: learn from and estimate the
+    open rows alone, write the rest without estimates; return the mask
+    of rows estimated.
+
+    The open rows run as a frame of their own, so every statistic the
+    estimators compute (peer medians, fitted exponents, tiers, lot
+    shares, the per-unit choice) sees no restricted value, not only the
+    donor pool.
+    """
+    from openplaces.io.curator.provenance import source_column
+
+    outputs = [settings['output_land_value'], settings['output_improvement_value']]
+    outputs += [source_column(column) for column in outputs]
+    is_open = _open_rows(state, curated, columns)
+    parts, estimated = [], []
+    for rows, estimate in ((is_open, True), (~is_open, False)):
+        if not rows.any():
+            continue
+        part = curated.loc[rows].copy()
+        estimated.append(
+            _impute_frame(
+                state, part, estimate=estimate, open_estimate=estimate, **settings
+            )
+        )
+        parts.append(part.reindex(columns=outputs))
+    combined = (
+        pd.concat(parts).reindex(curated.index)
+        if parts
+        else pd.DataFrame(index=curated.index, columns=outputs)
+    )
+    for column in outputs:
+        curated[column] = combined[column]
+    if state.verbose:
+        print(
+            f'  impute_land_value: {int(is_open.sum()):,} of {len(curated):,} '
+            'rows are open.'
+        )
+    if not estimated:
+        return pd.Series(False, index=curated.index)
+    return pd.concat(estimated).reindex(curated.index, fill_value=False)
 
 
 @_register('impute_land_value', phase='infer')
@@ -869,6 +1120,7 @@ def impute_land_value(
     choose_estimator_by_admin_unit: bool = False,
     choice_admin_level: int = 3,
     choice_min_donors: int = 100,
+    open_only: bool = False,
 ) -> CurateState:
     """Estimate a land value for parcels the source data left at 0/NaN.
 
@@ -1144,6 +1396,27 @@ def impute_land_value(
     choice_min_donors : int, optional
         Donors a unit needs before it may choose the share (default
         100); below that it keeps the rate.
+    open_only : bool, optional
+        Learn only from rows a public bundle may carry, and estimate
+        only such rows (default False). A row is open when the
+        delivery's redaction rules withhold none of the columns this
+        step reads on it (its values, area, class, street and city,
+        and its outline). Every estimate then carries the open marker
+        (`share_city_land_use_class+open+imputed`), which the
+        delivery's rule 5 exempts, so it ships where the unit's
+        restricted values are withheld. A candidate that is not open,
+        or whose open peer groups are too small, stays missing; a row
+        that is not open still gets its passthrough values and its
+        recorded-total land, which read nothing beyond the row.
+
+        Not the default: where a county's roll is restricted, its
+        rows are the only donors, and where it is open, nothing
+        changes. On a 20% holdout of recorded residential land values,
+        the share of held-out rows estimated, all donors then open:
+
+        Measured 2026-10-24 on US-VA-FA: 210 rows open; estimated 100% then 0%.
+        Measured 2026-10-24 on US-NC-EDG: 18 rows open; estimated 100% then 0%.
+        Measured 2026-10-24 on US-MA-BOS: all rows open; estimates identical.
 
     Notes
     -----
@@ -1225,118 +1498,70 @@ def impute_land_value(
             [city_column, fallback_group_column],
         ]
 
-    inputs = _read_inputs(
-        curated,
+    settings = dict(
         land_value_column=land_value_column,
         improvement_value_column=improvement_value_column,
-        footprint_area_column=footprint_area_column,
-        parcel_area_column=parcel_area_column,
         total_value_column=total_value_column,
         other_value_column=other_value_column,
-        land_use_column=land_use_column,
-        peer_group_column=peer_group_column,
-        residential_classes=residential_classes,
-        footprint_ratio_threshold=footprint_ratio_threshold,
-        min_donor_area_ha=min_donor_area_ha,
-        rate_exponent=rate_exponent,
-        city_column=city_column,
-        use_share=use_share,
-    )
-    bands = _derive_bands(
-        curated,
-        inputs,
-        use_share=use_share,
-        floor_area_columns=floor_area_columns,
-        density_bins=density_bins,
-        city_column=city_column,
-        size_bands=size_bands,
         footprint_area_column=footprint_area_column,
-        coverage_bins=coverage_bins,
-    )
-    learner = _TierLearner(
-        curated,
-        bands.derived(),
-        inputs.is_residential,
-        fallback_group_column,
-        statistic,
-        min_group_size,
-    )
-
-    # land_value_imputed/improvement_value_imputed are the parcel's final,
-    # best-available land/improvement value: a passthrough of the real value
-    # wherever one exists, overridden only on the rows this step itself
-    # derived an estimate for. Subtraction (in _write_outputs) must never
-    # apply to a passthrough row: a normally, separately-assessed parcel's
-    # improvement_value was never conflated with land in the first place.
-    shared = pd.Series(np.nan, index=curated.index)
-    tier_used = pd.Series(pd.NA, index=curated.index, dtype=object)
-    by_rate = rate_tier = None
-    if use_rate:
-        by_rate, rate_tier = _estimate_by_rate(learner, inputs, group_tiers)
-        shared, tier_used = by_rate, rate_tier
-    if use_share:
-        in_share_class = curated[land_use_column].astype(object).isin(share_classes)
-        by_share, share_tier = _estimate_by_share(
-            learner,
-            inputs,
-            in_share_class=in_share_class,
-            share_group_tiers=share_group_tiers,
-            group_tiers=group_tiers,
-        )
-        if use_rate:
-            # Hybrid: the rate stays wherever it is reliable and the
-            # share takes over where the rate is known to fail. Scored
-            # 2026-09-17 on a 20% holdout of recorded land values (NC
-            # 84,214, TX 91,896, Boston area 31,791): the share cut the
-            # median absolute error on Condominium records from 0.67 to
-            # 0.23 (NC) and 0.43 to 0.20 (TX), removed the rate's -45% to
-            # -96% bias at floor-area ratios of 1.5 and above, and never
-            # erased a structure where the rate erased 2.6-3.6%; but the
-            # rate stayed better on low-density TX Single-Family (0.05
-            # against 0.15), whose appraisal districts price land by
-            # area. The switch was never worse than the rate in any
-            # class and region tested.
-            switch = by_share.notna() & (
-                in_share_class
-                | (bands.far >= share_min_floor_area_ratio).fillna(False)
-                | by_rate.isna()
-                | (
-                    by_rate >= share_when_rate_reaches * inputs.improvement_value
-                ).fillna(False)
-            )
-            if choose_estimator_by_admin_unit:
-                prefers = _prefers_share_by_unit(
-                    state,
-                    learner,
-                    inputs,
-                    group_tiers=group_tiers,
-                    share_group_tiers=share_group_tiers,
-                    choice_admin_level=choice_admin_level,
-                    choice_min_donors=choice_min_donors,
-                )
-                switch = switch | (prefers & by_share.notna())
-            shared = by_rate.where(~switch, by_share)
-            tier_used = rate_tier.where(~switch, share_tier)
-        else:
-            shared, tier_used = by_share, share_tier
-
-    has_estimate = _write_outputs(
-        curated,
-        inputs,
-        shared,
-        tier_used,
-        land_value_column=land_value_column,
-        improvement_value_column=improvement_value_column,
+        parcel_area_column=parcel_area_column,
+        land_use_column=land_use_column,
+        residential_classes=residential_classes,
+        peer_group_column=peer_group_column,
+        footprint_ratio_threshold=footprint_ratio_threshold,
+        city_column=city_column,
+        group_tiers=group_tiers,
+        fallback_group_column=fallback_group_column,
+        statistic=statistic,
+        min_donor_area_ha=min_donor_area_ha,
+        min_group_size=min_group_size,
         output_land_value=output_land_value,
         output_improvement_value=output_improvement_value,
+        rate_exponent=rate_exponent,
+        floor_area_columns=floor_area_columns,
+        density_bins=density_bins,
+        share_group_tiers=share_group_tiers,
+        size_bands=size_bands,
+        coverage_bins=coverage_bins,
+        share_classes=share_classes,
+        share_min_floor_area_ratio=share_min_floor_area_ratio,
+        share_when_rate_reaches=share_when_rate_reaches,
+        choose_estimator_by_admin_unit=choose_estimator_by_admin_unit,
+        choice_admin_level=choice_admin_level,
+        choice_min_donors=choice_min_donors,
+        use_rate=use_rate,
+        use_share=use_share,
     )
+    if open_only:
+        # Every column the estimators read on a row, synthetic bands
+        # aside: an estimate is open only if none of them is withheld.
+        columns = [
+            land_value_column,
+            improvement_value_column,
+            total_value_column,
+            other_value_column,
+            footprint_area_column,
+            parcel_area_column,
+            land_use_column,
+            peer_group_column,
+            street_column,
+            city_column,
+            *(floor_area_columns or []),
+            *(c for tier in [*group_tiers, *share_group_tiers] for c in tier),
+        ]
+        has_estimate = _impute_open_only(
+            state, curated, [c for c in columns if not c.startswith('_')], settings
+        )
+    else:
+        has_estimate = _impute_frame(
+            state, curated, estimate=True, open_estimate=False, **settings
+        )
 
     state.curated = curated
     if state.verbose:
         n = int(has_estimate.sum())
-        n_candidates = int(inputs.candidate.sum())
         print(
-            f'  impute_land_value: {output_land_value} set for {n:,} of '
-            f'{n_candidates:,} candidate rows.'
+            f'  impute_land_value: {output_land_value} estimated for '
+            f'{n:,} rows' + (' from open donors only.' if open_only else '.')
         )
     return state
