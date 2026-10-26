@@ -22,6 +22,7 @@ import pandas as pd
 
 from openplaces.core.schema import SourceGeometryType
 from openplaces.geo.link import get_entity_link_path
+from openplaces.io import to_parquet
 from openplaces.io.aggregate import read_file_metadata
 from openplaces.io.harmonizer import (
     HARMONIZE_METADATA_KEY,
@@ -50,6 +51,10 @@ from openplaces.recipe import (
     source_id_from_recipe_id,
 )
 
+#: Footer key naming the geospine whose sidecar a persisted re-keyed
+#: link table was made from (`load_geospine(persist_links=True)`).
+LINK_REKEYED_FROM_KEY = 'openplaces:link_rekeyed_from'
+
 
 @_register('load_geospine')
 def load_geospine(
@@ -57,6 +62,7 @@ def load_geospine(
     entity_recipe_id: str | None = None,
     links_recipe_id: str | None = None,
     links_key: str | None = None,
+    persist_links: bool = False,
 ):
     """Restore the geospine recipe's spine and link products into *state*.
 
@@ -94,6 +100,19 @@ def load_geospine(
     source geospine's ids, or this spine was built from another version
     of it and the step raises.
 
+    With *persist_links* the re-keyed sidecars are also written beside
+    this spine's own geospine output, under the paths
+    `geo.link.get_entity_link_path(<this geospine>, <reference>)`
+    resolves, so that the curate steps that read a link sidecar by the
+    curated entity's geospine (`link_curated_entity`,
+    `apportion_curated_values`, `collect_link_ids`) find the building's
+    parcel, point and FEMA pairs where they look for them. The written
+    copy is the source sidecar's rows with the id column renamed and
+    re-keyed, its footer fingerprint kept, and `LINK_REKEYED_FROM_KEY`
+    naming the geospine it came from; the harmonize-side loader never
+    reads these copies, so the source sidecars stay the only thing it
+    validates (plans/building-spine-consumers-and-footprint-projection.md).
+
     Parameters
     ----------
     entity_recipe_id : str or dict, optional
@@ -105,6 +124,9 @@ def load_geospine(
     links_key : str, optional
         Column of this spine holding the row's id in *links_recipe_id*.
         Defaults to that recipe's `{entity_type}_id`.
+    persist_links : bool, optional
+        Write the re-keyed sidecars beside this spine's geospine output
+        (needs *links_recipe_id*). Default False.
     """
     geospine = entity_recipe_id or state.recipe.get('entity_recipe')
     if not geospine:
@@ -143,7 +165,18 @@ def load_geospine(
         state = _restore_link(state, geospine, step_index, step_cfg, spine_id_col)
 
     if links_recipe_id is not None:
-        state = _restore_foreign_links(state, links_recipe_id, links_key, spine_id_col)
+        state = _restore_foreign_links(
+            state,
+            links_recipe_id,
+            links_key,
+            spine_id_col,
+            persist_to=geospine_id if persist_links else None,
+        )
+    elif persist_links:
+        raise ValueError(
+            "load_geospine: persist_links needs links_recipe_id; a geospine's "
+            'own sidecars are already beside its output.'
+        )
 
     if state.timer:
         state.timer.mark('Load (geospine)')
@@ -171,6 +204,7 @@ def _restore_foreign_links(
     links_recipe_id: str,
     links_key: str | None,
     spine_id_col: str,
+    persist_to: str | None = None,
 ) -> HarmonizeState:
     """Restore another geospine's links and re-key them to this spine.
 
@@ -225,6 +259,16 @@ def _restore_foreign_links(
             state.overlays[recipe_id] = _rekey_frame(
                 state.overlays[recipe_id], links_key, spine_id_col, mapping
             )
+        if persist_to is not None:
+            _persist_rekeyed_sidecar(
+                get_entity_link_path(other_id, recipe_id, state.admin_id),
+                get_entity_link_path(persist_to, recipe_id, state.admin_id),
+                other_id,
+                links_key,
+                spine_id_col,
+                mapping,
+                verbose=state.verbose,
+            )
     if state.verbose:
         n_new = len(set(state.crosswalks) - already)
         print(
@@ -256,6 +300,44 @@ def _require_same_rows(state: HarmonizeState, other: dict, keys: pd.Series) -> N
             'the geospine this spine is built from (the building geospine) '
             'before this recipe.'
         )
+
+
+def _persist_rekeyed_sidecar(
+    source_path,
+    target_path,
+    source_recipe_id: str,
+    old: str,
+    new: str,
+    mapping: pd.Series,
+    verbose: bool = False,
+) -> None:
+    """Write one link sidecar re-keyed to another spine's ids.
+
+    The file, not the in-memory frame, is what is re-keyed: the loader
+    drops the `link` label and the chain column from the overlay it
+    restores, and the curate readers of a sidecar need them (only
+    link-labeled pairs take part in apportionment). Every row is kept
+    and every footer entry copied; `LINK_REKEYED_FROM_KEY` is added so
+    a reader can tell the copy from a sidecar a geospine computed. A
+    source sidecar that does not exist (a link the geospine skipped for
+    a coverage gap) writes nothing.
+    """
+    if source_path is None or not source_path.exists():
+        return
+    flat = pd.read_parquet(source_path)
+    if old not in flat.columns:
+        return
+    flat = _rekey_frame(flat, old, new, mapping)
+    metadata = {
+        key: value
+        for key, value in read_file_metadata(source_path).items()
+        if isinstance(key, str) and key.startswith('openplaces:')
+    }
+    metadata[LINK_REKEYED_FROM_KEY] = source_recipe_id
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    to_parquet(flat, target_path, file_metadata=metadata, index=False)
+    if verbose:
+        print(f'  Load (geospine): wrote re-keyed link sidecar {target_path.name}')
 
 
 def _rekey_frame(frame, old: str, new: str, mapping: pd.Series):

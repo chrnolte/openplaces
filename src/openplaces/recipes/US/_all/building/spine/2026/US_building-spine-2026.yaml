@@ -62,9 +62,16 @@ pipeline:
   # and re-keyed footprint_id -> building_id (a rename while the two are
   # equal). Which links exist, and with what thresholds, is read from
   # the footprint geospine's own pipeline, so the YAMLs cannot drift.
+  # persist_links writes the re-keyed sidecars beside the building
+  # geospine's output, where the curate steps that read a link by the
+  # curated entity's geospine (link_curated_entity,
+  # apportion_curated_values, collect_link_ids) look for them, so a
+  # building curate finds its parcel, point and FEMA pairs
+  # (plans/building-spine-consumers-and-footprint-projection.md).
   - step: load_geospine
     links_recipe_id: US_footprint-geospine-2026
     links_key: footprint_id
+    persist_links: true
 
   # One row per (footprint, building) pair, keyed on the footprint id the
   # geospine kept on each building row against the footprint geospine's
