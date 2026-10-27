@@ -288,7 +288,8 @@ share:
     #   inputs, never labels (NSI years are area lookups).
     # - Year built and structure value: one model per county, trained
     #   on its own labels plus donor counties weighted by centroid
-    #   distance and county similarity (`donors`). A county whose own
+    #   distance alone (`donors`; design limit L30: no county is paired
+    #   with another by how alike they are). A county whose own
     #   labels cover under 30% of the buildings the attribute applies
     #   to is filled from donors only (MIN_OWN_LABEL_SHARE): such labels
     #   are the buildings a recent record reached, not a sample. The
@@ -338,8 +339,9 @@ share:
         - cheer-eastern-nc
         - cheer-coastal-tx
       # v0.6 (2026-10-24): Pender's appraisal year, no land-market
-      # inputs, the roll level check, the recorded seed.
-      version: building-imputation-v0.6
+      # inputs, the roll level check, the recorded seed. v0.7
+      # (2026-10-26): donor weights by distance only.
+      version: building-imputation-v0.7
       common_year: 2025
       # Base seed of every random step; a delivery with the same seed,
       # inputs and code reproduces its filled values.
@@ -349,8 +351,8 @@ share:
       # No land-market inputs (location_recipe): the PLACES lab regions
       # and their 2010 land values are held pending review
       # (redistribution_restricted), and restricted evidence never
-      # reaches a shipped value, not even through the county summaries
-      # that weigh donors. Leaving all three out moved the typical
+      # reaches a shipped value, not even through the county summaries.
+      # Leaving all three out moved the typical
       # county miss of structure value from 8.1% to 9.4% (2026-10-24,
       # Pender's labels still inflated).
       # Census levels (public domain), read at delivery as model inputs;
@@ -369,10 +371,16 @@ share:
         (2026-10-15). The production pipeline (donor counties,
         common-year values, census inputs and price anchor, residual
         draws) is openplaces' own.
+      # Distance only (design limit L30). Chosen 2026-10-27 by
+      # leave-county-out on cheer-eastern-nc (Stage 2b, ACS anchor,
+      # typical county miss of structure value): 250 km within 400 km
+      # 17.5%, 100 km 20.1%, 150 km 18.2%, 50 km 21.6%, equal weights
+      # within 150 km 18.9%; year built MAE 14.9 against 15.1 at
+      # 100 km. The similarity-weighted v0.6 reached 12.8%.
       donors:
         mode: km
-        bandwidth_km: 100
-        similarity_bandwidth: 1.0
+        bandwidth_km: 250
+        radius_km: 400
 
 pipeline:
   # Every column of the building curate, through the footprint-to-
