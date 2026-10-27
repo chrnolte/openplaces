@@ -16,6 +16,7 @@ without it.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,6 +97,44 @@ def rule_name(node: StageNode) -> str:
     if node.region:
         raw += f'_{node.region}'
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
+
+
+def needs_rerun(outputs, inputs) -> bool:
+    """Whether a job's files on disk call for running it, by mtime.
+
+    The Snakefile asks this of each unit of a batched ingest, so the
+    batch declares and ingests only those units. Snakemake decides per
+    job, and a batch is one job: rerun for one unit, it rewrote every
+    unit and marked every consumer of every unit for a rerun. The test
+    mirrors the mtime rerun trigger, per unit: an output missing, an
+    input missing (another job of the run will write it), or an input
+    newer than the oldest output.
+
+    Parameters
+    ----------
+    outputs, inputs : iterable of path-like
+        The unit's own files, sidecars included.
+
+    Returns
+    -------
+    bool
+    """
+    out_times = []
+    for path in outputs:
+        try:
+            out_times.append(os.stat(path).st_mtime)
+        except FileNotFoundError:
+            return True
+    if not out_times:
+        return True
+    oldest = min(out_times)
+    for path in inputs:
+        try:
+            if os.stat(path).st_mtime > oldest:
+                return True
+        except FileNotFoundError:
+            return True
+    return False
 
 
 def primary_output_path(recipe, admin_id=None):

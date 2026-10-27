@@ -121,6 +121,26 @@ one after the other, so the pair is close to, not exactly, atomic. A
 script that calls `snakemake` directly, without a profile, should pass
 `--keep-incomplete --rerun-incomplete` too.
 
+**A batch's outputs are flagged `update()`, `_geo` sidecars included.**
+`keep-incomplete` acts only after a failure; before any job runs,
+Snakemake deletes the job's existing outputs. The batch owns every
+unit's file, so one missing unit deleted every other unit's attribute
+file, and a batch that then failed left the sidecars without them (685
+OBM and Microsoft units on 2026-10-27). An `update()` output is kept,
+backed up under `.snakemake`, and restored, together with its sidecar,
+when the job fails (tested with Snakemake 9.23.1 on a three-unit batch
+failing after its first unit).
+
+**A batch holds only the units that need ingesting.** When the plan is
+built, `flow.dag.needs_rerun` checks each unit's own files the way the
+mtime trigger would (an output or input missing, an input newer than the
+oldest output), and only those units become the batch's outputs and
+arguments. Snakemake decides per job, so a batch of every unit, rerun
+for one of them, rewrote all of them and reran every consumer of every
+unit. An up-to-date unit is declared by no rule, and Snakemake reads its
+files as it reads any source's. A unit whose input another job of the
+same run rewrites is ingested by the next run.
+
 **A job's memory reservation is its own measured peak**
 (`flow/memory.py`), not a flat value per stage. `mem_mb` comes from the
 first that applies, times 1.2 plus 512 MB:

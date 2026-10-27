@@ -57,7 +57,7 @@ from pathlib import Path
 
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
-from openplaces.flow.dag import parse_deliver_config, rule_name
+from openplaces.flow.dag import needs_rerun, parse_deliver_config, rule_name
 from openplaces.flow.memory import (
     MemoryModel,
     default_table_path,
@@ -66,6 +66,7 @@ from openplaces.flow.memory import (
 )
 from openplaces.flow.sync import exclude_bookkeeping_from_sync
 from openplaces.path import heap_dir
+from openplaces.recipe.output import saves_geometry
 
 # A run writes tens of thousands of small bookkeeping files (job
 # metadata under .snakemake, benchmarks and stage timers under the
@@ -308,21 +309,52 @@ rule all:
 # Boston regions 62 OBM jobs at 2.1 min and 68 Microsoft jobs at
 # 0.9 min, 3.2 hours of serial wall time spent re-reading one tile and
 # one state file (measured 2026-10-16 on boston-inner-core). A single
-# call with all the units reads each archive once and writes every
-# unit's file in the same pass. The cost: one failing unit fails the
-# batch, and every unit of the recipe reruns with it.
+# call with the units reads each archive once and writes their files in
+# the same pass. The cost: one failing unit fails the batch.
+#
+# The batch holds only the units whose own files call for a rerun
+# (flow.dag.needs_rerun, decided here, when the plan is built). Snakemake
+# decides per job, so a batch of every unit reran for any one of them,
+# rewrote all of them, and marked every consumer of every unit for a
+# rerun: a two-unit dry run planned all their geospines behind the FEMA,
+# CHEER and Overture batches. An up-to-date unit is declared by no rule,
+# and its files are inputs like any source's. The price: a unit whose
+# input another job of the same run rewrites is ingested by the next
+# run, which then finds its files older than that input.
+#
+# Every output is flagged update(), each `_geo` sidecar included.
+# Snakemake deletes a job's existing outputs before running it, and the
+# batch owns every unit's file, so one missing unit used to delete all
+# the others' attribute files; when the batch then failed (an SSL error
+# from the OBM server), they stayed deleted beside their undeclared
+# sidecars: 685 OBM and Microsoft units on 2026-10-27. Snakemake keeps
+# an update() file in place, backs it up under .snakemake, and restores
+# it if the job fails, so a failed batch leaves every unit's old pair.
 BATCHED_INGESTS = {}
 for _node in dag.nodes():
     if _node.stage == 'ingest' and _node.recipe_id in HEAP_TOKENS and _node.admin_id:
         BATCHED_INGESTS.setdefault(_node.recipe_id, []).append(_node)
 BATCHED_INGESTS = {r: n for r, n in BATCHED_INGESTS.items() if len(n) > 1}
 
+
+def _unit_files(job, geo):
+    out = dag.output_path(*job)
+    outs = [out, out.with_stem(out.stem + '_geo')] if geo else [out]
+    return outs + list(dag.extra_outputs(*job)), list(dag.input_paths(*job))
+
+
 for _recipe_id, _nodes in BATCHED_INGESTS.items():
-    _jobs = [(n.stage, n.recipe_id, n.admin_id, n.region) for n in _nodes]
-    _outs = [str(dag.output_path(*j)) for j in _jobs]
-    _outs += [str(p) for j in _jobs for p in dag.extra_outputs(*j)]
-    _ins = sorted({str(p) for j in _jobs for p in dag.input_paths(*j)})
-    _admins = ','.join(sorted(n.admin_id for n in _nodes))
+    _geo = saves_geometry(dag._recipe(_recipe_id))
+    _units = {}
+    for _n in _nodes:
+        _files = _unit_files((_n.stage, _n.recipe_id, _n.admin_id, _n.region), _geo)
+        if needs_rerun(*_files):
+            _units[_n.admin_id] = _files
+    if not _units:
+        continue
+    _outs = [str(p) for outs, _ in _units.values() for p in outs]
+    _ins = sorted({str(p) for _, ins in _units.values() for p in ins})
+    _admins = ','.join(sorted(_units))
     _name = f'ingest_{_recipe_id}_batch'
 
     rule:
@@ -331,7 +363,7 @@ for _recipe_id, _nodes in BATCHED_INGESTS.items():
         input:
             _ins
         output:
-            list(dict.fromkeys(_outs)),
+            [update(p) for p in dict.fromkeys(_outs)],
         benchmark:
             str(Path(cfg.get_dir('logs')) / 'benchmarks' / f'{_name}.tsv')
         resources:
