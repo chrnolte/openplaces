@@ -65,6 +65,26 @@ def test_a_sliver_across_the_line_stays_whole_on_the_majority_side(two_units):
     assert b.empty
 
 
+def test_two_outlines_sharing_an_id_are_cut_and_dropped_one_by_one(two_units):
+    # The merge may hold two sources' outlines under one id until the
+    # spine makes ids unique; each is judged on its own geometry.
+    left = box(-71.0003, 42.005, -70.99985, 42.0052)
+    right = box(-71.00025, 42.0052, -70.9998, 42.0054)
+    sliver = box(-71.0005, 42.006, -70.99999, 42.0062)
+    rows = [
+        ('D', left),
+        ('D', right),
+        ('S', sliver),
+        ('S', box(-71.0, 42.006, -70.999, 42.0062)),
+    ]
+    a = spine_module._cut_at_unit_lines(_spine(rows), 'US-XX-AAA')
+    pieces = a[a[ENVELOPE_ID_COLUMN].notna()]
+    assert len(pieces) == 2 and pieces.index.is_unique and 'D' not in a.index
+    # Of the two outlines named S, only the one wholly in BBB leaves.
+    assert list(a.index[a.index == 'S']) == ['S']
+    assert a.loc[['S']].geometry.iloc[0].equals(sliver)
+
+
 def test_neighbor_inputs_are_the_shared_spine_sources(monkeypatch):
     recipe = {'pipeline': [{'step': 'resolve_spine', 'neighbor_reads': True}]}
     edges = {
@@ -86,6 +106,34 @@ def test_neighbor_inputs_are_the_shared_spine_sources(monkeypatch):
     ]
     monkeypatch.setenv(neighbors.NEIGHBOR_READS_ENV, '0')
     assert neighbors.neighbor_inputs(recipe, 'US-XX-AAA') == []
+
+
+def test_each_neighbor_is_scanned_with_its_own_patches(monkeypatch):
+    # AAA's patch names a closed source list; the harmonizer hands the
+    # patched recipe over. BBB runs the national list, so of AAA's
+    # sources it reads only the shared one, whichever recipe is passed.
+    national = {
+        'recipe_id': 'r',
+        'pipeline': [{'step': 'resolve_spine', 'neighbor_reads': True}],
+    }
+    patched = {**national, 'patched_for': 'US-XX-AAA'}
+    own_lists = {'US-XX-AAA': ['closed', 'shared'], 'US-XX-BBB': ['obm', 'shared']}
+
+    def fake_dependencies(recipe, admin_id=None):
+        # As get_recipe_dependencies does, the unit's own patch applies;
+        # a recipe already patched keeps the patch it carries.
+        unit = recipe.get('patched_for') or admin_id
+        return [
+            DepEdge('r', up, 'recipe_id', step='resolve_spine')
+            for up in own_lists[unit]
+        ]
+
+    monkeypatch.setattr(neighbors, 'touching_units', lambda admin: ('US-XX-BBB',))
+    monkeypatch.setattr(neighbors, 'get_recipe_dependencies', fake_dependencies)
+    monkeypatch.setattr(neighbors, 'get_recipe_by_id', lambda rid: national)
+    expected = [('shared', 'US-XX-BBB')]
+    assert neighbors.neighbor_inputs(patched, 'US-XX-AAA') == expected
+    assert neighbors.neighbor_inputs(national, 'US-XX-AAA') == expected
 
 
 def test_a_recipe_without_neighbor_reads_reads_none(monkeypatch):

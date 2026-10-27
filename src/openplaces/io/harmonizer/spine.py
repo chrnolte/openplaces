@@ -235,6 +235,11 @@ def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     number), and `envelope_id` the envelope's centroid code, which both
     units compute alike, so the two pieces of one building can be found
     again. They are never merged.
+
+    Rows are selected by position, not by id: the merge may still hold
+    two outlines with one id (they are made unique only after this
+    step), and a selection by id would cut or drop both where one
+    qualifies.
     """
     from openplaces.core.constants import ENVELOPE_ID_COLUMN
     from openplaces.geo.ids import distinct_centroid_codes, get_openlocationcodes
@@ -256,27 +261,28 @@ def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     outside = metric.intersection(others_m).area.to_numpy()
     floor = np.maximum(min_m2, min_share * area)
     inside = area - outside
-    rows = spine.index[near]
-    drop = rows[inside < floor]
+    rows = np.flatnonzero(near)
+    keep = np.ones(len(spine), dtype=bool)
+    keep[rows[inside < floor]] = False
     cut = rows[(outside >= floor) & (inside >= floor)]
-    spine = spine.drop(index=drop)
     if len(cut) == 0:
-        return spine
-    envelopes = gpd.GeoDataFrame(geometry=spine.geometry.loc[cut], crs=spine.crs)
+        return spine[keep]
+    envelopes = gpd.GeoDataFrame(geometry=spine.geometry.iloc[cut], crs=spine.crs)
     envelope_ids = get_openlocationcodes(envelopes, handle_duplicates=False)
     pieces = envelopes.geometry.difference(others.iloc[0])
-    taken = set(spine.index.astype(str)) - set(cut.astype(str))
+    is_cut = np.zeros(len(spine), dtype=bool)
+    is_cut[cut] = True
+    taken = set(spine.index[keep & ~is_cut].astype(str))
     new_ids = distinct_centroid_codes(gpd.GeoDataFrame(geometry=pieces), taken)
     spine = spine.copy()
     if ENVELOPE_ID_COLUMN not in spine.columns:
         spine[ENVELOPE_ID_COLUMN] = pd.Series(pd.NA, index=spine.index, dtype=object)
-    spine.loc[cut, 'geometry'] = pieces.to_numpy()
-    spine.loc[cut, ENVELOPE_ID_COLUMN] = envelope_ids.to_numpy()
-    rename = dict(zip(cut, new_ids.to_numpy(), strict=True))
-    spine.index = pd.Index(
-        [rename.get(i, i) for i in spine.index], name=spine.index.name
-    )
-    return spine
+    spine.iloc[cut, spine.columns.get_loc(spine.geometry.name)] = pieces.to_numpy()
+    spine.iloc[cut, spine.columns.get_loc(ENVELOPE_ID_COLUMN)] = envelope_ids.to_numpy()
+    index = spine.index.to_numpy(dtype=object).copy()
+    index[cut] = new_ids.to_numpy()
+    spine.index = pd.Index(index, name=spine.index.name)
+    return spine[keep]
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
