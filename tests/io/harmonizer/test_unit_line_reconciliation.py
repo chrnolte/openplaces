@@ -65,6 +65,26 @@ def test_a_sliver_across_the_line_stays_whole_on_the_majority_side(two_units):
     assert b.empty
 
 
+def test_two_outlines_sharing_an_id_are_cut_and_dropped_one_by_one(two_units):
+    # The merge may hold two sources' outlines under one id until the
+    # spine makes ids unique; each is judged on its own geometry.
+    left = box(-71.0003, 42.005, -70.99985, 42.0052)
+    right = box(-71.00025, 42.0052, -70.9998, 42.0054)
+    sliver = box(-71.0005, 42.006, -70.99999, 42.0062)
+    rows = [
+        ('D', left),
+        ('D', right),
+        ('S', sliver),
+        ('S', box(-71.0, 42.006, -70.999, 42.0062)),
+    ]
+    a = spine_module._cut_at_unit_lines(_spine(rows), 'US-XX-AAA')
+    pieces = a[a[ENVELOPE_ID_COLUMN].notna()]
+    assert len(pieces) == 2 and pieces.index.is_unique and 'D' not in a.index
+    # Of the two outlines named S, only the one wholly in BBB leaves.
+    assert list(a.index[a.index == 'S']) == ['S']
+    assert a.loc[['S']].geometry.iloc[0].equals(sliver)
+
+
 def test_neighbor_inputs_are_the_shared_spine_sources(monkeypatch):
     recipe = {'pipeline': [{'step': 'resolve_spine', 'neighbor_reads': True}]}
     edges = {
