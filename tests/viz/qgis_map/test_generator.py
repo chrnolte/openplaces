@@ -5,6 +5,7 @@ with directly-constructed `LayerSpec`s (bypassing the resolver), matched
 against `fixtures/style_registry.csv` (not the production registry).
 """
 
+import dataclasses
 import datetime as dt_module
 import xml.etree.ElementTree as ET
 import zipfile
@@ -19,7 +20,7 @@ import openplaces.viz.qgis_map.generator as generator_module
 from openplaces.core.schema import AdminId, Entity
 from openplaces.viz.qgis_map import style_registry
 from openplaces.viz.qgis_map.generator import generate_qgz
-from openplaces.viz.qgis_map.resolver import LayerSpec
+from openplaces.viz.qgis_map.resolver import RENDER_POLYGONS, LayerSpec
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 TEMPLATE_PATH = FIXTURES / 'tiny_template.qgz'
@@ -882,22 +883,50 @@ class TestSplitImputed:
         ).to_parquet(spec.attr_path)
         return spec
 
-    def test_split_imputed_makes_observed_and_imputed_rules(self, tmp_path):
-        out = _run(tmp_path, [self._spec_with_source(tmp_path)], split_imputed=True)
-        root = _read_qgs_root(out)
-        [renderer] = [
-            r for r in root.iter('renderer-v2') if r.get('type') == 'RuleRenderer'
-        ]
-        parents = renderer.find('rules').findall('rule')
-        assert [p.get('label') for p in parents] == ['Observed', 'Imputed']
-        assert parents[1].get('filter') == (
-            '"conflict_field_source" LIKE \'%imputed%\''
+    def test_split_imputed_adds_an_imputed_copy_in_its_own_group(self, tmp_path):
+        spec = dataclasses.replace(
+            self._spec_with_source(tmp_path),
+            group_override='Buildings/Point geometries',
         )
-        for parent in parents:
-            assert [c.get('filter') for c in parent.findall('rule')] == [
-                '"conflict_field" = \'a\'',
-                '"conflict_field" = \'b\'',
-            ]
+        out = _run(tmp_path, [spec], split_imputed=True)
+        root = _read_qgs_root(out)
+        layers = {m.findtext('layername'): m for m in root.iter('maplayer')}
+        name = 'US-NC-CAR_footprint-dynamiccat-test'
+        view, twin = layers[name], layers[f'{name} (imputed)']
+        for layer in (view, twin):
+            assert layer.find('renderer-v2').get('type') == 'categorizedSymbol'
+        assert view.findtext('datasource').endswith(
+            '|subset="conflict_field_source" IS NULL OR '
+            '"conflict_field_source" NOT IN (\'model-v1+imputed\')'
+        )
+        assert twin.findtext('datasource').endswith(
+            '|subset="conflict_field_source" IN (\'model-v1+imputed\')'
+        )
+        [buildings] = [
+            g
+            for g in root.find('layer-tree-group').findall('layer-tree-group')
+            if g.get('name') == 'Buildings'
+        ]
+        groups = buildings.findall('layer-tree-group')
+        assert [g.get('name') for g in groups] == ['1. Imputed', '2. Original']
+        assert [n.get('name') for n in groups[0].iter('layer-tree-layer')] == [
+            f'{name} (imputed)'
+        ]
+        assert [n.get('name') for n in groups[1].iter('layer-tree-layer')] == [name]
+
+    def test_polygon_views_draw_only_zoomed_in(self, tmp_path):
+        spec = dataclasses.replace(
+            self._spec_with_source(tmp_path), render=RENDER_POLYGONS
+        )
+        root = _read_qgs_root(_run(tmp_path, [spec]))
+        [layer] = [
+            m
+            for m in root.iter('maplayer')
+            if m.findtext('layername') == 'US-NC-CAR_footprint-dynamiccat-test'
+        ]
+        assert layer.get('hasScaleBasedVisibilityFlag') == '1'
+        assert layer.get('minScale') == '25000'
+        assert layer.get('maxScale') == '0'
 
     def test_default_keeps_the_categorized_renderer(self, tmp_path):
         out = _run(tmp_path, [self._spec_with_source(tmp_path)])

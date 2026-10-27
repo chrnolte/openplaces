@@ -146,9 +146,9 @@ def export_qgis_map(
         for a map of the delivered product alone: the curated output and
         its admin context.
     split_imputed : bool, optional
-        Let a viewer toggle observed and imputed values on and off in
-        every classified layer whose data carries a `{col}_source`
-        column (default False). See
+        Show imputed values as copies of every classified layer whose
+        data carries a `{col}_source` column, gathered in one group a
+        viewer turns off with one checkbox (default False). See
         :func:`~openplaces.viz.qgis_map.generator.generate_qgz`.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
