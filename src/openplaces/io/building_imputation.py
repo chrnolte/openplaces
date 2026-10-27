@@ -25,7 +25,7 @@ scikit-learn. Taken from that work:
 
 Added here, for the production inventory:
 - one model per county, trained on the county's own labels plus donor
-  counties weighted by distance and county similarity, so a county
+  counties weighted by their distance, so a county
   without parcel values can be filled; donors only where a county's
   own labels are too sparse to be a sample of it;
 - parcel-recorded labels only, with NSI as named inputs;
@@ -38,10 +38,12 @@ Added here, for the production inventory:
 - running inside the delivery export, with every filled cell marked.
 
 Design limits checked (plans/design-limits/DESIGN_LIMITS.md): L4, L12,
-L13, L15, L23, L24, L25, L29. Histogram boosting has no row
+L13, L15, L23, L24, L25, L29, L30. Histogram boosting has no row
 subsampling and keeps max_features at 1.0 (L12). Donor weights are
 between counties, never between pairs of buildings, and no estimate
-is an adjusted average of comparables (L23). The structure value
+is an adjusted average of comparables (L23). They depend on geometry
+alone (centroid distance, or region-graph order): no county is paired
+with another by the similarity of its buildings or values (L30). The structure value
 model takes no core size or type, and nothing here computes feature
 importance or correlation for it (L24). Roof shape uses one
 multiclass model (L15). No published index is built here (L29).
@@ -216,9 +218,10 @@ CATEGORICAL_INPUTS = [
     'land_use_class_parcel',
     'region_type',
 ]
-# County-level similarity features: available in every county whether
-# or not its parcel data carry values. They describe counties for the
-# donor weights and also enter the models as inputs.
+# County-level features: available in every county whether or not its
+# parcel data carry values. They enter the regional models as inputs,
+# never the donor weights (design limit L30: no county is paired with
+# another by the similarity of its buildings or values).
 COUNTY_FEATURES = [
     'county_nsi_value_per_area',
     'county_nsi_year',
@@ -275,9 +278,6 @@ class DonorConfig:
         Per-order factor in 'region' mode, in (0, 1].
     bandwidth_km : float
         Gaussian bandwidth in 'km' mode.
-    similarity_bandwidth : float or None
-        Gaussian bandwidth on the county dissimilarity (root mean
-        square of standardized county features); None disables it.
     max_order : int
         Region orders beyond this get weight 0.
     radius_km : float
@@ -291,7 +291,6 @@ class DonorConfig:
     mode: str = 'region'
     decay: float = 0.5
     bandwidth_km: float = 100.0
-    similarity_bandwidth: float | None = 1.0
     max_order: int = 6
     radius_km: float = 250.0
     own_cap: int = 40_000
@@ -301,16 +300,11 @@ class DonorConfig:
     def name(self) -> str:
         if self.label:
             return self.label
-        sim = (
-            'nosim'
-            if self.similarity_bandwidth is None
-            else f's{self.similarity_bandwidth:g}'
-        )
         if self.mode == 'region':
-            return f'region_d{self.decay:g}_{sim}'
+            return f'region_d{self.decay:g}'
         if self.mode == 'km':
-            return f'km{self.bandwidth_km:g}_{sim}'
-        return f'equal_{sim}'
+            return f'km{self.bandwidth_km:g}'
+        return 'equal'
 
 
 def is_nsi_token(tokens: pd.Series) -> pd.Series:
@@ -597,18 +591,7 @@ def county_table(frame: pd.DataFrame, county_area_km2: pd.Series) -> pd.DataFram
     )
     area = county_area_km2.reindex(table.index)
     table['county_log_density'] = np.log(table['n'] / area)
-    z = table[COUNTY_FEATURES].astype(float)
-    z = (z - z.mean()) / z.std(ddof=0).replace(0, 1)
-    table[[f'z_{c}' for c in COUNTY_FEATURES]] = z.fillna(0).to_numpy()
     return table
-
-
-def county_dissimilarity(table: pd.DataFrame) -> pd.DataFrame:
-    """Root mean square difference of standardized county features."""
-    z = table[[f'z_{c}' for c in COUNTY_FEATURES]].to_numpy()
-    diff = z[:, None, :] - z[None, :, :]
-    rms = np.sqrt((diff**2).mean(axis=2))
-    return pd.DataFrame(rms, index=table.index, columns=table.index)
 
 
 def county_distance_km(table: pd.DataFrame) -> pd.DataFrame:
@@ -652,7 +635,6 @@ class DonorWeights:
     def __init__(self, frame: pd.DataFrame, table: pd.DataFrame, orders: dict):
         self.table = table
         self.distance = county_distance_km(table)
-        self.dissimilarity = county_dissimilarity(table)
         self.orders = orders
         shares = (
             frame.groupby(['admin3_id', 'region_id']).size()
@@ -685,9 +667,6 @@ class DonorWeights:
         elif config.mode == 'km':
             d = self.distance.loc[target].reindex(county).to_numpy()
             w = np.exp(-((d / config.bandwidth_km) ** 2))
-        if config.similarity_bandwidth is not None:
-            s = self.dissimilarity.loc[target].reindex(county).to_numpy()
-            w = w * np.exp(-((s / config.similarity_bandwidth) ** 2))
         far = self.distance.loc[target].reindex(county).to_numpy()
         w = np.where(far > config.radius_km, 0.0, w)
         w = np.where(county == target, 1.0, w)
@@ -839,7 +818,7 @@ def input_columns(spec: TargetSpec) -> list[str]:
         # and coordinates no training row shares, so trees route the
         # whole county to whichever donor those splits isolate, and it
         # inherits that donor's level (Askari 2026: location alone does
-        # not transfer). These enter through the donor weights instead.
+        # not transfer). Donors reach it through distance weights.
         # Measured 2026-10-15 on US-NC-CHO: with them, the median
         # probability of a zero structure value was 0.989.
         numeric = [c for c in numeric if c not in COUNTY_FEATURES and c not in LOCATION]
@@ -1984,10 +1963,16 @@ def delivery_config(spec: dict) -> DonorConfig:
         # A delivery has no region graph (orders={}, region_id empty),
         # so every donor would weigh 0.
         raise ValueError("donors: mode 'region' needs a region graph; use 'km'.")
+    if 'similarity_bandwidth' in donors:
+        # Removed 2026-10-26 (design limit L30): a donor weighted by how
+        # alike two counties' buildings are pairs areas by similarity.
+        raise ValueError(
+            'donors: similarity_bandwidth is no longer supported; donor '
+            'weights depend on distance only.'
+        )
     return DonorConfig(
         mode=mode,
         bandwidth_km=float(donors.get('bandwidth_km', 100.0)),
-        similarity_bandwidth=donors.get('similarity_bandwidth', 1.0),
         radius_km=float(donors.get('radius_km', 250.0)),
     )
 
@@ -2315,8 +2300,8 @@ def build_imputer(
         location = location.reindex(frame.index)
         for feature, (source, column, county) in LOCATION_INPUTS.items():
             if feature in excluded or source not in location.columns:
-                # Never written, so no county summary (and no donor
-                # similarity) carries an input left out of the models.
+                # Never written, so no county summary carries an input
+                # left out of the models.
                 excluded |= {feature, county}
                 continue
             values = location[source]
@@ -2419,7 +2404,7 @@ def impute_delivery(
     location : DataFrame, optional
         Per-row land-market inputs from the region enrichment
         (LOCATION_INPUTS). An input the recipe excludes is not read at
-        all, not even into the county summaries that weigh donors.
+        all, not even into the county summaries.
         Without it, the models run on the other inputs alone.
     census : dict, optional
         From :func:`census_levels`; the same holds without it.

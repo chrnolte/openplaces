@@ -178,7 +178,7 @@ def test_own_county_weight_is_one_and_far_regions_decay():
         {'r0': {'r1'}, 'r1': {'r0', 'r2'}, 'r2': {'r1'}}, max_order=6
     )
     donors = bi.DonorWeights(frame, table, orders)
-    config = bi.DonorConfig(mode='region', decay=0.5, similarity_bandwidth=None)
+    config = bi.DonorConfig(mode='region', decay=0.5)
     w = donors.weights('C1', frame, config)
     by_county = pd.Series(w).groupby(frame['admin3_id']).first()
     assert by_county['C1'] == 1.0
@@ -190,10 +190,28 @@ def test_radius_drops_distant_donor_counties():
     frame = _toy_frame()
     table = bi.county_table(frame, pd.Series({'C1': 10.0, 'C2': 10.0, 'C3': 10.0}))
     donors = bi.DonorWeights(frame, table, bi.region_orders({}, 6))
-    config = bi.DonorConfig(mode='equal', similarity_bandwidth=None, radius_km=150)
+    config = bi.DonorConfig(mode='equal', radius_km=150)
     w = pd.Series(donors.weights('C1', frame, config)).groupby(frame['admin3_id'])
     assert w.first()['C3'] == 0.0
     assert w.first()['C2'] == 1.0
+
+
+def test_donor_weights_depend_on_distance_only():
+    # Design limit L30: no county is paired with another by how alike
+    # their buildings are, so changing a donor's buildings leaves its
+    # weight unchanged, and a recipe asking for similarity fails.
+    frame = _toy_frame()
+    area = pd.Series({'C1': 10.0, 'C2': 10.0, 'C3': 10.0})
+    config = bi.DonorConfig(mode='km', bandwidth_km=100.0)
+    before = bi.DonorWeights(frame, bi.county_table(frame, area), {})
+    changed = frame.copy()
+    changed.loc[changed['admin3_id'] == 'C2', 'area_m2'] *= 10
+    after = bi.DonorWeights(changed, bi.county_table(changed, area), {})
+    np.testing.assert_array_equal(
+        before.weights('C1', frame, config), after.weights('C1', frame, config)
+    )
+    with pytest.raises(ValueError, match='similarity_bandwidth'):
+        bi.delivery_config({'donors': {'mode': 'km', 'similarity_bandwidth': 1.0}})
 
 
 def test_value_model_takes_no_core_type():
@@ -567,7 +585,7 @@ def test_price_anchor_matches_the_donors_ratio_to_acs():
     )
     imputer = object.__new__(bi.Imputer)
     imputer.frame = frame
-    imputer.config = bi.DonorConfig(mode='equal', similarity_bandwidth=None)
+    imputer.config = bi.DonorConfig(mode='equal')
     distance = pd.DataFrame(0.0, index=['A', 'B', 'T'], columns=['A', 'B', 'T'])
 
     class Donors:
