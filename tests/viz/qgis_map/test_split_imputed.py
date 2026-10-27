@@ -1,11 +1,15 @@
-"""Observed/imputed rule split of classified QGIS layers."""
+"""Observed/imputed split of classified QGIS layers."""
 
 import xml.etree.ElementTree as ET
+
+import pandas as pd
 
 from openplaces.viz.qgis_map.generator import (
     _add_join,
     _apply_imputed_split,
     _category_literal,
+    _order_numbered_groups,
+    _split_group_path,
     _split_observed_imputed,
 )
 
@@ -29,7 +33,8 @@ def _symbol(name: str, color: str) -> str:
 
 def _categorized(attr: str = 'roof_shape') -> ET.Element:
     return ET.fromstring(
-        '<maplayer><id>a</id>'
+        '<maplayer><id>a</id><layername>Roof shape</layername>'
+        '<datasource>./points.parquet</datasource>'
         f'<renderer-v2 type="categorizedSymbol" attr="{attr}" symbollevels="0">'
         '<categories>'
         '<category value="Gable" label="Gable" symbol="0" render="true"/>'
@@ -72,8 +77,9 @@ def _parents(clone: ET.Element) -> list[ET.Element]:
     return renderer.find('rules').findall('rule')
 
 
-IMPUTED = '"roof_shape_source" LIKE \'%imputed%\''
-OBSERVED = f'"roof_shape_source" IS NULL OR NOT ({IMPUTED})'
+PROBE = "strpos(coalesce(\"roof_shape_source\", ''), 'imputed')"
+IMPUTED = f'{PROBE} > 0'
+OBSERVED = f'{PROBE} = 0'
 
 
 class TestCategorized:
@@ -130,10 +136,24 @@ class TestCategorized:
         assert colors[first[2].get('symbol')] == '1,1,1,255'
         assert colors[first[1].get('symbol')] == '2,2,2,255'
 
+    def test_keep_writes_only_the_named_parent(self):
+        clone = _categorized()
+        assert _split_observed_imputed(
+            clone, source_field='roof_shape_source', keep=('Imputed',)
+        )
+        [imputed] = _parents(clone)
+        assert (imputed.get('label'), imputed.get('filter')) == ('Imputed', IMPUTED)
+
     def test_renderer_keeps_its_position_and_effect(self):
         clone = _categorized()
         _split_observed_imputed(clone, source_field='roof_shape_source')
-        assert [c.tag for c in clone] == ['id', 'renderer-v2', 'blendMode']
+        assert [c.tag for c in clone] == [
+            'id',
+            'layername',
+            'datasource',
+            'renderer-v2',
+            'blendMode',
+        ]
         assert clone.find('renderer-v2/effect') is not None
         assert len({r.get('key') for r in clone.iter('rule')}) == 12
 
@@ -158,57 +178,105 @@ class TestGraduated:
         assert 'year_built_source' in _parents(clone)[1].get('filter')
 
 
-class TestApplyImputedSplit:
-    def test_point_layer_uses_bare_field_names(self):
-        clone = _categorized()
-        assert _apply_imputed_split(
-            clone, 'roof_shape', {'roof_shape', 'roof_shape_source'}
-        )
-        assert _parents(clone)[1].get('filter') == IMPUTED
+def _points(tmp_path, sources) -> object:
+    path = tmp_path / 'points.parquet'
+    pd.DataFrame(
+        {'roof_shape': ['Gable'] * len(sources), 'roof_shape_source': sources}
+    ).to_parquet(path)
+    return path
 
-    def test_joined_polygon_keeps_bare_names_and_joins_the_source(self):
+
+class TestApplyImputedSplit:
+    COLUMNS = {'roof_shape', 'roof_shape_source'}
+
+    def test_point_layer_gets_token_subsets_and_keeps_its_renderer(self, tmp_path):
+        data = _points(tmp_path, ['parcel', 'm-v1+imputed', None, "it's+imputed"])
+        clone = _categorized()
+        twin = _apply_imputed_split(clone, 'roof_shape', self.COLUMNS, data_path=data)
+        listed = "'it''s+imputed', 'm-v1+imputed'"
+        assert clone.findtext('datasource') == (
+            './points.parquet|subset="roof_shape_source" IS NULL OR '
+            f'"roof_shape_source" NOT IN ({listed})'
+        )
+        assert twin.findtext('datasource') == (
+            f'./points.parquet|subset="roof_shape_source" IN ({listed})'
+        )
+        assert clone.find('renderer-v2').get('type') == 'categorizedSymbol'
+        assert twin.find('renderer-v2').get('type') == 'categorizedSymbol'
+        assert (twin.findtext('id'), twin.findtext('layername')) == (
+            'a_imputed',
+            'Roof shape (imputed)',
+        )
+
+    def test_nothing_imputed_leaves_the_view_whole_and_the_copy_empty(self, tmp_path):
+        data = _points(tmp_path, ['parcel', None])
+        clone = _categorized()
+        twin = _apply_imputed_split(clone, 'roof_shape', self.COLUMNS, data_path=data)
+        assert clone.findtext('datasource') == './points.parquet'
+        assert twin.findtext('datasource') == './points.parquet|subset=1 = 0'
+
+    def test_joined_polygon_splits_into_one_rule_each(self):
         clone = _categorized()
         _add_join(clone, attr_id='attr', field='footprint_id', subset=['roof_shape'])
-        assert _apply_imputed_split(
+        twin = _apply_imputed_split(
             clone,
             'roof_shape',
-            {'roof_shape', 'roof_shape_source'},
+            self.COLUMNS,
             join_layer_name='Attributes - points',
         )
-        assert _parents(clone)[1].get('filter') == IMPUTED
-        fields = [f.get('name') for f in clone.iter('field')]
-        assert fields == ['roof_shape', 'roof_shape_source']
+        assert [p.get('filter') for p in _parents(clone)] == [OBSERVED]
+        assert [p.get('filter') for p in _parents(twin)] == [IMPUTED]
+        for layer in (clone, twin):
+            fields = [f.get('name') for f in layer.iter('field')]
+            assert fields == ['roof_shape', 'roof_shape_source']
+        assert clone.findtext('datasource') == './points.parquet'
 
     def test_join_without_custom_prefix_uses_the_layer_name(self):
         clone = _categorized(attr='pts_roof_shape')
         _add_join(clone, attr_id='attr', field='footprint_id', subset=['roof_shape'])
         clone.find('vectorjoins/join').set('hasCustomPrefix', '0')
-        assert _apply_imputed_split(
+        twin = _apply_imputed_split(
             clone,
             'pts_roof_shape',
-            {'roof_shape', 'roof_shape_source'},
+            self.COLUMNS,
             join_layer_name='pts',
         )
-        imputed = _parents(clone)[1]
-        assert imputed.get('filter') == '"pts_roof_shape_source" LIKE \'%imputed%\''
+        [imputed] = _parents(twin)
+        assert imputed.get('filter') == (
+            "strpos(coalesce(\"pts_roof_shape_source\", ''), 'imputed') > 0"
+        )
         assert imputed.find('rule').get('filter') == '"pts_roof_shape" = \'Gable\''
-        fields = [f.get('name') for f in clone.iter('field')]
-        assert fields == ['roof_shape', 'roof_shape_source']
 
     def test_layer_without_a_source_column_is_unchanged(self):
         clone = _categorized()
         before = ET.tostring(clone)
-        assert not _apply_imputed_split(clone, 'roof_shape', {'roof_shape'})
+        assert _apply_imputed_split(clone, 'roof_shape', {'roof_shape'}) is None
         assert ET.tostring(clone) == before
 
     def test_single_symbol_renderer_is_unchanged(self):
         clone = ET.fromstring(
-            '<maplayer><renderer-v2 type="singleSymbol"><symbols>'
+            '<maplayer><id>s</id><renderer-v2 type="singleSymbol"><symbols>'
             + _symbol('0', '1,1,1,255')
             + '</symbols></renderer-v2></maplayer>'
         )
         before = ET.tostring(clone)
-        assert not _apply_imputed_split(
-            clone, 'roof_shape', {'roof_shape', 'roof_shape_source'}
-        )
+        assert _apply_imputed_split(clone, 'roof_shape', self.COLUMNS) is None
         assert ET.tostring(clone) == before
+
+
+def test_split_groups_are_renamed_and_numbered_first():
+    assert _split_group_path('Buildings/Point geometries') == 'Buildings/2. Original'
+    assert _split_group_path('Buildings/Polygon geometries') == 'Buildings/3. Polygons'
+    assert _split_group_path('Administrative units') == 'Administrative units'
+    parent = ET.fromstring(
+        '<g><g name="2. Original"/><layer/><g name="3. Polygons"/>'
+        '<g name="1. Imputed"/><g name="Other"/></g>'
+    )
+    _order_numbered_groups(parent, 'g')
+    assert [c.get('name') for c in parent] == [
+        '1. Imputed',
+        None,
+        '2. Original',
+        '3. Polygons',
+        'Other',
+    ]

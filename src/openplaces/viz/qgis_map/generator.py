@@ -922,16 +922,27 @@ def _classes(renderer: ET.Element) -> list[tuple[str, str, str, bool]]:
     return out
 
 
-def _split_observed_imputed(clone: ET.Element, *, source_field: str) -> bool:
+def _split_observed_imputed(
+    clone: ET.Element,
+    *,
+    source_field: str,
+    keep: tuple[str, ...] = ('Observed', 'Imputed'),
+) -> bool:
     """Rewrite *clone*'s classifying renderer as Observed/Imputed rules.
 
-    A categorized or graduated renderer becomes a rule-based one with two
-    top-level rules, "Observed" and "Imputed", each holding one child
-    rule per original class with that class's symbol and label. The
-    parents are what a viewer toggles in the QGIS legend: unchecking
-    "Imputed" hides every cell openplaces filled itself, whatever its
-    class. Every child rule gets its own copy of its symbol, because a
-    rule renderer keys symbols one per rule.
+    A categorized or graduated renderer becomes a rule-based one with a
+    top-level rule per name in *keep*, "Observed" and "Imputed", each
+    holding one child rule per original class with that class's symbol
+    and label. "Imputed" selects every cell openplaces filled itself,
+    whatever its class. Every child rule gets its own copy of its
+    symbol, because a rule renderer keys symbols one per rule.
+
+    The test is strpos over the coalesced field, which QGIS evaluates
+    itself, rather than LIKE. Measured 2026-10-26 on cheer-eastern-nc
+    (QGIS 3.44, 2.46 million points, region view): 28 s per redraw
+    with strpos, 80 s with LIKE. A rule renderer is still several
+    times slower than a classified one, so it serves only layers whose
+    source field comes through a join (see _apply_imputed_split).
 
     Parameters
     ----------
@@ -940,6 +951,8 @@ def _split_observed_imputed(clone: ET.Element, *, source_field: str) -> bool:
     source_field : str
         The provenance field as the layer's expressions name it (joined
         fields include their join prefix).
+    keep : tuple of str, optional
+        The top-level rules to write, from "Observed" and "Imputed".
 
     Returns
     -------
@@ -960,12 +973,9 @@ def _split_observed_imputed(clone: ET.Element, *, source_field: str) -> bool:
     if not classes:
         return False
 
-    src = f'"{source_field}"'
-    imputed = f"{src} LIKE '%{_IMPUTED_TOKEN}%'"
-    parents = (
-        ('Observed', f'{src} IS NULL OR NOT ({imputed})'),
-        ('Imputed', imputed),
-    )
+    probe = f"strpos(coalesce(\"{source_field}\", ''), '{_IMPUTED_TOKEN}')"
+    tests = {'Observed': f'{probe} = 0', 'Imputed': f'{probe} > 0'}
+    parents = tuple((label, tests[label]) for label in keep)
     new = ET.Element(
         'renderer-v2',
         {
@@ -1040,14 +1050,106 @@ def _ensure_joined_field(clone: ET.Element, name: str) -> None:
 DERIVED_SOURCES = {'structure_value_per_area': 'structure_value_source'}
 
 
+# Suffix of an imputed copy's layer name and id.
+IMPUTED_SUFFIX = ' (imputed)'
+# With split_imputed, a top group (Buildings) lists its imputed copies
+# first, then the views they were split from under these names, so
+# one checkbox turns every imputed value off.
+IMPUTED_GROUP = '1. Imputed'
+SPLIT_GROUP_NAMES = {
+    'Point geometries': '2. Original',
+    'Polygon geometries': '3. Polygons',
+}
+# Scale denominator below which polygon views draw (1:25,000, about a
+# neighborhood). A building polygon view hash-joins its attributes, so
+# drawing a whole region of them is the slowest step of opening a map;
+# the points carry every attribute at smaller scales.
+POLYGON_MIN_SCALE = 25_000
+
+
+def _split_group_path(group_path: str) -> str:
+    """*group_path* with its last group renamed per SPLIT_GROUP_NAMES."""
+    *head, last = group_path.split('/')
+    return '/'.join([*head, SPLIT_GROUP_NAMES.get(last, last)])
+
+
+def _draw_only_zoomed_in(maplayer: ET.Element, min_scale: int) -> None:
+    """Hide *maplayer* when zoomed out beyond 1:*min_scale*.
+
+    QGIS's minScale is the most zoomed-out scale denominator a layer
+    still draws at; maxScale 0 sets no limit when zooming in. A layer
+    without geometry is left alone.
+    """
+    if maplayer.get('geometry') == 'No geometry':
+        return
+    maplayer.set('hasScaleBasedVisibilityFlag', '1')
+    maplayer.set('minScale', str(min_scale))
+    maplayer.set('maxScale', '0')
+
+
+def _order_numbered_groups(parent: ET.Element, tag: str) -> None:
+    """Sort numbered child groups ('1. ...') by name, recursively.
+
+    Groups are created in the order layers arrive, so the imputed group
+    would otherwise come last. Numbered groups take the positions they
+    already occupy among their siblings; nothing else moves.
+    """
+    children = list(parent)
+    slots = [
+        i
+        for i, c in enumerate(children)
+        if c.tag == tag and re.match(r'\d+\. ', c.get('name') or '')
+    ]
+    ordered = sorted((children[i] for i in slots), key=lambda c: c.get('name'))
+    for slot, child in zip(slots, ordered, strict=True):
+        children[slot] = child
+    parent[:] = children
+    for child in parent.findall(tag):
+        _order_numbered_groups(child, tag)
+
+
+def _imputed_tokens(data_path: Path, column: str) -> list[str]:
+    """The distinct values of *column* in *data_path* naming 'imputed'."""
+    import pyarrow.parquet as pq
+
+    values = pq.read_table(data_path, columns=[column]).column(0).unique()
+    return sorted(v for v in values.to_pylist() if v and _IMPUTED_TOKEN in v)
+
+
+def _set_subset(clone: ET.Element, subset: str) -> None:
+    """Give *clone*'s OGR datasource a provider subset string."""
+    datasource = clone.find('datasource')
+    path = (datasource.text or '').split('|')[0]
+    datasource.text = f'{path}|subset={subset}' if subset else path
+
+
 def _apply_imputed_split(
     clone: ET.Element,
     column: str | None,
     available: set[str],
     *,
     join_layer_name: str | None = None,
-) -> bool:
-    """Split *clone* by provenance when its data carries a source column.
+    data_path: Path | None = None,
+) -> ET.Element | None:
+    """Split *clone* by provenance into an observed view and an imputed copy.
+
+    *clone* keeps the cells whose `{col}_source` does not name
+    'imputed'; the returned copy (id and name suffixed) shows only the
+    ones that do, so a viewer turns imputed values off by unchecking
+    the copies' group. Turning a layer or group off changes no filter,
+    so nothing is read again. A rule inside one layer is a worse
+    switch: unchecking it makes QGIS filter every feature on the next
+    redraw.
+
+    A layer that reads its source column from its own file keeps its
+    classified renderer and gets a provider subset string listing the
+    imputed tokens found in *data_path*, which GDAL applies while
+    reading. Measured 2026-10-26 on cheer-eastern-nc (QGIS 3.44,
+    structure value points, region view): 9.7 s for both layers, 2.8 s
+    for the imputed one alone, against 14 s with LIKE subsets and 28 s
+    for an Observed/Imputed rule tree. A layer whose source column
+    comes through a join (a subset string cannot reach it) gets a rule
+    renderer instead, one top-level rule each (_split_observed_imputed).
 
     Parameters
     ----------
@@ -1059,22 +1161,54 @@ def _apply_imputed_split(
         Columns of the layer's attribute data.
     join_layer_name : str, optional
         Name of the layer *clone* joins, for QGIS's default prefix.
+    data_path : pathlib.Path, optional
+        The file *clone* reads, for its imputed tokens. Required for a
+        layer without a join.
 
     Returns
     -------
-    bool
-        True when the renderer was converted.
+    xml.etree.ElementTree.Element or None
+        The imputed copy, or None (clone unchanged) when the data has no
+        source column for *column* or the renderer is not categorized
+        or graduated.
     """
     prefix = _join_field_prefix(clone, join_layer_name=join_layer_name)
     if column and prefix and column.startswith(prefix):
         column = column[len(prefix) :]
     source = DERIVED_SOURCES.get(column, f'{column}_source') if column else None
     if not source or source not in available:
-        return False
-    if not _split_observed_imputed(clone, source_field=f'{prefix}{source}'):
-        return False
+        return None
+    renderer = clone.find('renderer-v2')
+    if renderer is None or renderer.get('type') not in (
+        'categorizedSymbol',
+        'graduatedSymbol',
+    ):
+        return None
+    twin = copy.deepcopy(clone)
+    twin.find('id').text = f'{clone.findtext("id")}_imputed'
+    twin.find('layername').text = f'{clone.findtext("layername")}{IMPUTED_SUFFIX}'
+    joins = clone.find('vectorjoins')
+    joined = joins is not None and joins.find('join') is not None
+    if not joined:
+        tokens = _imputed_tokens(data_path, source)
+        field = f'"{source}"'
+        listed = ', '.join("'" + t.replace("'", "''") + "'" for t in tokens)
+        if tokens:
+            _set_subset(clone, f'{field} IS NULL OR {field} NOT IN ({listed})')
+            _set_subset(twin, f'{field} IN ({listed})')
+        else:
+            # Nothing imputed: the copy draws nothing, the view is whole.
+            _set_subset(twin, '1 = 0')
+        return twin
+    field = f'{prefix}{source}'
+    if not (
+        _split_observed_imputed(clone, source_field=field, keep=('Observed',))
+        and _split_observed_imputed(twin, source_field=field, keep=('Imputed',))
+    ):
+        return None
     _ensure_joined_field(clone, source)
-    return True
+    _ensure_joined_field(twin, source)
+    return twin
 
 
 def _find_or_create_group(
@@ -1504,12 +1638,16 @@ def generate_qgz(
         Project title to set. When omitted, the template's own (typically
         dynamic, project-variable-driven) title is left as-is.
     split_imputed : bool, optional
-        Give every classified layer whose data carries a `{col}_source`
-        column for its classifying column `col` a rule-based renderer
-        with two toggleable top-level rules, "Observed" and "Imputed"
-        (a source token containing "imputed"), each holding the
-        original classes. Layers without such a column keep their
-        renderer. Default False.
+        Split every classified layer whose data carries a `{col}_source`
+        column for its classifying column `col`: the layer keeps the
+        observed cells, and a copy named '... (imputed)' shows the cells
+        whose source token contains "imputed" (_apply_imputed_split).
+        The copies go into a group IMPUTED_GROUP under the top group,
+        listed first, and the 'Point geometries' and 'Polygon
+        geometries' groups are renamed per SPLIT_GROUP_NAMES. Layers
+        without such a column keep their renderer. Default False.
+        Independently of it, every layer on a polygon view's file draws
+        only when zoomed in closer than 1:POLYGON_MIN_SCALE.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
 
@@ -1564,10 +1702,12 @@ def generate_qgz(
     static_styles_by_layername = {s.template_layer_name: s for s in get_static_styles()}
 
     new_maplayers: list[ET.Element] = []
-    # Ids of layers split by provenance, expanded in the panel below.
-    split_ids: set[str] = set()
+    # Files a polygon view reads: every layer on them draws only when
+    # zoomed in (POLYGON_MIN_SCALE).
+    polygon_files = {s.geo_path for s in layer_specs if s.render == RENDER_POLYGONS}
 
     for spec in layer_specs:
+        layers_before = len(new_maplayers)
         style = get_style(spec.entity_type, spec.source, spec.role)
         unstyled = style is None
         if unstyled:
@@ -1715,15 +1855,19 @@ def generate_qgz(
                 geo_clone, old_attr_id=attr_template_id, new_attr_id=new_attr_id
             )
             new_maplayers.extend((attr_clone, geo_clone))
+        # Imputed copies by the id of the layer they were split from.
+        twins: dict[str, ET.Element] = {}
         if split_imputed and spec.render != RENDER_OUTLINE:
-            if _apply_imputed_split(
+            twin = _apply_imputed_split(
                 geo_clone,
                 style.dynamic_categorize_attr
                 or _bare_field(_classifying_attr(geo_clone)),
                 split_columns,
                 join_layer_name=attr_layer_name,
-            ):
-                split_ids.add(geo_clone.findtext('id'))
+                data_path=spec.geo_path,
+            )
+            if twin is not None:
+                twins[new_geo_id] = twin
 
         # Style variants apply regardless of whether the base spec is
         # combined: a combined variant clone just shares the base's
@@ -1813,13 +1957,16 @@ def generate_qgz(
                     for join in list(vectorjoins.findall('join')):
                         vectorjoins.remove(join)
             _apply_render_mode(variant_clone, spec.render)
-            if split_imputed and _apply_imputed_split(
-                variant_clone,
-                _bare_field(variant_attr),
-                split_columns,
-                join_layer_name=attr_layer_name,
-            ):
-                split_ids.add(variant_clone.findtext('id'))
+            if split_imputed:
+                twin = _apply_imputed_split(
+                    variant_clone,
+                    _bare_field(variant_attr),
+                    split_columns,
+                    join_layer_name=attr_layer_name,
+                    data_path=spec.geo_path,
+                )
+                if twin is not None:
+                    twins[new_variant_id] = twin
             new_maplayers.append(variant_clone)
             # A polygon view renders through the canonical hash-join, so
             # even a variant that defaults on as a point view must start
@@ -1830,20 +1977,33 @@ def generate_qgz(
         group_path = f'{style.group_path}/Unstyled' if unstyled else style.group_path
         if spec.group_override:
             group_path = spec.group_override
-        tree_group = _find_or_create_group(layer_tree_root, group_path, verbose=verbose)
-        legend_group = _find_or_create_legendgroup(
-            legend_root, group_path, verbose=verbose
-        )
+        if split_imputed:
+            group_path = _split_group_path(group_path)
+        placements = [(group_path, entry) for entry in tree_entries]
+        imputed_path = f'{group_path.split("/")[0]}/{IMPUTED_GROUP}'
         for layer_id, name, checked in tree_entries:
+            twin = twins.get(layer_id)
+            if twin is not None:
+                new_maplayers.append(twin)
+                placements.append(
+                    (
+                        imputed_path,
+                        (twin.findtext('id'), f'{name}{IMPUTED_SUFFIX}', checked),
+                    )
+                )
+        if spec.geo_path in polygon_files:
+            for maplayer in new_maplayers[layers_before:]:
+                _draw_only_zoomed_in(maplayer, POLYGON_MIN_SCALE)
+        for path, (layer_id, name, checked) in placements:
             _insert_layer_tree_layer(
-                tree_group,
+                _find_or_create_group(layer_tree_root, path, verbose=verbose),
                 layer_id=layer_id,
                 name=name,
                 source=geo_datasource,
                 checked=checked,
             )
             _insert_legend_layer(
-                legend_group,
+                _find_or_create_legendgroup(legend_root, path, verbose=verbose),
                 layer_id=layer_id,
                 name=name,
                 checked=checked,
@@ -1875,11 +2035,12 @@ def generate_qgz(
 
     if layer_tree_root is not None:
         _expand_group_path(layer_tree_root, 'Buildings/Point geometries')
-        # A layer split by provenance opens with its Observed and Imputed
-        # rules showing, or a reader never finds the switches.
-        for node in layer_tree_root.iter('layer-tree-layer'):
-            if node.get('id') in split_ids:
-                node.set('expanded', '1')
+        if split_imputed:
+            _order_numbered_groups(layer_tree_root, 'layer-tree-group')
+            for name in (IMPUTED_GROUP, SPLIT_GROUP_NAMES['Point geometries']):
+                _expand_group_path(layer_tree_root, f'Buildings/{name}')
+    if split_imputed and legend_root is not None:
+        _order_numbered_groups(legend_root, 'legendgroup')
     # Administrative context lists and draws above everything else.
     if layer_tree_root is not None:
         _move_group_first(layer_tree_root, 'Administrative units')
