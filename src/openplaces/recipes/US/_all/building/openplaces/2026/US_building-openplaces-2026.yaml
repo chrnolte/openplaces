@@ -370,11 +370,10 @@ pipeline:
   # own provenance there), so its own sidecar would be dead weight.
   # A gather step, so it runs with the other gathers before any decision
   # (moved up from after the occupancy resolution 2026-09-29).
-  # Every entry is an enrichment of the outlines, so each names the
-  # footprint spine it ran on and joins through the building's
-  # footprint_id: without that, its output is looked for under the
-  # building spine and skipped as if never run. Street view stories
-  # move to the building in step 5 of the plan.
+  # Every entry but street view is an enrichment of the outlines, so
+  # each names the footprint spine it ran on and joins through the
+  # building's footprint_id: without that, its output is looked for
+  # under the building spine and skipped as if never run.
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
@@ -383,9 +382,9 @@ pipeline:
         record_source: true
         columns:
           roof_shape_brails: roof_shape
-      - recipe_id: US_footprint_built-n-stories-brails-2026
-        entity_recipe: US_footprint-spine-2026
-        key: footprint_id
+      # Street view: an enrichment of the building itself (step 5), so it
+      # is found under the building spine and needs no key.
+      - recipe_id: US_building_built-n-stories-brails-2026
         columns:
           n_stories_brails: n_stories_brails
       # CHEER Inventory v0: the same BRAILS attributes, already computed

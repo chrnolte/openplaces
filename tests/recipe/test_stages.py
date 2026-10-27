@@ -39,17 +39,19 @@ def test_curation_recipe_declares_predecessors():
     merge_step = next(
         step for step in recipe['pipeline'] if step['step'] == 'merge_enrichments'
     )
-    # Every entry is an outline enrichment, read under the footprint
-    # spine and joined through the building's footprint_id; without it
-    # the step looks under the building spine and skips the entry.
-    assert all(
-        spec.get('entity_recipe') == 'US_footprint-spine-2026'
-        and spec.get('key') == 'footprint_id'
-        for spec in merge_step['recipes']
-    )
+    # Every outline enrichment is read under the footprint spine and
+    # joined through the building's footprint_id; without it the step
+    # looks under the building spine and skips the entry. Street view is
+    # the building's own enrichment (b3 step 5) and needs neither.
+    for spec in merge_step['recipes']:
+        if spec['recipe_id'].startswith('US_building_'):
+            assert 'entity_recipe' not in spec and 'key' not in spec, spec
+        else:
+            assert spec.get('entity_recipe') == 'US_footprint-spine-2026', spec
+            assert spec.get('key') == 'footprint_id', spec
     assert {spec['recipe_id'] for spec in merge_step['recipes']} == {
         'US_footprint_built-roof-shape-brails-2026',
-        'US_footprint_built-n-stories-brails-2026',
+        'US_building_built-n-stories-brails-2026',
         # Region-scoped: a precomputed statewide inventory standing
         # in for the per-image classifications above wherever it has
         # coverage (NC statewide; Harris and Jefferson TX).

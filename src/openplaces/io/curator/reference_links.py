@@ -341,7 +341,7 @@ def build_parcel_reference_files(
     record_recipe_id: str,
     parcel_recipe_id: str = 'US_parcel-geospine-2026',
     parcel_address_recipe_id: str | None = 'US_parcel-spine-2026',
-    footprint_recipe_id: str = 'US_footprint-spine-2026',
+    building_recipe_id: str = 'US_building-spine-2026',
     class_column: str = 'occupancy_type_raw',
     record_key_columns: tuple[tuple[str, str], ...] = (
         ('parcel_id_local', 'parcel_id_local'),
@@ -364,10 +364,18 @@ def build_parcel_reference_files(
     Writes `{admin_id}_parcel_{name}_validation.parquet` (every parcel,
     with a label row where records linked) and
     `{admin_id}_footprint_{name}_validation.parquet` (every footprint,
-    carrying its parcel's labels through the footprint's own `parcel_id`)
-    into *out_dir*, the schema the validation notebooks read. The
-    reference may be licence-restricted: *out_dir* must be a private
-    location, never a delivery or share directory.
+    carrying its parcel's labels) into *out_dir*, the schema the
+    validation notebooks read. The reference may be licence-restricted:
+    *out_dir* must be a private location, never a delivery or share
+    directory.
+
+    A footprint's parcel is its buildings' (b3 step 6): the building
+    spine holds each building's `parcel_id` and the `footprint_id` of
+    the outline it stands under. The file stays footprint-level, as the
+    inventory CHEER ships is. An outline whose buildings name different
+    parcels (a townhome row cut at parcel lines) takes none, so it is
+    scored as unlabeled rather than on a parcel chosen for it; while one
+    building is one outline every outline takes its building's.
 
     Parameters
     ----------
@@ -383,8 +391,8 @@ def build_parcel_reference_files(
         Recipe holding reconciled parcel addresses on the same parcel
         index (the geospine's attribute recipe); None skips the address
         rule.
-    footprint_recipe_id : str
-        Recipe holding each footprint's `parcel_id`.
+    building_recipe_id : str
+        Recipe holding each building's `parcel_id` and `footprint_id`.
     class_column : str
         Record column naming its class.
     record_key_columns : tuple of (str, str) pairs
@@ -432,7 +440,15 @@ def build_parcel_reference_files(
             parcels = parcels.drop(
                 columns=[c for c in address_cols if c in parcels.columns]
             ).join(addresses[[c for c in address_cols if c in addresses]])
-    footprints = get_entities(footprint_recipe_id, admin_id, columns=['parcel_id'])
+    buildings = get_entities(
+        building_recipe_id, admin_id, columns=['parcel_id', 'footprint_id']
+    )
+    by_outline = buildings.dropna(subset=['footprint_id']).groupby('footprint_id')[
+        'parcel_id'
+    ]
+    footprints = pd.DataFrame(
+        {'parcel_id': by_outline.first().where(by_outline.nunique() <= 1)}
+    )
 
     summary = {'admin_id': str(admin_id), 'records': 0}
     label = 'occupancy_type' if name == 'occupancy' else name

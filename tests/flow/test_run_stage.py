@@ -90,7 +90,7 @@ def test_enrich_forwards_entity_recipe(monkeypatch, no_orchestrated_env):
     run_stage.main(
         [
             'enrich',
-            'US_footprint_built-n-stories-brails-2026',
+            'US_building_built-n-stories-brails-2026',
             'US-NC-BR',
             '--entity-recipe-id',
             'US_footprint-spine-2026',

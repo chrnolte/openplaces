@@ -12,7 +12,7 @@ from openplaces.recipe import get_output_path, get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
 ROOF_SHAPE = 'US_footprint_built-roof-shape-brails-2026'
-N_STORIES = 'US_footprint_built-n-stories-brails-2026'
+N_STORIES = 'US_building_built-n-stories-brails-2026'
 COUNTY = 'US-FL-LA'
 
 

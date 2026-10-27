@@ -149,15 +149,24 @@ def test_build_files_cover_every_parcel_and_footprint(monkeypatch, tmp_path):
     parcels = _parcels()
     records = _records()
     records['occupancy_type_raw'] = ['Class A'] * 6
-    footprints = pd.DataFrame(
-        {'parcel_id': ['p4', 'p4', 'p1', None]},
-        index=pd.Index(['f1', 'f2', 'f3', 'f4'], name='footprint_id'),
+    # Buildings carry their parcel and the outline they stand under (b3
+    # step 6). f5's two buildings name different parcels and f6's two the
+    # same one: an outline takes its buildings' parcel only where they
+    # agree. Fabricated ids.
+    buildings = pd.DataFrame(
+        {
+            'parcel_id': ['p4', 'p4', 'p1', None, 'p4', 'p1', 'p4', 'p4'],
+            'footprint_id': ['f1', 'f2', 'f3', 'f4', 'f5', 'f5', 'f6', 'f6'],
+        },
+        index=pd.Index(
+            ['b1', 'b2', 'b3', 'b4', 'b5a', 'b5b', 'b6a', 'b6b'], name='building_id'
+        ),
     )
     tables = {
         'records': records,
         'parcels-geo': parcels.drop(columns=['address_street', 'address_number']),
         'parcels-attr': pd.DataFrame(parcels[['address_street', 'address_number']]),
-        'footprints': footprints,
+        'buildings': buildings,
     }
 
     def fake_get_entities(recipe, admin_id, geom=False, columns=None, **kwargs):
@@ -173,7 +182,7 @@ def test_build_files_cover_every_parcel_and_footprint(monkeypatch, tmp_path):
         record_recipe_id='records',
         parcel_recipe_id='parcels-geo',
         parcel_address_recipe_id='parcels-attr',
-        footprint_recipe_id='footprints',
+        building_recipe_id='buildings',
     )
 
     parcel_file = pd.read_parquet(
@@ -184,9 +193,10 @@ def test_build_files_cover_every_parcel_and_footprint(monkeypatch, tmp_path):
     )
     assert list(parcel_file.columns) == list(rl.REFERENCE_COLUMNS)
     assert len(parcel_file) == 5
-    assert len(footprint_file) == 4
-    assert footprint_file.loc[['f1', 'f2'], 'n_permits'].tolist() == [1.0, 1.0]
+    assert len(footprint_file) == 6
+    assert footprint_file.loc[['f1', 'f2', 'f6'], 'n_permits'].tolist() == [1.0] * 3
     assert pd.isna(footprint_file.loc['f3', 'n_permits'])
+    assert pd.isna(footprint_file.loc['f5', 'n_permits'])
     assert parcel_file.loc['p1', 'matched_via'] == 'none'
     assert summary['linked'] == 4
-    assert summary['footprints_labeled'] == 2
+    assert summary['footprints_labeled'] == 3

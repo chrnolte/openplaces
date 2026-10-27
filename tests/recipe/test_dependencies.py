@@ -13,7 +13,7 @@ def test_curate_recipe_edges():
     assert 'US_building-spine-2026' in upstream
     assert 'US_parcel-openplaces-2026' in upstream
     assert 'US_footprint_built-roof-shape-brails-2026' in upstream
-    assert 'US_footprint_built-n-stories-brails-2026' in upstream
+    assert 'US_building_built-n-stories-brails-2026' in upstream
     kinds = {e.kind for e in edges}
     assert 'entity_recipe' in kinds
     # The footprint curate CHEER ships reads the building curate (b3
@@ -77,10 +77,15 @@ def test_footprint_spine_auto_discover_resolves_for_admin():
 
 
 def test_enrich_recipe_edges():
-    edges = get_recipe_dependencies('US_footprint_built-n-stories-brails-2026')
+    edges = get_recipe_dependencies('US_building_built-n-stories-brails-2026')
     by_kind = {e.kind: e for e in edges}
     assert by_kind['image_recipe'].upstream_recipe_id == ('image-googlestreetview-2026')
-    # Dynamic spine resolution mirrors the enricher
+    # Dynamic spine resolution mirrors the enricher: street view is an
+    # enrichment of the building (b3 step 5).
+    assert by_kind['entity_recipe'].upstream_recipe_id == 'US_building-spine-2026'
+    edges = get_recipe_dependencies('US_footprint_built-roof-shape-brails-2026')
+    by_kind = {e.kind: e for e in edges}
+    # Roof shape stays an enrichment of the outline.
     assert by_kind['entity_recipe'].upstream_recipe_id == 'US_footprint-spine-2026'
 
 
