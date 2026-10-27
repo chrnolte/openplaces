@@ -638,7 +638,7 @@ def test_delete_image_caches_handles_empty_inventory(monkeypatch, capsys):
 
 MASSGIS = 'US-MA_parcel-massgis-2025'
 MASSGIS_TOWN = 'US-MA-MI'
-STORIES_ENRICH = 'US_footprint_built-n-stories-brails-2026'
+STORIES_ENRICH = 'US_building_built-n-stories-brails-2026'
 VICTORIA = 'US-TX-VIC_property-victoriacad-2026'
 
 

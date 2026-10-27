@@ -92,7 +92,7 @@ def iter_entity_sources() -> frozenset:
     filename for its entity token. Files whose entity token does not parse are
     skipped. A bare entity token (e.g. ``footprint``) followed by a
     ``{theme}-{source}-{version}`` remainder — an entity+dataset enrich recipe
-    such as ``US_footprint_built-n-stories-brails-2026`` — falls back to the
+    such as ``US_building_built-n-stories-brails-2026`` — falls back to the
     dataset's own source id. Used to auto-generate the provenance suffix
     vocabulary so adding a new source needs no hardcoded list edits.
     """
@@ -201,7 +201,7 @@ def source_id_from_recipe_id(recipe_id: str) -> str:
     is parsed with the same caster :func:`get_recipe_by_id` uses, so the
     source is read off the parsed object rather than by counting
     `-`-delimited fields (`'US_building-nsi-2022'` -> `'nsi'`;
-    `'US_footprint_built-n-stories-brails-2026'` -> `'brails'`).
+    `'US_building_built-n-stories-brails-2026'` -> `'brails'`).
 
     Reading the *last* token used to be enough only because no committed
     recipe id carried a suffix: `'CO_parcel-igac-2026_rural'` yielded

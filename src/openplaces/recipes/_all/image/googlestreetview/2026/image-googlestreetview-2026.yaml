@@ -15,8 +15,11 @@ entity:
 # Note: '2026' is the recipe-creation year; imagery is always current.
 image_scraper: google_streetview
 
-# Recipe ID of the harmonized entity spine to use as input.
-entity_recipe: US_footprint-spine-2026
+# Recipe ID of the harmonized entity spine to use as input. Street view
+# looks at a structure from the street, so its enrichments (story count,
+# occupancy) are the building's (step 5 of
+# plans/building-spine-consumers-and-footprint-projection.md).
+entity_recipe: US_building-spine-2026
 
 # Upward camera tilt in degrees (0 = horizontal, positive = looking up).
 # Increase for tall urban buildings where floor counting requires upward view.

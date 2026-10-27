@@ -1,0 +1,32 @@
+description: >-
+  Occupancy-type evidence for U.S. buildings, predicted from street-level imagery with
+  BRAILS++.
+
+stage: enrich
+admin_id: US
+
+# Occupancy is the structure's, seen from the street, so this is an
+# enrichment of the building, not of the outline (decided 2026-10-04,
+# plans/building-spine-consumers-and-footprint-projection.md, step 5).
+# Moved 2026-10-26 from US_footprint_built-occupancy-brails-2026.
+entity:
+  entity_type: building
+
+dataset:
+  theme: built-occupancy
+  source:
+    source_id: brails
+  version: 2026
+
+# Imagery is fetched at each building's own location, so this step
+# needs spine geometry, which the attribute spine (`US_building-spine-
+# 2026`) reads through its geospine.
+spine_geom: true
+image_recipe: image-googlestreetview-2026
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: classify_occupancy
+    column: occupancy_brails

@@ -1,0 +1,35 @@
+description: >-
+  Story-count evidence for U.S. buildings, detected from street-level imagery with
+  BRAILS++.
+
+stage: enrich
+admin_id: US
+
+# A story count is the structure's, seen from the street, so this is an
+# enrichment of the building, not of the outline (decided 2026-10-04,
+# plans/building-spine-consumers-and-footprint-projection.md, step 5).
+# Moved 2026-10-26 from US_footprint_built-n-stories-brails-2026; while
+# one building is one outline the building id is the footprint id, so
+# outputs computed on outlines were copied once under building ids
+# rather than fetched again at Google's billed rate.
+entity:
+  entity_type: building
+
+dataset:
+  theme: built-n-stories
+  source:
+    source_id: brails
+  version: 2026
+
+# Imagery is fetched at each building's own location, so this step
+# needs spine geometry, which the attribute spine (`US_building-spine-
+# 2026`) reads through its geospine.
+spine_geom: true
+image_recipe: image-googlestreetview-2026
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: detect_n_stories
+    column: n_stories_brails
