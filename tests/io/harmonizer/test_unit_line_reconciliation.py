@@ -108,6 +108,34 @@ def test_neighbor_inputs_are_the_shared_spine_sources(monkeypatch):
     assert neighbors.neighbor_inputs(recipe, 'US-XX-AAA') == []
 
 
+def test_each_neighbor_is_scanned_with_its_own_patches(monkeypatch):
+    # AAA's patch names a closed source list; the harmonizer hands the
+    # patched recipe over. BBB runs the national list, so of AAA's
+    # sources it reads only the shared one, whichever recipe is passed.
+    national = {
+        'recipe_id': 'r',
+        'pipeline': [{'step': 'resolve_spine', 'neighbor_reads': True}],
+    }
+    patched = {**national, 'patched_for': 'US-XX-AAA'}
+    own_lists = {'US-XX-AAA': ['closed', 'shared'], 'US-XX-BBB': ['obm', 'shared']}
+
+    def fake_dependencies(recipe, admin_id=None):
+        # As get_recipe_dependencies does, the unit's own patch applies;
+        # a recipe already patched keeps the patch it carries.
+        unit = recipe.get('patched_for') or admin_id
+        return [
+            DepEdge('r', up, 'recipe_id', step='resolve_spine')
+            for up in own_lists[unit]
+        ]
+
+    monkeypatch.setattr(neighbors, 'touching_units', lambda admin: ('US-XX-BBB',))
+    monkeypatch.setattr(neighbors, 'get_recipe_dependencies', fake_dependencies)
+    monkeypatch.setattr(neighbors, 'get_recipe_by_id', lambda rid: national)
+    expected = [('shared', 'US-XX-BBB')]
+    assert neighbors.neighbor_inputs(patched, 'US-XX-AAA') == expected
+    assert neighbors.neighbor_inputs(national, 'US-XX-AAA') == expected
+
+
 def test_a_recipe_without_neighbor_reads_reads_none(monkeypatch):
     recipe = {'pipeline': [{'step': 'resolve_spine'}]}
     assert neighbors.neighbor_inputs(recipe, 'US-XX-AAA') == []

@@ -29,7 +29,12 @@ from functools import cache
 
 from openplaces.core.schema import AdminId
 from openplaces.io.readers import get_admin
-from openplaces.recipe import get_recipe_dependencies, source_id_from_recipe_id
+from openplaces.recipe import (
+    get_recipe_by_id,
+    get_recipe_dependencies,
+    get_recipe_id,
+    source_id_from_recipe_id,
+)
 
 NEIGHBOR_READS_ENV = 'OPENPLACES_NEIGHBOR_READS'
 
@@ -75,6 +80,18 @@ def touching_units(admin_id: str) -> tuple[str, ...]:
     return tuple(sorted(touching.index))
 
 
+def _unpatched(recipe: dict) -> dict:
+    """The recipe file *recipe* was loaded from, before any patch.
+
+    A recipe that names no recipe file (a test's bare dict) is returned
+    as is; nothing can patch it.
+    """
+    try:
+        return get_recipe_by_id(recipe.get('recipe_id') or get_recipe_id(recipe))
+    except Exception:  # noqa: BLE001 - an unnamed recipe has no patches
+        return recipe
+
+
 def neighbor_inputs(recipe: dict, admin_id) -> list[tuple[str, str]]:
     """(ingest recipe id, neighbor admin id) pairs the recipe reads.
 
@@ -82,6 +99,13 @@ def neighbor_inputs(recipe: dict, admin_id) -> list[tuple[str, str]]:
     leaves them on. For each touching unit, the upstream recipes of the
     recipe's `resolve_spine` step as the dependency scan resolves them
     for that unit: the sources the step would read there.
+
+    *recipe* may arrive patched for *admin_id* (the harmonizer passes
+    the pipeline the unit runs) or not (the orchestrator passes the
+    recipe file). Every unit is scanned from the unpatched recipe, so
+    that each takes its own patches and not *admin_id*'s: scanned with
+    a county's patch, a neighbor would seem to read a source the patch
+    names, which the neighbor neither reads nor schedules.
     """
     if admin_id is None or not neighbor_reads_enabled():
         return []
@@ -100,10 +124,12 @@ def neighbor_inputs(recipe: dict, admin_id) -> list[tuple[str, str]]:
         for source_id in entry.get('exclude_sources') or ()
     }
 
+    unpatched = _unpatched(recipe)
+
     def spine_sources(unit) -> set[str]:
         return {
             edge.upstream_recipe_id
-            for edge in get_recipe_dependencies(recipe, admin_id=unit)
+            for edge in get_recipe_dependencies(unpatched, admin_id=unit)
             if edge.step == 'resolve_spine'
             and edge.upstream_recipe_id
             and source_id_from_recipe_id(edge.upstream_recipe_id) not in excluded
