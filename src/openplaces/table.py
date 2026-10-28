@@ -50,7 +50,12 @@ def summarize_conflicts(
     differ = pd.Series(False, index=index)
     for (_, class_a), (_, class_b) in combinations(present, 2):
         both = class_a.notna() & class_b.notna()
-        differ = differ | (both & class_a.ne(class_b))
+        # Compare only rows where both are present: on object columns
+        # a pd.NA in the comparison raises "boolean value of NA is
+        # ambiguous" before the mask could drop it.
+        a = class_a[both].astype(object).to_numpy()
+        b = class_b[both].astype(object).to_numpy()
+        differ.loc[both] = differ.loc[both].to_numpy() | (a != b)
     if not differ.any():
         return conflict
 

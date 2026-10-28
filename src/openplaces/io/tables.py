@@ -141,10 +141,11 @@ def parquet_columns(parquet_path: str | Path) -> list[str]:
     return list(pq.ParquetFile(parquet_path).schema_arrow.names)
 
 
-# Waits between attempts to move a written file into place (about 10 s
+# Waits between attempts to move a written file into place (about 60 s
 # in all). Windows refuses to replace a file another process holds open,
-# and Dropbox holds files briefly while it syncs them.
-REPLACE_BACKOFF_S = (0.5, 1.0, 2.0, 3.0, 4.0)
+# and Dropbox holds files while it syncs them: 10 s was too short for
+# geospine parcel sidecars during the 2026-10-27 wave.
+REPLACE_BACKOFF_S = (0.5, 1.0, 2.0, 4.0, 8.0, 15.0, 30.0)
 
 
 def _temp_path(filepath: Path) -> Path:
