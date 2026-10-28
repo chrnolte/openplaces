@@ -10,22 +10,23 @@
 # b2 (plans/core-schema-and-stage-contracts-review.md, deliverable 3b,
 # 2026-09-29): parcel priority, the parcel / Overture / NSI evidence,
 # addresses, postal codes, the address key and the permit joins. They
-# describe the structure, so they run once, here; US_footprint-spine-
-# 2026 projects the result back onto the outlines (adopt_entity_
-# attributes) so that every consumer of the footprint spine reads the
-# same values as before, cell for cell, until it reads this spine.
+# describe the structure, so they run once, here. Its consumers read
+# this spine directly (the parcel geospine and spine, street view, the
+# building curate, the validation references); the footprint curate
+# CHEER ships reaches it through the building curate
+# (plans/building-spine-consumers-and-footprint-projection.md).
 #
 # The link table is written here and not in the footprint spine because
 # the building is the finer entity in ENTITY_LINK_ORDER and its
 # geospine is built from the footprint geospine, so both sides exist
 # when this runs; the table lands beside the building geospine's output
 # (geo.link.get_entity_link_path). It links against the footprint
-# geospine, not the footprint spine, because the footprint spine now
-# runs after this recipe.
+# geospine, not the footprint spine, so the two spines need not be
+# ordered against each other.
 #
 # Count columns take this entity's name (n_parcels_per_building,
-# n_buildings_per_parcel, n_permits_per_building); the footprint spine
-# renames them on projection.
+# n_buildings_per_parcel, n_permits_per_building); the footprint curate
+# renames them back for the outlines.
 
 description: >-
   Harmonized U.S. building spine attaching parcel, NSI, dwelling and
