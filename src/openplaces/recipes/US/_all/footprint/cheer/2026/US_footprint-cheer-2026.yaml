@@ -361,16 +361,28 @@ share:
       # and place locations for density and settlement distances.
       census_recipe: US_population-acs-2024
       gazetteer_recipe: US_population-gazetteer-2024
+      # Askari's validity repairs, gap-trained boosting and Stage 2b
+      # hook (io/building_imputation_gaps.py). Chosen 2026-10-23 under
+      # Stage 2b: the typical county miss of structure value fell from
+      # 12.0% to 5.7% with gap training, on inputs that then still
+      # included the land-market county summaries and Pender's
+      # inflated labels. v0.6, leave-county-out (2026-10-25): median
+      # county total 12.8% low with gap training, 21.9% low without.
+      extensions: openplaces.io.building_imputation_gaps:EXTENSIONS
       # Printed in the licence notice's imputation section.
       credit: >-
         Method: the choice of gradient-boosted trees, spatially blocked
-        testing and treating NSI-assigned years as area lookups follow
-        Mohammad Askari (UCLA), "Imputation Model Selection for
-        CoPe-CHEER: North Carolina" (2026-09-10) and "Imputing All Nine
-        Building Attributes in CHEER Places North Carolina"
-        (2026-10-15). The production pipeline (donor counties,
-        common-year values, census inputs and price anchor, residual
-        draws) is openplaces' own.
+        testing, treating NSI-assigned years as area lookups, and the
+        validity repairs follow Mohammad Askari (UCLA), "Imputation Model
+        Selection for CoPe-CHEER: North Carolina" (2026-09-10) and
+        "Imputing All Nine Building Attributes in CHEER Places North
+        Carolina" (2026-10-15), as do gap-trained boosting and the split
+        of each county's incomplete buildings into one half of gap
+        patterns for training and one for testing, used here as
+        implemented in openplaces from that memo (under Askari's
+        review). The production pipeline (donor counties, common-year
+        values, census inputs and price anchor, residual draws) is
+        openplaces' own.
       # Distance only (design limit L30). Chosen 2026-10-27 by
       # leave-county-out on cheer-eastern-nc (Stage 2b, ACS anchor,
       # typical county miss of structure value): 250 km within 400 km
