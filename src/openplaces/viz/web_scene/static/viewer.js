@@ -28,11 +28,16 @@ const LAYER_ICONS = {
   landmarks: '<path d="M9 15s-5-5-5-8.5a5 5 0 0 1 10 0C14 10 9 15 9 15z" fill="currentColor"'
     + ' fill-opacity=".35" stroke="currentColor"/><circle cx="9" cy="6.5" r="1.6"'
     + ' fill="currentColor"/>',
-  // A small cloud of dots.
-  people: '<g fill="currentColor"><circle cx="4" cy="9" r="1.4"/><circle cx="8" cy="5"'
-    + ' r="1.4"/><circle cx="9" cy="11" r="1.4"/><circle cx="13" cy="7" r="1.4"/>'
-    + '<circle cx="14" cy="12" r="1.4"/></g>',
+  // Three little people.
+  people: '<g fill="currentColor"><circle cx="4" cy="5" r="1.7"/><path d="M1.2 14v-4a2.8'
+    + ' 2.8 0 0 1 5.6 0v4z"/><circle cx="9" cy="3.8" r="1.9"/><path d="M5.8 14.5v-5a3.2'
+    + ' 3.2 0 0 1 6.4 0v5z"/><circle cx="14" cy="5" r="1.7"/><path d="M11.2 14v-4a2.8'
+    + ' 2.8 0 0 1 5.6 0v4z"/></g>',
 };
+// One little person, filled with a group's color (the people legend).
+const PERSON_SVG = '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
+  + '<circle cx="4.5" cy="2.6" r="2.3" fill="currentColor"/><path d="M.6 12.8V8a3.9 3.9'
+  + ' 0 0 1 7.8 0v4.8z" fill="currentColor"/></svg>';
 // Soft white: present, but never competing with the values' colors.
 const BOUNDARY_COLOR = [235, 240, 255, 90];
 
@@ -1417,7 +1422,7 @@ async function main() {
   const people = scene.people || null;
   if (people) {
     shown.people = (params.get('show') || '').split(',').includes('people');
-    switches.push(['people', 'People (2020 Census)']);
+    switches.push(['people', 'Race and ethnicity (2020 Census)']);
   }
   // Every dot on a machine known to be fast, every second otherwise,
   // every fourth on a page that had to lighten itself. The file is
@@ -1804,7 +1809,7 @@ async function main() {
     block.className = 'legend legend-people';
     const label = document.createElement('div');
     label.className = 'legend-label';
-    label.textContent = 'People';
+    label.textContent = 'Race and ethnicity';
     const of = document.createElement('span');
     of.className = 'legend-of';
     of.textContent = ` one dot per ${people.per_dot * peopleStride()} people (2020 Census)`;
@@ -1813,9 +1818,10 @@ async function main() {
     list.className = 'legend-people-groups';
     for (const group of people.groups) {
       const item = document.createElement('span');
-      const dot = document.createElement('i');
-      dot.style.background = group.color;
-      item.append(dot, group.label);
+      const person = document.createElement('i');
+      person.style.color = group.color;
+      person.innerHTML = PERSON_SVG;
+      item.append(person, group.label);
       list.appendChild(item);
     }
     block.append(label, list);
