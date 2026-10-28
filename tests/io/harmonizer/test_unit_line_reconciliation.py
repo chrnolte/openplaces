@@ -4,6 +4,7 @@ unit keeps its piece. Every geometry and id below is fabricated."""
 import geopandas as gpd
 import pandas as pd
 import pytest
+import shapely.affinity
 from shapely.geometry import box
 
 import openplaces.io.harmonizer.neighbors as neighbors
@@ -159,6 +160,47 @@ def test_neighbor_rows_join_their_source_once(monkeypatch, two_units):
     sources = {'obm': own}
     spine_module._add_neighbor_rows(sources, State())
     assert list(sources['obm'].index) == ['H']
+
+
+def test_neighbor_copies_and_id_clashes_keep_ids_unique(monkeypatch, two_units):
+    # A county-split layer: the neighbor's copy of the straddling house
+    # differs by float noise and is kept once. A different outline the
+    # neighbor files under the same id stays, with a longer code.
+    house = box(-71.0003, 42.005, -70.99985, 42.0052)
+    noisy = shapely.affinity.translate(house, xoff=2e-13)
+    other = box(-71.0001, 42.0058, -70.9998, 42.0059)
+    own = _spine([('H', house), ('O', box(-71.0002, 42.0058, -71.0001, 42.0059))])
+    neighbor = _spine([('H', noisy), ('O', other)])
+    monkeypatch.setattr(
+        neighbors, 'neighbor_inputs', lambda recipe, admin: [('obm', 'US-XX-BBB')]
+    )
+    monkeypatch.setattr(spine_module, 'get_entities', lambda *a, **k: neighbor)
+
+    class State:
+        recipe = {}
+        admin_id = 'US-XX-AAA'
+        verbose = False
+
+    sources = {'obm': own}
+    spine_module._add_neighbor_rows(sources, State())
+    merged = sources['obm']
+    assert merged.index.is_unique and len(merged) == 3
+    assert list(merged.index[:2]) == ['H', 'O']
+    assert merged.geometry.iloc[2].equals(other)
+
+
+def test_elongated_duplicates_are_judged_row_by_row():
+    # Two candidates share an id; only the one beside the spine's
+    # trailer is its duplicate.
+    trailer = box(0, 0, 20, 4)
+    spine = gpd.GeoDataFrame(geometry=[trailer], index=['T'], crs='EPSG:6933')
+    to_add = gpd.GeoDataFrame(
+        geometry=[box(0, 1, 20, 5), box(0, 500, 20, 504)],
+        index=['D', 'D'],
+        crs='EPSG:6933',
+    )
+    kept = spine_module.drop_elongated_duplicates(spine, to_add)
+    assert len(kept) == 1 and kept.geometry.iloc[0].bounds[1] == 500
 
 
 def test_a_row_almost_wholly_in_a_neighbor_never_enters_the_merge(two_units):

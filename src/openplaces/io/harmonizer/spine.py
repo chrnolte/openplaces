@@ -126,8 +126,12 @@ def _add_neighbor_rows(source_gdfs: dict, state) -> None:
     read is `neighbors.neighbor_inputs`, the answer the orchestrator and
     the sidecar fingerprint use too; a missing input raises. Identical
     geometries within a source are kept once: MassGIS's per-town files
-    both carry a building that crosses their line.
+    both carry a building that crosses their line. So are copies that
+    differ only by float noise (`_neighbor_copies`), and a neighbor row
+    whose id this unit's source already holds for another outline takes
+    a longer centroid code, so that ids stay unique within the source.
     """
+    from openplaces.geo.ids import distinct_centroid_codes
     from openplaces.io.harmonizer.neighbors import neighbor_inputs, unit_polygons
 
     pairs = neighbor_inputs(state.recipe, state.admin_id)
@@ -144,11 +148,47 @@ def _add_neighbor_rows(source_gdfs: dict, state) -> None:
         rows = gdf[gdf.intersects(area)]
         if rows.empty:
             continue
+        rows = rows.to_crs(source_gdfs[recipe_id].crs)
+        rows = rows[~_neighbor_copies(rows, source_gdfs[recipe_id])]
+        clash = rows.index.isin(source_gdfs[recipe_id].index)
+        if clash.any():
+            taken = set(source_gdfs[recipe_id].index.astype(str)) | set(
+                rows.index[~clash].astype(str)
+            )
+            index = rows.index.to_numpy(dtype=object).copy()
+            index[clash] = distinct_centroid_codes(
+                gpd.GeoDataFrame(geometry=rows.geometry[clash], crs=rows.crs), taken
+            ).to_numpy()
+            rows = rows.set_axis(pd.Index(index, name=rows.index.name))
         merged = pd.concat([source_gdfs[recipe_id], rows])
         merged = merged[~merged.geometry.to_wkb().duplicated().to_numpy()]
         source_gdfs[recipe_id] = merged
         if state.verbose:
             print(f'  Load {recipe_id} from {neighbor}: {len(rows):,d} outlines')
+
+
+def _neighbor_copies(rows, own, min_iou=1 - 1e-6):
+    """Which neighbor *rows* repeat an *own* row of the same source.
+
+    A statewide layer split into county files carries a building on a
+    county line in both, and the two copies can differ by float noise
+    (2e-13 degrees between NC DPS's Rutherford and Buncombe files), so
+    an exact geometry test misses them. A copy has the same id, the
+    centroid code, and covers the same area; any other outline under
+    the same id is a different building and is kept.
+    """
+    shared = rows.index.isin(own.index)
+    copies = np.zeros(len(rows), dtype=bool)
+    if not shared.any():
+        return copies
+    first = own.geometry[~own.index.duplicated()]
+    a = rows.geometry[shared].to_numpy()
+    b = first.reindex(rows.index[shared]).to_numpy()
+    union = shapely.area(shapely.union(a, b))
+    inter = shapely.area(shapely.intersection(a, b))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        copies[shared] = inter / union >= min_iou
+    return copies
 
 
 def _without_neighbor_outlines(gdf, admin_id, min_m2=10.0, min_share=0.05):
@@ -394,11 +434,16 @@ def drop_elongated_duplicates(
     spine_widths_arr = spine_width[mask_elong_spine].values
     tree = STRtree(spine_geoms_arr)
 
-    dup_ids: set = set()
-    for cand_id in to_add.index[mask_elong_cand]:
-        cand_geom = to_add.geometry[cand_id]
-        angle = cand_angle[cand_id]
-        width = cand_width[cand_id]
+    # By position, not id: two candidates may share an id, and each is
+    # judged on its own outline.
+    is_dup = np.zeros(len(to_add), dtype=bool)
+    cand_geoms = to_add.geometry.to_numpy()
+    cand_angles = cand_angle.to_numpy()
+    cand_widths = cand_width.to_numpy()
+    for pos in np.flatnonzero(mask_elong_cand.to_numpy()):
+        cand_geom = cand_geoms[pos]
+        angle = cand_angles[pos]
+        width = cand_widths[pos]
 
         # Spatial proximity search via buffered candidate.
         hits = tree.query(
@@ -444,11 +489,11 @@ def drop_elongated_duplicates(
             s_lat = (smin_p + smax_p) / 2
             lateral = abs(c_lat - s_lat)
             if lateral < lateral_sep_ratio_max * (width + s_width) / 2:
-                dup_ids.add(cand_id)
+                is_dup[pos] = True
                 break
 
-    if dup_ids:
-        to_add = to_add[~to_add.index.isin(dup_ids)]
+    if is_dup.any():
+        to_add = to_add[~is_dup]
     return to_add
 
 
