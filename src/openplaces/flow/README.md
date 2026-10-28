@@ -89,6 +89,15 @@ marked Fairfax, Arlington and Alexandria stale in washington-dc
 the evidence file if one is on disk and skips the recipe otherwise,
 as it does for an excluded ingest. The rule covers enrich jobs only; a
 harmonize job reading an excluded source among others is kept.
+**A source that lists the units it covers gets no job for any other.** A
+recipe with a `recipe_id`-form `process_by.admin_id_crosswalk` (a sidecar
+of the units the source carries, such as PASDA's 38 Pennsylvania
+counties) is scheduled only for a unit that sidecar names
+(`RecipeDAG._crosswalk_covers`, reading the same list the ingester does
+through `crosswalk_coverage`). US-PA-HU, which has county recipes of its
+own, used to get a PASDA ingest that raised and stopped the run, so it
+needed a hand exclusion. A property spine or a dwelling ingest with no
+rows for a unit needs no rule: the harmonizer saves an empty table.
 `out_of_date(dag)` lists every job whose existing
 output is older than an existing input, then every job built from such
 an output. It differs from `plan()` in one way: a missing output does

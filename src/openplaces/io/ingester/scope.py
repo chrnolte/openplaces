@@ -30,6 +30,29 @@ from openplaces.recipe import (
 from openplaces.utils import format_list
 
 
+def crosswalk_coverage(recipe: dict) -> set[str] | None:
+    """Admin units a recipe's scoped crosswalk sidecar lists, as strings.
+
+    Returns None when the recipe has no `recipe_id`-form
+    `process_by.admin_id_crosswalk` (it claims no scope) or the sidecar
+    cannot be read. Shared by the ingester, which drops uncovered units
+    from an expanded request, and by `RecipeDAG`, which must not schedule
+    a job for a unit the sidecar does not list.
+    """
+    crosswalk = (recipe.get('process_by') or {}).get('admin_id_crosswalk') or {}
+    if 'recipe_id' not in crosswalk:
+        return None
+    try:
+        spec = dict(crosswalk)
+        spec['admin_id'] = str(recipe['admin_id'])
+        return {str(unit) for unit in get_crosswalk(spec, flip=True).iloc[:, 0]}
+    except (FileNotFoundError, KeyError, ValueError):
+        # An absent or unreadable sidecar is not fatal: the scope is an
+        # optimization and `process()` reports a real mismatch. Narrow,
+        # so an unexpected failure is not read as "unscoped".
+        return None
+
+
 class _AdminScopeMixin:
     """Methods of :class:`~openplaces.io.ingester.Ingester` (scope).
 
@@ -342,14 +365,8 @@ class _AdminScopeMixin:
             for admin_id in self.admin_ids
         ):
             return admin_ids_to_process
-        try:
-            spec = dict(crosswalk)
-            spec['admin_id'] = str(self.recipe['admin_id'])
-            covered = set(get_crosswalk(spec, flip=True).iloc[:, 0])
-        except (FileNotFoundError, KeyError, ValueError):
-            # An absent or unreadable sidecar is not fatal here: the scope
-            # is an optimization and `process()` reports a real mismatch.
-            # Narrow, so an unexpected failure is not read as "unscoped".
+        covered = crosswalk_coverage(self.recipe)
+        if covered is None:
             return admin_ids_to_process
         # Compare as strings: AdminId does not hash equal to its own
         # string form, so membership against the crosswalk's raw column
