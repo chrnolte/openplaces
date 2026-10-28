@@ -16,8 +16,10 @@ set -euo pipefail
 
 project="${OPENPLACES_SCC_PROJECT:-}"
 if [ -z "$project" ]; then
-  if [[ "$PWD" =~ ^(/restricted)?/projectnb?/([^/]+) ]]; then
-    project="${BASH_REMATCH[2]}"
+  # /project/<name> or /projectnb/<name>: "projectnb?" would read
+  # "projectn" plus an optional "b" and never match /project/.
+  if [[ "$PWD" =~ ^(/restricted)?/project(nb)?/([^/]+) ]]; then
+    project="${BASH_REMATCH[3]}"
   else
     echo "qsub_submit.sh: cannot tell the SCC project from $PWD;" \
       "set OPENPLACES_SCC_PROJECT" >&2
