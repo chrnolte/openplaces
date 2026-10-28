@@ -59,7 +59,9 @@ pipeline:
   - step: link_parcels_to_waterbodies
     waterbody_recipe_id: US_water-waterbody-usgs-nhdhr2023
     area_recipe_id: US_water-waterbody-usgs-nhdhr2023_area
-    footprint_recipe_id: US_footprint-spine-2026
+    # Each parcel's primary building (parcel_id, priority_on_parcel live
+    # on the building spine; the footprint spine is its geospine alone).
+    footprint_recipe_id: US_building-spine-2026
     lake_definition: is_lake_lagos
     river_definition: is_river_places
     tolerance_m: 20

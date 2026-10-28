@@ -444,22 +444,26 @@ geometry source for it and today the only one. The building geospine is
 `geometry_source` kept from the row rather than stamped), `adopt_source_entity_id`
 (the footprint's id kept in `footprint_id`, the index renamed `building_id`,
 equal values while one outline is one building) and the geometry attributes.
-The building spine loads it with the footprint geospine's link sidecars
-re-keyed to building ids (`load_geospine` with `links_recipe_id`), writes the
-footprint-to-building link table (`link_entities_by_id` against the footprint
-geospine, method `footprint_outline`), and runs the parcel priority, evidence,
-address, postal and permit steps that ran on the footprint spine until b2; the
-relational counts take the building's name (`n_parcels_per_building`). The
-footprint spine is then `load_geospine` plus `adopt_entity_attributes` of the
-building spine with the counts renamed back, so its output is unchanged cell
-for cell and its consumers (the parcel geospine's morphology and
-dwelling-address steps, the imagery recipes, the footprint curate, the
-validation references) are untouched; the projection goes when they read the
-building spine. Order per unit: footprint geospine, building geospine,
-building spine, footprint spine, parcel geospine. Slice b3 (townhome splits,
-condo-tower merges, NSI points with no outline as rows) is where a building
-stops being one footprint; the re-keying and the projection both refuse rows
-that share a source id, so that slice has to decide the fan-out explicitly.
+Since slice b3 step 1 the building geospine also restores the footprint
+geospine's parcel overlay under building ids (`load_links`) and runs the NSI
+and dwelling point joins itself. The building spine loads it with the
+footprint geospine's parcel overlay re-keyed to building ids (`load_geospine`
+with `links_recipe_id`, persisted beside the building geospine for the curate
+readers), writes the footprint-to-building link table (`link_entities_by_id`
+against the footprint geospine, method `footprint_outline`), and runs the
+parcel priority, evidence, address, postal and permit steps that ran on the
+footprint spine until b2; the relational counts take the building's name
+(`n_parcels_per_building`). Its consumers read it directly: the parcel
+geospine's morphology and geographic-id inheritance, the parcel spine's
+dwelling address, street view, the building curate and the validation
+references. The footprint spine is its geospine alone (`load_geospine`), and
+the footprint curate CHEER ships carries the building curate onto the
+outlines (`aggregate_from_entities`), renaming the counts back. Order per
+unit: footprint geospine, building geospine, building spine, footprint spine,
+parcel geospine. Later b3 slices (townhome splits, condo-tower merges, NSI
+points with no outline as rows) are where a building stops being one
+footprint; the re-keying refuses rows that share a source id, so those slices
+have to decide the fan-out explicitly.
 A merge is not caught that way: a building made of several outlines names
 one `footprint_id`, so the others' links would stay unattributed, and b3
 needs the footprint-to-building link table as its key. Both steps also
@@ -481,9 +485,8 @@ geospine (one building per outline), which restores the footprint
 geospine's parcel overlay under building ids (`load_links`) and links the
 NSI and dwelling points to the buildings itself; the building spine,
 which runs the evidence, address and permit steps against those links;
-the footprint spine, a projection of the building spine onto the outlines
-(`adopt_entity_attributes`, so its consumers read unchanged values until
-they read the building spine); the parcel geospine, which reads the
+the footprint spine (its geospine alone); the parcel geospine, which reads
+the building spine for its morphology and geographic ids, the
 ingest-level property tables for parcel-level values and the property
 spine for a count; the parcel spine; enrichment; parcel curation;
 building curation (`US_building-openplaces-2026`, the occupancy vote and
@@ -577,13 +580,12 @@ The step sub-modules:
   `links_recipe_id` names the geospine whose sidecars apply, and they
   are restored keyed by that entity's id and re-keyed to this spine
   through `links_key` (the building spine reads the footprint geospine's
-  parcel, NSI and Overture links through `footprint_id`; a rename while
-  the relation is one to one, refused where rows share a source id).
-  `adopt_entity_attributes` is the reverse projection: every column of
-  another spine's output copied onto this one through a one-to-one key,
-  overwriting in place and appending the rest in the other's order, with
-  explicit renames for counts named after the other entity. The
-  footprint spine is such a projection of the building spine (below).
+  parcel overlay through `footprint_id`; a rename while the relation is
+  one to one, refused where rows share a source id). `load_links` does
+  the same inside a geospine, for the link steps after it.
+  `adopt_entity_attributes`, deprecated since b3 step 7 and named by no
+  recipe, copies every column of another spine's output onto this one
+  through a one-to-one key.
 - `attributes/` — attribute source columns to the spine as suffixed evidence
   columns (`reconcile_attributes`, in `reconcile.py` with the polygon and
   point attribution in `polygon.py` and `point.py`), assign each

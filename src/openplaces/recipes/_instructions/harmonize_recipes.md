@@ -112,8 +112,9 @@ transformation), and each supplement names it. The rules:
 - A keyed supplement needs no `parcel_id_local` directive of its own.
 
 **Order is a dependency, not a preference.** The property spine depends only on
-property ingests; the footprint spine additionally on parcel *ingests* and the
-property spine; the parcel spine on both spines. Derive the order from
+property ingests; the footprint geospine on parcel *ingests*; the building
+geospine and spine on the footprint geospine; the parcel chain on the property
+spine and the building spine. Derive the order from
 `RecipeDAG`, do not guess.
 
 **Evidence keeps its provenance suffix.** Point/building-level refs carry

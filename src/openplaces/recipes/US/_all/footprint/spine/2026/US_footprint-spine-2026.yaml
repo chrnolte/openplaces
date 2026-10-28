@@ -2,26 +2,24 @@
 #
 # The attribute half of the split footprint spine: consumes the geometry
 # phase's persisted output (US_footprint-geospine-2026, declared as
-# entity_recipe and restored by load_geospine) and projects onto it the
-# attributes of the building spine (US_building-spine-2026), which since
-# slice b2 of plans/core-schema-and-stage-contracts-review.md runs the
-# evidence, address and permit steps that ran here until 2026-09-29.
-# They describe the structure, and while one building is one footprint
-# the outline carries the same values, so the output of this recipe is
-# unchanged cell for cell (checked on the six oracle counties) and its
-# consumers (the parcel geospine's morphology and dwelling-address
-# steps, the imagery recipes, the footprint curate, the validation
-# references) are untouched. When they read the building spine
-# directly, the projection goes and this recipe is the geospine alone.
-# Keeps the established recipe id so downstream YAML is untouched.
+# entity_recipe and restored by load_geospine) and nothing else. Until
+# b3 step 7 (2026-10-26) it also projected the building spine's
+# attributes onto the outlines (adopt_entity_attributes), so that its
+# consumers read unchanged values; they now read the building spine
+# (the parcel chain, street view) or the building curate (the footprint
+# curate CHEER ships, through aggregate_from_entities), and the outline
+# keeps what is its own: geometry provenance, centroid, area and
+# geographic ids (plans/building-spine-consumers-and-footprint-
+# projection.md). Keeps the established recipe id: the outline
+# enrichments (roof shape, heights) and the footprint curate name it.
 # Writes an attribute-only table (save_to: geometry: false): its
 # geometry lives with the geospine and is resolved by readers through
 # the entity_recipe chain, never duplicated. Rerunning this recipe
 # involves no spatial computation at all.
 
 description: >-
-  Harmonized U.S. footprint spine: the footprint geospine carrying the
-  building spine's parcel, NSI, dwelling and permit evidence.
+  Harmonized U.S. footprint spine: the footprint geospine's outlines with
+  their geometry provenance and geographic ids.
 
 stage: harmonize
 admin_id: US
@@ -57,18 +55,3 @@ pipeline:
   # YAMLs cannot drift; a missing or stale sidecar raises with instructions
   # to rerun the geospine rather than silently recomputing geometry here.
   - step: load_geospine
-
-  # Every attribute of the building spine, through the footprint id each
-  # building row carries, overwriting a column the geospine already has
-  # in place and appending the rest in the building spine's order. The
-  # relational counts are named for the building there and for the
-  # footprint here; the permit counts likewise (count_as in the building
-  # spine's link_by_id steps).
-  - step: adopt_entity_attributes
-    recipe_id: US_building-spine-2026
-    key: footprint_id
-    rename:
-      n_parcels_per_building: n_parcels_per_footprint
-      n_buildings_per_parcel: n_footprints_per_parcel
-      n_permits_per_building: n_permits_per_footprint
-      n_permits_per_building_address: n_permits_per_footprint_address

@@ -82,7 +82,10 @@ WATERBODY_RECIPES = (
     'US_water-waterbody-usgs-nhdhr2023',
     'US_water-waterbody-usgs-nhdhr2023_area',
 )
-FOOTPRINT_RECIPE = 'US_footprint-spine-2026'
+# The spine whose rows say which structure is a parcel's primary one
+# (`parcel_id`, `priority_on_parcel`): the building spine since b3 step 7,
+# when the footprint spine stopped carrying those attribute columns.
+FOOTPRINT_RECIPE = 'US_building-spine-2026'
 ID = 'waterbody_id_nhd'
 
 

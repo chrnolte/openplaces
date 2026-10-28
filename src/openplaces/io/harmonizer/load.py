@@ -497,7 +497,11 @@ def adopt_entity_attributes(
 ) -> HarmonizeState:
     """Copy another spine's attributes onto this one through a one-to-one key.
 
-    The footprint spine is a projection of the building spine while one
+    Deprecated: no recipe uses it since b3 step 7 (2026-10-26), when the
+    footprint spine became its geospine alone; kept one release for a
+    patch recipe that may still name it.
+
+    The footprint spine was a projection of the building spine while one
     building is one footprint: every attribute the building carries
     (parcel evidence, addresses, permit counts) is the outline's too, and
     the consumers of the footprint spine (the parcel geospine's morphology

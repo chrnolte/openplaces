@@ -187,9 +187,11 @@ def test_the_enrich_recipe_declares_its_inputs_to_the_dag():
     assert {
         'US_water-waterbody-usgs-nhdhr2023',
         'US_water-waterbody-usgs-nhdhr2023_area',
-        'US_footprint-spine-2026',
+        'US_building-spine-2026',
         'US_parcel-spine-2026',
     } <= upstream
+    # Buildings, not their outlines, carry the parcel id (b3 step 7).
+    assert 'US_footprint-spine-2026' not in upstream
 
 
 def test_a_mostly_submerged_lot_keeps_its_dry_corner_shore():
