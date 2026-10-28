@@ -129,6 +129,10 @@ pipeline:
           - occupancy_type
           - group
           - structure_value
+          # NSI's replacement cost new (fullrep), beside its depreciated
+          # value above; curate gives each its own measure column
+          # (replacement_cost, depreciated_replacement_cost).
+          - structure_value_full
           - year_built_block_median
           - source
           - gross_floor_area_sqft
