@@ -27,7 +27,7 @@ the output (format). `phase_order_violations(recipe)` lists steps that run
 after a later phase, and `tests/recipe/test_curate_phase_order.py` runs it
 over every curate recipe. A step that has to run out of order for a
 dependency reason declares `phase_override: <reason>` in the recipe (a
-control key like `enabled`, never passed to the step): the footprint
+control key like `enabled`, never passed to the step): the building
 recipe's `year_built` and `n_stories` reconciles stay after the first
 votes because the indicators read those columns as they stand, and the
 transaction recipe's temporal joins need `sale_year` and the folded deed
@@ -58,7 +58,7 @@ Steps are organized by the nature of the transformation:
   is why a `{col}_source` can still read as a synonym of the value beside
   it until its indicators are labeled. A decision's `insufficient_alone`
   names labeled indicators that may support it but not carry it alone
-  where a context indicator holds: the footprint recipe's Manufactured
+  where a context indicator holds: the building recipe's Manufactured
   Home decision needs a partner for footprint shape and
   `p_manufactured_home` where the roll and NSI both name Single-Family
   or Multi-Family (maintainer, 2026-10-22). It may be a list of guards,
@@ -160,11 +160,11 @@ Steps are organized by the nature of the transformation:
   `notebooks/05_curate/mmh_separability.py` measures with.
   `derive_group_count` and `derive_group_rank` are the same kind of
   groupby, counting or ranking (largest first, ties by id) the rows of
-  a group that satisfy voting indicators. **The footprint recipe votes
+  a group that satisfy voting indicators. **The building recipe votes
   twice on `occupancy_type`**: they read the first vote's classes of a
   parcel's primaries, and a second `resolve_by_vote` (`base_output:
   occupancy_type_pass1`) turns small secondary Manufactured Home
-  footprints into Secondary. It is safe only because the second pass
+  buildings into Secondary. It is safe only because the second pass
   writes secondaries and reads primaries; it reads which labels carried
   the first pass through the `has_token` predicate, which matches whole
   `+`-separated parts of `occupancy_type_source`.
@@ -297,7 +297,7 @@ counts.
 
 The hard part is propagation, not the decision: `impute_land_value` knows which
 rows it estimated, and the marker has to survive `apportion_curated_values`
-(which crosses parcel → footprint) and `select_value_source_by_admin_unit`
+(which crosses parcel → building) and `select_value_source_by_admin_unit`
 (whose `output` and `parcel_column` are commonly the *same* column, so they
 share one sidecar) to reach the delivered `structure_value_source`. All three
 dropped or flattened it before 2026-08-21.
@@ -311,8 +311,10 @@ evidence; `US_footprint-spine-2026` is the outline geometry alone, see the
 harmonizer README). Curation outputs are
 full entity recipes, not sidecar evidence tables.
 
-**Footprint values are pieces of the parcel's.** `apportion_curated_values`
-splits a parcel's improvement value among its footprints by overlap area,
+**Building values are pieces of the parcel's.** `apportion_curated_values`,
+in the building curate, splits a parcel's improvement value among the
+footprints of its buildings (one outline per building today) by overlap
+area,
 or by floor area (outline times measured floors, `floor_weight`) where
 every outline on the lot has a height or is under `unmeasured_max_m2`;
 a secondary structure's share passes to the lot's other footprints. Land
@@ -320,9 +322,10 @@ and total value go to the principal footprints, divided by overlap area.
 A parcel that is no principal footprint's largest overlap (a lot of a
 townhome row drawn as one outline, a unit lot under a condominium
 cluster) divides its land and total among the footprints linked to it
-that are neither secondary nor dwelling-suppressed. Footprint sums still
-fall short of parcel sums, by the parcels with no footprint or only
-secondary ones; read regional totals from curated parcels.
+that are neither secondary nor dwelling-suppressed. The footprint curate
+carries these values onto the outlines (`aggregate_from_entities`). Building
+and footprint sums still fall short of parcel sums, by the parcels with no
+footprint or only secondary ones; read regional totals from curated parcels.
 
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 
