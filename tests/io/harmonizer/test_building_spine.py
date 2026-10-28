@@ -221,18 +221,17 @@ def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
     assert 'US_footprint-spine-2026' not in upstream
 
 
-def test_the_footprint_spine_projects_the_building_spine():
-    """Slice b2: the attribute steps run once, on the building spine, and
-    the footprint spine adopts the result under footprint-named counts."""
+def test_the_footprint_spine_is_its_geospine_and_the_counts_fold():
+    """Slice b2: the attribute steps run once, on the building spine. b3
+    step 7: the footprint spine no longer projects it; the footprint
+    curate CHEER ships folds the building curate under footprint-named
+    counts."""
     footprint = get_recipe_by_id('US_footprint-spine-2026')
     building = get_recipe_by_id('US_building-spine-2026')
-    assert [s['step'] for s in footprint['pipeline']] == [
-        'load_geospine',
-        'adopt_entity_attributes',
-    ]
-    adopt = footprint['pipeline'][1]
-    assert adopt['recipe_id'] == 'US_building-spine-2026'
-    assert adopt['key'] == 'footprint_id'
+    assert [s['step'] for s in footprint['pipeline']] == ['load_geospine']
+    fold = get_recipe_by_id('US_footprint-cheer-2026')['pipeline'][0]
+    assert fold['step'] == 'aggregate_from_entities'
+    adopt = fold
     building_steps = [s['step'] for s in building['pipeline']]
     assert building_steps[:2] == ['load_geospine', 'link_entities_by_id']
     assert building['pipeline'][0]['links_recipe_id'] == 'US_footprint-geospine-2026'
@@ -249,8 +248,8 @@ def test_the_footprint_spine_projects_the_building_spine():
         'link_by_id',
     ):
         assert moved in building_steps
-    # Every building-named count the building spine writes is renamed on
-    # projection, and only those.
+    # Every building-named count the building spine writes is renamed by
+    # the fold, and only those.
     count_as = {s['count_as'] for s in building['pipeline'] if 'count_as' in s}
     assert count_as <= set(adopt['rename'])
     assert all(
@@ -258,4 +257,5 @@ def test_the_footprint_spine_projects_the_building_spine():
         for v in adopt['rename'].values()
     )
     upstream = {e.upstream_recipe_id for e in get_recipe_dependencies(footprint)}
-    assert {'US_footprint-geospine-2026', 'US_building-spine-2026'} <= upstream
+    assert 'US_footprint-geospine-2026' in upstream
+    assert 'US_building-spine-2026' not in upstream

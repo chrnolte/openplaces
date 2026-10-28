@@ -324,12 +324,14 @@ or the bulk-vs-REST divergence from Phase 3.
 Dependency order (derive it from `RecipeDAG`, do not guess):
 
 ```
-property spine  →  footprint spine  →  parcel spine  →  enrich  →  curate parcels  →  curate footprints
+property spine  →  footprint geospine  →  building geospine and spine  →  parcel spine
+  →  enrich  →  curate parcels  →  curate buildings  →  curate footprints
 ```
 
-- The **footprint spine consumes parcel ingests**; the **parcel spine consumes
-  the footprint spine**. Adding a parcel source invalidates both.
-- **`US_footprint-cheer-2026` links curated parcels** via `link_curated_entity`
+- The **footprint geospine consumes parcel ingests**; the **building spine**
+  is built from it, and the **parcel chain consumes the building spine**.
+  Adding a parcel source invalidates all three.
+- **`US_building-openplaces-2026` links curated parcels** via `link_curated_entity`
   (`use_group_combined`, `land_use_class`, `manufactured_home_community`). New
   parcel sources make curated footprints stale — re-curate them.
 - **Do not re-run an enrichment whose reference data does not cover your

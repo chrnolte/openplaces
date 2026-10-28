@@ -306,8 +306,9 @@ These concern-based modules mirror the processor categories used by related
 inventory systems, while remaining native to the openplaces recipe and state
 architecture. Value selection, gap-filling, and occupancy inference were
 migrated here from the harmonize stage; the harmonized spines are
-evidence-only tables (`US_footprint-spine-2026` is a projection of
-`US_building-spine-2026`, see the harmonizer README). Curation outputs are
+evidence-only tables (`US_building-spine-2026` holds the structure's
+evidence; `US_footprint-spine-2026` is the outline geometry alone, see the
+harmonizer README). Curation outputs are
 full entity recipes, not sidecar evidence tables.
 
 **Footprint values are pieces of the parcel's.** `apportion_curated_values`

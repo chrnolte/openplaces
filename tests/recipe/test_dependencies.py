@@ -49,10 +49,11 @@ def test_footprint_spine_literal_edges():
     assert 'US_footprint-geospine-2026' in upstream
     assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
-    # The footprint spine projects the building spine onto its geospine.
+    # The footprint spine is its geospine alone (b3 step 7): it no
+    # longer projects the building spine.
     edges = get_recipe_dependencies('US_footprint-spine-2026')
     upstream = _upstream_ids(edges)
-    assert upstream == {'US_footprint-geospine-2026', 'US_building-spine-2026'}
+    assert upstream == {'US_footprint-geospine-2026'}
 
 
 def test_building_spine_auto_discover_unresolved_without_admin():
