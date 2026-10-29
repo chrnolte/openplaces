@@ -184,6 +184,13 @@ share:
     # resolved", never "one section".
     - n_sections
     - structure_value
+    # NSI's two cost measures, each in its own column and never mixed
+    # into structure_value (the roll's market value): depreciated and
+    # new replacement cost at NSI's August 2025 prices, imputed where
+    # NSI has no point (maintainer, 2026-10-28). Not interchangeable
+    # with structure_value or with each other.
+    - depreciated_replacement_cost
+    - replacement_cost
     # The recorded improvement value this footprint's share comes
     # from, before the land split.
     - improvement_value_parcel
