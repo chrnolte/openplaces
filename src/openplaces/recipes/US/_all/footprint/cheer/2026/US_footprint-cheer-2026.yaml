@@ -388,9 +388,9 @@ share:
         boosting ("Imputation Model Selection for CoPe-CHEER: North
         Carolina", 2026-09-10; "Imputing All Nine Building Attributes in
         CHEER Places North Carolina", 2026-10-15). The code for the
-        repairs, gap training and Stage 2b test was written in
-        openplaces from his memo and contributed by him after review
-        (pull request 40). The production pipeline (donor counties,
+        repairs, gap training and Stage 2b test was contributed by him
+        after review (pull request 40). The production pipeline (donor
+        counties,
         common-year values, census inputs and price anchor, residual
         draws) is openplaces' own.
       # Distance only (design limit L30). Chosen 2026-10-27 by
