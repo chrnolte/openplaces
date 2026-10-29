@@ -383,16 +383,9 @@ share:
         Method: Mohammad Askari (UCLA) chose the learner
         (gradient-boosted trees), the evaluation (spatially blocked
         testing, and the Stage 2b test on held-out buildings as
-        incomplete as the real gaps), the treatment of NSI-assigned
-        years as area lookups, the validity repairs and gap-trained
-        boosting ("Imputation Model Selection for CoPe-CHEER: North
-        Carolina", 2026-09-10; "Imputing All Nine Building Attributes in
-        CHEER Places North Carolina", 2026-10-15). The code for the
-        repairs, gap training and Stage 2b test was contributed by him
-        after review (pull request 40). The production pipeline (donor
-        counties,
-        common-year values, census inputs and price anchor, residual
-        draws) is openplaces' own.
+        incomplete as the real gaps), the validity repairs and
+        gap-trained boosting. The code for the repairs, gap training
+        and Stage 2b test was contributed by him (pull request 40).
       # Distance only (design limit L30). Chosen 2026-10-27 by
       # leave-county-out on cheer-eastern-nc (Stage 2b, ACS anchor,
       # typical county miss of structure value): 250 km within 400 km
