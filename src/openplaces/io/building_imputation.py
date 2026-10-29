@@ -28,6 +28,10 @@ scikit-learn. Taken from that work:
   wrong method;
 - NSI-assigned years are area lookups that flatter accuracy, so
   accuracy is reported by data source and NSI values are not labels.
+His implemented contributions (the validity repairs, gap-trained
+boosting, and the Stage 2b evaluation on buildings as sparse as the
+real gaps) are not in this module: they plug in through
+ImputationExtensions, which a recipe names (`impute: extensions:`).
 
 Added here, for the production inventory:
 - one model per county, trained on the county's own labels plus donor
@@ -57,6 +61,8 @@ multiclass model (L15). No published index is built here (L29).
 
 from __future__ import annotations
 
+import importlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -67,7 +73,7 @@ from sklearn.ensemble import (
 )
 
 MODEL_VERSION = 'building-imputation-v0.1'
-# Base seed of every random step (samples, fits, draws);
+# Base seed of every random step (samples, gap patterns, fits, draws);
 # a recipe's `impute: seed:` overrides it and the counts record it.
 DEFAULT_SEED = 2026
 YEAR_RANGE = (1700, 2026)
@@ -200,6 +206,11 @@ CENSUS_INPUTS = [
 # estimate cannot move a whole county's values far.
 ANCHOR_MIN_HOMES = 200
 ANCHOR_RANGE = (0.5, 2.0)
+# Pools of incomplete buildings for the extension hooks in
+# leave-county-out (Imputer._gap_pools): a county with fewer draws
+# from the whole region, and at most this many per half are kept.
+MIN_GAP_ROWS = 50
+MAX_GAP_ROWS = 20_000
 # The ACS 5-year period whose dollar values acs_value_levels reads.
 ACS_PERIOD = (2020, 2024)
 # Population thresholds of the nearest-place distances: a town with
@@ -321,6 +332,43 @@ class DonorConfig:
         if self.mode == 'km':
             return f'km{self.bandwidth_km:g}'
         return 'equal'
+
+
+@dataclass
+class ImputationExtensions:
+    """Optional steps a separate module adds to the imputation.
+
+    The imputation runs without any of them. A recipe names a module
+    attribute holding an instance (`impute: extensions:`), so a method
+    developed elsewhere plugs in without changing this module.
+
+    Parameters
+    ----------
+    repair : callable, optional
+        `frame -> (frame, counts)`: empties observed values that cannot
+        be true before any label is read; counts are cells per rule.
+    train_rows : callable, optional
+        `(x, y, w, patterns, rng) -> (x, y, w)`: changes a model's
+        training rows before it is fitted. *patterns* are the input rows
+        of buildings that genuinely lack the target. With it, one model
+        fills all target rows, and the guard that leaves out inputs the
+        target rows lack (Imputer._guarded_fit_predict) is not used.
+    holdout_rows : callable, optional
+        `(xt, patterns, rng) -> xt`: thins held-out rows to the input
+        patterns of genuinely incomplete buildings, for evaluation.
+    """
+
+    repair: Callable | None = None
+    train_rows: Callable | None = None
+    holdout_rows: Callable | None = None
+
+
+def load_extensions(path: str | None) -> ImputationExtensions:
+    """The ImputationExtensions a recipe names as 'module:attribute'."""
+    if not path:
+        return ImputationExtensions()
+    module, _, attribute = str(path).partition(':')
+    return getattr(importlib.import_module(module), attribute or 'EXTENSIONS')
 
 
 def is_nsi_token(tokens: pd.Series) -> pd.Series:
@@ -1203,6 +1251,9 @@ class Imputer:
         ACS median home value by admin3_id in the common year
         (:func:`acs_value_levels`); without it, no county's price level
         is anchored.
+    extensions : ImputationExtensions, optional
+        Steps a separate module adds (repairs, training-row and held-out
+        hooks); none by default.
     anchor : str
         How a county without value labels gets its price level: 'acs'
         (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`) or 'both'
@@ -1219,11 +1270,16 @@ class Imputer:
         seed: int = DEFAULT_SEED,
         exclude_inputs: tuple[str, ...] = (),
         acs_value: pd.Series | None = None,
+        extensions: ImputationExtensions | None = None,
         anchor: str = 'acs',
     ):
         if anchor not in {'acs', 'nsi', 'both'}:
             raise ValueError(f"anchor must be 'acs', 'nsi' or 'both', not {anchor!r}")
         self.anchor = anchor
+        self.extensions = extensions or ImputationExtensions()
+        self.voided = {}
+        if self.extensions.repair is not None:
+            frame, self.voided = self.extensions.repair(frame)
         self.frame = frame
         self.acs_value = acs_value
         self.config = config
@@ -1634,12 +1690,17 @@ class Imputer:
         exclude: bool,
         config: DonorConfig | None = None,
         drop_own: bool = False,
+        patterns: pd.DataFrame | None = None,
+        holdout_patterns: pd.DataFrame | None = None,
     ) -> np.ndarray:
         """Fit *county*'s model on weighted donors and predict *target_rows*.
 
         *exclude* hides the county's own labels and masks its parcel value
         inputs (leave-county-out); *drop_own* only hides its labels, for
-        a county whose few labels are not a sample of it.
+        a county whose few labels are not a sample of it. *patterns* are
+        input rows of genuinely incomplete buildings for the training
+        hook (default: the target rows); *holdout_patterns*, given, thin
+        the target rows through the held-out hook (evaluation only).
         """
         config = config or self.config
         labeled = self.frame.loc[y.notna(), ['admin3_id', 'region_id']]
@@ -1654,9 +1715,42 @@ class Imputer:
         if exclude:
             masked = [c for c in PARCEL_VALUE_INPUTS if c in xt.columns]
             xt[masked] = np.nan
-        return self._guarded_fit_predict(spec, x, y.loc[sample.index], w, xt)
+        hook = self.extensions.holdout_rows
+        if holdout_patterns is not None and hook is not None:
+            xt = hook(
+                xt, holdout_patterns[xt.columns], np.random.default_rng(self.seed)
+            )
+        return self._guarded_fit_predict(spec, x, y.loc[sample.index], w, xt, patterns)
 
-    def _guarded_fit_predict(self, spec, x, y, w, xt) -> np.ndarray:
+    def _gap_pools(
+        self, spec: TargetSpec, lacking: pd.Series, county: str, filled: pd.DataFrame
+    ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+        """Input rows of incomplete buildings, split into two halves.
+
+        Used only when an extension hook needs them; None otherwise.
+        The split, one half of the patterns for training and the other
+        for the held-out test, is Mohammad Askari's (UCLA) design, so
+        that no gap pattern both trains and tests.
+        """
+        if self.extensions.train_rows is None and self.extensions.holdout_rows is None:
+            return None, None
+        rows = lacking & self.frame['admin3_id'].eq(county)
+        if rows.sum() < MIN_GAP_ROWS:
+            rows = lacking
+        idx = rows[rows].index
+        if len(idx) == 0:
+            return None, None
+        rng = np.random.default_rng(self.seed)
+        if len(idx) > 2 * MAX_GAP_ROWS:
+            idx = idx[rng.choice(len(idx), 2 * MAX_GAP_ROWS, replace=False)]
+        idx = idx[rng.permutation(len(idx))]
+        half = len(idx) // 2
+        pool = self._x(idx, spec, filled)
+        if half == 0:
+            return pool, pool
+        return pool.iloc[:half], pool.iloc[half:]
+
+    def _guarded_fit_predict(self, spec, x, y, w, xt, patterns=None) -> np.ndarray:
         """Fit and predict, leaving out inputs the target rows lack.
 
         An input the target rows mostly lack, while the training rows
@@ -1674,6 +1768,16 @@ class Imputer:
         NSI or CHEER evidence, and every labeled row has one of them.
         """
         rng = np.random.default_rng(self.seed)
+        hook = self.extensions.train_rows
+        if hook is not None:
+            # The training hook prepares the model for the target rows'
+            # gaps itself, so one model fills them all.
+            source = xt if patterns is None else patterns[xt.columns]
+            x, y, w = hook(x, y, w, source, np.random.default_rng(self.seed + 1))
+            empty = [c for c in x.columns if x[c].notna().sum() == 0]
+            model = fit_target(spec, x.drop(columns=empty), y, w, self.seed)
+            out = predict_target(spec, model, xt.drop(columns=empty), rng)
+            return out.astype(float) if spec.kind in {'year', 'value', 'log'} else out
         out = np.empty(len(xt), dtype=object)
         models = {}
         nsi_column = 'log_structure_value_building_nsi'
@@ -1711,6 +1815,7 @@ class Imputer:
         filled: pd.DataFrame,
         cap: int = 20_000,
         log=print,
+        thin_heldout: bool = False,
     ) -> pd.DataFrame:
         """Hide each county's labels, predict them from donors only.
 
@@ -1719,9 +1824,21 @@ class Imputer:
         (values) or in years, plus the NSI value the old pipeline used
         for the same building. The held-out county's parcel value
         inputs are masked, so the test mimics a county without parcel
-        values.
+        values. With *thin_heldout*, the held-out rows are also given
+        the input gaps of the county's genuinely incomplete buildings
+        through the extensions' held-out hook.
+
+        The county's incomplete buildings (rows the target applies to
+        whose label is missing; the whole region's where the county has
+        fewer than MIN_GAP_ROWS) are split in two at random: one half
+        supplies the training hook's patterns, the other the held-out
+        hook's, so no pattern both trains and tests.
         """
         y = self._labels(spec)
+        lacking = (
+            applies_to(spec, self.frame)
+            & labels_for(spec, self.frame, train=False).isna()
+        )
         if spec.kind == 'value':
             # Held-out predictions get the delivery's value per m2 bound.
             caps, overall = value_per_area_caps(
@@ -1738,6 +1855,7 @@ class Imputer:
                 idx = idx[np.sort(rng.choice(len(idx), cap, replace=False))]
             target_rows = pd.Series(False, index=self.frame.index)
             target_rows.loc[idx] = True
+            train_pool, test_pool = self._gap_pools(spec, lacking, county, filled)
             for config in configs:
                 pred = self._fit_predict_county(
                     spec,
@@ -1747,6 +1865,8 @@ class Imputer:
                     target_rows,
                     exclude=True,
                     config=config,
+                    patterns=train_pool,
+                    holdout_patterns=test_pool if thin_heldout else None,
                 )
                 variants = {config.name(): pred}
                 if spec.kind == 'value' and self.acs_value is not None:
@@ -1821,18 +1941,21 @@ class Imputer:
         filled: pd.DataFrame,
         cap: int = 20_000,
         log=print,
+        thin_heldout: bool = False,
     ) -> pd.DataFrame:
         """Leave-county-out for a pooled (not per-county) target.
 
         Fits the region-wide model as the delivery does, on labels
         outside the held-out county, and predicts the county's labeled
-        rows, with its parcel value inputs masked, as
-        :meth:`leave_county_out` does. Rows carry the observed and
+        rows, with its parcel value inputs masked and, with
+        *thin_heldout*, its incomplete buildings' input gaps imposed,
+        as :meth:`leave_county_out` does. Rows carry the observed and
         predicted values, and a 'baseline' configuration: the training
         labels' most common class, or their median.
         """
         y = self._labels(spec)
         rows = applies_to(spec, self.frame)
+        lacking = rows & labels_for(spec, self.frame, train=False).isna()
         admin = self.frame['admin3_id']
         out = []
         for county in counties:
@@ -1844,12 +1967,16 @@ class Imputer:
                 rng = np.random.default_rng(self.seed)
                 idx = idx[np.sort(rng.choice(len(idx), cap, replace=False))]
             train = self._pooled_sample(y.notna() & rows & admin.ne(county))
+            train_pool, test_pool = self._gap_pools(spec, lacking, county, filled)
             x = self._x(train, spec, filled)
             xt = self._x(idx, spec, filled)
             masked = [c for c in PARCEL_VALUE_INPUTS if c in xt.columns]
             xt[masked] = np.nan
+            hook = self.extensions.holdout_rows
+            if thin_heldout and hook is not None and test_pool is not None:
+                xt = hook(xt, test_pool[xt.columns], np.random.default_rng(self.seed))
             pred = self._guarded_fit_predict(
-                spec, x, y.loc[train], np.ones(len(train)), xt
+                spec, x, y.loc[train], np.ones(len(train)), xt, train_pool
             )
             labels = y.loc[train]
             if spec.kind == 'class':
@@ -2377,6 +2504,7 @@ def build_imputer(
     location: pd.DataFrame | None = None,
     census: dict | None = None,
     without: tuple[str, ...] = (),
+    extensions: str | None = None,
     log=print,
 ) -> tuple[Imputer, pd.DataFrame]:
     """The imputer a delivery runs, and its appraisal scales.
@@ -2390,6 +2518,9 @@ def build_imputer(
         See :func:`impute_delivery`.
     without : tuple of str
         Further inputs to leave out of every model (an ablation).
+    extensions : str, optional
+        'module:attribute' overriding the recipe's `extensions`; '' for
+        none.
 
     Returns
     -------
@@ -2442,6 +2573,9 @@ def build_imputer(
         anchor=spec.get('price_anchor', 'acs'),
         exclude_inputs=tuple(sorted(excluded)),
         acs_value=acs_value,
+        extensions=load_extensions(
+            spec.get('extensions') if extensions is None else extensions
+        ),
     )
     return imputer, scales
 
@@ -2500,7 +2634,8 @@ def impute_delivery(
         and the EVIDENCE_COLUMNS.
     spec : dict
         The recipe's `share: delivery: impute:` block ('version',
-        'common_year', optional 'donors', 'exclude_inputs').
+        'common_year', optional 'donors', 'exclude_inputs',
+        'extensions').
     appraisal_years, hpi : DataFrame
         See :func:`appraisal_scales`.
     county_area_km2 : Series
@@ -2525,7 +2660,7 @@ def impute_delivery(
         (:func:`value_per_area_caps`); NSI-sourced
         years and values on rows not imputed are emptied).
     counts : dict
-        Cells filled per column, model version, and the
+        Cells filled per column, cells voided, model version, and the
         appraisal 'scales' by county FIPS that :func:`overlay_delivery`
         applies.
     """
@@ -2543,6 +2678,8 @@ def impute_delivery(
         census=census,
         log=log,
     )
+    # The frame the models read: after the extensions' repairs, so a
+    # value a repair voided ships without the source it no longer has.
     frame = imputer.frame
     level = roll_level_check(imputer)
     if level['flagged']:
@@ -2599,6 +2736,7 @@ def impute_delivery(
         'price_anchor_mode': imputer.anchor,
         'roll_level_vs_acs': level,
         'filled': {t.column: int(flags[t.column].sum()) for t in targets},
+        'voided': imputer.voided,
         'scale_fallback': sorted(scales.index[scales['fallback']].tolist()),
         'park_factor': round(float(getattr(imputer, 'park_factor', 1.0)), 3),
         'value_clipped': int(getattr(imputer, 'clipped', pd.Series(dtype=bool)).sum()),

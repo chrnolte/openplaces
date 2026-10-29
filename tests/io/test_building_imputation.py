@@ -282,6 +282,14 @@ def test_a_county_trains_a_cost_measure_on_its_own_values():
     assert w.max().to_dict() == {'C1': 1.0, 'C2': 0.0, 'C3': 0.0}
 
 
+def test_extensions_are_optional_and_load_by_name():
+    assert bi.load_extensions(None) == bi.ImputationExtensions()
+    loaded = bi.load_extensions(
+        'openplaces.io.building_imputation:ImputationExtensions'
+    )
+    assert loaded is bi.ImputationExtensions
+
+
 def _block(index):
     block = pd.DataFrame(index=index)
     for spec in bi.TARGETS:
