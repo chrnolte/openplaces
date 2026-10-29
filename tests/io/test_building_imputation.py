@@ -239,6 +239,49 @@ def test_label_evidence_is_never_an_input_of_its_own_column():
         assert not evidence & set(bi.input_columns(spec)), spec.column
 
 
+def test_cost_measures_and_market_value_never_read_each_other():
+    # NSI's cost measures ship beside the market value, never mixed with
+    # it (maintainer, 2026-10-28): no measure is an input, chain input
+    # or label source of structure_value, nor the roll's values of a
+    # measure (design limit L13: no prediction feeds another value
+    # model).
+    measures = {s.column for s in bi.MEASURE_TARGETS}
+    value = next(s for s in bi.TARGETS if s.column == 'structure_value')
+    assert not measures & set(bi.CHAIN_INPUTS['structure_value'])
+    assert not {f'chain_{m}' for m in measures} & set(bi.input_columns(value))
+    for spec in bi.MEASURE_TARGETS:
+        columns = set(bi.input_columns(spec))
+        assert 'chain_structure_value' not in columns
+        assert not (measures - {spec.column}) & set(bi.CHAIN_INPUTS[spec.column])
+        assert not set(bi.PARCEL_VALUE_INPUTS) & columns
+        assert 'log_structure_value_building_nsi' not in columns
+        assert 'region_type' not in columns
+
+
+def test_cost_measure_labels_are_positive_and_not_withheld():
+    frame = pd.DataFrame(
+        {
+            'replacement_cost': [0.0, 250000.0, 300000.0, np.nan],
+            'replacement_cost_source': ['nsi', 'nsi', 'withheld', None],
+        }
+    )
+    spec = next(s for s in bi.MEASURE_TARGETS if s.column == 'replacement_cost')
+    labels = bi.labels_for(spec, frame)
+    assert labels.iloc[1] == 250000.0
+    assert labels.drop(index=1).isna().all()
+
+
+def test_a_county_trains_a_cost_measure_on_its_own_values():
+    # The own-only configuration Imputer._fill_measure uses: a radius
+    # of 0 km leaves every other county a weight of 0.
+    frame = _toy_frame()
+    area = pd.Series({'C1': 10.0, 'C2': 10.0, 'C3': 10.0})
+    donors = bi.DonorWeights(frame, bi.county_table(frame, area), {})
+    config = bi.DonorConfig(mode='km', bandwidth_km=250.0, radius_km=0.0)
+    w = pd.Series(donors.weights('C1', frame, config)).groupby(frame['admin3_id'])
+    assert w.max().to_dict() == {'C1': 1.0, 'C2': 0.0, 'C3': 0.0}
+
+
 def test_extensions_are_optional_and_load_by_name():
     assert bi.load_extensions(None) == bi.ImputationExtensions()
     loaded = bi.load_extensions(

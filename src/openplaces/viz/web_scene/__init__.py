@@ -2712,18 +2712,33 @@ def mask_water(lots, water, buildings=None) -> gpd.GeoDataFrame:
 # Latino counts non-Hispanic people only, so each person is in one
 # group. `column` names the count in the census dataset.
 PEOPLE_GROUPS = (
-    {'key': 'white', 'label': 'White', 'color': '#73b2ff', 'column': 'n_people_white'},
-    {'key': 'black', 'label': 'Black', 'color': '#9fd400', 'column': 'n_people_black'},
-    {'key': 'asian', 'label': 'Asian', 'color': '#ff4a4a', 'column': 'n_people_asian'},
+    {
+        'key': 'white',
+        'label': 'White alone, not Hispanic',
+        'color': '#73b2ff',
+        'column': 'n_people_white',
+    },
+    {
+        'key': 'black',
+        'label': 'Black or African American alone, not Hispanic',
+        'color': '#9fd400',
+        'column': 'n_people_black',
+    },
+    {
+        'key': 'asian',
+        'label': 'Asian alone, not Hispanic',
+        'color': '#ff4a4a',
+        'column': 'n_people_asian',
+    },
     {
         'key': 'hispanic',
-        'label': 'Hispanic or Latino',
+        'label': 'Hispanic or Latino (of any race)',
         'color': '#ffaa00',
         'column': 'n_people_hispanic',
     },
     {
         'key': 'other',
-        'label': 'Other or two or more races',
+        'label': 'Another race alone or two or more races, not Hispanic',
         'color': '#b08060',
         'column': 'n_people_other',
     },

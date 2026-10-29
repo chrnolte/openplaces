@@ -91,7 +91,7 @@ So the same feature from two sources yields distinct columns:
 `occupancy_type_building_nsi`, `purpose_subgroup_parcel`.
 
 **Relational counts** use `n_{counted}s_per_{grouping}` (totals, include self):
-`n_parcels_per_footprint`, `n_footprints_per_parcel`. **Source counts** keep the
+`n_parcels_per_building`, `n_buildings_per_parcel`. **Source counts** keep the
 entity stem + source: `n_buildings_nsi`, `n_dwellings_overture`.
 
 **Output ordering** is rule-based (no explicit list): the curate `order_columns`
@@ -269,13 +269,14 @@ from the reference geometry and cannot be named without loading it.
 
 ##### `_attribute_polygon_reference` (attributes/polygon.py)
 
-Key computed columns (suffix = e.g. `_parcel`):
+Key computed columns (suffix = e.g. `_parcel`; the counts take the
+spine's entity name, `building` on the building spine):
 
 | Column | Formula |
 |--------|---------|
 | `overlap_fraction{suffix}` | identified_area / footprint_area |
-| `n_parcels_per_footprint` | count of parcels under the footprint (total) |
-| `n_footprints_per_parcel` | count of footprints on the parcel (total, incl. self) |
+| `n_parcels_per_building` | count of parcels under the building (total) |
+| `n_buildings_per_parcel` | count of buildings on the parcel (total, incl. self) |
 | `address{suffix}` | from the largest-intersection row |
 | `land_value{suffix}` | from the largest-intersection row, but **only for primary footprints** (`priority_on_parcel == 'primary'` if available, else `n_other == 0`) |
 | `improvement_value{suffix}` | parcel value × area_fraction (sum) |
@@ -289,9 +290,9 @@ intersection_m2 / sum per parcel, or volume-weighted when
 `use_volume_weight=True` and an `n_stories*` column exists). The curate stage
 (`apportion_curated_values` in `io/curator/evidence.py`) calls the same
 function on the persisted link sidecar with *curated* reference values, so the
-two stages cannot drift. The footprint spine recipe no longer requests parcel
-value columns at harmonize (they'd be empty pre-roll-merge); curate attributes
-them instead.
+two stages cannot drift. The building spine recipe requests no parcel value
+columns at harmonize (they would be empty before the roll merge); the building
+curate attributes them instead.
 
 **Lochhead Table 4 (dwelling suppression)**: when a parcel has ≥1 dwelling-linked
 footprint, zero out `area_fraction` for footprints **without** dwelling evidence so they
@@ -459,8 +460,9 @@ dwelling address, street view, the building curate and the validation
 references. The footprint spine is its geospine alone (`load_geospine`), and
 the footprint curate CHEER ships carries the building curate onto the
 outlines (`aggregate_from_entities`), renaming the counts back. Order per
-unit: footprint geospine, building geospine, building spine, footprint spine,
-parcel geospine. Later b3 slices (townhome splits, condo-tower merges, NSI
+unit: footprint geospine, building geospine, building spine, parcel geospine;
+the footprint spine needs only the footprint geospine and is not ordered
+against the building chain. Later b3 slices (townhome splits, condo-tower merges, NSI
 points with no outline as rows) are where a building stops being one
 footprint; the re-keying refuses rows that share a source id, so those slices
 have to decide the fan-out explicitly.

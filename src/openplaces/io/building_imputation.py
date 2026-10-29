@@ -3,10 +3,16 @@
 Fills the primary columns of a curated footprint inventory (year built,
 structure value, roof shape, story count, construction, foundation,
 garage, sections, dwellings, footprint area) for primary buildings. NSI
-values never reach the output columns; NSI fields enter only as named
-model inputs, so a model learns how parcel-recorded values relate to
-them where both exist and applies that relation where parcel values
-are missing.
+values never reach these columns; NSI fields enter only as named model
+inputs, so a model learns how parcel-recorded values relate to them
+where both exist and applies that relation where parcel values are
+missing.
+
+NSI's own two cost measures (depreciated_replacement_cost and
+replacement_cost) are filled too, where NSI has no point, each in its
+own column and on NSI's basis: their labels are NSI's values, and they
+never enter the market value (structure_value) as labels, inputs or
+levels, nor it them (MEASURE_TARGETS).
 
 Credit. The method choices below come from Mohammad Askari's (UCLA)
 research, which he leads: "Imputation Model Selection for CoPe-CHEER:
@@ -96,6 +102,16 @@ LABEL_EVIDENCE = {
     },
     'roof_shape': {'roof_shape_building_cheer'},
     'n_dwellings': {'n_dwellings_nsi'},
+    # NSI's values are the measures' labels; the rows to fill have no
+    # NSI point, so these inputs are absent there by definition.
+    'depreciated_replacement_cost': {
+        'log_structure_value_building_nsi',
+        'log_structure_value_building_nsi_per_area',
+    },
+    'replacement_cost': {
+        'log_structure_value_building_nsi',
+        'log_structure_value_building_nsi_per_area',
+    },
 }
 
 # Evidence columns entering the models as inputs. Target-derived
@@ -787,7 +803,10 @@ class TargetSpec:
         Canonical column filled.
     kind : str
         'year', 'value', 'log' (positive continuous on a log scale),
-        'class' (categorical draw), 'count' (integer, drawn as a class).
+        'class' (categorical draw), 'count' (integer, drawn as a class),
+        'measure' (one of NSI's cost measures: a positive value drawn
+        like a structure value, on NSI's own price basis, with no
+        common-year scale and no price anchor).
     per_county : bool
         True for a model per county with donor weights; False for one
         pooled model across all counties.
@@ -813,6 +832,25 @@ TARGETS = [
     TargetSpec('n_dwellings', 'count', per_county=False),
     TargetSpec('structure_value', 'value', per_county=True),
 ]
+# NSI's cost measures, filled after the market value and beside it,
+# never from it. Each county trains on its own NSI values only
+# (MEASURE_OWN_ONLY): every county the curated inventories cover has
+# NSI points, and NSI sets its level per county (its county cost
+# factor) and per tract (its income term), so a county's own labels
+# carry its level and no county is paired with another (design limit
+# L30 is not approached). Neither measure reads the other's filled
+# value, nor the market value's (design limit L13: no model's
+# prediction becomes another value model's input).
+# Measured 2026-10-28 on cheer-eastern-nc: NSI values on 71.3% of
+# rows, 91.0% of single-family homes, 53% to 85% per county.
+MEASURE_TARGETS = [
+    TargetSpec('depreciated_replacement_cost', 'measure', per_county=True),
+    TargetSpec('replacement_cost', 'measure', per_county=True),
+]
+TARGETS = TARGETS + MEASURE_TARGETS
+# Fewest NSI values of its own a county trains a measure on alone;
+# below it, the delivered donor weights add other counties.
+MEASURE_MIN_OWN_LABELS = 500
 # The manufactured-home pass of structure_value: fitted on listed homes
 # only and applied to every manufactured home whose value the roll does
 # not give (manufactured_home_listing). Imputer.run calls it for those
@@ -841,6 +879,11 @@ CHAIN_INPUTS = {
         'n_dwellings',
     ],
 }
+# The measures read the attributes NSI's cost curves read (size,
+# stories, age, construction, foundation, occupancy among the inputs),
+# never structure_value.
+for _measure in MEASURE_TARGETS:
+    CHAIN_INPUTS[_measure.column] = list(CHAIN_INPUTS['structure_value'])
 MANUFACTURED_CHAIN_INPUTS = ['year_built', 'n_sections', 'roof_shape']
 CLASS_COLUMNS = {
     'construction_type',
@@ -870,9 +913,12 @@ def input_columns(spec: TargetSpec) -> list[str]:
         # Measured 2026-10-15 on US-NC-CHO: with them, the median
         # probability of a zero structure value was 0.989.
         numeric = [c for c in numeric if c not in COUNTY_FEATURES and c not in LOCATION]
-    if spec.column == 'structure_value':
+    if spec.column == 'structure_value' or spec.kind == 'measure':
         # Design limit L24: no core size or type in the value model.
         categorical = [c for c in categorical if c != 'region_type']
+    if spec.kind == 'measure':
+        # The roll's values are another measure (market value).
+        numeric = [c for c in numeric if c not in PARCEL_VALUE_INPUTS]
     if spec.column == 'area_m2':
         numeric = [c for c in numeric if c != 'log_area_m2']
     # The evidence a column's labels were reconciled from would teach
@@ -894,6 +940,10 @@ def labels_for(spec: TargetSpec, frame: pd.DataFrame, train: bool = True) -> pd.
         return year_labels(frame)
     if spec.kind == 'value':
         return value_labels(frame, train=train)
+    if spec.kind == 'measure':
+        values = pd.to_numeric(frame[spec.column], errors='coerce')
+        source = frame[f'{spec.column}_source'].astype('string').fillna('')
+        return values.where(values.gt(0) & source.ne('withheld'))
     values = frame[spec.column]
     if spec.column in {'n_stories', 'n_dwellings', 'n_sections'}:
         values = pd.to_numeric(values, errors='coerce')
@@ -1078,7 +1128,8 @@ def fit_target(
     seed: int,
 ):
     """Fit the model(s) for one target."""
-    if spec.kind == 'value':
+    if spec.kind in {'value', 'measure'}:
+        # A measure's labels are all positive, so its zero part is None.
         return fit_value_model(x, y, w, seed)
     if spec.kind == 'year':
         return fit_regressor(x, y, w, loss='squared_error', seed=seed)
@@ -1096,7 +1147,7 @@ def predict_target(spec: TargetSpec, model, x: pd.DataFrame, rng) -> np.ndarray:
     probabilities, which keeps class shares unbiased in aggregate where
     the most likely class would overstate the majority class.
     """
-    if spec.kind == 'value':
+    if spec.kind in {'value', 'measure'}:
         return _predict_value(model, x, rng)
     if spec.kind == 'year':
         return np.clip(model.predict(x), *YEAR_RANGE).round()
@@ -1286,6 +1337,16 @@ class Imputer:
         # Price-level factors of counties without value labels.
         self.price_anchor = {}
         for spec in TARGETS:
+            if spec.column not in self.frame.columns:
+                # A curated inventory built before the column existed
+                # (the measures, 2026-10-28) has nothing to fill from.
+                log(f'{spec.column}: not in the inventory, not filled')
+                continue
+            if spec.kind == 'measure':
+                filled[spec.column], flags[spec.column] = self._fill_measure(
+                    spec, filled, log
+                )
+                continue
             y = self._labels(spec)
             rows = applies_to(spec, self.frame)
             observed = labels_for(spec, self.frame, train=False)
@@ -1386,6 +1447,51 @@ class Imputer:
                     current.dropna().astype(str).unique().tolist()
                 )
         return filled, flags
+
+    def _fill_measure(
+        self, spec: TargetSpec, filled: pd.DataFrame, log
+    ) -> tuple[pd.Series, pd.Series]:
+        """Fill one of NSI's cost measures where NSI has no value.
+
+        Each county trains on its own NSI values (MEASURE_TARGETS);
+        one with fewer than MEASURE_MIN_OWN_LABELS adds donors at the
+        delivered weights. Nothing here reads the market value, and the
+        measure keeps NSI's price basis: no common-year scale, no price
+        anchor, no park factor.
+
+        Returns
+        -------
+        values : Series
+            Observed values kept, filled values written.
+        missing : Series
+            The rows filled.
+        """
+        y = self._labels(spec)
+        rows = applies_to(spec, self.frame)
+        observed = labels_for(spec, self.frame, train=False)
+        missing = rows & observed.isna()
+        current = pd.to_numeric(self.frame[spec.column], errors='coerce')
+        current = current.where(observed.notna())
+        own_only = DonorConfig(
+            mode='km',
+            bandwidth_km=self.config.bandwidth_km,
+            radius_km=0.0,
+            own_cap=self.config.own_cap,
+            label='own',
+        )
+        admin = self.frame['admin3_id']
+        for county in sorted(admin[missing].unique()):
+            target_rows = missing & admin.eq(county)
+            own = int((y.notna() & admin.eq(county)).sum())
+            config = own_only if own >= MEASURE_MIN_OWN_LABELS else None
+            current.loc[target_rows] = self._fit_predict_county(
+                spec, y, filled, county, target_rows, exclude=False, config=config
+            )
+            log(
+                f'{spec.column} {county}: filled {int(target_rows.sum())} '
+                f'({"own labels" if config else "with donors"})'
+            )
+        return pd.to_numeric(current, errors='coerce'), missing
 
     def _apply_park_factor(self, current, missing, log) -> pd.Series:
         """Scale filled park homes by the region's park_value_factor.
@@ -1697,7 +1803,7 @@ class Imputer:
             if key not in models:
                 models[key] = fit_target(spec, x.drop(columns=shift), y, w, self.seed)
             out[mask] = predict_target(spec, models[key], xg.drop(columns=shift), rng)
-        if spec.kind in {'year', 'value', 'log'}:
+        if spec.kind in {'year', 'value', 'log', 'measure'}:
             return out.astype(float)
         return out
 
@@ -2591,7 +2697,8 @@ def impute_delivery(
     # stay in a unit whose restricted source it would otherwise follow.
     token = mark_imputed(f'{version}+{OPEN_MARKER}')
     block = pd.DataFrame(index=frame.index)
-    for target in TARGETS:
+    targets = [t for t in TARGETS if t.column in filled.columns]
+    for target in targets:
         column = target.column
         source = f'{column}_source'
         block[column] = filled[column]
@@ -2628,7 +2735,7 @@ def impute_delivery(
         'seed': imputer.seed,
         'price_anchor_mode': imputer.anchor,
         'roll_level_vs_acs': level,
-        'filled': {t.column: int(flags[t.column].sum()) for t in TARGETS},
+        'filled': {t.column: int(flags[t.column].sum()) for t in targets},
         'voided': imputer.voided,
         'scale_fallback': sorted(scales.index[scales['fallback']].tolist()),
         'park_factor': round(float(getattr(imputer, 'park_factor', 1.0)), 3),
@@ -2677,7 +2784,7 @@ def overlay_delivery(
     out = pooled.copy()
     in_block = out.index.isin(block.index)
     block = block.reindex(out.index)
-    for column in [t.column for t in TARGETS]:
+    for column in [t.column for t in TARGETS if t.column in block.columns]:
         source = f'{column}_source'
         if column not in out.columns:
             out[column] = np.nan

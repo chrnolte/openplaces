@@ -28,9 +28,11 @@ from openplaces.core.held_recipes import is_held
 from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.cleanup import _relative_posix, _walk_dag
+from openplaces.io.ingester.scope import crosswalk_coverage
 from openplaces.recipe import (
     apply_recipe_patches,
     get_output_path,
+    get_process_admin_level,
     get_recipe_by_id,
     get_recipe_dependencies,
     get_recipe_retention,
@@ -386,6 +388,7 @@ class RecipeDAG:
         self.requested_admin_ids = [str(a) for a in (admin_ids or [])]
         self._recipes: dict[str, dict] = {}
         self._left_out_cache: dict[tuple, bool] = {}
+        self._coverage_cache: dict[str, set[str] | None] = {}
         # (stage, recipe_id, admin_id, region) of each enrich job left
         # out because its source is excluded or held
         self.left_out: set[tuple] = set()
@@ -823,6 +826,31 @@ class RecipeDAG:
             return None
         return AdminId(*admin_id.levels[:level])
 
+    def _crosswalk_covers(self, recipe_id: str, recipe: dict, admin_id) -> bool:
+        """Whether a recipe's scoped crosswalk sidecar lists this unit.
+
+        A statewide source that only some counties carry (Pennsylvania's
+        PASDA layer lists 38 of 67) declares them in its `recipe_id`-form
+        `process_by.admin_id_crosswalk`. Its ingester raises on a unit
+        named outside that list, so a job derived for one would fail the
+        whole run; the unit has no job instead, as with a recipe scoped
+        to another region. Only a unit at or below the process level is
+        judged: a coarser walk unit expands to its children, which the
+        ingester filters itself. A sidecar keyed to another level, or an
+        unreadable one, claims nothing.
+        """
+        if recipe_id not in self._coverage_cache:
+            self._coverage_cache[recipe_id] = crosswalk_coverage(recipe)
+        covered = self._coverage_cache[recipe_id]
+        if not covered:
+            return True
+        level = get_process_admin_level(recipe)
+        if admin_id.get_level() < level:
+            return True
+        if not any(AdminId(unit).get_level() == level for unit in covered):
+            return True
+        return str(AdminId(*admin_id.levels[:level])) in covered
+
     def _node_admins(self, recipe_id: str, admin_id) -> list[AdminId | None]:
         """Admin units of a recipe's jobs within one walk admin unit.
 
@@ -881,6 +909,8 @@ class RecipeDAG:
             # covers every unit and must not be treated as a prefix.
             scope_levels = tuple(x for x in str(scope).split('-') if x)
         if scope_levels and admin_id.levels[: len(scope_levels)] != scope_levels:
+            return []
+        if not self._crosswalk_covers(recipe_id, recipe, admin_id):
             return []
 
         save_level = get_save_admin_level(recipe)

@@ -181,6 +181,7 @@ pipeline:
       - occupancy_type_building_nsi
       - group_building_nsi
       - structure_value_building_nsi
+      - structure_value_full_building_nsi
       - construction_type_building_nsi
       - foundation_type_building_nsi
       - n_stories_building_nsi
@@ -523,12 +524,31 @@ pipeline:
   #   building's value per dwelling was its lot's whole improvement
   #   (the diagnosis plans/findings/boston-large-parcels-as-homes.md,
   #   section 6). Ordered first non-null, no weights between lanes.
+  # - postal_code: the same order as the building spine's
+  #   reconcile_postal_code, Overture's parsed ZIP, then the ZCTA the
+  #   building lies in. Overture alone overwrote the spine's value and
+  #   emptied it on every building without an Overture point (20,239 of
+  #   106,382 in New Hanover, 2026-10-28).
+  # - depreciated_replacement_cost and replacement_cost: NSI's two cost
+  #   measures, each in a column named for its measure, never mixed
+  #   into structure_value, which is the roll's market value
+  #   (plans/building-imputation-nsi-measures-and-evaluation.md; the
+  #   maintainer, 2026-10-28: NSI ships "as long as kept separate").
+  #   NSI is their only source; the delivery imputes them where NSI
+  #   has no point.
   # Reconcile phase: runs before any vote (moved ahead of the Overture
   # vote 2026-09-29; neither reads the other's output).
   - step: reconcile_values
     priority:
       n_dwellings: [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
-      postal_code: [postal_code_dwelling_overture]
+      postal_code: [postal_code_dwelling_overture, zcta5_id]
+      depreciated_replacement_cost: [structure_value_building_nsi]
+      replacement_cost: [structure_value_full_building_nsi]
+    # A cost of 0 is NSI's empty value, not a building that costs
+    # nothing to rebuild; the cap is the imputation's VALUE_CAP.
+    valid_range:
+      depreciated_replacement_cost: [1, 500000000]
+      replacement_cost: [1, 500000000]
 
   # Vote a single-source occupancy class from Overture counts (>=2 is Multi-Family,
   # <=1 is Single-Family) to serve as a low-weight fallback or tiebreaker.
