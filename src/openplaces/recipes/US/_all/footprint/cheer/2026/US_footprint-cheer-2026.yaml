@@ -347,8 +347,10 @@ share:
         - cheer-coastal-tx
       # v0.6 (2026-10-24): Pender's appraisal year, no land-market
       # inputs, the roll level check, the recorded seed. v0.7
-      # (2026-10-26): donor weights by distance only.
-      version: building-imputation-v0.7
+      # (2026-10-26): donor weights by distance only. v0.8
+      # (2026-10-28): NSI's two cost measures imputed beside the
+      # market value, in their own columns.
+      version: building-imputation-v0.8
       common_year: 2025
       # Base seed of every random step; a delivery with the same seed,
       # inputs and code reproduces its filled values.
@@ -373,23 +375,17 @@ share:
       # Stage 2b: the typical county miss of structure value fell from
       # 12.0% to 5.7% with gap training, on inputs that then still
       # included the land-market county summaries and Pender's
-      # inflated labels. v0.6, leave-county-out (2026-10-25): median
-      # county total 12.8% low with gap training, 21.9% low without.
+      # inflated labels. v0.7, leave-county-out (2026-10-28): median
+      # county total 19.0% low with gap training, 29.2% low without.
       extensions: openplaces.io.building_imputation_gaps:EXTENSIONS
       # Printed in the licence notice's imputation section.
       credit: >-
-        Method: the choice of gradient-boosted trees, spatially blocked
-        testing, treating NSI-assigned years as area lookups, and the
-        validity repairs follow Mohammad Askari (UCLA), "Imputation Model
-        Selection for CoPe-CHEER: North Carolina" (2026-09-10) and
-        "Imputing All Nine Building Attributes in CHEER Places North
-        Carolina" (2026-10-15), as do gap-trained boosting and the split
-        of each county's incomplete buildings into one half of gap
-        patterns for training and one for testing, used here as
-        implemented in openplaces from that memo (under Askari's
-        review). The production pipeline (donor counties, common-year
-        values, census inputs and price anchor, residual draws) is
-        openplaces' own.
+        Method: Mohammad Askari (UCLA) chose the learner
+        (gradient-boosted trees), the evaluation (spatially blocked
+        testing, and the Stage 2b test on held-out buildings as
+        incomplete as the real gaps), the validity repairs and
+        gap-trained boosting. The code for the repairs, gap training
+        and Stage 2b test was contributed by him (pull request 40).
       # Distance only (design limit L30). Chosen 2026-10-27 by
       # leave-county-out on cheer-eastern-nc (Stage 2b, ACS anchor,
       # typical county miss of structure value): 250 km within 400 km
