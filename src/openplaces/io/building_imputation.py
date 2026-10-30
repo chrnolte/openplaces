@@ -12,7 +12,9 @@ NSI's own two cost measures (depreciated_replacement_cost and
 replacement_cost) are filled too, where NSI has no point, each in its
 own column and on NSI's basis: their labels are NSI's values, and they
 never enter the market value (structure_value) as labels, inputs or
-levels, nor it them (MEASURE_TARGETS).
+levels, nor it them (MEASURE_TARGETS). The depreciated cost is filled
+as the replacement cost times a depreciation ratio, so it never
+exceeds it.
 
 Credit. The method choices below come from Mohammad Askari's (UCLA)
 research, which he leads: "Imputation Model Selection for CoPe-CHEER:
@@ -843,10 +845,13 @@ TARGETS = [
 # prediction becomes another value model's input).
 # Measured 2026-10-28 on cheer-eastern-nc: NSI values on 71.3% of
 # rows, 91.0% of single-family homes, 53% to 85% per county.
+# Replacement cost is filled first; the depreciated cost is then its
+# replacement cost times a depreciation ratio (depreciation_odds).
 MEASURE_TARGETS = [
-    TargetSpec('depreciated_replacement_cost', 'measure', per_county=True),
     TargetSpec('replacement_cost', 'measure', per_county=True),
+    TargetSpec('depreciated_replacement_cost', 'measure', per_county=True),
 ]
+DEPRECIATED_COST = 'depreciated_replacement_cost'
 TARGETS = TARGETS + MEASURE_TARGETS
 # Fewest NSI values of its own a county trains a measure on alone;
 # below it, the delivered donor weights add other counties.
@@ -957,6 +962,26 @@ def labels_for(spec: TargetSpec, frame: pd.DataFrame, train: bool = True) -> pd.
     # A combined value ("Slab; Crawl") names its first-listed class as
     # the primary one; models learn primary classes only.
     return values.astype('string').str.split(';').str[0].str.strip()
+
+
+def depreciation_odds(depreciated: pd.Series, replacement: pd.Series) -> pd.Series:
+    """Odds of NSI's depreciation ratio, the depreciated cost's labels.
+
+    Why not the depreciated cost itself: filled as a measure of its
+    own, with its own residual draw, it exceeded the filled replacement
+    cost of the same building, which NSI's values never do. The value
+    model fits a log, so these odds give it the logit of the ratio
+    d / r, and a draw o maps back to o / (1 + o), always inside
+    (0, 1). The ratio model reads the same inputs as the other
+    measures, never the replacement cost (design limit L13). Rows
+    without both measures, or with d >= r, are not labels.
+
+    Measured 2026-10-29 on cheer-eastern-nc: filled alone, 7.9% above replacement.
+    Measured 2026-10-29 on cheer-coastal-tx: filled alone, 15.0% above replacement.
+    """
+    ratio = depreciated / replacement
+    ok = depreciated.gt(0) & replacement.gt(0) & ratio.lt(1)
+    return (depreciated / (replacement - depreciated)).where(ok)
 
 
 MIN_CLASS_ROWS = 50
@@ -1457,7 +1482,9 @@ class Imputer:
         one with fewer than MEASURE_MIN_OWN_LABELS adds donors at the
         delivered weights. Nothing here reads the market value, and the
         measure keeps NSI's price basis: no common-year scale, no price
-        anchor, no park factor.
+        anchor, no park factor. The depreciated cost is the building's
+        replacement cost, observed or filled, times a drawn
+        depreciation ratio (depreciation_odds), so it never exceeds it.
 
         Returns
         -------
@@ -1467,6 +1494,12 @@ class Imputer:
             The rows filled.
         """
         y = self._labels(spec)
+        ratio = spec.column == DEPRECIATED_COST
+        if ratio:
+            replacement = next(
+                s for s in MEASURE_TARGETS if s.column == 'replacement_cost'
+            )
+            y = depreciation_odds(y, self._labels(replacement))
         rows = applies_to(spec, self.frame)
         observed = labels_for(spec, self.frame, train=False)
         missing = rows & observed.isna()
@@ -1484,9 +1517,13 @@ class Imputer:
             target_rows = missing & admin.eq(county)
             own = int((y.notna() & admin.eq(county)).sum())
             config = own_only if own >= MEASURE_MIN_OWN_LABELS else None
-            current.loc[target_rows] = self._fit_predict_county(
+            pred = self._fit_predict_county(
                 spec, y, filled, county, target_rows, exclude=False, config=config
             )
+            if ratio:
+                cost = filled.loc[target_rows, 'replacement_cost'].to_numpy(float)
+                pred = cost * pred / (1.0 + pred)
+            current.loc[target_rows] = pred
             log(
                 f'{spec.column} {county}: filled {int(target_rows.sum())} '
                 f'({"own labels" if config else "with donors"})'

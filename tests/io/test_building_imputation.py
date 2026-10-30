@@ -271,6 +271,21 @@ def test_cost_measure_labels_are_positive_and_not_withheld():
     assert labels.drop(index=1).isna().all()
 
 
+def test_depreciation_odds_keep_only_ratios_below_one():
+    # Fabricated costs: a ratio of 0.75 has odds 3; equal or missing
+    # costs are no label.
+    depreciated = pd.Series([150000.0, 200000.0, np.nan, 0.0])
+    replacement = pd.Series([200000.0, 200000.0, 200000.0, 200000.0])
+    odds = bi.depreciation_odds(depreciated, replacement)
+    assert odds.iloc[0] == pytest.approx(3.0)
+    assert odds.iloc[1:].isna().all()
+
+
+def test_replacement_cost_is_filled_before_the_depreciated_cost():
+    columns = [s.column for s in bi.MEASURE_TARGETS]
+    assert columns.index('replacement_cost') < columns.index(bi.DEPRECIATED_COST)
+
+
 def test_a_county_trains_a_cost_measure_on_its_own_values():
     # The own-only configuration Imputer._fill_measure uses: a radius
     # of 0 km leaves every other county a weight of 0.
