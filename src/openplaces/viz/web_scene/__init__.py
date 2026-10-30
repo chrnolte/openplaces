@@ -277,6 +277,11 @@ class ModelView:
     only; nothing is hidden or dimmed by it (L4, until the maintainer
     settles it).
 
+    A view `per='lot'` is a value of the whole lot (a model's building
+    or total value), shown in the model's own dollars only: no per-area
+    division, since a building's value does not spread over its lot's
+    ground, and no scale, since the scale is a land quantity.
+
     Parameters
     ----------
     key : str
@@ -284,12 +289,15 @@ class ModelView:
     label : str
         Name on the page's button.
     log_column : str
-        Natural log of the predicted land value per hectare.
+        Natural log of the predicted land value per hectare, or of the
+        lot's predicted value where `per` is 'lot'.
     aoa_column : str, optional
         Area of applicability index; inside where at most 1.
     scale_column : str
         The recorded value the scale is taken from (`land_value`, as
-        the assessor recorded it).
+        the assessor recorded it). Unused where `per` is 'lot'.
+    per : str
+        'area' (the default) or 'lot'.
     """
 
     key: str
@@ -297,6 +305,11 @@ class ModelView:
     log_column: str
     aoa_column: str | None = None
     scale_column: str = 'land_value'
+    per: str = 'area'
+
+    def __post_init__(self):
+        if self.per not in ('area', 'lot'):
+            raise ValueError(f"ModelView.per is 'area' or 'lot', not {self.per!r}.")
 
 
 # The PLACES-FMV region-with-neighbors variants cleared for the
@@ -481,8 +494,9 @@ def read_model_files(paths) -> ModelFiles | None:
 
     The sidecar holds `year` or `predict_year` (the predictions'
     dollars), `basis` or `price_basis`, `views` (each `key`, `label`,
-    `log_column` and optionally `aoa_column`, `credit` and
-    `n_training_sales`) and optionally `credits` (each `name`,
+    `log_column` and optionally `aoa_column`, `per` ('area' or 'lot',
+    see `ModelView`), `credit` and `n_training_sales`) and optionally
+    `credits` (each `name`,
     `credit`). Files that do not exist are skipped; None when none do.
     """
     tables, views, credits, data, years, bases = [], {}, [], [], set(), set()
@@ -510,6 +524,7 @@ def read_model_files(paths) -> ModelFiles | None:
                     view['label'],
                     view['log_column'],
                     view.get('aoa_column'),
+                    per=view.get('per', 'area'),
                 ),
             )
             if view.get('credit'):
@@ -3877,6 +3892,11 @@ def model_view_arrays(
     hectares = metric.area.to_numpy() / 1e4
     arrays, views = {}, {}
     for view in layer.model_views:
+        if view.per == 'lot':
+            lot_arrays, lot_views = _lot_model_view(gdf, view, homes)
+            arrays.update(lot_arrays)
+            views.update(lot_views)
+            continue
         if view.log_column not in gdf.columns or view.scale_column not in gdf.columns:
             continue
         recorded = gdf[view.scale_column].to_numpy(dtype=float)
@@ -3922,6 +3942,56 @@ def model_view_arrays(
                     'base': key,
                     **note,
                 }
+    return arrays, views
+
+
+# Color bounds of a model's value per lot, and per home on those lots.
+# Placeholders until the Boston joint values are rerun after rebuild
+# 108; set them from that data, with a measured line.
+LOT_MODEL_BOUNDS = (100_000, 10_000_000)
+
+
+def _lot_model_view(gdf, view, homes=None) -> tuple[dict, dict]:
+    """`model_view_arrays` for one view of whole-lot values (`per='lot'`).
+
+    Only in the model's own dollars (`<key>__2026`, the page's dollars
+    view): the assessment scale is a land quantity and does not apply to
+    a building's or a lot's total value. With `homes`, a per-home
+    companion divides the lot's value over its homes; non-residential
+    lots show no value there.
+    """
+    if view.log_column not in gdf.columns:
+        return {}, {}
+    predicted = np.exp(gdf[view.log_column].to_numpy(dtype=float))
+    if not (np.isfinite(predicted) & (predicted > 0)).any():
+        return {}, {}
+    key = f'{view.key}__2026'
+    vmin, vmax = LOT_MODEL_BOUNDS
+    arrays = {f'value_{key}': predicted}
+    views = {
+        key: {
+            'label': view.label,
+            'unit': 'lot',
+            'model': True,
+            'lot': True,
+            'dollars': True,
+            'vmin': vmin,
+            'vmax': vmax,
+        }
+    }
+    if view.aoa_column and view.aoa_column in gdf.columns:
+        aoa = gdf[view.aoa_column].to_numpy(dtype=float)
+        arrays[f'aoa_{view.key}'] = np.where(
+            np.isfinite(aoa), np.where(aoa <= 1, 2, 1), 0
+        ).astype(np.uint8)
+    if homes is not None:
+        arrays[f'value_{key}__home'] = np.where(homes > 0, predicted / homes, np.nan)
+        views[f'{key}__home'] = {
+            **views[key],
+            'unit': 'dwelling',
+            'per_home': True,
+            'base': key,
+        }
     return arrays, views
 
 

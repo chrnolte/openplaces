@@ -1539,21 +1539,22 @@ async function main() {
   // A layer's other colorings (`views`): per dwelling, and on a team
   // page the model land values (`model`), each a button of its own.
   const viewOf = (layer, key = valueView) => (layer.views && layer.views[key]) || null;
-  const modelViews = [];
-  for (const layer of scene.layers) {
-    for (const [key, view] of Object.entries(layer.views || {})) {
-      const plain = !view.per_home && !view.dollars;
-      if (view.model && plain && !modelViews.some(([k]) => k === key)) {
-        modelViews.push([key, view.label]);
-      }
-    }
-  }
   // A model's views: per ground area (`<key>`) or per home
   // (`<key>__home`), chosen with the same toggle as the assessor's;
   // scaled to the assessments, or in today's dollars (`<key>__2026`).
+  // A whole-lot model (unit `lot`) has its dollars views only.
   const HOME_SUFFIX = '__home';
   const DOLLARS_SUFFIX = '__2026';
   const modelBase = (key) => key.replace(HOME_SUFFIX, '').replace(DOLLARS_SUFFIX, '');
+  const modelViews = [];
+  for (const layer of scene.layers) {
+    for (const [key, view] of Object.entries(layer.views || {})) {
+      const base = modelBase(key);
+      if (view.model && !view.per_home && !modelViews.some(([k]) => k === base)) {
+        modelViews.push([base, view.label]);
+      }
+    }
+  }
   const isModel = (key) => modelViews.some(([k]) => k === modelBase(key));
   const isPerHome = (key) => key === 'dwelling' || (isModel(key) && key.endsWith(HOME_SUFFIX));
   const hasDollars = scene.layers.some((l) =>
@@ -1595,8 +1596,11 @@ async function main() {
   // their own dollars; PLACES-FMV's 2010 ones scaled to assessments.
   let modelDollars = valueView.includes(DOLLARS_SUFFIX) ||
     (scene.model_year === null && !isModel(valueView));
+  // A model without a scaled view (a whole-lot one) shows its dollars.
+  const hasScaled = (key) => viewKeys.has(key);
   const modelView = (perHome) =>
-    `${modelKey}${modelDollars ? DOLLARS_SUFFIX : ''}${perHome ? HOME_SUFFIX : ''}`;
+    `${modelKey}${modelDollars || !hasScaled(modelKey) ? DOLLARS_SUFFIX : ''}` +
+    `${perHome ? HOME_SUFFIX : ''}`;
   const hasDwellingView = scene.layers.some((l) => viewOf(l, 'dwelling'));
   // Rows: per area or per dwelling; then where the values come from
   // (maintainer, 2026-10-18): "Tax assessor", "+ imputed" (the
@@ -1737,7 +1741,7 @@ async function main() {
       button.setAttribute('aria-checked', String(on));
     }
     modelMenu.hidden = !modeled;
-    scaleSwitch.hidden = !modeled || !hasDollars;
+    scaleSwitch.hidden = !modeled || !hasDollars || !hasScaled(modelKey);
     const current = modelViews.find(([key]) => key === modelKey);
     modelSummary.textContent = current
       ? `Model${modelYear ? `, ${modelYear}` : ''}: ${current[1]}`
@@ -1856,11 +1860,16 @@ async function main() {
           colors: ramp.filter((_, i) => i % 8 === 0 || i === ramp.length - 1),
         }
         : null;
+      // A whole-lot model names its own value ("Model building value
+      // per lot"), not the layer's land value.
+      const lot = view && view.model && view.lot;
       drawLegend(legends, {
         shown: shown[layer.name],
-        label: view && view.model ? `${layer.label}, model ${view.label}` : layer.label,
+        label: lot
+          ? `Model ${view.label.toLowerCase()} value`
+          : view && view.model ? `${layer.label}, model ${view.label}` : layer.label,
         unit: spec.unit,
-        of: AREA_OF[layer.name] || 'land',
+        of: lot ? null : AREA_OF[layer.name] || 'land',
         vmin: spec.vmin,
         vmax: spec.vmax,
         // 32 stops are plenty for a gradient bar.
@@ -2007,7 +2016,8 @@ async function main() {
     const text = Number.isFinite(value)
       ? formatValue(value, 'money_per_area', view.unit)
       : 'none';
-    const aoa = entry.decoded.arrays[`aoa_${valueView}`];
+    // One area of applicability per model, whichever view shows it.
+    const aoa = entry.decoded.arrays[`aoa_${modelBase(valueView)}`];
     const inside = aoa ? ['unknown', 'outside', 'inside'][aoa[feature]] : null;
     const scale = view.dollars ? `${dollarsYear} dollars` : 'scaled';
     return `<div><b>Model ${escapeHtml(view.label)} (${scale}):</b> ${text}</div>` +

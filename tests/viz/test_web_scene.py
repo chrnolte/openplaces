@@ -1689,6 +1689,57 @@ def test_model_views_scale_to_the_assessment_and_carry_the_aoa():
     )
 
 
+def test_a_whole_lot_model_shows_its_own_dollars_per_lot(tmp_path):
+    # Fabricated: building values of four lots of different sizes; one
+    # lot lacks a prediction. A lot value is not divided by area and
+    # gets no scale, so no recorded land value is needed.
+    lots = gpd.GeoDataFrame(
+        {
+            'log_b': np.log([300_000.0, 500_000.0, 900_000.0, np.nan]),
+            'aoa_b': [0.5, 2.0, np.nan, np.nan],
+            'v': [1.0] * 4,
+        },
+        geometry=[box(1000 * k, 0, 1000 * k + 10 * (k + 1), 100) for k in range(4)],
+        crs='EPSG:26986',
+    )
+    view = web_scene.ModelView('model_b', 'Building', 'log_b', 'aoa_b', per='lot')
+    layer = SceneLayer(
+        name='parcels',
+        label='Land',
+        recipe='r',
+        value_column='v',
+        area_unit='ha',
+        vmin=1,
+        vmax=2,
+        model_views=(view,),
+    )
+    homes = np.array([1.0, 2.0, np.nan, 1.0])
+    arrays, views = web_scene.model_view_arrays(lots, layer, homes=homes)
+    assert set(views) == {'model_b__2026', 'model_b__2026__home'}
+    shown = views['model_b__2026']
+    assert (shown['unit'], shown['lot'], shown['dollars']) == ('lot', True, True)
+    assert 'scale' not in shown
+    assert arrays['value_model_b__2026'][:3] == pytest.approx([3e5, 5e5, 9e5])
+    assert list(arrays['aoa_model_b']) == [2, 1, 0, 0]
+    per_home = arrays['value_model_b__2026__home']
+    assert per_home[:2] == pytest.approx([3e5, 2.5e5]) and np.isnan(per_home[2])
+    assert views['model_b__2026__home']['base'] == 'model_b__2026'
+    # The sidecar names the view's kind; a wrong one is refused.
+    side = {
+        'year': 2022,
+        'views': [
+            {'key': 'model_b', 'label': 'B', 'log_column': 'log_b', 'per': 'lot'}
+        ],
+    }
+    pd.DataFrame({'parcel_id': ['p1'], 'log_b': [12.0]}).to_parquet(
+        tmp_path / 'X.parquet'
+    )
+    (tmp_path / 'X.json').write_text(json.dumps(side), encoding='utf-8')
+    assert web_scene.read_model_files([tmp_path / 'X.parquet']).views[0].per == 'lot'
+    with pytest.raises(ValueError, match='per'):
+        web_scene.ModelView('k', 'K', 'c', per='home')
+
+
 def _team_scene(tmp_path):
     (tmp_path / 'index.html').write_text('<!doctype html>', encoding='utf-8')
     (tmp_path / '.htaccess').write_text('Options -Indexes\n', encoding='utf-8')
