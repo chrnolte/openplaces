@@ -53,11 +53,12 @@
 import csv
 import os
 import re
+import sys
 from pathlib import Path
 
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
-from openplaces.flow.dag import needs_rerun, parse_deliver_config, rule_name
+from openplaces.flow.dag import needs_rerun, node_key, parse_deliver_config, rule_name
 from openplaces.flow.memory import (
     MemoryModel,
     default_table_path,
@@ -336,6 +337,11 @@ for _node in dag.nodes():
         BATCHED_INGESTS.setdefault(_node.recipe_id, []).append(_node)
 BATCHED_INGESTS = {r: n for r, n in BATCHED_INGESTS.items() if len(n) > 1}
 
+# Each job's inputs as the rules below declare them, kept for the
+# code-change report at the end of this file, which would otherwise
+# derive them all a second time.
+JOB_INPUTS = {}
+
 
 def _unit_files(job, geo):
     out = dag.output_path(*job)
@@ -348,6 +354,7 @@ for _recipe_id, _nodes in BATCHED_INGESTS.items():
     _units = {}
     for _n in _nodes:
         _files = _unit_files((_n.stage, _n.recipe_id, _n.admin_id, _n.region), _geo)
+        JOB_INPUTS[node_key(_n)] = _files[1]
         if needs_rerun(*_files):
             _units[_n.admin_id] = _files
     if not _units:
@@ -419,6 +426,7 @@ for node in dag.nodes():
         )
     _extra = [str(p) for p in dag.extra_outputs(*_job)]
     _inputs = [str(p) for p in dag.input_paths(*_job)]
+    JOB_INPUTS[node_key(node)] = _inputs
     # A deliver or validate job is addressed by region, not by admin
     # unit: that is what run_stage forwards to export_delivery and to
     # the validation notebooks. Every other stage takes the admin unit
@@ -488,6 +496,32 @@ for node in dag.nodes():
             cmd=_cmd,
         shell:
             '{params.cmd}'
+
+
+# Snakemake cannot see a change to openplaces code: every rule runs the
+# same run_stage command, and the profiles rerun on mtime only. A job a
+# merge changed keeps its old output unless someone forces it, so say
+# which ones before the run starts (flow.code_staleness). It reports,
+# never reruns. Main process only: a cluster job reads this file again.
+# --config code_report=false skips it.
+_code_report = parse_deliver_config(config.get('code_report'))
+if workflow.is_main_process and _code_report is not False:
+    # Through the module: `report` is a Snakefile keyword.
+    from openplaces.flow import code_staleness as _code_staleness
+
+    _settings = workflow.dag_settings
+    _summary = _code_staleness.format_summary(
+        _code_staleness.report(
+            dag,
+            forcerun=getattr(_settings, 'forcerun', None) or (),
+            forceall=bool(getattr(_settings, 'forceall', False)),
+            forcetargets=bool(getattr(_settings, 'forcetargets', False)),
+            inputs=JOB_INPUTS,
+        ),
+        TARGET,
+    )
+    if _summary:
+        print(_summary, file=sys.stderr, flush=True)
 
 
 onsuccess:

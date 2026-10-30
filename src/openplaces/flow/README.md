@@ -186,6 +186,21 @@ local table. The cluster starts from the seed and passes the value as
 `mem_per_core`; with no cap there, a job above its family's range keeps
 the envelope and is retried with twice the memory if it fails.
 
+**Snakemake does not see a change to openplaces code.** Every rule runs
+the same `python -m openplaces.flow.run_stage ...` command, and the
+profiles rerun on mtime only, so a job whose code a merge changed keeps
+its old output unless the run forces it. While it plans, the Snakefile
+prints a summary of `flow/code_staleness.py`'s report: the jobs the run
+keeps whose output footer records a commit (`path.git_commit`, the
+checkout's HEAD at write time) that differs from the working tree in a
+file the job depends on. That is its stage's import closure (static,
+function-level imports and step modules loaded by name included), data
+files beside those modules, and its recipe, patch recipes and their
+sidecars. `python -m openplaces.flow.code_staleness RECIPE [units]`
+prints the full list (`--jobs` one rule per line); `--config
+code_report=false` skips it at launch. It reports and never reruns:
+the person running the wave decides what to force.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs
