@@ -21,6 +21,7 @@ from openplaces.io.harmonizer.links._shared import (
     _LINK_INDEX_KEY,
     _LINK_METADATA_KEY,
 )
+from openplaces.io.harmonizer.written import note_written
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -319,6 +320,7 @@ def _write_link_sidecar(
             _LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint))
         },
     )
+    note_written(sidecar_path)
     if verbose:
         print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
 
@@ -379,5 +381,6 @@ def _write_point_link_sidecar(
             _LINK_INDEX_KEY: index_name,
         },
     )
+    note_written(sidecar_path)
     if verbose:
         print(f'  Link (point): wrote link sidecar {sidecar_path.name}')

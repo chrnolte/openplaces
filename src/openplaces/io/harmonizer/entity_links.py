@@ -31,6 +31,7 @@ from openplaces.core.schema import ENTITY_LINK_ORDER
 from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
 from openplaces.io import to_parquet
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer.written import note_written
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
     get_output_path,
@@ -509,6 +510,7 @@ def write_entity_link(
             ENTITY_LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint))
         },
     )
+    note_written(path)
 
 
 #: Methods of the transaction link tables (io/harmonizer/transactions.py,

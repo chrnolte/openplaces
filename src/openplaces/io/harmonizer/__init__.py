@@ -7,6 +7,7 @@ parameters, making the process composable and entity-type-agnostic.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import warnings
@@ -33,6 +34,7 @@ from openplaces.io.cleanup import (
     discard_receipt,
     receipt_justifies_skip,
 )
+from openplaces.io.harmonizer.written import journal_writes
 from openplaces.io.readers import get_admin, get_admin_ids
 from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
@@ -50,6 +52,10 @@ from openplaces.timing import get_timer
 #: (spine_index_name, spine_source_recipe_ids, spine_keep_columns) --
 #: in-memory HarmonizeState.metadata does not survive the recipe split.
 HARMONIZE_METADATA_KEY = 'openplaces:harmonize'
+
+#: Footer key on an attribute checkpoint stamping the side files (link
+#: sidecars, link tables) the steps before it wrote.
+CHECKPOINT_WRITES_KEY = 'openplaces:checkpoint_writes'
 
 
 @dataclass
@@ -159,6 +165,12 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
     checkpoint, a change to a later step does not. Until 2026-10-17 only
     the entity_recipe was stamped, so a footprint geospine rerun on its
     own left the building spine restoring its old parcel evidence.
+
+    The chain also carries a hash of the package's Python source
+    (`_code_stamp`): a step config can stay the same while the code it
+    runs changes, and until 2026-10-29 a rerun after a code fix restored
+    a checkpoint the old code had written unless someone deleted it by
+    hand.
     """
     import hashlib
     import json as _json
@@ -196,7 +208,29 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
             )
         except Exception:
             sources.append(None)
-    return {'format': 2, 'steps': hashes, 'sources': sources}
+    return {'format': 3, 'steps': hashes, 'sources': sources, 'code': _code_stamp()}
+
+
+@functools.cache
+def _code_stamp() -> str:
+    """Hash of every Python file in the openplaces package.
+
+    The whole package rather than the modules a step lives in, because
+    a step calls helpers across layers and no list of them would stay
+    complete. Any code change therefore invalidates every checkpoint,
+    which costs one full attribute rerun per unit and never a stale
+    restore. Computed once per process.
+    """
+    import hashlib
+
+    import openplaces
+
+    root = Path(openplaces.__file__).parent
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob('*.py')):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):
@@ -225,18 +259,26 @@ def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):
 
 
 def _read_checkpoint(path, chain):
-    """Read a checkpoint parquet; None when unreadable or *chain* differs."""
+    """Read a checkpoint parquet; None when unreadable or stale.
+
+    Stale means *chain* differs, or a file the steps before the
+    checkpoint wrote is missing or changed since (see
+    `_save_attribute_checkpoint`).
+    """
     import json as _json
 
     import geopandas as gpd
     import pyarrow.parquet as pq
 
+    from openplaces.io.harmonizer.written import stamps_hold
+
     try:
         meta = pq.read_schema(path).metadata or {}
         stored = _json.loads(meta[b'openplaces:checkpoint'])
+        writes = _json.loads(meta[CHECKPOINT_WRITES_KEY.encode()])
     except Exception:
         return None
-    if stored != chain:
+    if stored != chain or not stamps_hold(writes):
         return None
     try:
         try:
@@ -261,9 +303,16 @@ def _read_checkpoint(path, chain):
 
 
 def _save_attribute_checkpoint(
-    recipe, admin_id, spine, chain, handoff=None, verbose=False
+    recipe, admin_id, spine, chain, handoff=None, written=(), verbose=False
 ):
     """Persist *spine*, its validity *chain* and the *handoff* metadata.
+
+    *written* are the files the steps up to the checkpoint wrote besides
+    the output (link sidecars, link tables). A restore skips those
+    steps, so it is refused when any of them is gone or changed since:
+    Snakemake deletes a forced job's declared outputs before the job
+    runs, and on 2026-10-29 a restored US-FL-PA building spine left the
+    footprint-to-building link table deleted and failed the wave.
 
     The checkpoint restores the frame after step N and skips every step
     before it, including ``resolve_spine``, which renames a parcel spine's
@@ -277,20 +326,22 @@ def _save_attribute_checkpoint(
     path = _attribute_checkpoint_path(recipe, admin_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _write_checkpoint(path, spine, chain, handoff)
+        _write_checkpoint(path, spine, chain, handoff, written)
         if verbose:
             print(f'  Checkpoint saved: {path.name}')
     except Exception as exc:
         warnings.warn(f'Could not save attribute checkpoint: {exc}')
 
 
-def _write_checkpoint(path, spine, chain, handoff=None):
-    """Write *spine* to *path* with *chain* and *handoff* in the footer."""
+def _write_checkpoint(path, spine, chain, handoff=None, written=()):
+    """Write *spine* to *path* with *chain*, *handoff* and the stamps of
+    the *written* files in the footer."""
     import json as _json
 
     import pyarrow.parquet as pq
 
     from openplaces.io import to_parquet
+    from openplaces.io.harmonizer.written import file_stamps
 
     to_parquet(coerce_mixed_object_columns(spine.copy()), path)
     table = pq.read_table(path)
@@ -299,6 +350,9 @@ def _write_checkpoint(path, spine, chain, handoff=None):
     # Always present, so a reader can tell "nothing to hand off" from a
     # checkpoint written before the handoff existed (see _read_checkpoint).
     meta[HARMONIZE_METADATA_KEY.encode()] = _json.dumps(handoff or {}).encode()
+    # Always present too: a footer without it predates the stamps
+    # (2026-10-29) and cannot show its side files survived.
+    meta[CHECKPOINT_WRITES_KEY.encode()] = _json.dumps(file_stamps(written)).encode()
     pq.write_table(table.replace_schema_metadata(meta), path)
 
 
@@ -824,48 +878,53 @@ class Harmonizer:
             )
             spine_checked = True
 
-        for step_index, step_cfg in enumerate(pipeline):
-            if step_index < resume_from:
-                continue
-            state.step_index = step_index
-            step_name = step_cfg.get('step')
-            if not step_name:
-                raise ValueError(
-                    f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
-                )
-            fn = _STEP_REGISTRY.get(step_name)
-            if fn is None:
-                _load_steps()
+        # The journal collects the side files the steps write, so the
+        # checkpoint can stamp those of the steps a restore would skip.
+        with journal_writes() as written:
+            for step_index, step_cfg in enumerate(pipeline):
+                if step_index < resume_from:
+                    continue
+                state.step_index = step_index
+                step_name = step_cfg.get('step')
+                if not step_name:
+                    raise ValueError(
+                        f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
+                    )
                 fn = _STEP_REGISTRY.get(step_name)
-            if fn is None:
-                raise ValueError(
-                    f"Unknown pipeline step: '{step_name}'. "
-                    f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
-                )
-            params = {
-                k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
-            }
-            state = fn(state, **params)
-            # One mark per recipe step, so a step's time is never folded
-            # into the next label a step happens to set itself. Marks a
-            # step sets inside itself still split its own work.
-            if state.timer:
-                state.timer.mark(f'step {step_index:02d} {step_name}')
-            if not spine_checked and state.spine is not None:
-                require_unique_index(
-                    state.spine,
-                    f'harmonize {recipe_id} for {admin_id} after {step_name}',
-                )
-                spine_checked = True
-            if step_index == checkpoint_index and resume_from == 0:
-                _save_attribute_checkpoint(
-                    self.recipe,
-                    admin_id,
-                    state.spine,
-                    chain,
-                    handoff=_handoff_metadata(state),
-                    verbose=self.verbose,
-                )
+                if fn is None:
+                    _load_steps()
+                    fn = _STEP_REGISTRY.get(step_name)
+                if fn is None:
+                    raise ValueError(
+                        f"Unknown pipeline step: '{step_name}'. "
+                        f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
+                    )
+                params = {
+                    k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
+                }
+                state = fn(state, **params)
+                # One mark per recipe step, so a step's time is never
+                # folded into the next label a step happens to set
+                # itself. Marks a step sets inside itself still split
+                # its own work.
+                if state.timer:
+                    state.timer.mark(f'step {step_index:02d} {step_name}')
+                if not spine_checked and state.spine is not None:
+                    require_unique_index(
+                        state.spine,
+                        f'harmonize {recipe_id} for {admin_id} after {step_name}',
+                    )
+                    spine_checked = True
+                if step_index == checkpoint_index and resume_from == 0:
+                    _save_attribute_checkpoint(
+                        self.recipe,
+                        admin_id,
+                        state.spine,
+                        chain,
+                        handoff=_handoff_metadata(state),
+                        written=list(written),
+                        verbose=self.verbose,
+                    )
 
         if state.spine is None:
             self._save_empty_spine(admin_id)

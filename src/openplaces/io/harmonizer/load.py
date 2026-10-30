@@ -41,6 +41,7 @@ from openplaces.io.harmonizer.links import (
     reference_rows,
     snap_chained_links,
 )
+from openplaces.io.harmonizer.written import note_written
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
     apply_recipe_patches,
@@ -441,6 +442,7 @@ def _persist_rekeyed_sidecar(
     metadata[LINK_REKEYED_FROM_KEY] = source_recipe_id
     target_path.parent.mkdir(parents=True, exist_ok=True)
     to_parquet(flat, target_path, file_metadata=metadata, index=False)
+    note_written(target_path)
     if verbose:
         print(f'  Load (geospine): wrote re-keyed link sidecar {target_path.name}')
 

@@ -524,11 +524,12 @@ pipeline:
   #   building's value per dwelling was its lot's whole improvement
   #   (the diagnosis plans/findings/boston-large-parcels-as-homes.md,
   #   section 6). Ordered first non-null, no weights between lanes.
-  # - postal_code: the same order as the building spine's
-  #   reconcile_postal_code, Overture's parsed ZIP, then the ZCTA the
-  #   building lies in. Overture alone overwrote the spine's value and
-  #   emptied it on every building without an Overture point (20,239 of
-  #   106,382 in New Hanover, 2026-10-28).
+  # - postal_code is not reconciled here: the building spine's
+  #   reconcile_postal_code already chose it (Overture's ZIP, then the
+  #   ZCTA) and kept its five digits. Choosing again here copied
+  #   Overture's raw value, which on a building with two Overture ZIPs
+  #   is both, joined by "; " (13 buildings in New Hanover, Galveston
+  #   and Lake, 2026-10-29).
   # - depreciated_replacement_cost and replacement_cost: NSI's two cost
   #   measures, each in a column named for its measure, never mixed
   #   into structure_value, which is the roll's market value
@@ -541,7 +542,6 @@ pipeline:
   - step: reconcile_values
     priority:
       n_dwellings: [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
-      postal_code: [postal_code_dwelling_overture, zcta5_id]
       depreciated_replacement_cost: [structure_value_building_nsi]
       replacement_cost: [structure_value_full_building_nsi]
     # A cost of 0 is NSI's empty value, not a building that costs
