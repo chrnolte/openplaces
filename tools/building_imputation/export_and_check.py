@@ -27,6 +27,7 @@ import time
 import pandas as pd
 import pyarrow.parquet as pq
 
+from openplaces.flow.freshness import delivery_graph
 from openplaces.io import building_imputation as bi
 from openplaces.io.delivery import delivery_paths, export_delivery, imputation_spec
 from openplaces.recipe import get_recipe_by_id
@@ -147,7 +148,12 @@ def main():
         if args.capture and spec and not region.endswith('.team'):
             real = install_capture(capture_dir(region, spec['version']))
         print(f'[{time.time() - t0:6.0f}s] export {region}', flush=True)
-        paths = export_delivery(RECIPE, region=region, output_dir=args.output_dir)
+        paths = export_delivery(
+            RECIPE,
+            region=region,
+            output_dir=args.output_dir,
+            graph=delivery_graph(RECIPE, region=region),
+        )
         table = pd.read_parquet(paths['canonical'])
         primary = table['occupancy_type'].astype('string').ne('Secondary')
         print(f'{region}: {len(table):,d} rows, {int(primary.sum()):,d} primary')
