@@ -34,6 +34,7 @@ from openplaces.io.harmonizer.links._shared import (
 from openplaces.io.harmonizer.links.spatial import (
     _superseded_by_consolidation,
 )
+from openplaces.io.harmonizer.written import note_written
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import (
     get_recipe_id,
@@ -636,6 +637,7 @@ def consolidate_condo_cluster_footprints(
                 sidecar_path,
                 file_metadata={_LINK_METADATA_KEY: stored_raw},
             )
+            note_written(sidecar_path)
             if state.verbose:
                 print(
                     '  consolidate_condo_cluster_footprints: re-persisted link '

@@ -475,6 +475,15 @@ projection refuses building rows naming a footprint it lacks), and the
 building spine's checkpoint is stamped with the footprint geospine's
 output as well as its own geospine's.
 
+**A checkpoint restores only while what it skips still stands.** Any
+attribute checkpoint's footer also stamps the package's Python source
+and every side file the steps before it wrote (the re-keyed parcel
+sidecar and the footprint-to-building link table, here), and a restore
+is refused when the code changed or one of those files is missing or
+changed. Snakemake deletes a forced job's declared outputs before the
+job runs, so a restore that skipped the step writing one of them left
+it missing (`harmonizer.written`).
+
 <!-- The next two paragraphs moved verbatim from AGENTS.md on
 2026-10-17; AGENTS.md keeps the build-order trap. -->
 

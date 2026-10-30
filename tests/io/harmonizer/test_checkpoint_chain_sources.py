@@ -38,7 +38,7 @@ def _patch_outputs(monkeypatch, tmp_path):
 def test_the_links_geospine_is_stamped(monkeypatch, tmp_path):
     _patch_outputs(monkeypatch, tmp_path)
     chain = _checkpoint_chain(RECIPE, PIPELINE, 1, 'US-XX-YY')
-    assert chain['format'] == 2
+    assert chain['format'] == 3
     assert [s['path'] for s in chain['sources']] == [
         'building.parquet',
         'footprint.parquet',
