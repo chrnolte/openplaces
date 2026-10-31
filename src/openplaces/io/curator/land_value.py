@@ -821,7 +821,15 @@ def _write_outputs(
     ]
 
     improvement_value_imputed = pd.Series(np.nan, index=curated.index)
-    has_real_improvement = improvement_value.notna() & (improvement_value > 0)
+    # A recorded 0 passes through as 0, unlike land above. It is the
+    # roll's statement that the lot carries no structure value (vacant
+    # land, a shed the assessor does not value), and this column is
+    # what reaches a building as structure_value: emptied, it read as
+    # "unknown" there and delivery imputation filled it, which
+    # openplaces does not do for a structure the roll values at 0
+    # (maintainer, 2026-09-22). Land keeps its > 0 test: a 0 land
+    # value is a gap this step estimates.
+    has_real_improvement = improvement_value.notna() & (improvement_value >= 0)
     improvement_value_imputed.loc[has_real_improvement] = improvement_value.loc[
         has_real_improvement
     ]

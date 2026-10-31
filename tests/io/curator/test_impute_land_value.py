@@ -189,6 +189,43 @@ def test_improvement_value_passes_through_when_not_a_candidate():
     assert out['improvement_value_imputed'].iloc[-1] == 500_000
 
 
+def test_recorded_zero_improvement_passes_through_as_zero():
+    # A roll that values a lot's structures at 0 states a value; it
+    # reaches a building as structure_value, and a missing cell there
+    # is what delivery imputation fills. The 0 keeps the roll's token.
+    # A missing improvement value stays missing.
+    donors = [
+        _row(land_use_class='Single-Family', land_value=v, area_ha=100)
+        for v in (10_000, 20_000, 30_000)
+    ]
+    zero = _row(
+        land_use_class='Single-Family',
+        land_value=15_000,
+        improvement_value=0,
+        area_ha=100,
+    )
+    zero_without_land = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=0,
+        area_ha=100,
+    )
+    unknown = _row(land_use_class='Single-Family', land_value=15_000, area_ha=100)
+    df = _frame([*donors, zero, zero_without_land, unknown])
+    df['improvement_value_source'] = 'roll'
+    out = impute_land_value(_state(df), min_group_size=3).curated
+
+    assert out['improvement_value_imputed'].iloc[3] == 0
+    assert out['improvement_value_imputed_source'].iloc[3] == 'roll'
+    # Not a land-value candidate (no positive improvement to carve
+    # land out of), so its land stays missing and its 0 stays 0.
+    assert pd.isna(out['land_value_imputed'].iloc[4])
+    assert out['improvement_value_imputed'].iloc[4] == 0
+    assert out['improvement_value_imputed_source'].iloc[4] == 'roll'
+    assert pd.isna(out['improvement_value_imputed'].iloc[5])
+    assert pd.isna(out['improvement_value_imputed_source'].iloc[5])
+
+
 def test_footprint_ratio_detection_fires_above_threshold():
     # Three non-residential peers (footprint area 100, also donors) plus a
     # candidate whose FOOTPRINT area (1000) is far more than 25% of the
