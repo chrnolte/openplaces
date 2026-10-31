@@ -134,6 +134,20 @@ places:
     downtown_note: City hall lot, 200 W Fifth St, Greenville
     team: true
     model_files: data/out/valuation/2026-10-19/predictions/{admin_id}_land-value-models.parquet
+  # The Boston joint structure and land values (structure valuation
+  # session, 2026-10-28), the `boston` circle for the research team.
+  # The files do not exist yet: until they land the page builds without
+  # models (`read_model_files` skips missing files).
+  - slug: boston-team
+    title: Boston area (team)
+    around: Boston University, for the research team
+    state: US-MA
+    center: [-71.1055, 42.3503]
+    center_note: Boston University, Marsh Plaza
+    downtown: [-71.05801, 42.36028]
+    downtown_note: City hall lot, 1 City Hall Sq
+    team: true
+    model_files: data/out/valuation/boston-joint/predictions/{admin_id}_joint-value-models.parquet
   # No openplaces bundle: the model file carries the lots (MD iMAP
   # outlines, SDAT values) and the page is land alone, on flat ground
   # (`lots_in_model_file`, `terrain: false`).
