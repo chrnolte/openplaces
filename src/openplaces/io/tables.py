@@ -157,8 +157,44 @@ def _temp_path(filepath: Path) -> Path:
     return filepath.with_name(f'{filepath.name}.tmp-{os.getpid()}')
 
 
+# Set by `run_stage --keep-if-equal`, the rerun that checks whether a
+# code change alters a job's output (`flow.code_staleness --verify`).
+KEEP_EQUAL_ENV = 'OPENPLACES_KEEP_EQUAL'
+
+
+def same_table(path_a: str | Path, path_b: str | Path) -> bool:
+    """Return whether two parquet files hold the same table.
+
+    Column names, types, order and every value must agree; footer
+    metadata (the build commit, pandas' schema notes) is ignored, so a
+    rewrite by newer code of identical content counts as the same.
+
+    Parameters
+    ----------
+    path_a, path_b : str or Path
+        Parquet files.
+    """
+    import pyarrow.parquet as pq
+
+    a, b = pq.read_table(path_a), pq.read_table(path_b)
+    return a.schema.remove_metadata().equals(b.schema.remove_metadata()) and a.equals(b)
+
+
 def _replace(temp: Path, target: Path) -> None:
-    """Move *temp* onto *target*, retrying while the target is held."""
+    """Move *temp* onto *target*, retrying while the target is held.
+
+    Under `OPENPLACES_KEEP_EQUAL`, a *temp* holding the same table as
+    *target* is discarded instead, so the target keeps its mtime and
+    nothing downstream sees a change.
+    """
+    if os.environ.get(KEEP_EQUAL_ENV) and target.exists():
+        try:
+            equal = same_table(temp, target)
+        except Exception:
+            equal = False
+        if equal:
+            temp.unlink(missing_ok=True)
+            return
     for wait in (*REPLACE_BACKOFF_S, None):
         try:
             os.replace(temp, target)

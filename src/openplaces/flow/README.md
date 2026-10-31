@@ -196,10 +196,31 @@ checkout's HEAD at write time) that differs from the working tree in a
 file the job depends on. That is its stage's import closure (static,
 function-level imports and step modules loaded by name included), data
 files beside those modules, and its recipe, patch recipes and their
-sidecars. `python -m openplaces.flow.code_staleness RECIPE [units]`
-prints the full list (`--jobs` one rule per line); `--config
-code_report=false` skips it at launch. It reports and never reruns:
-the person running the wave decides what to force.
+sidecars. A registry (`core/attribute_registry.csv`) change counts
+only when a changed row names a column of the job's output or inputs;
+for an ingest, whose raw source no table records, any change counts.
+`python -m openplaces.flow.code_staleness RECIPE [units]` prints the
+full list (`--jobs` one rule per line); `--config code_report=false`
+skips it at launch. It reports and never reruns: the person running
+the wave decides what to force.
+
+**A code change is cleared by a sample rerun, never assumed
+harmless.** `--verify N` reruns N units of each listed (stage, recipe)
+group, spread over output size, in place, through `run_stage
+--reprocess --keep-if-equal`: every parquet write that produces the
+same table as the file in place keeps that file and its mtime. A group
+whose samples all write the same tables again is recorded in
+`<logs>/code_cleared.csv`, and its other units built by the same code
+leave the report, unless a dependency changed after the verified
+commit or the change is a recipe the samples do not share (a county
+patch). A sample that came out different has been rebuilt; force the
+rest of its group. Groups with uncommitted changes and enrich recipes
+that run an image model are not sampled. `--reprocess` matters here:
+without it, a harmonize job restores its attribute checkpoint, whose
+fingerprint covers step configs and inputs but not code, and a
+geospine reloads its own link sidecars on the same terms, so a rerun
+after a code change can reproduce what the old code computed. For the
+same reason the Snakefile runs every harmonize job with `--reprocess`.
 
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,

@@ -15,6 +15,16 @@ from openplaces.path import git_commit, recipe_root_records
 SHA = '0123456789abcdef0123456789abcdef01234567'
 
 
+@pytest.fixture(autouse=True)
+def _ledger(tmp_path, monkeypatch):
+    """Every test reads and writes its own, initially absent, ledger."""
+    path = tmp_path / 'ledger' / cs.LEDGER_NAME
+    monkeypatch.setattr(cs, 'ledger_path', lambda: path)
+    cs._clearances.cache_clear()
+    yield path
+    cs._clearances.cache_clear()
+
+
 def _git_dir(root, ref='ref: refs/heads/main'):
     git = root / '.git'
     (git / 'refs' / 'heads').mkdir(parents=True)
@@ -116,6 +126,12 @@ class FakeDag:
         upstream = {'spine-a': 'src-a', 'cur-a': 'spine-a'}.get(recipe_id)
         return [self.output_path('', upstream)] if upstream else []
 
+    def extra_outputs(self, stage, recipe_id, admin_id=None, region=None):
+        return []
+
+    def _recipe(self, recipe_id):
+        return {'recipe_id': recipe_id}
+
 
 @pytest.fixture
 def fake(tmp_path, monkeypatch):
@@ -186,6 +202,179 @@ def test_an_output_without_a_commit_is_counted_apart(fake, monkeypatch):
         'ingest src-a (1), harmonize spine-a (1), curate cur-a (1)'
     )
     assert 'Code changed since' not in text
+
+
+@pytest.fixture
+def registry_only(fake, monkeypatch):
+    """Every job depends on the registry, and only it changed."""
+    monkeypatch.setattr(cs, 'changed_since', lambda commit: frozenset({cs.REGISTRY}))
+    monkeypatch.setattr(
+        cs, '_dependencies', lambda stage, r, a: (frozenset({cs.REGISTRY}), frozenset())
+    )
+    return fake
+
+
+def test_a_registry_row_no_table_carries_reports_only_ingests(
+    registry_only, monkeypatch
+):
+    monkeypatch.setattr(cs, 'registry_changes', lambda commit: frozenset({'b'}))
+    rows = cs.report(FakeDag(registry_only))
+    # An ingest reads a raw source, whose columns no table records.
+    assert [r['recipe_id'] for r in rows] == ['src-a']
+
+
+def test_a_registry_row_naming_a_column_reports_its_jobs(registry_only, monkeypatch):
+    monkeypatch.setattr(cs, 'registry_changes', lambda commit: frozenset({'a'}))
+    rows = cs.report(FakeDag(registry_only))
+    assert [r['recipe_id'] for r in rows] == ['src-a', 'spine-a', 'cur-a']
+    assert rows[1]['changed'] == (cs.REGISTRY,)
+
+
+def test_a_changed_registry_header_counts_for_every_job(registry_only, monkeypatch):
+    monkeypatch.setattr(cs, 'registry_changes', lambda commit: None)
+    rows = cs.report(FakeDag(registry_only))
+    assert len(rows) == 3
+
+
+def test_a_suffixed_column_carries_its_attribute():
+    names = frozenset({'floor_area'})
+    assert cs._touches({'floor_area_building_nsi'}, names)
+    assert cs._touches({'floor_area_source'}, names)
+    assert not cs._touches({'floor', 'area_floor'}, names)
+
+
+def test_registry_rows_compare_whole_rows():
+    old = cs._registry_rows('name,unit\na,m\nb,m\n')
+    new = cs._registry_rows('name,unit\na,ft\nc,m\n')
+    assert old[0] == new[0]
+    changed = {
+        n for n in old[1].keys() | new[1].keys() if old[1].get(n) != new[1].get(n)
+    }
+    assert changed == {'a', 'b', 'c'}
+
+
+def test_registry_changes_since_head_reads_git():
+    head = git_commit(cs.repo_root())
+    assert isinstance(cs.registry_changes(head), frozenset)
+
+
+HEAD = 'feedfacecafe'
+
+
+@pytest.fixture
+def verifiable(fake, monkeypatch):
+    """The chain's code changed since abc123def456 and is committed."""
+    monkeypatch.setattr('openplaces.path.git_commit', lambda root: HEAD)
+    monkeypatch.setattr(
+        cs,
+        'changed_since',
+        lambda commit: (
+            frozenset() if commit == HEAD else frozenset({'src/openplaces/io/x.py'})
+        ),
+    )
+    return fake
+
+
+def _runner(touch=None, returncode=0):
+    calls = []
+
+    def run(cmd, check=False):
+        calls.append(cmd)
+        if touch is not None and cmd[4] in touch:
+            path = touch[cmd[4]]
+            to_parquet(pd.DataFrame({'a': [2]}), path)
+        return SimpleNamespace(returncode=returncode)
+
+    run.calls = calls
+    return run
+
+
+def test_a_reproduced_sample_clears_its_group(verifiable):
+    dag = FakeDag(verifiable)
+    run = _runner()
+    results = cs.verify(dag, cs.report(dag), n=3, run=run)
+    assert [(r['recipe_id'], r['verdict']) for r in results] == [
+        ('spine-a', 'reproduced'),
+        ('cur-a', 'reproduced'),
+    ]
+    assert run.calls[0][3:] == [
+        'harmonize',
+        'spine-a',
+        'XX-AA',
+        '--reprocess',
+        '--keep-if-equal',
+    ]
+    assert cs.report(dag) == []
+
+
+def test_a_sample_that_rewrites_its_output_clears_nothing(verifiable, _ledger):
+    dag = FakeDag(verifiable)
+    run = _runner(touch={'cur-a': verifiable / 'cur-a.parquet'})
+    results = cs.verify(dag, cs.report(dag), run=run)
+    assert [r['verdict'] for r in results] == ['reproduced', 'changed']
+    assert _ledger.read_text(encoding='utf-8').count('\n') == 3
+    assert not cs.cleared(
+        'curate', 'cur-a', 'abc123def456', ('src/openplaces/io/x.py',)
+    )
+    assert cs.cleared(
+        'harmonize', 'spine-a', 'abc123def456', ('src/openplaces/io/x.py',)
+    )
+
+
+def test_a_failed_sample_clears_nothing(verifiable):
+    dag = FakeDag(verifiable)
+    results = cs.verify(dag, cs.report(dag), run=_runner(returncode=1))
+    assert {r['verdict'] for r in results} == {'failed'}
+    assert len(cs.report(dag)) == 2
+
+
+def test_uncommitted_changes_are_not_sampled(verifiable, monkeypatch):
+    monkeypatch.setattr(
+        cs, 'changed_since', lambda commit: frozenset({'src/openplaces/io/x.py'})
+    )
+    dag = FakeDag(verifiable)
+    run = _runner()
+    results = cs.verify(dag, cs.report(dag), run=run)
+    assert {r['verdict'] for r in results} == {'not sampled (uncommitted changes)'}
+    assert run.calls == []
+
+
+def test_a_job_built_by_other_code_than_the_samples_is_not_cleared(
+    verifiable, monkeypatch
+):
+    dag = FakeDag(verifiable)
+    cs.verify(dag, cs.report(dag), run=_runner())
+    monkeypatch.setattr(cs, '_diff', lambda a, b: frozenset({'src/openplaces/io/x.py'}))
+    assert not cs.cleared(
+        'harmonize', 'spine-a', '0ldc0mmit000', ('src/openplaces/io/x.py',)
+    )
+    assert cs.cleared(
+        'harmonize', 'spine-a', 'abc123def456', ('src/openplaces/io/x.py',)
+    )
+
+
+def test_a_change_after_the_verified_commit_is_not_cleared(verifiable, monkeypatch):
+    dag = FakeDag(verifiable)
+    cs.verify(dag, cs.report(dag), run=_runner())
+    monkeypatch.setattr(
+        cs, 'changed_since', lambda commit: frozenset({'src/openplaces/io/x.py'})
+    )
+    assert not cs.cleared(
+        'harmonize', 'spine-a', 'abc123def456', ('src/openplaces/io/x.py',)
+    )
+
+
+def test_samples_spread_over_output_size(tmp_path):
+    rows = []
+    for i, size in enumerate((5, 1, 4, 2, 3)):
+        path = tmp_path / f'r{i}.parquet'
+        path.write_bytes(b'x' * size)
+        rows.append(
+            {'stage': 'curate', 'recipe_id': f'r{i}', 'admin_id': None, 'size': size}
+        )
+    dag = SimpleNamespace(output_path=lambda s, r, a=None: tmp_path / f'{r}.parquet')
+    assert [r['size'] for r in cs._sample(rows, dag, 3)] == [1, 3, 5]
+    assert [r['size'] for r in cs._sample(rows, dag, 1)] == [3]
 
 
 def test_format_report_groups_units_and_names_a_rule():

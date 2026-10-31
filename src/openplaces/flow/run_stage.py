@@ -211,6 +211,14 @@ def main(argv=None) -> None:
         action='store_true',
         help='Re-run this job even if its output already exists',
     )
+    parser.add_argument(
+        '--keep-if-equal',
+        action='store_true',
+        help=(
+            'Keep an existing output file (and its mtime) when the job '
+            'writes the same table again'
+        ),
+    )
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument(
         '--no-orchestrated',
@@ -237,6 +245,10 @@ def main(argv=None) -> None:
 
     if not args.no_orchestrated:
         os.environ['OPENPLACES_ORCHESTRATED'] = '1'
+    if args.keep_if_equal:
+        from openplaces.io.tables import KEEP_EQUAL_ENV
+
+        os.environ[KEEP_EQUAL_ENV] = '1'
     if args.exclude_recipe_ids is not None:
         # The graph pruned these ids (`exclude_recipe_ids`), but
         # discovery inside the job reads the recipe tree and the files

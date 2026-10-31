@@ -443,9 +443,15 @@ for node in dag.nodes():
     # node the loop visited last (observed 2026-08-27: an NSI ingest ran
     # the global admin3 harmonize). `params` are evaluated when the rule
     # is defined, like `input` and `output`.
+    # A harmonize job reruns with --reprocess, so it ignores the
+    # attribute checkpoint beside its output. That checkpoint is
+    # not a declared output, survives the job, and its fingerprint
+    # covers step settings and inputs but not code: restored after a
+    # code change, it would hand the new run the old code's columns.
+    _reprocess = ' --reprocess' if node.stage == 'harmonize' else ''
     _cmd = (
         f'python -m openplaces.flow.run_stage {node.stage}'
-        f' {node.recipe_id}{_admin_arg}{EXCLUDE_ARG}'
+        f' {node.recipe_id}{_admin_arg}{_reprocess}{EXCLUDE_ARG}'
     )
 
     rule:
