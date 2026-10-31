@@ -298,7 +298,14 @@ def test_team_regions_are_declared_beside_their_region():
     team = {spec['region_id']: spec for spec in specs if spec['audience'] == 'team'}
     base = next(spec for spec in specs if spec['region_id'] == 'cheer-eastern-nc')
 
-    assert set(team) == {'cheer-eastern-nc.team', 'washington-dc.team'}
+    assert set(team) == {
+        'cheer-eastern-nc.team',
+        'washington-dc.team',
+        'boston-inner-core.team',
+        'boston-outer-rings.team',
+        'cheer-coastal-tx.team',
+        'western-nc.team',
+    }
     assert team['cheer-eastern-nc.team']['admin_ids'] == base['admin_ids']
     assert base['audience'] == 'public'
 

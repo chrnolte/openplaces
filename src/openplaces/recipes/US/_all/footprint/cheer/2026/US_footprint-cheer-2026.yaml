@@ -258,6 +258,13 @@ share:
       - cheer-eastern-nc
       # Fairfax County values, cleared for the team (2026-10-20).
       - washington-dc
+      # Team pages of the people (race and ethnicity) cloud: Boston,
+      # Houston (cheer-coastal-tx) and Durham (western-nc); Wilmington
+      # is in cheer-eastern-nc above (maintainer, 2026-10-31).
+      - boston-inner-core
+      - boston-outer-rings
+      - cheer-coastal-tx
+      - western-nc
     # The outlines are ODbL (OBM, Microsoft, Overture), and Pitt
     # County's parcel values are CC-BY-SA-4.0; one published bundle
     # cannot carry both, so the public cheer-eastern-nc bundle withholds
