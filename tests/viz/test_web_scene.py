@@ -258,6 +258,8 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     assert header['n_features'] == 1
     # Per dwelling: its own value over its own dwellings.
     assert arrays['value_dwelling'][0] == pytest.approx(100_000.0)
+    # Its homes, which the type view colors residential buildings by.
+    assert arrays['homes'][0] >= 1
     assert manifest['layers'][1]['views']['dwelling']['unit'] == 'dwelling'
     # A home: per dwelling, not on the non-residential ramp.
     assert list(arrays['nonresidential']) == [0]
@@ -266,6 +268,7 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
     parcel_path = out / manifest['layers'][0]['files']['US-XX-BBB']['geometry']
     _, parcel_arrays = decode_scene_file(gzip.decompress(parcel_path.read_bytes()))
     assert list(parcel_arrays['estimated']) == [1]
+    assert 'homes' not in parcel_arrays
     # A lot counts the dwellings of the home on it: 3, so $50,000 of
     # land is $16,667 per dwelling; the lot without homes has none.
     aaa_path = out / manifest['layers'][0]['files']['US-XX-AAA']['geometry']

@@ -673,8 +673,9 @@ function drawLegend(container, legend) {
 // The type view's legend: one swatch per type the scene draws, the
 // same list for land and buildings (scene.json `types`), the most
 // common first: by count of lots, types on no lot (outbuildings)
-// after them, and "Unknown" last (maintainer, 2026-10-19).
-function drawTypeLegend(container, types) {
+// after them, and "Unknown" last (maintainer, 2026-10-19). With
+// `homes`, a second row for the residential buildings' home counts.
+function drawTypeLegend(container, types, homes = false) {
   types = [...types].sort((a, b) => (a.key === 'unknown') - (b.key === 'unknown')
     || (b.count || 0) - (a.count || 0));
   const block = document.createElement('div');
@@ -704,6 +705,26 @@ function drawTypeLegend(container, types) {
   }
   block.append(label, list);
   container.appendChild(block);
+  if (!homes) {
+    return;
+  }
+  // Residential buildings: their homes, not their type.
+  const homesBlock = document.createElement('div');
+  homesBlock.className = 'legend type-legend';
+  const homesLabel = document.createElement('div');
+  homesLabel.className = 'legend-label';
+  homesLabel.textContent = 'Homes per residential building';
+  const homesList = document.createElement('div');
+  homesList.className = 'type-swatches';
+  for (const [, text, hex] of HOME_CLASSES) {
+    const item = document.createElement('span');
+    const swatch = document.createElement('i');
+    swatch.style.background = hex;
+    item.append(swatch, text);
+    homesList.appendChild(item);
+  }
+  homesBlock.append(homesLabel, homesList);
+  container.appendChild(homesBlock);
 }
 
 // A pastel type view (maintainer, 2026-10-19): lots in a light tint of
@@ -725,6 +746,42 @@ function typeColors(codes, types, alpha, tint = 0, shade = 1) {
   for (let i = 0; i < codes.length; i++) {
     out.set(rgb[codes[i]] || rgb[0], 4 * i);
     out[4 * i + 3] = alpha;
+  }
+  return out;
+}
+
+// The type view's residential buildings, colored by their homes
+// (scene arrays `homes`) instead of their type, so that a value per
+// building reads against a value per home (maintainer, 2026-11-01).
+// Classes, not a continuous ramp: 1, 2 and 3 are the common Boston
+// forms (house, two-family, triple-decker) and each gets its own color.
+const HOME_CLASSES = [
+  [1, '1', '#ffe08a'],
+  [2, '2', '#fdb863'],
+  [3, '3', '#f5873f'],
+  [6, '4-6', '#e0582e'],
+  [19, '7-19', '#bd3227'],
+  [49, '20-49', '#8f1730'],
+  [Infinity, '50+', '#5c0b3a'],
+];
+
+// A residential building's class in `HOME_CLASSES`, or -1.
+function homeClass(n) {
+  if (!(n >= 1)) {
+    return -1;
+  }
+  return HOME_CLASSES.findIndex(([upTo]) => Math.round(n) <= upTo);
+}
+
+// Recolors `out` (four bytes per feature) where a feature has homes.
+function paintHomes(out, homes, alpha) {
+  const rgb = HOME_CLASSES.map(([, , hex]) => hexToRgb(hex));
+  for (let i = 0; i < homes.length; i++) {
+    const k = homeClass(homes[i]);
+    if (k >= 0) {
+      out.set(rgb[k], 4 * i);
+      out[4 * i + 3] = alpha;
+    }
   }
   return out;
 }
@@ -844,7 +901,8 @@ const TOUR_DOWNTOWN_ACTIONS = [
     at: 10,
     hint: {
       target: 'buildings',
-      text: 'Hiding the buildings to show land value alone',
+      // Maintainer's wording, 2026-11-01.
+      text: "Let's ignore buildings for a minute and just look at land values.",
       countdown: 5,
       linger: 9,
     },
@@ -1857,7 +1915,9 @@ async function main() {
       rangeChoice.hidden = valueView === 'type';
     }
     if (valueView === 'type' && hasTypeView) {
-      drawTypeLegend(legends, scene.types);
+      drawTypeLegend(legends, scene.types, scene.layers.some(
+        (layer) => layer.views && layer.views.type && layer.views.type.homes,
+      ));
       drawPeopleLegend();
       drawImputedNote();
       placeControls();
@@ -2813,6 +2873,13 @@ async function main() {
       colors.set(typeColors(codes, scene.types, spec.alpha, tint, shade));
       if (spec.lineSpec && lineColors) {
         lineColors = typeColors(codes, scene.types, spec.line_alpha, tint, shade);
+      }
+      const homes = entry.decoded.arrays.homes;
+      if (homes) {
+        paintHomes(colors, homes, spec.alpha);
+        if (spec.lineSpec && lineColors) {
+          paintHomes(lineColors, homes, spec.line_alpha);
+        }
       }
     }
     const additive = palette.blend === 'additive';

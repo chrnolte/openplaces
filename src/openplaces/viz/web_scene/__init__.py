@@ -4692,6 +4692,14 @@ def build_web_scene(
             other = ~residential & known & (raw_value > 0)
             # Homes per dwelling only; everything else drawn otherwise.
             per_dwelling[~residential] = np.nan
+            if BUILDING_CLASS in out.columns:
+                # Homes per residential building, which the type view
+                # colors by, so that a building's value per home reads
+                # against how many homes share it (maintainer,
+                # 2026-11-01).
+                extra['homes'] = np.where(
+                    residential & (dwellings > 0), dwellings, np.nan
+                )
             out[f'{layer.value_column}_per_dwelling'] = per_dwelling
             extra['value_dwelling'] = per_dwelling
             extra['nonresidential'] = other.astype(np.uint8)
@@ -4738,6 +4746,9 @@ def build_web_scene(
                 # (maintainer, 2026-10-19).
                 type_count += np.bincount(codes, minlength=n_types)
             views['type'] = {'label': 'Type', 'unit': 'type', 'categorical': True}
+            if 'homes' in extra:
+                # Residential buildings colored by their homes instead.
+                views['type']['homes'] = True
         if layer.model_views and (audience in GATED_AUDIENCES or models_public):
             homes = None
             if 'dwelling' in views:
