@@ -324,3 +324,73 @@ def test_missing_sidecar_raises(monkeypatch, tmp_path):
             recipe_id='ref',
             columns={'improvement_value': 'improvement_value_parcel'},
         )
+
+
+def _complex_split(monkeypatch, tmp_path, land_use, **kwargs):
+    # One lot: the address point sits on A (the office), B and C are
+    # apartment buildings the priority step left secondary, D a garage.
+    footprints = pd.DataFrame(
+        {
+            'parcel_id': ['L'] * 4,
+            'priority_on_parcel': ['primary', 'secondary', 'secondary', 'secondary'],
+            'n_dwellings_overture': [12.0, 0.0, 0.0, 0.0],
+            'geometry_source': ['obm'] * 4,
+        },
+        index=pd.Index(['A', 'B', 'C', 'D'], name='footprint_id'),
+    )
+    sidecar = pd.DataFrame(
+        {
+            'footprint_id': ['A', 'B', 'C', 'D'],
+            'parcel_id': ['L'] * 4,
+            'area_intersection_m2': [100.0, 300.0, 300.0, 50.0],
+            'link': ['ok'] * 4,
+        }
+    )
+    parcels = pd.DataFrame(
+        {
+            'parcel_id': ['L'],
+            'improvement_value': [700000.0],
+            'n_dwellings': [70.0],
+            'land_use_class': [land_use],
+        }
+    )
+    return _apportion(
+        footprints,
+        monkeypatch,
+        tmp_path,
+        sidecar=sidecar,
+        ref=parcels,
+        columns={
+            'improvement_value': 'improvement_value_parcel',
+            'n_dwellings': 'n_dwellings_parcel',
+        },
+        land_use_column='land_use_class',
+        **kwargs,
+    )
+
+
+def test_complex_lot_shares_its_value_among_large_buildings(monkeypatch, tmp_path):
+    out = _complex_split(
+        monkeypatch,
+        tmp_path,
+        'Multi-Family',
+        complex_classes=['Multi-Family'],
+        complex_min_m2=200,
+    )
+    value = out['improvement_value_parcel']
+    assert value['A'] == 100000.0
+    assert value['B'] == value['C'] == 300000.0
+    assert pd.isna(value['D'])
+    assert out.loc['B', 'n_dwellings_parcel'] == 30.0
+    # The spine's role stays as the priority step set it.
+    assert out.loc['B', 'priority_on_parcel'] == 'secondary'
+
+
+def test_complex_rule_is_off_by_default_and_on_other_lots(monkeypatch, tmp_path):
+    off = _complex_split(monkeypatch, tmp_path, 'Multi-Family')
+    house = _complex_split(
+        monkeypatch, tmp_path, 'Single-Family', complex_classes=['Multi-Family']
+    )
+    for out in (off, house):
+        assert out.loc['A', 'improvement_value_parcel'] == 700000.0
+        assert out['improvement_value_parcel'].drop('A').isna().all()

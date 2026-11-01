@@ -293,6 +293,19 @@ pipeline:
     non_residential_classes:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
        Agricultural, RV Park]
+    # A complex's address points often sit on one or two of its
+    # buildings, which made the rest secondary: one Harris lot held its
+    # $4.9M improvement on 2 of 94 dwelling buildings, and delivery
+    # imputation then valued the other 92 again. On these lots a
+    # secondary of 200 m2 or more keeps its share. Measured against
+    # HCAD's building rows per account (2026-11-01, US-TX-HAR, 3,321
+    # Multi-Family lots): exact building counts 20% to 35%, mean gap
+    # 5.7 to 2.4 buildings; over-counts 2% to 15%. Without the class
+    # condition single-building lots lose (Cameron, roll building
+    # counts: exact 95% to 89% at 150 m2), so it stays on these
+    # classes (plans/lot-value-sharing-among-buildings.md).
+    complex_classes: [Multi-Family, Multiple Single-Family]
+    complex_min_m2: 200
     # A large building standing on several lots keeps its share of each
     # lot's value even where the crosswalk trimmed the link (see
     # _readmittable_trimmed_links); otherwise a lot's whole value went
