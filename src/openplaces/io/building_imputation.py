@@ -550,6 +550,12 @@ def clip_to_caps(
     return values.where(~clipped, limit), clipped
 
 
+#: Dwelling classes whose recorded zero on a small building is read as
+#: a manufactured home the roll does not carry (:func:`value_labels`).
+SMALL_ZERO_CLASSES = ('Single-Family', 'Low-Rise Multi-Family', 'Multi-Family')
+SMALL_ZERO_MAX_M2 = 120.0
+
+
 def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     """Return parcel-recorded structure values (>= 0), else NaN.
 
@@ -557,6 +563,19 @@ def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     home (:func:`manufactured_home_listing`): with *train*, only
     'listed' homes are labels; without it, 'unclear' homes also keep
     their observed value. 'unlisted' homes are always refilled.
+
+    A recorded 0 on a building of a dwelling class (SMALL_ZERO_CLASSES)
+    under SMALL_ZERO_MAX_M2 is neither a label nor kept, and is filled.
+    Without a use code, a manufactured home held as personal property
+    is often classed Single-Family, and the roll lists only its land:
+    the 0 is the home's absence from the roll, as for an 'unlisted'
+    home, not a statement about the building. A stopgap until the
+    occupancy vote has manufactured-home evidence of its own
+    (plans/zero-structure-value-reasons.md, part C); the general model
+    fills these, as the class they carry.
+
+    Measured 2026-11-01 on cheer-eastern-nc: 11,881 of 34,808 stated zeros.
+    Measured 2026-11-01 on cheer-coastal-tx: 12,820 of 42,513 stated zeros.
     """
     value = pd.to_numeric(frame['structure_value'], errors='coerce')
     src = frame['structure_value_source'].fillna('')
@@ -564,6 +583,14 @@ def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     listing = manufactured_home_listing(frame)
     keep = {'listed'} if train else {'listed', 'unclear'}
     ok &= listing.isna() | listing.isin(keep)
+    if 'occupancy_type' in frame.columns:
+        area = _numeric_column(frame, 'area_m2')
+        small_zero = (
+            value.eq(0)
+            & frame['occupancy_type'].astype('string').isin(SMALL_ZERO_CLASSES)
+            & area.lt(SMALL_ZERO_MAX_M2)
+        ).fillna(False)
+        ok &= ~small_zero
     return value.where(ok)
 
 
