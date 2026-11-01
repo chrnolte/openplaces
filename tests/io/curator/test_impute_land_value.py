@@ -204,26 +204,101 @@ def test_recorded_zero_improvement_passes_through_as_zero():
         improvement_value=0,
         area_ha=100,
     )
-    zero_without_land = _row(
+    # A total within rounding of land plus other value agrees with the 0.
+    zero_total_agrees = _row(
+        land_use_class='Single-Family',
+        land_value=15_000,
+        improvement_value=0,
+        total_value=15_050,
+        area_ha=100,
+    )
+    zero_other_value = _row(
+        land_use_class='Single-Family',
+        land_value=15_000,
+        improvement_value=0,
+        total_value=17_000,
+        other_value=2_000,
+        area_ha=100,
+    )
+    unknown = _row(land_use_class='Single-Family', land_value=15_000, area_ha=100)
+    df = _frame([*donors, zero, zero_total_agrees, zero_other_value, unknown])
+    df['improvement_value_source'] = 'roll'
+    out = impute_land_value(_state(df), min_group_size=3).curated
+
+    for i in (3, 4, 5):
+        assert out['improvement_value_imputed'].iloc[i] == 0
+        assert out['improvement_value_imputed_source'].iloc[i] == 'roll'
+    assert pd.isna(out['improvement_value_imputed'].iloc[6])
+    assert pd.isna(out['improvement_value_imputed_source'].iloc[6])
+
+
+def test_zero_improvement_without_land_is_no_split_reported():
+    # A source that reports only a total, or nothing, writes 0 into land
+    # and improvement alike. That 0 states nothing about the structure,
+    # so it stays missing for delivery imputation to fill, and the
+    # parcel keeps its total.
+    total_only = _row(
+        land_use_class='Single-Family',
+        land_value=0,
+        improvement_value=0,
+        total_value=180_000,
+        area_ha=100,
+    )
+    blank = _row(
         land_use_class='Single-Family',
         land_value=0,
         improvement_value=0,
         area_ha=100,
     )
-    unknown = _row(land_use_class='Single-Family', land_value=15_000, area_ha=100)
-    df = _frame([*donors, zero, zero_without_land, unknown])
+    df = _frame([total_only, blank])
     df['improvement_value_source'] = 'roll'
-    out = impute_land_value(_state(df), min_group_size=3).curated
+    out = impute_land_value(_state(df), min_group_size=1).curated
 
-    assert out['improvement_value_imputed'].iloc[3] == 0
-    assert out['improvement_value_imputed_source'].iloc[3] == 'roll'
-    # Not a land-value candidate (no positive improvement to carve
-    # land out of), so its land stays missing and its 0 stays 0.
-    assert pd.isna(out['land_value_imputed'].iloc[4])
-    assert out['improvement_value_imputed'].iloc[4] == 0
-    assert out['improvement_value_imputed_source'].iloc[4] == 'roll'
-    assert pd.isna(out['improvement_value_imputed'].iloc[5])
-    assert pd.isna(out['improvement_value_imputed_source'].iloc[5])
+    assert out['improvement_value_imputed'].isna().all()
+    if 'improvement_value_imputed_source' in out:
+        assert out['improvement_value_imputed_source'].isna().all()
+    assert out['land_value_imputed'].isna().all()
+    assert out['total_value'].iloc[0] == 180_000
+
+
+def test_zero_improvement_under_a_larger_total_is_the_remainder():
+    # The roll's own total contradicts the 0. Where a county's recipe
+    # says the remainder is the structure, total - land - other value
+    # replaces the 0, marked imputed with its own token. A total
+    # repeated across a lot's records is the lot's, not the record's,
+    # and derives nothing.
+    remainder = _row(
+        land_use_class='Single-Family',
+        land_value=20_000,
+        improvement_value=0,
+        total_value=95_000,
+        other_value=5_000,
+        area_ha=100,
+    )
+    repeated = [
+        _row(
+            land_use_class='Condominium',
+            land_value=20_000,
+            improvement_value=0,
+            total_value=900_000,
+            area_ha=1,
+        )
+        for _ in range(2)
+    ]
+    df = _geo_frame([remainder, *repeated], [_box(0), _box(10), _box(10)])
+    df['improvement_value_source'] = 'roll'
+    # By default the contradicted 0 states nothing and stays missing.
+    default = impute_land_value(_state(df.copy()), min_group_size=1).curated
+    assert default['improvement_value_imputed'].isna().all()
+
+    out = impute_land_value(
+        _state(df), min_group_size=1, improvement_from_total=True
+    ).curated
+    assert out['improvement_value_imputed'].iloc[0] == 70_000
+    source = out['improvement_value_imputed_source'].iloc[0]
+    assert 'total_minus_land' in source
+    assert is_imputed(pd.Series([source])).iloc[0]
+    assert out['improvement_value_imputed'].iloc[1:].isna().all()
 
 
 def test_footprint_ratio_detection_fires_above_threshold():

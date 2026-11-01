@@ -40,6 +40,11 @@ _DEFAULT_DENSITY_BINS = [0.5, 1.0, 1.5, 2.0, 3.0]
 #: one; the residual signal it carries is monotonic across all five
 #: states measured 2026-09-22.
 _DEFAULT_COVERAGE_BINS = [0.02, 0.05, 0.10, 0.20, 0.40]
+# How far a roll's total may exceed land plus other value before a 0
+# improvement reads as contradicted. Rolls round each figure on its
+# own, some to the dollar and some to $10 or $100, and a structure
+# worth less than this is no structure value for any use of it.
+_ZERO_IMPROVEMENT_TOLERANCE = 100.0
 _SQFT_TO_M2 = 0.09290304
 
 
@@ -268,6 +273,8 @@ class _Inputs:
     recorded_total: pd.Series
     recorded_land: pd.Series
     has_recorded_land: pd.Series
+    other_value: pd.Series
+    lot_total_repeated: pd.Series
     exponent: pd.Series
     per_area: pd.Series
     land_share: pd.Series
@@ -436,6 +443,8 @@ def _read_inputs(
         recorded_total=recorded_total,
         recorded_land=recorded_land,
         has_recorded_land=has_recorded_land,
+        other_value=other_value,
+        lot_total_repeated=lot_total_repeated,
         exponent=exponent,
         per_area=per_area,
         land_share=land_share,
@@ -797,17 +806,22 @@ def _write_outputs(
     improvement_value_column: str,
     output_land_value: str,
     output_improvement_value: str,
+    improvement_from_total: bool = False,
     open_estimate: bool = False,
 ) -> pd.Series:
     """Write the two coalesced outputs and their provenance; return the
     mask of rows this step estimated. With *open_estimate*, every
-    estimate's token also carries the open marker (`_open_token`)."""
+    estimate's token also carries the open marker (`_open_token`).
+    With *improvement_from_total*, a 0 improvement under a larger total
+    takes the remainder."""
     from openplaces.io.curator.provenance import record_sources
 
     recorded_token = 'total_minus_improvement'
+    recorded_improvement_token = 'total_minus_land'
     if open_estimate:
         tier_used = tier_used.map(_open_token, na_action='ignore')
         recorded_token = _open_token(recorded_token)
+        recorded_improvement_token = _open_token(recorded_improvement_token)
     land_value, improvement_value = inputs.land_value, inputs.improvement_value
     has_recorded_land = inputs.has_recorded_land
     has_estimate = inputs.candidate & shared.notna() & ~has_recorded_land
@@ -821,17 +835,46 @@ def _write_outputs(
     ]
 
     improvement_value_imputed = pd.Series(np.nan, index=curated.index)
-    # A recorded 0 passes through as 0, unlike land above. It is the
-    # roll's statement that the lot carries no structure value (vacant
-    # land, a shed the assessor does not value), and this column is
-    # what reaches a building as structure_value: emptied, it read as
-    # "unknown" there and delivery imputation filled it, which
-    # openplaces does not do for a structure the roll values at 0
-    # (maintainer, 2026-09-22). Land keeps its > 0 test: a 0 land
+    # A recorded 0 is the roll's statement that the lot carries no
+    # structure value (vacant land, a shed the assessor does not
+    # value), and this column reaches a building as structure_value,
+    # where a 0 is kept rather than filled (maintainer, 2026-09-22).
+    # But a 0 is a statement only where the roll's own figures agree
+    # with it: land valued, and a total, where given, no larger than
+    # land plus other value. Some sources write 0 where the county
+    # reported no split at all. Measured 2026-10-31 on US-NC-UNI:
+    # 108,516 of 115,646 parcels carry a total with land and
+    # improvement both 0, and Forsyth NC's blank records carry 0 for
+    # both with no total. Such a 0 says nothing and stays missing
+    # (maintainer, 2026-10-31). Land keeps its > 0 test: a 0 land
     # value is a gap this step estimates.
-    has_real_improvement = improvement_value.notna() & (improvement_value >= 0)
+    zero = improvement_value.eq(0)
+    beyond_land = (
+        inputs.total_value - land_value.fillna(0) - inputs.other_value
+    ).where(inputs.recorded_total)
+    total_agrees = ~inputs.recorded_total | (beyond_land <= _ZERO_IMPROVEMENT_TOLERANCE)
+    stated_zero = zero & (land_value > 0) & total_agrees
+    # Where the total exceeds land and other value, the remainder may be
+    # the structure's value: the same arithmetic as recorded land
+    # above, mirrored. Only where a county's recipe says so: in most
+    # counties the remainder is a fraction of a structure value (yard
+    # items, an outbuilding, a home listed apart), so by default the
+    # contradicted 0 stays missing. Never on a total repeated across a
+    # lot's records, which is the lot's, not this record's (see
+    # _read_inputs).
+    has_recorded_improvement = (
+        zero
+        & (land_value > 0)
+        & ~total_agrees
+        & ~inputs.lot_total_repeated
+        & improvement_from_total
+    )
+    has_real_improvement = (improvement_value > 0) | stated_zero
     improvement_value_imputed.loc[has_real_improvement] = improvement_value.loc[
         has_real_improvement
+    ]
+    improvement_value_imputed.loc[has_recorded_improvement] = beyond_land.loc[
+        has_recorded_improvement
     ]
     # Subtract only where the land estimate was carved out of this same
     # improvement figure. A recorded-total row's improvement value already
@@ -894,6 +937,13 @@ def _write_outputs(
         mask=has_estimate,
         imputed=True,
     )
+    record_sources(
+        curated,
+        output_improvement_value,
+        pd.Series(recorded_improvement_token, index=curated.index),
+        mask=has_recorded_improvement,
+        imputed=True,
+    )
     return has_estimate
 
 
@@ -921,6 +971,7 @@ def _impute_frame(
     min_group_size,
     output_land_value,
     output_improvement_value,
+    improvement_from_total,
     rate_exponent,
     floor_area_columns,
     density_bins,
@@ -1044,6 +1095,7 @@ def _impute_frame(
         improvement_value_column=improvement_value_column,
         output_land_value=output_land_value,
         output_improvement_value=output_improvement_value,
+        improvement_from_total=improvement_from_total,
         open_estimate=open_estimate,
     )
 
@@ -1129,6 +1181,7 @@ def impute_land_value(
     choice_admin_level: int = 3,
     choice_min_donors: int = 100,
     open_only: bool = False,
+    improvement_from_total: bool = False,
 ) -> CurateState:
     """Estimate a land value for parcels the source data left at 0/NaN.
 
@@ -1303,7 +1356,22 @@ def impute_land_value(
     output_land_value, output_improvement_value : str, optional
         Final, coalesced output column names (defaults ``'land_value_imputed'``,
         ``'improvement_value_imputed'``) -- real value passed through, imputed
-        estimate only where the real value was missing and eligible.
+        estimate only where the real value was missing and eligible. A
+        recorded 0 improvement passes through as 0 only where land is
+        valued and the total, if given, exceeds land and other value by
+        at most $100. Otherwise the 0 states nothing and stays missing:
+        beside a 0 or missing land value the source reported no split,
+        and under a larger total the roll's own figures contradict it.
+    improvement_from_total : bool, optional
+        Under a total larger than land and other value, take the
+        remainder as the improvement value (token total_minus_land,
+        marked imputed) instead of leaving it missing (default False).
+        Off by default because the remainder is usually not a
+        structure value: on primary buildings in NC and TX, compared
+        per m2 with their county's median structure value,
+        Measured 2026-10-31 on US: 29,645 of 47,255 remainders under 20%.
+        Set it in a county's patch recipe once that county's remainder
+        is shown to be the structure.
     estimator : {'rate', 'land_share', 'hybrid'}, optional
         How a land value is estimated (default ``'rate'``, everything
         described above). ``'hybrid'`` keeps the rate and switches a
@@ -1525,6 +1593,7 @@ def impute_land_value(
         min_group_size=min_group_size,
         output_land_value=output_land_value,
         output_improvement_value=output_improvement_value,
+        improvement_from_total=improvement_from_total,
         rate_exponent=rate_exponent,
         floor_area_columns=floor_area_columns,
         density_bins=density_bins,
