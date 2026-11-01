@@ -204,6 +204,16 @@ pipeline:
           # PLACES-FMV's area-of-applicability columns are not merged:
           # their distance used footprint covariates (design limit L4).
 
+  # A plat's common land as an area on each of its lots (maintainer's
+  # decisions 96 to 99a, 2026-10-24; plans/findings/suitland-condo-
+  # common-land.md): read from the plat key table where a roll states
+  # the plat (US-MD-PG), else from the geospine's contiguity table
+  # (plans/lot-value-sharing-among-buildings.md, fix 4). No value
+  # moves. A gather step: it divides an area over a link, and runs with
+  # the other gathers, before any decision.
+  # Measured 2026-10-24 on US-MD-PG: 2,292 common areas (1,153.0 ha) shared among 38,579 lots.
+  - step: apportion_common_land
+
   # An assessed value is never negative. NC OneMap computes improvement
   # as total minus land, which goes negative wherever assessed land
   # exceeds the taxable total (use-value deferral): 6,845 of Duplin
@@ -856,22 +866,25 @@ share:
     # 96 to 99a, 2026-10-24): the roll's common area flag; on a lot of
     # a townhouse or condominium plat its share of the plat's common
     # area, by lot area; on a common area the number and summed area
-    # of its lots; on both the plat key that ties them. Areas and
-    # counts only, no value. Filled in Prince George's County MD by
-    # the US-MD-PG patch of this recipe; empty elsewhere.
+    # of its lots; on both the plat key that ties them, or the common
+    # area's id where a contiguity link does. Areas and counts only, no
+    # value. Filled where a plat key (US-MD-PG) or a contiguity link
+    # exists; empty elsewhere.
     - is_common_area
     - common_land_share_ha
     - n_lots_per_plat
     - common_land_lots_area_ha
     - common_land_plat_id
   # Computed by apportion_common_land from the roll's common area flag
-  # and the plat key, without a sidecar: they go wherever the flag
-  # goes when a source is withheld (io.delivery.redaction, rule 7).
+  # and plat key, or from the use label and values the contiguity link
+  # reads, without a sidecar: they go wherever one of those goes when a
+  # source is withheld (io.delivery.redaction, rule 7).
   derived_from:
-    common_land_share_ha: [is_common_area]
-    n_lots_per_plat: [is_common_area]
-    common_land_lots_area_ha: [is_common_area]
-    common_land_plat_id: [is_common_area]
+    common_land_share_ha: &common_land_inputs
+      [is_common_area, use_group_combined, land_value, total_value]
+    n_lots_per_plat: *common_land_inputs
+    common_land_lots_area_ha: *common_land_inputs
+    common_land_plat_id: *common_land_inputs
   # Only the Boston pilot ships parcels so far (the static 3D value
   # viewer, plans/static-3d-value-viewer-boston-pilot.md).
   delivery:
