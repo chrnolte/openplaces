@@ -1,5 +1,6 @@
 use_group_code,use_group,use_subgroup,admin_id
 A,residential,single family,
+A2,residential,mobile home,
 B,residential,multi-family,
 C,open_space,vacant,
 C1,open_space,vacant,
@@ -38,6 +39,7 @@ O,residential,residential inventory,
 S,commercial,special inventory,
 X,exempt,totally exempt,
 B,residential,,US-TX-KLE
+A2,residential,,US-TX-KLE
 C1,open_space,vacant,US-TX-CAM
 C2,open_space,vacant,US-TX-CAM
 D1,open_space,agricultural land,US-TX-CAM

@@ -19,6 +19,11 @@
 # Mobile homes are separate accounts here (15,658 of type MH, state
 # class M1), most without a TxGIO parcel of their own, which lowers the
 # roll-side share. geo_id matches 98.1% of TxGIO's GEO_ID.
+#
+# NOTE on use codes. The crosswalk beside this recipe repeats the
+# statewide state-category labels, with A2 as mobile home. Without it
+# the raw codes reached the parcels untranslated, and the cohort fill
+# gave 9,259 A2 parcels the group Multi Family (measured 2026-11-01).
 
 description: >-
   Liberty County, TX certified appraisal roll (PACS 8.0.34 export): state

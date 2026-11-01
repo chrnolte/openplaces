@@ -58,6 +58,10 @@ def test_hcad_crosswalk_repeats_statewide_labels_except_category_f():
     assert hcad['use_group_code'].str.len().eq(2).all()
     assert hcad['use_group_code'].is_unique
     other = hcad[~hcad['use_group_code'].str.startswith('F')]
-    letter = other['use_group_code'].str[0]
+    # A2 (mobile home) repeats the statewide A2 row, every other code
+    # its letter's.
+    key = other['use_group_code'].where(
+        other['use_group_code'].eq('A2'), other['use_group_code'].str[0]
+    )
     for col in ('use_group', 'use_subgroup'):
-        assert (other[col].to_numpy() == letter.map(state[col]).to_numpy()).all()
+        assert (other[col].to_numpy() == key.map(state[col]).to_numpy()).all()
