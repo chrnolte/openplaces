@@ -116,8 +116,8 @@ def test_page_has_no_input_control_and_no_background_map():
     # tenth, beside it, the models' scale (to the assessments, or in
     # today's dollars); the eleventh replays the guided tour, and the
     # twelfth continues it; the thirteenth sets the color bounds (local,
-    # or nationwide).
-    assert len(re.findall(r"createElement\('button'\)", script)) == 13
+    # or nationwide); the fourteenth closes the opening notice.
+    assert len(re.findall(r"createElement\('button'\)", script)) == 14
     for kind in (
         'dataset.palette',
         'dataset.layer',

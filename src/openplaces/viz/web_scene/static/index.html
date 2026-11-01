@@ -426,6 +426,36 @@
     transition: opacity 1.5s ease;
   }
   #place-title.fading { opacity: 0; }
+  /* The notice every page opens with, until "Ok" is clicked
+     (maintainer, 2026-11-01). Over the tour and the panels. */
+  #preview-notice {
+    position: fixed;
+    top: 50%;
+    left: 16px;
+    right: 16px;
+    width: fit-content;
+    margin-inline: auto;
+    translate: 0 -50%;
+    padding: 10px 18px;
+    border-radius: 12px;
+    background: rgba(8, 11, 20, 0.86);
+    color: #f2f4f8;
+    font-size: 15px;
+    text-align: center;
+    z-index: 20;
+  }
+  #preview-notice[hidden] { display: none; }
+  #preview-notice button {
+    margin-left: 6px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+  }
   /* The bubble's arrow flickers once as it appears, pointing out the
      button; the texts never flicker (maintainer, 2026-10-18). */
   @keyframes tour-flick {
@@ -628,6 +658,8 @@
     <div id="notices"></div>
   </details>
 </div>
+<!-- Its "Ok" button comes from viewer.js. -->
+<div id="preview-notice" role="alert">Research preview. Do not share.</div>
 <script src="viewer.js"></script>
 </body>
 </html>
