@@ -112,13 +112,27 @@ occupancy:
       # keyword_probability is listed because p_manufactured_home is
       # a morphology model (outline shape and its neighbors' shapes),
       # not a reading of any source's text.
+      #
+      # no_improvement_value is listed as well (maintainer, 2026-11-01;
+      # plans/zero-structure-value-reasons.md, part C): a roll that
+      # values no building says nothing about what kind of building
+      # stands there, so shape plus a zero value still needs a third
+      # source where the roll and NSI both name a site-built class.
+      # Of 161 strong-tier permit buildings that shape and a zero value
+      # alone made Manufactured Home, 4 were (Wake 0 of 104).
+      # Measured 2026-11-01 on US-NC: with no_improvement_value listed and the Halifax patch, Manufactured Home F1 against strong-tier permits +0.0070 (CI +0.0060 to +0.0081), 193 of 259,315 rows move.
+      # Measured 2026-11-01 on cheer: with no_improvement_value listed and the Halifax patch, no surveyed building changes class (1,373 linked).
+      # The roll is read through occupancy_statement_parcel, not
+      # occupancy_type_parcel itself, so that a county whose roll states
+      # no building type can withdraw it from this guard alone (the
+      # US-NC-HAL patch) while the rest of the vote still reads it.
       shape_insufficient_alone: &mh_shape_insufficient_alone
-        labels: [morphology, shape_band, keyword_probability]
+        labels: [morphology, shape_band, keyword_probability, no_improvement_value]
         where:
           type: all_of
           indicators:
             - type: in_set
-              column: occupancy_type_parcel
+              column: occupancy_statement_parcel
               values: &site_built_residential [Single-Family, Multi-Family]
             - type: in_set
               column: occupancy_type_nsi_class
@@ -754,6 +768,21 @@ pipeline:
   # Apply keyword overrides, value-share flags, and conflict summaries.
   - step: resolve_occupancy
     ruleset: parcel-occupancy-keywords.csv
+
+  # The roll's site-built statement, as the Manufactured Home vote's
+  # shape guard reads it (occupancy block, shape_insufficient_alone):
+  # occupancy_type_parcel where it names Single-Family or
+  # Multi-Family, else missing. A column of its own so that a county
+  # patch can withdraw it where the roll states no building type
+  # (US-NC-HAL) without changing what the rest of the vote reads.
+  - step: derive_indicators
+    indicators:
+      - output: occupancy_statement_parcel
+        type: value_map
+        column: occupancy_type_parcel
+        mapping:
+          Single-Family: Single-Family
+          Multi-Family: Multi-Family
 
   # Reconcile year_built: the assessor's own value wins, NCDPS's
   # original per-building year (validated against block-level variance

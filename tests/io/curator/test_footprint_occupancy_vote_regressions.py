@@ -19,10 +19,14 @@ from shapely.geometry import Polygon
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.group_context import derive_group_count, derive_group_rank
 from openplaces.io.curator.inferers import derive_indicators
-from openplaces.io.curator.reconcilers import resolve_by_vote
+from openplaces.io.curator.reconcilers import resolve_by_vote, suppress_where
 from openplaces.recipe import get_recipe_by_id
+from openplaces.recipe.patches import apply_recipe_patches
 
 RECIPE_ID = 'US_building-openplaces-2026'
+
+# Columns a county patch may withdraw before the vote reads them.
+STATEMENT_COLUMNS = ('occupancy_statement_parcel',)
 
 # The recipe's votes, in pipeline order. n_sections gates on the occupancy
 # class, so it has to run after the vote that decides it.
@@ -140,8 +144,18 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
         timer=None,
         curated=frame,
     )
-    derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
-    state = derive_indicators(state, derive['indicators'])
+    # Every derivation, in pipeline order (the second reads the roll's
+    # class that resolve_occupancy writes, which the fixture supplies),
+    # and the suppression a county patch may insert before the vote.
+    for step in recipe['pipeline']:
+        if step['step'] == 'derive_indicators':
+            state = derive_indicators(state, step['indicators'])
+        elif step['step'] == 'suppress_where' and step.get('column') in (
+            STATEMENT_COLUMNS
+        ):
+            state = suppress_where(
+                state, column=step['column'], indicators=step.get('indicators')
+            )
 
     # The votes and the parcel indicators the second occupancy pass
     # reads, in the recipe's own order.
@@ -216,7 +230,12 @@ def test_every_vote_input_is_available(recipe):
                     if guard.get('where'):
                         _referenced_columns([guard['where']], referenced)
 
-    derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
+    derived = {
+        spec['output']
+        for s in recipe['pipeline']
+        if s['step'] == 'derive_indicators'
+        for spec in s['indicators']
+    }
     # A vote also provides its own target and any base_output snapshot, which
     # later decisions in the same or a following vote may require.
     written = {'area_m2', 'geometry'}
@@ -243,9 +262,7 @@ def test_every_vote_input_is_available(recipe):
             written.add(f'{vote["target"]}_source')
             if vote.get('base_output'):
                 written.add(vote['base_output'])
-    provided = (
-        set(DEFAULTS) | {spec['output'] for spec in derive['indicators']} | written
-    )
+    provided = set(DEFAULTS) | derived | written
     assert not referenced - provided, (
         f'vote reads columns nothing provides: {sorted(referenced - provided)}'
     )
@@ -328,17 +345,46 @@ def test_shape_alone_cannot_overrule_a_roll_and_nsi_naming_site_built(
             'occupancy_type_building_nsi': 'Single Family, 1 story',
             'group_footprint_fema': 'Manufactured Home',
         },
+        # A zero improvement value with the roll silent.
         {
-            'occupancy_type_parcel': 'Single-Family',
             'occupancy_type_building_nsi': 'Single Family, 1 story',
             'improvement_value_parcel': 0.0,
         },
     ],
-    ids=['nsi-silent', 'roll-silent', 'fema-partner', 'no-value-partner'],
+    ids=['nsi-silent', 'roll-silent', 'fema-partner', 'no-value-roll-silent'],
 )
 def test_shape_still_decides_without_agreement_or_beside_a_partner(recipe, context):
     out = _run(recipe, [{**_ROW_UNIT, **context}])
     assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+
+
+_SITE_BUILT_NO_VALUE = {
+    **_ROW_UNIT,
+    'occupancy_type_parcel': 'Single-Family',
+    'occupancy_type_building_nsi': 'Single Family, 1 story',
+    'improvement_value_parcel': 0.0,
+    'use_group_combined_parcel': 'Residential',
+}
+
+
+def test_a_zero_value_is_no_partner_where_roll_and_nsi_name_site_built(recipe):
+    # Maintainer, 2026-11-01 (plans/zero-structure-value-reasons.md,
+    # part C): a roll that values no building says nothing about its
+    # kind, so shape and a zero value together still stop short.
+    out = _run(recipe, [_SITE_BUILT_NO_VALUE])
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
+def test_halifax_roll_is_no_site_built_statement(recipe):
+    # Halifax's "Residential" carries NSI's modal group, not a reading
+    # of the roll; its patch withdraws that from the shape guard, so
+    # shape and a zero value decide there as before.
+    patched, applied = apply_recipe_patches(recipe, 'US-NC-HAL')
+    assert applied == ['US-NC-HAL_building-openplaces-2026']
+    out = _run(patched, [_SITE_BUILT_NO_VALUE])
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+    # The roll's class itself is untouched for the rest of the vote.
+    assert out['occupancy_type_parcel'].astype(object).iloc[0] == 'Single-Family'
 
 
 def _outline(x0, y0, x1, y1, lon=-77.0, lat=36.0):
