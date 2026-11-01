@@ -49,3 +49,7 @@ printshellcmds: true
 # Kept outputs of a failed job; see the note in profiles/local.
 keep-incomplete: true
 rerun-incomplete: true
+# The same default exclusions as the local profile (the billed BRAILS
+# imagery lanes, the optional placeslab reference); see the notes in
+# that file and in profiles/local/config.yaml.
+configfile: workflow/profiles/local/defaults.yaml

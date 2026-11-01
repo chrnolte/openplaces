@@ -1,5 +1,5 @@
-# Config defaults for the local profile, kept in a configfile rather than
-# the profile's own `config:` list.
+# Config defaults for the local and scc profiles, kept in a configfile
+# rather than a profile's own `config:` list.
 #
 # A profile `config:` entry is REPLACED wholesale by any command-line
 # `--config`, so passing `--config recipe=...` silently drops the
