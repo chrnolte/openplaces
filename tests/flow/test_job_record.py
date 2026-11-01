@@ -111,6 +111,35 @@ def test_ingests_always_run(logs, job):
     assert not job_record.can_skip('ingest', 'X', 'US-NC-CUR', RULE, job['io'])[0]
 
 
+def test_run_stage_records_then_skips(logs, job, monkeypatch):
+    import types
+
+    from openplaces.flow import run_stage
+
+    calls = []
+
+    def curate(recipe_id, **kwargs):
+        calls.append(recipe_id)
+        frame = tables.read_parquet(job['spine'], columns=['a'])
+        tables.to_parquet(frame, job['out'], index=False)
+
+    monkeypatch.setattr(
+        run_stage, 'import_module', lambda name: types.SimpleNamespace(curate=curate)
+    )
+    job_record.discard_record(RULE)
+    (path,) = job_record.write_job_io(
+        [{**job['io'], 'admin_id': 'US-NC-CUR', 'rule': RULE}]
+    )
+    argv = ['curate', 'X', 'US-NC-CUR', '--job-io', str(path), '--rule', RULE]
+    run_stage.main(argv)
+    assert calls == ['X']
+    assert job_record.record_path(RULE).exists()
+    run_stage.main(argv)
+    assert calls == ['X']
+    run_stage.main([*argv, '--no-skip'])
+    assert calls == ['X', 'X']
+
+
 def test_job_io_files_merge_by_rule(logs):
     first = {'admin_id': 'US-NC-CUR', 'inputs': [], 'outputs': ['o'], 'forced': False}
     job_record.write_job_io([{**first, 'rule': 'r1'}])

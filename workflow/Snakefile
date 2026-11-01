@@ -535,33 +535,39 @@ for node in dag.nodes():
 # same run_stage command, and the profiles rerun on mtime only. A job a
 # merge changed keeps its old output unless someone forces it, so say
 # which ones before the run starts (flow.code_staleness). It reports,
-# never reruns. Main process only: a cluster job reads this file again.
-# --config code_report=false skips it.
+# never reruns. --config code_report=false skips it.
+#
+# Both this and the job files of flow.job_record need the run's force
+# settings, which Snakemake attaches to the workflow only after it has
+# parsed this file (workflow.dag_settings is None until then), so they
+# run in onstart: in the main process, once the DAG is built, before
+# any job. A dry run executes no job and prints no report;
+# `python -m openplaces.flow.code_staleness` gives it on demand.
 _code_report = parse_deliver_config(config.get('code_report'))
-# Through the module: `report` is a Snakefile keyword.
-from openplaces.flow import code_staleness as _code_staleness
 
-_settings = workflow.dag_settings
-_force = {
-    'forcerun': getattr(_settings, 'forcerun', None) or (),
-    'forceall': bool(getattr(_settings, 'forceall', False)),
-    'forcetargets': bool(getattr(_settings, 'forcetargets', False)),
-}
-if workflow.is_main_process:
-    # Main process only: a cluster job parses this file again without
-    # the run's force settings, and would mark no job forced. A forced
-    # job never skips (flow.job_record).
+
+onstart:
+    # Through the module: `report` is a Snakefile keyword.
+    from openplaces.flow import code_staleness as _code_staleness
+
+    _settings = workflow.dag_settings
+    _force = {
+        'forcerun': getattr(_settings, 'forcerun', None) or (),
+        'forceall': bool(getattr(_settings, 'forceall', False)),
+        'forcetargets': bool(getattr(_settings, 'forcetargets', False)),
+    }
+    # A forced job never skips (flow.job_record).
     _forced = _code_staleness.forced_keys(dag, **_force)
     write_job_io(
         {**job, 'forced': node_key(job['node']) in _forced} for job in JOB_IO
     )
-if workflow.is_main_process and _code_report is not False:
-    _summary = _code_staleness.format_summary(
-        _code_staleness.report(dag, inputs=JOB_INPUTS, **_force),
-        TARGET,
-    )
-    if _summary:
-        print(_summary, file=sys.stderr, flush=True)
+    if _code_report is not False:
+        _summary = _code_staleness.format_summary(
+            _code_staleness.report(dag, inputs=JOB_INPUTS, **_force),
+            TARGET,
+        )
+        if _summary:
+            print(_summary, file=sys.stderr, flush=True)
 
 
 onsuccess:

@@ -24,9 +24,10 @@ of these errs toward running the job.
 
 The Snakefile passes each job its declared inputs and outputs, and
 whether the run forces it, through one JSON file per admin unit in the
-logs folder (`write_job_io`), written by the main process while it
-plans: a job on a cluster node parses the Snakefile again without the
-run's force settings. Ingests are never skipped this way.
+logs folder (`write_job_io`), written in the Snakefile's `onstart`:
+Snakemake attaches the force settings to the workflow only after the
+Snakefile is parsed, and a job on a cluster node parses it again
+without them. Ingests are never skipped this way.
 """
 
 from __future__ import annotations

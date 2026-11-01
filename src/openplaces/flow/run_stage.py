@@ -339,6 +339,7 @@ def main(argv=None) -> None:
         stage_fn(args.recipe_id, **kwargs)
         return
 
+    from openplaces.config import cfg
     from openplaces.io.tables import start_read_log, stop_read_log
     from openplaces.path import git_commit
 
@@ -351,7 +352,7 @@ def main(argv=None) -> None:
             return
     # A failed run leaves no record, so the next one runs in full.
     job_record.discard_record(args.rule)
-    commit = git_commit()
+    commit = git_commit(cfg.code_root)
     read_log = start_read_log()
     try:
         stage_fn(args.recipe_id, **kwargs)

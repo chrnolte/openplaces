@@ -48,7 +48,8 @@ Usage::
         [--verify N [--verify-stages STAGE,STAGE]]
 
 The Snakefile prints a summary of the same report (`format_summary`)
-while it plans a run, unless `--config code_report=false`. The exit
+when a run starts (not in a dry run), unless `--config
+code_report=false`. The exit
 status is 0 whatever it finds.
 """
 

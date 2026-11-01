@@ -189,8 +189,9 @@ the envelope and is retried with twice the memory if it fails.
 **Snakemake does not see a change to openplaces code.** Every rule runs
 the same `python -m openplaces.flow.run_stage ...` command, and the
 profiles rerun on mtime only, so a job whose code a merge changed keeps
-its old output unless the run forces it. While it plans, the Snakefile
-prints a summary of `flow/code_staleness.py`'s report: the jobs the run
+its old output unless the run forces it. When a run starts (in
+`onstart`, where Snakemake's force settings are known; not in a dry
+run), the Snakefile prints a summary of `flow/code_staleness.py`'s report: the jobs the run
 keeps whose output footer records a commit (`path.git_commit`, the
 checkout's HEAD at write time) that differs from the working tree in a
 file the job depends on. That is its stage's import closure (static,
@@ -242,8 +243,9 @@ is not parquet is compared by its bytes. Each errs toward running.
 Their outputs are therefore `update()`: Snakemake keeps them for the
 job to judge, backs them up, and restores them if the job fails. The
 Snakefile writes each unit's declared files, and which jobs the run
-forces, to `<logs>/job_io/<unit>.json` from its main process, since a
-job on a cluster node parses the Snakefile without the force settings.
+forces, to `<logs>/job_io/<unit>.json` in `onstart`: the force
+settings are attached to the workflow only after the Snakefile is
+parsed, and a job on a cluster node parses it again without them.
 Ingests always run.
 
 **A footprint geospine depends on its neighbors' footprint ingests.** It
