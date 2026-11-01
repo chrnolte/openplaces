@@ -423,6 +423,28 @@ def _mtime(path) -> float | None:
         return None
 
 
+def forced_keys(dag, forcerun=(), forceall=False, forcetargets=False) -> set[tuple]:
+    """Node keys of the jobs a run forces.
+
+    *forcerun* holds rule names or output paths, as Snakemake's
+    `--forcerun` takes them; *forceall* and *forcetargets* are its
+    `--forceall` and `--force`.
+    """
+    forced_names = {str(f) for f in forcerun or ()}
+    forced_paths = {Path(f).resolve() for f in forced_names if '/' in f or '\\' in f}
+    if forcetargets:
+        forced_paths |= {Path(p).resolve() for p in dag.target_paths()}
+    keys = set()
+    for node in dag.nodes():
+        if forceall or rule_name(node) in forced_names:
+            keys.add(node_key(node))
+        elif forced_paths:
+            job = (node.stage, node.recipe_id, node.admin_id, node.region)
+            if dag.output_path(*job).resolve() in forced_paths:
+                keys.add(node_key(node))
+    return keys
+
+
 def will_run(
     dag, forcerun=(), forceall=False, forcetargets=False, inputs=None
 ) -> set[tuple]:
@@ -436,20 +458,15 @@ def will_run(
     the lists it has already built, since deriving them again costs as
     much as building the graph. A node it lacks is derived here.
     """
-    forced_names = {str(f) for f in forcerun or ()}
-    forced_paths = {Path(f).resolve() for f in forced_names if '/' in f or '\\' in f}
-    targets = {Path(p).resolve() for p in dag.target_paths()} if forcetargets else set()
+    keys = forced_keys(dag, forcerun, forceall, forcetargets)
     inputs = inputs or {}
-    keys = set()
     for node in dag.nodes():
         key = node_key(node)
-        job = (node.stage, node.recipe_id, node.admin_id, node.region)
-        output = dag.output_path(*job)
-        built = _mtime(output)
-        if forceall or built is None or rule_name(node) in forced_names:
-            keys.add(key)
+        if key in keys:
             continue
-        if (forced_paths or targets) and output.resolve() in forced_paths | targets:
+        job = (node.stage, node.recipe_id, node.admin_id, node.region)
+        built = _mtime(dag.output_path(*job))
+        if built is None:
             keys.add(key)
             continue
         paths = inputs.get(key)

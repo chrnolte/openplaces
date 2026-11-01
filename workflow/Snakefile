@@ -59,6 +59,7 @@ from pathlib import Path
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
 from openplaces.flow.dag import needs_rerun, node_key, parse_deliver_config, rule_name
+from openplaces.flow.job_record import RECORD_STAGES, job_io_path, write_job_io
 from openplaces.flow.memory import (
     MemoryModel,
     default_table_path,
@@ -341,6 +342,9 @@ BATCHED_INGESTS = {r: n for r, n in BATCHED_INGESTS.items() if len(n) > 1}
 # code-change report at the end of this file, which would otherwise
 # derive them all a second time.
 JOB_INPUTS = {}
+# The declared files of every job flow.job_record covers, written for
+# the jobs once the run's force settings are known (end of this file).
+JOB_IO = []
 
 
 def _unit_files(job, geo):
@@ -449,10 +453,34 @@ for node in dag.nodes():
     # covers step settings and inputs but not code: restored after a
     # code change, it would hand the new run the old code's columns.
     _reprocess = ' --reprocess' if node.stage == 'harmonize' else ''
+    # A harmonize, enrich or curate job exits early when nothing it
+    # read and none of its code changed since its last run
+    # (flow.job_record). Its outputs are update(): Snakemake would
+    # otherwise delete them before the job could decide to keep them.
+    # It also backs them up under .snakemake and restores them if the
+    # job fails, instead of leaving a partial file.
+    _record = node.stage in RECORD_STAGES
+    _job_io = ''
+    if _record:
+        JOB_IO.append(
+            {
+                'admin_id': node.admin_id,
+                'rule': rule_name(node),
+                'node': node,
+                'inputs': _inputs,
+                'outputs': [_out, *_extra],
+            }
+        )
+        _job_io = (
+            f' --job-io "{job_io_path(node.admin_id)}" --rule {rule_name(node)}'
+        )
     _cmd = (
         f'python -m openplaces.flow.run_stage {node.stage}'
-        f' {node.recipe_id}{_admin_arg}{_reprocess}{EXCLUDE_ARG}'
+        f' {node.recipe_id}{_admin_arg}{_reprocess}{_job_io}{EXCLUDE_ARG}'
     )
+    _outputs = [_flagged, *_extra]
+    if _record:
+        _outputs = [update(p) for p in _outputs]
 
     rule:
         name:
@@ -460,8 +488,7 @@ for node in dag.nodes():
         input:
             _inputs
         output:
-            _flagged,
-            *_extra,
+            *_outputs,
         # Persistent per-job wall/CPU/RSS profile, one tsv per rule, in
         # the same logs tree where openplaces' own stage timers land on
         # finish(). Together they give ex-post profiling at two grains:
@@ -511,19 +538,26 @@ for node in dag.nodes():
 # never reruns. Main process only: a cluster job reads this file again.
 # --config code_report=false skips it.
 _code_report = parse_deliver_config(config.get('code_report'))
-if workflow.is_main_process and _code_report is not False:
-    # Through the module: `report` is a Snakefile keyword.
-    from openplaces.flow import code_staleness as _code_staleness
+# Through the module: `report` is a Snakefile keyword.
+from openplaces.flow import code_staleness as _code_staleness
 
-    _settings = workflow.dag_settings
+_settings = workflow.dag_settings
+_force = {
+    'forcerun': getattr(_settings, 'forcerun', None) or (),
+    'forceall': bool(getattr(_settings, 'forceall', False)),
+    'forcetargets': bool(getattr(_settings, 'forcetargets', False)),
+}
+if workflow.is_main_process:
+    # Main process only: a cluster job parses this file again without
+    # the run's force settings, and would mark no job forced. A forced
+    # job never skips (flow.job_record).
+    _forced = _code_staleness.forced_keys(dag, **_force)
+    write_job_io(
+        {**job, 'forced': node_key(job['node']) in _forced} for job in JOB_IO
+    )
+if workflow.is_main_process and _code_report is not False:
     _summary = _code_staleness.format_summary(
-        _code_staleness.report(
-            dag,
-            forcerun=getattr(_settings, 'forcerun', None) or (),
-            forceall=bool(getattr(_settings, 'forceall', False)),
-            forcetargets=bool(getattr(_settings, 'forcetargets', False)),
-            inputs=JOB_INPUTS,
-        ),
+        _code_staleness.report(dag, inputs=JOB_INPUTS, **_force),
         TARGET,
     )
     if _summary:

@@ -17,5 +17,5 @@ exclude_recipe_ids:
   # it explicitly for regions the reference actually covers.
   - US_parcel-placeslab-fmv2026
   - US_footprint_built-roof-shape-brails-2026
-  - US_footprint_built-n-stories-brails-2026
-  - US_footprint_built-occupancy-brails-2026
+  - US_building_built-n-stories-brails-2026
+  - US_building_built-occupancy-brails-2026

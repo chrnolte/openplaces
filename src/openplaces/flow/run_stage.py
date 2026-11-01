@@ -13,6 +13,9 @@ OPENPLACES_ORCHESTRATED so receipt-based skips are voided and the
 physical output file the orchestrator expects is always produced.
 --exclude-recipe-ids carries the run's `exclude_recipe_ids` into the
 job, so its auto-discovery skips the recipes the graph pruned.
+--job-io and --rule, which the Snakefile passes to harmonize, enrich
+and curate jobs, make the job record what it read and exit early when
+nothing it read and none of its code changed (flow.job_record).
 
 'deliver' is the exception. It is not a recipe stage but the terminal
 bundling job (openplaces.io.delivery), it takes the region as a single
@@ -219,6 +222,22 @@ def main(argv=None) -> None:
             'writes the same table again'
         ),
     )
+    parser.add_argument(
+        '--job-io',
+        default=None,
+        help=(
+            "File holding the job's declared inputs and outputs "
+            '(flow.job_record.write_job_io); with it, a harmonize, enrich '
+            'or curate job records what it read and skips a rerun whose '
+            'inputs and code are unchanged'
+        ),
+    )
+    parser.add_argument('--rule', default=None, help='The Snakemake rule (--job-io)')
+    parser.add_argument(
+        '--no-skip',
+        action='store_true',
+        help='Run even when the job record says nothing changed',
+    )
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument(
         '--no-orchestrated',
@@ -310,7 +329,37 @@ def main(argv=None) -> None:
     }
     if args.stage == 'enrich' and args.entity_recipe_id:
         kwargs['entity_recipe_id'] = args.entity_recipe_id
-    stage_fn(args.recipe_id, **kwargs)
+
+    job_io = None
+    if args.job_io and args.rule and args.stage in ('harmonize', 'enrich', 'curate'):
+        from openplaces.flow import job_record
+
+        job_io = job_record.load_job_io(args.job_io, args.rule)
+    if job_io is None:
+        stage_fn(args.recipe_id, **kwargs)
+        return
+
+    from openplaces.io.tables import start_read_log, stop_read_log
+    from openplaces.path import git_commit
+
+    if not args.no_skip:
+        skip, reason = job_record.can_skip(
+            args.stage, args.recipe_id, args.admin_id, args.rule, job_io
+        )
+        print(f'[{"skip" if skip else "run"}] {args.rule}: {reason}', flush=True)
+        if skip:
+            return
+    # A failed run leaves no record, so the next one runs in full.
+    job_record.discard_record(args.rule)
+    commit = git_commit()
+    read_log = start_read_log()
+    try:
+        stage_fn(args.recipe_id, **kwargs)
+    finally:
+        stop_read_log()
+    job_record.write_record(
+        args.stage, args.recipe_id, args.admin_id, args.rule, job_io, read_log, commit
+    )
 
 
 if __name__ == '__main__':

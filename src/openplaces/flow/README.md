@@ -222,6 +222,30 @@ geospine reloads its own link sidecars on the same terms, so a rerun
 after a code change can reproduce what the old code computed. For the
 same reason the Snakefile runs every harmonize job with `--reprocess`.
 
+**A job whose inputs and code are unchanged exits without running.**
+The mtime trigger reruns every consumer of a rewritten file, though
+most read none of the columns that changed. A harmonize, enrich or
+curate job run by the Snakefile therefore records, when it succeeds,
+the commit it ran at, the content digest of each column it read from
+each file, and its outputs' digests (`flow/job_record.py`, in
+`<logs>/job_records/`). Next time, it exits at once, and Snakemake
+touches its outputs, when the run does not force it, its outputs still
+hold what it wrote, every column it read holds the same values, and no
+file its code depends on changed since that commit (the report's test,
+sample-rerun clearings included). Digests come from the table footers
+(`io.tables` records one per column on every write, and those of a
+`_geo` sidecar in its attribute file's footer); a file without them is
+digested when compared. Reads through `io.tables` are logged by
+column. A read that goes straight to pyarrow counts as reading the
+whole file, as does a declared input never seen read, and a file that
+is not parquet is compared by its bytes. Each errs toward running.
+Their outputs are therefore `update()`: Snakemake keeps them for the
+job to judge, backs them up, and restores them if the job fails. The
+Snakefile writes each unit's declared files, and which jobs the run
+forces, to `<logs>/job_io/<unit>.json` from its main process, since a
+job on a cluster node parses the Snakefile without the force settings.
+Ingests always run.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs

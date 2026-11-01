@@ -6,6 +6,8 @@ geometry-sidecar convention behind save_parquet and read_parquet.
 
 import contextlib
 import contextvars
+import functools
+import hashlib
 import json
 import os
 import time
@@ -124,6 +126,27 @@ def _categoricals_to_string(
     return df
 
 
+# True while one of this module's own reads runs, so the pyarrow
+# calls it makes are not logged a second time as reads of every
+# column (see `start_read_log`).
+_OWN_READ = contextvars.ContextVar('openplaces_own_read', default=False)
+
+
+def _own_read(function):
+    """Mark *function*'s pyarrow calls as this module's own reads."""
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        token = _OWN_READ.set(True)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _OWN_READ.reset(token)
+
+    return wrapper
+
+
+@_own_read
 def parquet_columns(parquet_path: str | Path) -> list[str]:
     """Return a parquet file's column names, reading the schema only.
 
@@ -138,7 +161,318 @@ def parquet_columns(parquet_path: str | Path) -> list[str]:
     """
     import pyarrow.parquet as pq
 
+    _log_read(parquet_path, [SCHEMA])
     return list(pq.ParquetFile(parquet_path).schema_arrow.names)
+
+
+# Footer keys: per-column content digests of the attribute file, and
+# of the geometry sidecars written beside it (geopandas writes those
+# and takes no footer of their own), keyed by the sidecar's suffix.
+COLUMN_DIGESTS_KEY = 'openplaces:column_digests'
+SIDECAR_DIGESTS_KEY = 'openplaces:sidecar_digests'
+# Pseudo columns: a file's list of column names, for a reader that
+# branches on which columns exist, and its footer metadata, for one
+# that reads the footer (keys every rewrite changes left out).
+SCHEMA = '__schema__'
+METADATA = '__metadata__'
+_VOLATILE_METADATA = (
+    # pyarrow's copy of the schema, footer included; types are in
+    # the column digests
+    b'ARROW:schema',
+    b'openplaces:recipe_roots',
+    COLUMN_DIGESTS_KEY.encode(),
+    SIDECAR_DIGESTS_KEY.encode(),
+)
+
+
+def _hashable(series: pd.Series) -> pd.Series:
+    """Return *series* in a form `hash_pandas_object` hashes in full."""
+    if isinstance(series.dtype, gpd.array.GeometryDtype):
+        import shapely
+
+        return pd.Series(shapely.to_wkb(series.values), dtype=object)
+    if series.dtype == object:
+        sample = series.dropna()
+        if len(sample) and not isinstance(sample.iloc[0], str | bytes):
+            # pandas falls back to str() for unhashable cells, which
+            # abbreviates a long array with '...': two different
+            # arrays would hash the same.
+            def _text(value):
+                if hasattr(value, 'tolist'):
+                    value = value.tolist()
+                return json.dumps(value, default=str)
+
+            return series.map(_text, na_action='ignore')
+    return series
+
+
+def column_digest(series: pd.Series) -> str:
+    """Return a digest of a column's dtype and values, in row order.
+
+    Two columns get the same digest when they hold the same values in
+    the same order under the same dtype, whatever the parquet writer
+    put around them (footer, row groups, compression).
+
+    Parameters
+    ----------
+    series : Series
+        The column.
+    """
+    # hash_pandas_object hashes each value with a fixed key, so the
+    # result is the same in every process. Hashing the row hashes in
+    # order makes the digest depend on row order, as a reader may.
+    digest = hashlib.blake2b(str(series.dtype).encode(), digest_size=12)
+    hashed = pd.util.hash_pandas_object(_hashable(series), index=False)
+    digest.update(hashed.to_numpy().tobytes())
+    return digest.hexdigest()
+
+
+def frame_digests(df: pd.DataFrame, index: bool | None = None) -> dict[str, str]:
+    """Return the digest of every column a parquet write of *df* stores.
+
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        The frame as it is written.
+    index : bool or None
+        The write's `index` argument: None stores a non-default index as
+        columns (pandas' rule), True any index, False none.
+    """
+    if index or (index is None and not isinstance(df.index, pd.RangeIndex)):
+        df = df.reset_index()
+    return {str(c): column_digest(df[c]) for c in df.columns}
+
+
+def _schema_digest(names) -> str:
+    return hashlib.blake2b('\x1f'.join(names).encode(), digest_size=12).hexdigest()
+
+
+def _sidecar_owner(path: Path) -> tuple[Path, str] | None:
+    """Return the attribute file and suffix of a geometry sidecar."""
+    for suffix in ('_geo_simplified', '_geo'):
+        if path.stem.endswith(suffix):
+            return path.with_stem(path.stem[: -len(suffix)]), suffix
+    return None
+
+
+@_own_read
+def recorded_digests(parquet_path: str | Path) -> dict[str, str]:
+    """Return the column digests a file's write recorded, if any.
+
+    A geometry sidecar's digests are read from its attribute file's
+    footer, and count only while the sidecar is not newer than that
+    file (they are written together). Reads the footer only.
+
+    Parameters
+    ----------
+    parquet_path : str or Path
+        A parquet file written by `to_parquet` or `save_parquet`.
+
+    Returns
+    -------
+    dict of str to str
+        Column name to digest; empty when the write recorded none.
+    """
+    import pyarrow.parquet as pq
+
+    path = Path(parquet_path)
+    owner = _sidecar_owner(path)
+    if owner is not None:
+        attributes, suffix = owner
+        # save_parquet moves the sidecar into place just after its
+        # attribute file; one written much later is not the one the
+        # footer describes.
+        if not attributes.exists() or (
+            path.stat().st_mtime > attributes.stat().st_mtime + 60
+        ):
+            return {}
+        source, key = attributes, SIDECAR_DIGESTS_KEY
+    else:
+        source, key = path, COLUMN_DIGESTS_KEY
+    try:
+        meta = pq.read_metadata(source).metadata or {}
+        recorded = json.loads(meta.get(key.encode(), b'{}'))
+    except (OSError, ValueError, pyarrow.ArrowException):
+        return {}
+    return recorded.get(suffix, {}) if owner is not None else recorded
+
+
+@_own_read
+def file_digests(parquet_path: str | Path, columns=None) -> dict[str, str]:
+    """Return the digests of a parquet file's columns, as it is now.
+
+    Digests its write recorded are read from the footer; any other
+    column is read and digested, so a file written before digests were
+    recorded still compares. `SCHEMA` among *columns* gives a digest of
+    the file's column names.
+
+    Parameters
+    ----------
+    parquet_path : str or Path
+        Parquet file.
+    columns : iterable of str, optional
+        Columns to digest; None for every column and the schema.
+
+    Returns
+    -------
+    dict of str to str
+        Column name to digest. A requested column the file lacks is
+        absent. `METADATA` gives a digest of the footer's key-value
+        metadata, without the keys every rewrite changes.
+    """
+    import pyarrow.parquet as pq
+
+    path = Path(parquet_path)
+    parquet = pq.ParquetFile(path)
+    names = parquet.schema_arrow.names
+    wanted = [*names, SCHEMA, METADATA] if columns is None else list(columns)
+    recorded = recorded_digests(path)
+    digests = {c: recorded[c] for c in wanted if c in recorded}
+    if SCHEMA in wanted:
+        digests[SCHEMA] = _schema_digest(names)
+    if METADATA in wanted:
+        footer = parquet.metadata.metadata or {}
+        digests[METADATA] = _schema_digest(
+            f'{k!r}={v!r}'
+            for k, v in sorted(footer.items())
+            if k not in _VOLATILE_METADATA
+        )
+    missing = [c for c in wanted if c not in digests and c in names]
+    if missing:
+        if _sidecar_owner(path) is not None or 'geometry' in names:
+            frame = gpd.read_parquet(path, columns=missing)
+        else:
+            frame = pd.read_parquet(path, columns=missing)
+        digests.update(frame_digests(frame[missing], index=False))
+    return digests
+
+
+# The reads of one job, started by `start_read_log` (run_stage): file
+# path to the set of columns read, or None for every column. None
+# outside a job, so library use pays nothing.
+_READ_LOG: dict[str, set[str] | None] | None = None
+
+
+def start_read_log() -> dict[str, set[str] | None]:
+    """Start recording which columns of which files this process reads.
+
+    Every `read_parquet` and `parquet_columns` call after this adds to
+    the returned dict: resolved path to the set of columns read (with
+    `SCHEMA` for a look at the column names), or None where every
+    column was read. Columns a row filter names count as read. A read
+    of geometry counts the whole geometry sidecar.
+
+    Reads that bypass this module are logged too, at the pyarrow calls
+    pandas and geopandas go through: `pyarrow.parquet.read_table` by
+    its columns, `read_schema` as `SCHEMA`, `read_metadata` as
+    `SCHEMA` and `METADATA`, and `ParquetFile`, `ParquetDataset` and
+    `pyarrow.dataset.dataset` as every column. Reads of other formats
+    are not seen.
+
+    Returns
+    -------
+    dict
+        The log, filled as the process reads.
+    """
+    global _READ_LOG
+    _watch_pyarrow()
+    _READ_LOG = {}
+    return _READ_LOG
+
+
+def _log_source(source, columns) -> None:
+    """Log a pyarrow read of *source* (a path or a list of them)."""
+    if _READ_LOG is None or _OWN_READ.get():
+        return
+    sources = source if isinstance(source, list | tuple) else [source]
+    for item in sources:
+        # pandas opens a local file itself and hands pyarrow the handle
+        if not isinstance(item, str | os.PathLike):
+            item = getattr(item, 'name', None)
+        if isinstance(item, str | os.PathLike):
+            _log_read(item, columns)
+
+
+def _watch_pyarrow() -> None:
+    """Wrap the pyarrow parquet entry points to log reads (once)."""
+    import pyarrow.dataset as ds
+    import pyarrow.parquet as pq
+
+    if getattr(pq.read_table, '_openplaces_watch', False):
+        return
+
+    def _read_table_columns(columns=None, filters=None, **_):
+        named = _filter_columns(filters)
+        if columns is None or named is None:
+            return None
+        return [*columns, *named]
+
+    def wrap(module, name, columns_of):
+        original = getattr(module, name)
+
+        def wrapper(source, *args, **kwargs):
+            _log_source(source, columns_of(*args, **kwargs))
+            # read_table builds a ParquetDataset: one read, logged once
+            token = _OWN_READ.set(True)
+            try:
+                return original(source, *args, **kwargs)
+            finally:
+                _OWN_READ.reset(token)
+
+        wrapper._openplaces_watch = True
+        setattr(module, name, wrapper)
+
+    wrap(pq, 'read_table', _read_table_columns)
+    wrap(pq, 'read_schema', lambda *a, **k: [SCHEMA])
+    wrap(pq, 'read_metadata', lambda *a, **k: [SCHEMA, METADATA])
+    wrap(ds, 'dataset', lambda *a, **k: None)
+    for cls in (pq.ParquetFile, pq.ParquetDataset):
+        original_init = cls.__init__
+
+        def init(self, source, *args, _original=original_init, **kwargs):
+            _log_source(source, None)
+            token = _OWN_READ.set(True)
+            try:
+                _original(self, source, *args, **kwargs)
+            finally:
+                _OWN_READ.reset(token)
+
+        cls.__init__ = init
+
+
+def stop_read_log() -> None:
+    """Stop recording reads (see `start_read_log`)."""
+    global _READ_LOG
+    _READ_LOG = None
+
+
+def _log_read(path, columns) -> None:
+    """Add a read of *columns* (None: all) of *path* to the read log."""
+    if _READ_LOG is None:
+        return
+    key = str(Path(path).resolve())
+    if key in _READ_LOG and _READ_LOG[key] is None:
+        return
+    if columns is None:
+        _READ_LOG[key] = None
+    else:
+        _READ_LOG.setdefault(key, set()).update(columns)
+
+
+def _filter_columns(filters) -> list[str] | None:
+    """Return the columns a read's row filter names; None if unknown."""
+    if filters is None:
+        return []
+    if isinstance(filters, pyarrow.compute.Expression):
+        return None
+    names = []
+    for item in filters:
+        terms = item if isinstance(item, list) else [item]
+        for term in terms:
+            if not isinstance(term, tuple) or not isinstance(term[0], str):
+                return None
+            names.append(term[0])
+    return names
 
 
 # Waits between attempts to move a written file into place (about 60 s
@@ -162,6 +496,7 @@ def _temp_path(filepath: Path) -> Path:
 KEEP_EQUAL_ENV = 'OPENPLACES_KEEP_EQUAL'
 
 
+@_own_read
 def same_table(path_a: str | Path, path_b: str | Path) -> bool:
     """Return whether two parquet files hold the same table.
 
@@ -286,8 +621,13 @@ def _write_parquet(df, filepath: Path, *, file_metadata=None, **kwargs) -> None:
         # geopandas, which takes no footer, and stay as they are.
         from openplaces.path import RECIPE_ROOTS_METADATA_KEY, recipe_roots_footer
 
+        # Per-column digests let a job tell, from the footer alone,
+        # whether the columns it reads changed (`file_digests`).
         file_metadata = {
             RECIPE_ROOTS_METADATA_KEY: recipe_roots_footer(),
+            COLUMN_DIGESTS_KEY: json.dumps(
+                frame_digests(df, index=kwargs.get('index'))
+            ),
             **(file_metadata or {}),
         }
     if isinstance(df, gpd.GeoDataFrame):
@@ -583,6 +923,17 @@ def save_parquet(
                     },
                 )
             )
+        writes[0][2]['file_metadata'] = {
+            SIDECAR_DIGESTS_KEY: json.dumps(
+                {
+                    target.stem[len(parquet_path.stem) :]: frame_digests(
+                        frame, index=False
+                    )
+                    for frame, target, _ in writes[1:]
+                }
+            ),
+            **(file_metadata or {}),
+        }
         temps = []
         try:
             for frame, target, kwargs in writes:
@@ -650,6 +1001,7 @@ def _covering_bbox_column(schema) -> str | None:
     return None
 
 
+@_own_read
 def read_parquet(
     parquet_path,
     geom=False,
@@ -698,6 +1050,18 @@ def read_parquet(
     # string into its characters.
     if isinstance(kwargs.get('columns'), str):
         kwargs['columns'] = [kwargs['columns']]
+    if _READ_LOG is not None:
+        filtered = _filter_columns(filters)
+        requested = kwargs.get('columns')
+        _log_read(
+            parquet_path,
+            None if requested is None or filtered is None else [*requested, *filtered],
+        )
+        if geom:
+            suffix = '_geo_simplified' if geom == 'simplified' else '_geo'
+            sidecar = parquet_path.with_stem(parquet_path.stem + suffix)
+            if sidecar.exists():
+                _log_read(sidecar, None)
 
     # A combined file (save_parquet(..., combined=True)) has geometry baked
     # into the same file as the attributes -- no `_geo` sidecar, no join-id
@@ -712,6 +1076,8 @@ def read_parquet(
                 "into the attribute table, no `_geo` sidecar); a 'simplified' "
                 'geometry sidecar was never written for it.'
             )
+        if geom or bbox is not None:
+            _log_read(parquet_path, None)
         columns = kwargs.pop('columns', None)
         bbox_column = _covering_bbox_column(schema)
         read_filters = filters
@@ -769,6 +1135,7 @@ def read_parquet(
             join_id_column = 'geo_id'
         else:
             raise ValueError('Could not identify column to join GeoParquet.')
+        _log_read(parquet_path, [join_id_column])
 
         if columns is not None and join_id_column not in columns:
             columns = [*columns, join_id_column]
