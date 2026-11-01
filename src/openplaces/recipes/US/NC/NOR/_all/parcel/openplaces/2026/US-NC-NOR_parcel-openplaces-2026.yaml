@@ -1,0 +1,26 @@
+# Patch: Northampton's improvement value is its total minus land.
+#
+# The county layer carries one combined value (Tax_Value, see
+# US-NC-NOR_parcel-northamptoncounty-2026); land comes from NC OneMap,
+# whose improvement field is 0 on every parcel. Measured 2026-11-01:
+# no parcel records an improvement above 0, 10,751 of 20,536 parcels
+# hold land below a larger total, 10,031 of them with a roll year
+# built, where the remainder has a median of $64,082 and a median of
+# 0.57 times NSI's depreciated value (Wake's recorded improvements:
+# 0.82). Elsewhere a 0 under a larger total is usually not a building
+# (the parcel curate's improvement_from_total), so this stays a
+# county rule.
+
+admin_id: US-NC-NOR
+stage: curate
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_parcel-openplaces-2026
+pipeline_patch:
+  - set: impute_land_value
+    params: {improvement_from_total: true}
