@@ -10,8 +10,8 @@
 # (US-MD_parcel-mdimap-2026, header note on common areas). This step
 # writes the parcel-to-parcel link table, one row per (lot, common
 # area) pair of a plat, by exact equality of the key, labeled
-# `plat key`; US-MD-PG_parcel-openplaces-2026 divides each common area
-# among its lots by area. Townhouse and condominium plats only (more
+# `plat key`; the parcel curate's apportion_common_land divides each
+# common area among its lots by area. Townhouse and condominium plats only (more
 # than half of the plat's valued lots TH or U): single-family
 # subdivisions with homeowners' open space are left unlinked
 # (maintainer, 2026-10-24;
@@ -24,7 +24,14 @@
 # its townhouses carry land use R (no TH code), and PLAT is missing on
 # 54.7% of rows; neither the flag nor the plat rule fits it.
 #
-# Measured 2026-10-24 on US-MD-PG: see the curate patch.
+# Measured 2026-10-24 on US-MD-PG: 1,025 plats linked, 2,292 common
+# areas (1,153.0 ha) shared among 38,579 lots (745.1 ha); median land
+# per acre on the linked lots, own area against own area plus share,
+# $2.35M to $888K. The roll flags 4,849 accounts; the 2,557 left
+# unlinked are single-family plats' open space, common areas with a
+# recorded value, or have no plat key. Because the roll flags common
+# areas here, the geospine's contiguity links stay empty for this
+# county (link_common_areas_by_contiguity).
 #
 # After the spine's checkpointed step, so a restored checkpoint cannot
 # skip it. Design limits checked: L2, L14, L17, L25, L27, L28 (see

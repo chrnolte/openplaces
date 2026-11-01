@@ -847,6 +847,249 @@ def plat_common_area_links(
     )
 
 
+#: `link_common_areas_by_contiguity`: a lot and a common area it
+#: touches or lies in, where no roll states the plat.
+CONTIGUITY_METHOD = 'common area contiguity'
+
+
+def _parcel_value(parcels: pd.DataFrame) -> pd.Series:
+    """Total value where recorded, else land plus improvement."""
+    total = (
+        pd.to_numeric(parcels['total_value'], errors='coerce')
+        if 'total_value' in parcels.columns
+        else pd.Series(float('nan'), index=parcels.index)
+    )
+    parts = [c for c in ('land_value', 'improvement_value') if c in parcels.columns]
+    if not parts:
+        return total
+    summed = sum(pd.to_numeric(parcels[c], errors='coerce').fillna(0) for c in parts)
+    stated = parcels[parts].notna().any(axis=1)
+    return total.where(total.notna(), summed.where(stated))
+
+
+def contiguity_common_area_links(
+    parcels,
+    common_pattern: str,
+    unit_pattern: str,
+    label_columns: tuple[str, ...] = ('use_group', 'use_subgroup'),
+    area_column: str = 'area_ha',
+    flag_column: str = 'is_common_area',
+    min_common_m2: float = 500.0,
+    max_common_per_m2: float = 5.0,
+    min_unit_value: float = 50_000.0,
+    max_unit_area_share: float = 1 / 3,
+    min_units: int = 4,
+    min_value_ratio: float = 50.0,
+    min_unit_share: float = 0.5,
+    source_column: str | None = 'geometry_source',
+) -> pd.DataFrame:
+    """Pair a townhouse or condominium lot with the common area it touches.
+
+    For counties whose roll states no plat key (`plat_common_area_links`
+    covers those that do). A common area is a parcel whose own use
+    label names common land (*common_pattern*), of at least
+    *min_common_m2*, valued under *max_common_per_m2* per square meter
+    (the roll counts its worth in the lots; a nominal value is common,
+    so a fixed zero test missed a 5.3 ha common lot at $8,600). Its
+    lots are the parcels that touch it or lie in it, with no tolerance
+    and no grown boundary, valued over *min_unit_value* and smaller
+    than *max_unit_area_share* of it. The common area is linked when
+    it has at least *min_units* such lots, their median value per
+    square meter is at least *min_value_ratio* times its own, and more
+    than *min_unit_share* of them carry a townhouse or condominium
+    label (*unit_pattern*): single-family subdivisions' open space
+    stays unlinked, as with the plat key (maintainer, 2026-10-24).
+
+    A unit whose roll sets *flag_column* anywhere is left to the plat
+    key, which is what the roll itself states.
+
+    Why touch and not the plat key: these rolls state no plat, and the
+    lots of a townhouse plat touch the common land that wraps them.
+    Touching also reaches a lot of the next plat beside the common
+    area; the use label, the value ratio and the townhouse share are
+    the guard, and the step writes areas' links only, never a value.
+
+    Parameters
+    ----------
+    parcels : geopandas.GeoDataFrame
+        Parcel rows with geometry, indexed by `parcel_id`.
+    common_pattern, unit_pattern : str
+        Case-insensitive regular expressions over the joined use label
+        (*label_columns*, joined by ' | ').
+    label_columns : tuple of str
+        Use-label columns, in order; missing ones are skipped.
+    area_column : str
+        Parcel area in hectares.
+    flag_column : str
+        A roll's own common area flag.
+    min_common_m2, max_common_per_m2, min_unit_value,
+    max_unit_area_share, min_units, min_value_ratio, min_unit_share
+        Thresholds above.
+    source_column : str, optional
+        Column naming the source of the lot row, written to
+        `link_source`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns `parcel_id` (the lot), `common_area_parcel_id`,
+        `link_method`, `link_source` and `share` (empty), one row per
+        pair, sorted by both ids.
+    """
+    import geopandas as gpd
+
+    columns = ['parcel_id', COMMON_AREA_ID, *LINK_COLUMNS_TAIL]
+    empty = pd.DataFrame(columns=columns)
+    if flag_column in parcels.columns and (
+        parcels[flag_column].astype('boolean').fillna(False).any()
+    ):
+        return empty
+    present = [c for c in label_columns if c in parcels.columns]
+    if not present or area_column not in parcels.columns:
+        return empty
+    label = (
+        parcels[present].astype('string').fillna('').agg(' | '.join, axis=1).str.lower()
+    )
+    m2 = pd.to_numeric(parcels[area_column], errors='coerce') * 10_000
+    value = _parcel_value(parcels)
+    per_m2 = value / m2
+    is_common = (
+        label.str.contains(common_pattern, case=False, regex=True)
+        & m2.ge(min_common_m2)
+        & (per_m2.lt(max_common_per_m2) | value.isna())
+    )
+    is_lot = value.gt(min_unit_value) & ~is_common
+    if not is_common.any() or not is_lot.any():
+        return empty
+
+    commons = parcels.loc[is_common, ['geometry']].rename_axis('common').reset_index()
+    lots = parcels.loc[is_lot, ['geometry']].rename_axis('lot').reset_index()
+    pairs = gpd.sjoin(commons, lots, predicate='intersects', how='inner')
+    pairs = pairs[['common', 'lot']]
+    pairs = pairs[
+        m2.reindex(pairs['lot']).to_numpy()
+        < max_unit_area_share * m2.reindex(pairs['common']).to_numpy()
+    ]
+    if pairs.empty:
+        return empty
+    pairs = pairs.assign(
+        lot_per_m2=per_m2.reindex(pairs['lot']).to_numpy(),
+        unit=label.reindex(pairs['lot'])
+        .str.contains(unit_pattern, case=False, regex=True)
+        .to_numpy(),
+    )
+    by_common = pairs.groupby('common')
+    summary = pd.DataFrame(
+        {
+            'n': by_common['lot'].nunique(),
+            'lot_per_m2': by_common['lot_per_m2'].median(),
+            'unit_share': by_common['unit'].mean(),
+        }
+    )
+    own = per_m2.reindex(summary.index).fillna(0)
+    linked = summary.index[
+        summary['n'].ge(min_units)
+        & summary['lot_per_m2'].ge(min_value_ratio * own)
+        & summary['unit_share'].gt(min_unit_share)
+    ]
+    pairs = pairs[pairs['common'].isin(linked)].drop_duplicates(['lot', 'common'])
+    source = (
+        parcels[source_column].astype('string')
+        if source_column and source_column in parcels.columns
+        else pd.Series(pd.NA, index=parcels.index, dtype='string')
+    )
+    links = pd.DataFrame(
+        {
+            'parcel_id': pairs['lot'].to_numpy(),
+            COMMON_AREA_ID: pairs['common'].to_numpy(),
+            'link_method': pd.Series(
+                CONTIGUITY_METHOD, index=range(len(pairs)), dtype='string'
+            ),
+            'link_source': source.reindex(pairs['lot']).to_numpy(),
+            'share': pd.Series(pd.NA, index=range(len(pairs)), dtype='Float64'),
+        }
+    )
+    links['link_source'] = links['link_source'].astype('string')
+    return links.sort_values(['parcel_id', COMMON_AREA_ID], kind='stable').reset_index(
+        drop=True
+    )[columns]
+
+
+def get_contiguity_link_path(recipe, admin_id):
+    """Path of the contiguity common area link table of a parcel spine.
+
+    Beside the plat link table (`get_plat_link_path`), with a suffix:
+    the geospine writes this one, the attribute spine the plat one, and
+    neither may overwrite the other's rows.
+    """
+    path = get_plat_link_path(recipe, admin_id)
+    return path.with_name(f'{path.stem}_contiguity{path.suffix}')
+
+
+@_register('link_common_areas_by_contiguity')
+def link_common_areas_by_contiguity(
+    state: HarmonizeState,
+    common_pattern: str,
+    unit_pattern: str,
+    **thresholds,
+) -> HarmonizeState:
+    """Write the link table between townhouse lots and the common land they touch.
+
+    Pairs each lot with the common area it touches or lies in, where
+    the roll states no plat key (`contiguity_common_area_links`, which
+    states the roles and thresholds), and saves the pairs beside the
+    parcel geospine (`get_contiguity_link_path`). `link_method` is the
+    fixed label `common area contiguity`. The spine itself is not
+    changed; the parcel curate's `apportion_common_land` reads the
+    table and divides the common area among the lots as an area, never
+    as a value.
+
+    Design limits checked: L2 (strict contiguity and containment,
+    never an owner), L27 (no tolerance, no grown or unioned boundary,
+    no neighbor's address), L17 (a fixed label, no score), L25 (an area
+    is apportioned in curate, no value is filled).
+
+    Parameters
+    ----------
+    common_pattern, unit_pattern : str
+        See `contiguity_common_area_links`.
+    **thresholds
+        Any other keyword of `contiguity_common_area_links`.
+    """
+    if state.spine is None or 'geometry' not in state.spine.columns:
+        warnings.warn('link_common_areas_by_contiguity: no spine geometry; skipping.')
+        return state
+    links = contiguity_common_area_links(
+        state.spine, common_pattern, unit_pattern, **thresholds
+    )
+    owner = get_link_owner_recipe_id(state.recipe)
+    path = get_contiguity_link_path(state.recipe, state.admin_id)
+    # Written inside the geospine, whose output is saved after this
+    # step: a stamp of it would describe the previous build and void
+    # every read. A geospine rebuild rewrites the table with it.
+    write_entity_link(
+        path,
+        links,
+        writer_recipe_id=get_recipe_id(state.recipe),
+        finer_recipe_id=owner,
+        coarser_recipe_id=owner,
+        admin_id=state.admin_id,
+        step_config={
+            'common_pattern': common_pattern,
+            'unit_pattern': unit_pattern,
+            **thresholds,
+        },
+        stamped_recipe_ids=(),
+    )
+    if state.verbose:
+        print(
+            f'  link_common_areas_by_contiguity: {len(links):,d} links, '
+            f'{links["parcel_id"].nunique():,d} lots, '
+            f'{links[COMMON_AREA_ID].nunique():,d} common areas; wrote {path.name}'
+        )
+    return state
+
+
 def get_plat_link_path(recipe, admin_id):
     """Path of the plat link table of a parcel spine and admin unit.
 

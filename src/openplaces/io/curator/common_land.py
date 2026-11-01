@@ -87,7 +87,10 @@ def apportion_common_land(
 
     Reads the plat link table the parcel spine wrote
     (`io.harmonizer.entity_links.link_common_areas_by_plat`, method
-    `plat key`) and writes, on curated parcels:
+    `plat key`), or, in a unit where it holds no link, the contiguity
+    table the parcel geospine wrote
+    (`io.harmonizer.entity_links.link_common_areas_by_contiguity`,
+    method `common area contiguity`), and writes, on curated parcels:
 
     - on each lot: `common_land_share_ha`, the plat's common area
       divided among its linked lots in proportion to lot area;
@@ -95,8 +98,9 @@ def apportion_common_land(
       `common_land_lots_area_ha`, the number and summed area of the
       lots it is linked to;
     - on both: `common_land_plat_id`, the plat key (admin unit,
-      subdivision code, plat reference), so a reader can find a common
-      area's lots among the rows it already holds.
+      subdivision code, plat reference), or the common area's own id
+      under a contiguity link, so a reader can find a common area's
+      lots among the rows it already holds.
 
     It writes no value. The lots' land values stay as recorded, and
     nothing is written into a common area's value columns: the roll
@@ -107,8 +111,9 @@ def apportion_common_land(
 
     Design limits checked: L25 (no missing value is filled from rows
     sharing the key; only areas are divided), L22 (no source column is
-    overwritten), L2 and L27 (the link is the roll's plat key, not an
-    owner or a geometric grouping).
+    overwritten), L2 and L27 (the link is the roll's plat key, or
+    strict contiguity without tolerance or grown boundary, never an
+    owner).
 
     Parameters
     ----------
@@ -120,7 +125,9 @@ def apportion_common_land(
     """
     from openplaces.io.harmonizer.entity_links import (
         COMMON_AREA_ID,
+        CONTIGUITY_METHOD,
         PLAT_KEY_METHOD,
+        get_contiguity_link_path,
         get_plat_link_path,
         read_entity_link,
     )
@@ -129,26 +136,37 @@ def apportion_common_land(
     for column in (SHARE_COLUMN, LOTS_AREA_COLUMN, LOT_COUNT_COLUMN):
         curated[column] = pd.Series(pd.NA, index=curated.index, dtype='Float64')
     curated[PLAT_ID_COLUMN] = pd.Series(pd.NA, index=curated.index, dtype='string')
-    try:
-        path = get_plat_link_path(state.recipe, state.admin_id)
-        links = read_entity_link(path)
-    except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
-        warnings.warn(
-            f'apportion_common_land: no plat link for {state.admin_id} ({exc}).',
-            stacklevel=2,
-        )
-        links = None
-    if links is None:
-        warnings.warn(
-            f'apportion_common_land: no valid plat link table for '
-            f'{state.admin_id}; the common land columns stay empty.',
-            stacklevel=2,
-        )
+    # The plat key where a roll states it (attribute spine), else the
+    # contiguity links (geospine); a unit with the roll's flag gets no
+    # contiguity table, so the two never describe one plat twice.
+    tables = []
+    for get_path in (get_plat_link_path, get_contiguity_link_path):
+        try:
+            table = read_entity_link(get_path(state.recipe, state.admin_id))
+        except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
+            warnings.warn(
+                f'apportion_common_land: unreadable link for {state.admin_id} ({exc}).',
+                stacklevel=2,
+            )
+            table = None
+        if table is not None:
+            tables.append(table)
+    if not tables:
+        if state.verbose:
+            print(
+                f'  apportion_common_land: no common area links for '
+                f'{state.admin_id}; the common land columns stay empty.'
+            )
         state.curated = curated
         return state
+    links = pd.concat(tables, ignore_index=True)
 
     ids = pd.Index(curated.index).astype('string')
-    links = links[links['link_method'].astype('string').eq(PLAT_KEY_METHOD)]
+    method = links['link_method'].astype('string')
+    # Where the roll states plats, its key is the only link: contiguity
+    # would describe the same common land a second, coarser way.
+    kept = [PLAT_KEY_METHOD] if method.eq(PLAT_KEY_METHOD).any() else []
+    links = links[method.isin(kept or [CONTIGUITY_METHOD])]
     links = links[
         links['parcel_id'].astype('string').isin(ids)
         & links[COMMON_AREA_ID].astype('string').isin(ids)
@@ -164,14 +182,28 @@ def apportion_common_land(
     curated[LOTS_AREA_COLUMN] = keys.map(commons[LOTS_AREA_COLUMN]).astype('Float64')
 
     linked = keys.isin(shares.index) | keys.isin(commons.index)
-    if subdivision_column in curated.columns and plat_column in curated.columns:
-        plat_id = (
-            f'{state.admin_id}_'
-            + curated[subdivision_column].astype('string').str.strip()
-            + '/'
-            + curated[plat_column].astype('string').str.strip()
-        )
-        curated[PLAT_ID_COLUMN] = plat_id.where(linked).astype('string')
+    if kept:
+        if subdivision_column in curated.columns and plat_column in curated.columns:
+            plat_id = (
+                f'{state.admin_id}_'
+                + curated[subdivision_column].astype('string').str.strip()
+                + '/'
+                + curated[plat_column].astype('string').str.strip()
+            )
+            curated[PLAT_ID_COLUMN] = plat_id.where(linked).astype('string')
+    elif len(links):
+        # A contiguity link states no plat: the common area's own id
+        # ties it to its lots (a lot beside two names the first).
+        common_ids = links[COMMON_AREA_ID].astype('string')
+        by_lot = common_ids.groupby(
+            links['parcel_id'].astype('string').to_numpy()
+        ).min()
+        unique = common_ids.unique()
+        common_of = pd.concat([by_lot, pd.Series(unique, index=unique)])
+        common_of = common_of[~common_of.index.duplicated()]
+        curated[PLAT_ID_COLUMN] = keys.map(
+            f'{state.admin_id}_common/' + common_of
+        ).astype('string')
     state.curated = curated
     if state.verbose:
         print(

@@ -14,15 +14,19 @@ from openplaces.io.curator.common_land import (
     apportion_common_land_area,
 )
 from openplaces.io.harmonizer import entity_links
-from openplaces.io.harmonizer.entity_links import COMMON_AREA_ID, PLAT_KEY_METHOD
+from openplaces.io.harmonizer.entity_links import (
+    COMMON_AREA_ID,
+    CONTIGUITY_METHOD,
+    PLAT_KEY_METHOD,
+)
 
 
-def _links(pairs):
+def _links(pairs, method=PLAT_KEY_METHOD):
     return pd.DataFrame(
         {
             'parcel_id': [lot for lot, _ in pairs],
             COMMON_AREA_ID: [common for _, common in pairs],
-            'link_method': PLAT_KEY_METHOD,
+            'link_method': method,
             'link_source': 'exampleroll',
             'share': pd.Series([pd.NA] * len(pairs), dtype='Float64'),
         }
@@ -62,11 +66,15 @@ def test_a_lot_linked_to_two_common_areas_takes_a_share_of_each():
     assert shares.sum() == pytest.approx(1.2)
 
 
-def _run(monkeypatch, links):
+def _run(monkeypatch, links, contiguity=None):
+    tables = {'plat': links, 'contiguity': contiguity}
     monkeypatch.setattr(
-        entity_links, 'get_plat_link_path', lambda recipe, admin_id: 'unused'
+        entity_links, 'get_plat_link_path', lambda recipe, admin_id: 'plat'
     )
-    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: links)
+    monkeypatch.setattr(
+        entity_links, 'get_contiguity_link_path', lambda recipe, admin_id: 'contiguity'
+    )
+    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: tables[path])
     state = CurateState(
         recipe={'recipe_id': 'X_parcel-openplaces-2026'},
         entity_recipe={},
@@ -109,10 +117,32 @@ def test_the_step_writes_no_value_anywhere(monkeypatch):
 
 
 def test_a_unit_without_a_link_table_gets_empty_columns(monkeypatch):
-    with pytest.warns(UserWarning, match='no valid plat link'):
-        curated = _run(monkeypatch, None)
+    curated = _run(monkeypatch, None)
     assert curated['common_land_share_ha'].isna().all()
     assert curated['common_land_plat_id'].isna().all()
+
+
+def test_contiguity_links_serve_a_unit_without_a_plat_key(monkeypatch):
+    touch = _links([('a', 'c'), ('b', 'c')], method=CONTIGUITY_METHOD)
+    curated = _run(monkeypatch, None, contiguity=touch)
+    assert curated.loc['a', 'common_land_share_ha'] == pytest.approx(0.25)
+    assert curated.loc['c', 'n_lots_per_plat'] == 2
+    # No plat stated: the common area's own id ties it to its lots.
+    assert (
+        curated.loc[['a', 'b', 'c'], 'common_land_plat_id']
+        .eq('US-XX-YY_common/c')
+        .all()
+    )
+    assert curated.loc[['d', 'e'], 'common_land_plat_id'].isna().all()
+
+
+def test_the_plat_key_wins_over_contiguity(monkeypatch):
+    plat = _links([('a', 'c'), ('b', 'c')])
+    touch = _links([('d', 'e')], method=CONTIGUITY_METHOD)
+    curated = _run(monkeypatch, plat, contiguity=touch)
+    assert pd.isna(curated.loc['d', 'common_land_share_ha'])
+    assert pd.isna(curated.loc['e', 'n_lots_per_plat'])
+    assert curated.loc['c', 'n_lots_per_plat'] == 2
 
 
 def test_links_to_rows_the_curate_dropped_are_ignored(monkeypatch):

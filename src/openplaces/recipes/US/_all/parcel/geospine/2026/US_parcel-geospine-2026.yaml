@@ -330,6 +330,25 @@ pipeline:
   # positives it excludes by design.
   - step: detect_condo_building_clusters
 
+  # Townhouse and condominium lots and the common land they touch,
+  # where no roll states a plat key (plans/lot-value-sharing-among-
+  # buildings.md, fix 4): a link table the parcel curate's
+  # apportion_common_land reads to give each lot its share of the
+  # common area as an area. No value moves (decisions 96 to 99a). The
+  # common area is named common land by its own use label and valued
+  # far below its lots; the lots touch it or lie in it, with no
+  # tolerance, and most are townhouses or condominiums, so a
+  # single-family subdivision's open space and roads stay unlinked.
+  # Run 2026-11-01 on curated parcels: NC-NHA 219 common areas over
+  # 7,359 lots (6,336 townhomes), among them the 887 Edgerton Dr common
+  # lot (5.3 ha at $0.16/m2) with 16 townhomes; FL-LE 750 over 10,106
+  # lots (9,273 condominiums); TX-GAL none (its labels name no common
+  # land); MD-PG none (its roll flags common areas; the plat key holds).
+  # Measured 2026-11-01 on US-NC-NHA: 219 common areas linked to 7,359 lots.
+  - step: link_common_areas_by_contiguity
+    common_pattern: 'common|owners?.? assoc|\bhoa\b|unused land'
+    unit_pattern: 'town ?(?:home|house)|condo|attached'
+
   # Direct parcel<->dwelling link: dwelling-overture-2025 points are usually
   # only linked to footprints, so this alone catches a dwelling whose
   # footprint was never detected. Same config as the footprint geospine's
