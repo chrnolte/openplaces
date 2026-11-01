@@ -89,11 +89,16 @@ pipeline:
     entity_type: parcel
     thresholds:
       # Keep a parcel's largest footprint primary when an address point
-      # sits on a structure a third its size or smaller and an NSI point
-      # sits on the large one. Measured against roll floor area
-      # 2026-09-17: the large footprint is the dwelling on 68% (NC) and
-      # 89% (TX) of such parcels; see classify_footprint_priority.
-      dwelling_override_ratio: 3.0
+      # sits on a structure half its size or smaller and an NSI point
+      # sits on the large one. Both stay primary and share the value by
+      # area, so the rule helps wherever the large footprint is the
+      # dwelling on more than half of such parcels. Measured against
+      # roll floor area 2026-09-17 at 3x: 68% (NC), 89% (TX). Measured
+      # 2026-11-01 on the parcels 2x adds (2x to 3x, roll living area
+      # against footprint area times roll stories): FL 73% of 11,910,
+      # TX 73% of 7,258, MA 84% of 588, NC 48% of 1,611. NC and the
+      # counties below half keep 3x in their patch recipes.
+      dwelling_override_ratio: 2.0
       # Keep an apartment complex's other buildings primary when its
       # address points all land on one: an NSI point of 2 or more
       # dwellings, 355 m2 or more, and at least half the size of the

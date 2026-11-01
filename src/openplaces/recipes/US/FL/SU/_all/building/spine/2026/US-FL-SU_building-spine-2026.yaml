@@ -1,0 +1,28 @@
+# Patch: this county keeps the 3x dwelling override.
+#
+# The national building spine keeps a parcel's largest footprint
+# primary beside a smaller address-point footprint from 2x its size.
+# Here, on the parcels that 2x would add (largest footprint 2x to 3x
+# the address-point one, holding an NSI point), the large footprint
+# matched the roll's living area better on 25% of 112 parcels
+# (measured 2026-11-01, footprint area times roll stories), against
+# 73% across Florida. Both footprints then share the value by area,
+# which loses below half, so 3x stays here.
+# set replaces the whole thresholds mapping: repeat every key.
+
+admin_id: US-FL-SU
+stage: harmonize
+
+entity:
+  entity_type: building
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_building-spine-2026
+pipeline_patch:
+  - set: classify_footprint_priority
+    params:
+      thresholds:
+        dwelling_override_ratio: 3.0
+        building_point_sibling_ratio: 0.5
