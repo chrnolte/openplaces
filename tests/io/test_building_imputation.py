@@ -96,6 +96,73 @@ def test_only_listed_homes_train_and_unclear_ones_are_kept():
     assert train.iloc[6] == 0.0
 
 
+def test_a_dwelling_whose_lot_value_sits_elsewhere_stays_unfilled():
+    # Fabricated lots: 'a' holds its roll value on one building and has
+    # two more dwellings without one, a manufactured home and a shed;
+    # 'b' has a value only from NSI; 'c' has no value at all.
+    frame = pd.DataFrame(
+        {
+            'parcel_id': ['a', 'a', 'a', 'a', 'a', 'b', 'b', 'c', None],
+            'occupancy_type': [
+                'Multi-Family',
+                'Multi-Family',
+                'Single-Family',
+                'Manufactured Home',
+                'Secondary',
+                'Single-Family',
+                'Single-Family',
+                'Single-Family',
+                'Single-Family',
+            ],
+            'structure_value': [
+                900000.0,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                150000.0,
+                np.nan,
+                np.nan,
+                np.nan,
+            ],
+            'structure_value_source': [
+                'parcel.x',
+                None,
+                None,
+                None,
+                None,
+                'nsi',
+                None,
+                None,
+                None,
+            ],
+        }
+    )
+    flagged = bi.lot_value_elsewhere(frame)
+    assert flagged.tolist() == [
+        False,  # holds the lot's value
+        True,
+        True,
+        False,  # an unlisted home is filled
+        False,  # a secondary is never filled anyway
+        False,
+        False,  # an NSI value is not the roll's
+        False,  # no building on the lot holds a value
+        False,  # no lot
+    ]
+
+
+def test_without_a_lot_key_nothing_is_held():
+    frame = pd.DataFrame(
+        {
+            'occupancy_type': ['Single-Family'],
+            'structure_value': [np.nan],
+            'structure_value_source': [None],
+        }
+    )
+    assert not bi.lot_value_elsewhere(frame).any()
+
+
 def test_manufactured_value_model_reads_the_home_not_the_parcel():
     inputs = bi.input_columns(bi.MANUFACTURED_VALUE)
     assert 'log_area_m2' in inputs and 'chain_year_built' in inputs

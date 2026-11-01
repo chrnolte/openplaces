@@ -1725,7 +1725,11 @@ def export_delivery(
     # The models' evidence inputs ride along in pass one only, so they
     # are withheld like every other value before any model sees them;
     # they still reach the evidence file through pass two as before.
-    model_inputs = building_imputation.EVIDENCE_COLUMNS if impute else []
+    model_inputs = (
+        [*building_imputation.EVIDENCE_COLUMNS, building_imputation.LOT_COLUMN]
+        if impute
+        else []
+    )
     frames = []
     for process_id, path in inputs:
         available = parquet_columns(path)

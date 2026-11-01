@@ -567,6 +567,56 @@ def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     return value.where(ok)
 
 
+#: The lot key of :func:`lot_value_elsewhere`, read from the bundle's
+#: evidence beside the EVIDENCE_COLUMNS; no model reads it.
+LOT_COLUMN = 'parcel_id'
+
+
+def lot_value_elsewhere(frame: pd.DataFrame) -> pd.Series:
+    """Flag buildings whose lot's roll value another building holds.
+
+    The roll states one improvement value per lot, and the building
+    curate gives it to the lot's primary buildings; a building ranked
+    secondary gets none. The value model fills by occupancy
+    (:func:`applies_to`), not by that rank, so a dwelling ranked
+    secondary was filled, and the lot carried its stated value plus a
+    modeled one. A flagged building stays missing instead: it has a
+    dwelling class (not Secondary, not a manufactured home), no roll
+    value of its own, and another building on its lot (LOT_COLUMN)
+    holds a roll value above 0.
+
+    Manufactured homes are never flagged: one without a value is
+    'unlisted' (:func:`manufactured_home_listing`), held off the roll
+    as personal property, so the lot's value is not its value.
+
+    Why not spread the lot's value over its buildings here: choosing
+    which buildings share it is the building curate's priority rule,
+    and the delivery would then disagree with the curated inventory.
+    Nothing is filled from the key (design limit L25); fills are only
+    withheld.
+
+    Measured 2026-11-01 on US-TX-HAR: 15,132 such buildings on 2,627 lots.
+    """
+    flagged = pd.Series(False, index=frame.index)
+    if LOT_COLUMN not in frame.columns:
+        return flagged
+    lot = frame[LOT_COLUMN].astype('string')
+    value = pd.to_numeric(frame['structure_value'], errors='coerce')
+    source = frame['structure_value_source'].astype('string').fillna('')
+    # The same notion of a roll value as value_labels.
+    on_roll = (
+        value.gt(0) & source.ne('') & ~is_nsi_token(source) & source.ne('withheld')
+    ).fillna(False)
+    valued_lots = lot[on_roll & lot.notna()].unique()
+    occupancy = frame['occupancy_type'].astype('string')
+    dwelling = (
+        occupancy.notna()
+        & occupancy.ne('Secondary')
+        & occupancy.ne('Manufactured Home')
+    ).fillna(False)
+    return (dwelling & ~on_roll & lot.isin(valued_lots).fillna(False)).astype(bool)
+
+
 def _log(series: pd.Series) -> pd.Series:
     # Rolls code an unknown size or value as 0; read it as missing.
     values = pd.to_numeric(series, errors='coerce')
@@ -1378,6 +1428,14 @@ class Imputer:
             missing = rows & observed.isna()
             parts = [(spec, y, pd.Series(True, index=self.frame.index))]
             if spec.column == 'structure_value':
+                # The lot's value already sits on another building.
+                held = missing & lot_value_elsewhere(self.frame)
+                missing &= ~held
+                self.lot_value_elsewhere = int(held.sum())
+                log(
+                    f'structure_value: {self.lot_value_elsewhere} buildings '
+                    "left unfilled, their lot's value on another building"
+                )
                 # Manufactured homes get their own model, trained on
                 # listed homes only (manufactured_home_listing).
                 is_mh = applies_to(MANUFACTURED_VALUE, self.frame)
@@ -2777,6 +2835,7 @@ def impute_delivery(
         'scale_fallback': sorted(scales.index[scales['fallback']].tolist()),
         'park_factor': round(float(getattr(imputer, 'park_factor', 1.0)), 3),
         'value_clipped': int(getattr(imputer, 'clipped', pd.Series(dtype=bool)).sum()),
+        'lot_value_elsewhere': getattr(imputer, 'lot_value_elsewhere', 0),
         'donors_only': imputer.donors_only,
         'price_anchor': {k: round(v, 3) for k, v in imputer.price_anchor.items()},
         # Applied in overlay_delivery to the values the bundle ships, so
