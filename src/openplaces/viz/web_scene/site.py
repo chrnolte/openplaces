@@ -86,6 +86,8 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
             model_files=models,
             lots_file=place_lots_file(place, built),
             models_public=bool(place.get('models_public')),
+            people_basis=place.get('people_basis', 'homes'),
+            people_public=bool(place.get('people_public')),
             verbose=False,
             **extra,
         )

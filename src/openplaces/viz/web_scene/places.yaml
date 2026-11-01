@@ -28,6 +28,8 @@ places:
     center_note: Boston University, Marsh Plaza
     downtown: [-71.05801, 42.36028]
     downtown_note: City hall lot, 1 City Hall Sq
+    # The people cloud on the public page (maintainer, 2026-11-01).
+    people_public: true
   # North Carolina keeps three places on the site: Raleigh, Asheville
   # and Wilmington (maintainer, 2026-10-25).
   - slug: raleigh

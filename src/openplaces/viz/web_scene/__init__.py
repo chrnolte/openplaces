@@ -2780,7 +2780,9 @@ PEOPLE_BASES = ('homes', 'footprints')
 PEOPLE_MAX_ZOOM = 16.0
 # Pages that may carry the cloud: team pages only, until counsel has
 # seen the fair-housing question of race shown beside home values on a
-# public page (maintainer, 2026-10-24).
+# public page (maintainer, 2026-10-24). A place opts a public page in
+# by the maintainer's decision alone (`people_public`; Boston,
+# 2026-11-01).
 PEOPLE_AUDIENCES = frozenset({'team'})
 PEOPLE_NOTE = {
     'name': 'People (dot cloud)',
@@ -4266,6 +4268,7 @@ def build_web_scene(
     land_mask=True,
     people_cloud=True,
     people_basis='homes',
+    people_public=False,
     preview_team=False,
     restricted_units=None,
     restricted_page=None,
@@ -4379,6 +4382,11 @@ def build_web_scene(
         lots' land where a block has none) at a fixed height; it reads
         census counts, NHD water and geometry only, no roll column,
         code or value.
+    people_public : bool
+        Also add the people cloud to a public page. Set per place in
+        `places.yaml` (`people_public: true`), only where the maintainer
+        has decided it (Boston, 2026-11-01); every other public page
+        stays without it.
     preview_team : bool
         Mark the page a team page though it reads public bundles, so a
         local preview can show the people cloud before any team region
@@ -4885,7 +4893,10 @@ def build_web_scene(
     # The footprints basis reads no roll column, so it needs no lot
     # classed as a home.
     has_basis = people_basis == 'footprints' or layers[0].name in home_lots
-    if people_cloud and audience in PEOPLE_AUDIENCES and has_basis:
+    people_allowed = audience in PEOPLE_AUDIENCES or (
+        people_public and audience == 'public'
+    )
+    if people_cloud and people_allowed and has_basis:
         people = _people_cloud(
             admin_ids,
             crop,
