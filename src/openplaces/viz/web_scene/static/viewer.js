@@ -2412,6 +2412,15 @@ async function main() {
     : {stop: () => {}, ready: () => {}, resume: () => {}};
   // The place's name at the top as the page opens, tour or not, for
   // about eight seconds (maintainer, 2026-10-18).
+  // The opening notice (index.html) goes away on "Ok".
+  const notice = document.getElementById('preview-notice');
+  if (notice) {
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.textContent = 'Ok';
+    ok.addEventListener('click', () => { notice.hidden = true; });
+    notice.appendChild(ok);
+  }
   if (scene.place_title) {
     const placeTitle = document.createElement('div');
     placeTitle.id = 'place-title';
