@@ -11,6 +11,17 @@ const AREA_UNIT_LABELS = {ac: 'acre', ha: 'ha', sqft: 'sq ft', m2: 'm²', dwelli
 // A legend title spells the unit out and says, in grey, what area it is
 // of: a lot's land or a building's footprint (maintainer, 2026-10-24).
 const LEGEND_UNIT_LABELS = {...AREA_UNIT_LABELS, sqft: 'square foot', m2: 'square meter'};
+// The bottom bar's symbols, shown instead of the words on a phone
+// (index.html `.chip-icon`); "Sources" carries its own in index.html.
+const CHIP_ICONS = {
+  // Two sliders.
+  controls: '<svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.4"/>'
+    + '<circle cx="15" cy="16" r="2.4"/></svg>',
+  // A box with an arrow out of it, as phones show sharing.
+  share: '<svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M12 3v12M8 7l4-4 4 4M6 11v9h12v-9"/></svg>',
+};
 const AREA_OF = {buildings: 'footprint'};
 // Names of the layer switches (their tooltips); a layer not listed
 // shows its label.
@@ -1322,7 +1333,9 @@ async function main() {
   restore.id = 'controls-chip';
   restore.className = 'panel';
   restore.dataset.fold = 'restore';
-  restore.textContent = 'Controls';
+  // A symbol on a phone, the word elsewhere (index.html `.chip-icon`).
+  restore.innerHTML = `${CHIP_ICONS.controls}<span class="chip-label">Controls</span>`;
+  restore.title = 'Controls';
   restore.setAttribute('aria-label', 'Show controls');
   const bar = document.getElementById('bottom-bar');
   bar.insertBefore(restore, document.getElementById('about-panel'));
@@ -1370,9 +1383,12 @@ async function main() {
   });
   // Folded unless this browser unfolded them before (maintainer,
   // 2026-10-16: minimized by default).
+  // A phone always opens folded, whatever it chose before (maintainer,
+  // 2026-10-31: the controls stay invisible until asked for).
   let startFolded = true;
   try {
-    startFolded = localStorage.getItem('openplaces-controls-min') !== '0';
+    startFolded = !desktop.matches ||
+      localStorage.getItem('openplaces-controls-min') !== '0';
   } catch (error) {
     startFolded = true;
   }
@@ -2238,7 +2254,7 @@ async function main() {
     if (!tip.hidden) {
       floor = Math.max(floor, height - tip.getBoundingClientRect().top + 12);
     }
-    banner.style.left = `${Math.max(margin, (window.innerWidth - banner.offsetWidth) / 2)}px`;
+    // Centered by its CSS (left, right and auto margins).
     banner.style.bottom = `${floor}px`;
   };
   const placeTip = () => {
@@ -2617,8 +2633,10 @@ async function main() {
   shareButton.id = 'share-chip';
   shareButton.className = 'panel';
   shareButton.dataset.share = 'link';
-  shareButton.textContent = 'Share';
+  shareButton.innerHTML = `${CHIP_ICONS.share}<span class="chip-label">Share</span>`;
+  shareButton.title = 'Share a link to this view';
   shareButton.setAttribute('aria-label', 'Share a link to this view');
+  const shareLabel = shareButton.querySelector('.chip-label');
   bar.insertBefore(shareButton, document.getElementById('about-panel'));
   bar.insertBefore(replayButton, shareButton);
   bar.insertBefore(continueButton, replayButton);
@@ -2701,7 +2719,7 @@ async function main() {
         return;
       }
       await navigator.clipboard.writeText(url);
-      shareButton.textContent = 'Link copied';
+      shareLabel.textContent = 'Link copied';
     } catch (error) {
       // Clipboard refused (an insecure page, a denied permission):
       // show the link so it can be copied by hand.
@@ -2709,7 +2727,7 @@ async function main() {
       return;
     }
     setTimeout(() => {
-      shareButton.textContent = 'Share';
+      shareLabel.textContent = 'Share';
     }, 2000);
   });
 

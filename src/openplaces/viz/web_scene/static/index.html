@@ -373,8 +373,17 @@
     transition: opacity 1.2s ease;
   }
   #tour-tip { max-width: min(260px, calc(100vw - 32px)); font-size: 12px; }
-  /* Room for a line of the opening messages without a break. */
-  #autopilot { max-width: min(600px, calc(100vw - 32px)); }
+  /* Room for a line of the opening messages without a break. Centered
+     by CSS, not from a measured width: iOS Safari's innerWidth can
+     differ from the layout viewport, which put the message off center
+     on an iPhone (maintainer, 2026-10-31). */
+  #autopilot {
+    left: 16px;
+    right: 16px;
+    width: fit-content;
+    margin-inline: auto;
+    max-width: min(600px, calc(100% - 32px));
+  }
   /* The opening messages come in slowly, one after another. */
   #autopilot.gentle { animation: tour-in 1.6s ease backwards; }
   @keyframes tour-in {
@@ -562,6 +571,35 @@
     #title-panel { padding: 6px 10px; max-width: calc(50vw - 20px); }
     #place-panel { padding: 6px 10px; }
     #legend-panel { left: 16px; right: 16px; width: auto; }
+    /* A phone shows the map first (maintainer, 2026-10-31): the legend
+       is the color ramp, its title line and ticks only, beside three
+       symbol buttons (controls, share, sources); the legend's title
+       and palette switch are not shown, and the controls stay folded
+       until their button opens them. */
+    #legend-box summary { display: none; }
+    #legend-box[open] { width: auto; flex: 1 1 150px; padding: 4px 8px; }
+    #legend-box .legend-label { font-size: 11px; font-weight: 500; }
+    #legend-box .legend canvas { height: 8px; }
+    #legend-box .legend-ticks { height: 13px; font-size: 10px; }
+    .legend-source, .legend-of, .legend-other-note, .legend-imputed { display: none; }
+    #bottom-bar .chip-label { display: none; }
+    #bottom-bar .chip-icon { display: block; }
+    #about-panel { flex: none; padding: 0; }
+    #about-panel summary { list-style: none; }
+    #about-panel summary::-webkit-details-marker { display: none; }
+    #controls-chip, #share-chip, #about-panel summary { padding: 8px; line-height: 0; }
+  }
+  /* The symbols of the controls, share and sources buttons, shown in
+     place of their words on a phone. */
+  .chip-icon {
+    display: none;
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 </style>
 </head>
@@ -586,7 +624,7 @@
   <!-- Closed by default; MassGIS asks for credit wherever its data
        are shown, and the sources' notices live here. -->
   <details id="about-panel" class="panel">
-    <summary>Sources</summary>
+    <summary aria-label="Sources" title="Sources"><svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span class="chip-label">Sources</span></summary>
     <div id="notices"></div>
   </details>
 </div>
