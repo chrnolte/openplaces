@@ -47,7 +47,8 @@ def _homes():
     return pd.DataFrame(
         {
             'occupancy_type': ['Manufactured Home'] * 6 + ['Single-Family'],
-            'area_m2': [100.0] * 7,
+            # The house is above SMALL_ZERO_MAX_M2.
+            'area_m2': [100.0] * 6 + [150.0],
             'structure_value': [
                 40000.0,  # alone on its parcel, $400/m2: listed
                 0.0,  # alone, zero: personal property
@@ -161,6 +162,23 @@ def test_without_a_lot_key_nothing_is_held():
         }
     )
     assert not bi.lot_value_elsewhere(frame).any()
+
+
+def test_a_small_dwelling_at_zero_is_filled_not_a_label():
+    # Fabricated: a 90 m2 house at 0 reads as a home off the roll; a
+    # 150 m2 house and a 90 m2 barn at 0 stay labels.
+    frame = pd.DataFrame(
+        {
+            'occupancy_type': ['Single-Family', 'Single-Family', 'Agricultural'],
+            'area_m2': [90.0, 150.0, 90.0],
+            'structure_value': [0.0, 0.0, 0.0],
+            'structure_value_source': ['parcel'] * 3,
+        }
+    )
+    for train in (True, False):
+        labels = bi.value_labels(frame, train=train)
+        assert pd.isna(labels.iloc[0])
+        assert labels.iloc[1:].tolist() == [0.0, 0.0]
 
 
 def test_manufactured_value_model_reads_the_home_not_the_parcel():
