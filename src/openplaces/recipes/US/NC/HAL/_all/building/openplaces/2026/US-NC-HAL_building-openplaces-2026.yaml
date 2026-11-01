@@ -1,0 +1,47 @@
+# Patch: Halifax County's roll states no building type, so the
+# Manufactured Home vote's shape guard does not read it as one.
+#
+# The national shape guard (occupancy block,
+# shape_insufficient_alone) asks a partner of footprint shape and a
+# zero improvement value where the roll and NSI both name a site-built
+# class. Halifax's use group has one residential code, "Residential",
+# and its improvement value is 0 on every parcel. The parcel curate
+# fills group_parcel on those parcels with NSI's most common group for
+# that code (impute_from_group_statistic), which is Single Family, so
+# occupancy_type_parcel there is NSI restated, and the guard would
+# read NSI agreeing with itself. Here the roll's statement is
+# withdrawn on "Residential" parcels for that guard only; every other
+# reading of occupancy_type_parcel in the vote is unchanged.
+#
+# Measured 2026-10-31 on US-NC-HAL: without this patch the shape guard with no_improvement_value takes the class from 25 surveyed manufactured homes (survey Manufactured Home F1 -0.042); with it, no surveyed building changes class.
+#
+# Why a patch and not a national rule: group_parcel is filled from
+# NSI's modal group in every county (group_parcel_source reads
+# group_statistic+imputed on 257,035 of 259,315 permit rows), so
+# "ignore an imputed group" also withdraws Wake's, Franklin's and
+# Pender's rolls, and keeps only a seventh of the permit gain.
+# Measured 2026-11-01 on US-NC: ignoring every imputed group_parcel in the shape guard, Manufactured Home F1 against strong-tier permits +0.0010 (this patch +0.0070).
+
+admin_id: US-NC-HAL
+stage: curate
+
+entity:
+  entity_type: building
+  source:
+    source_id: openplaces
+  version: 2026
+
+patches: US_building-openplaces-2026
+pipeline_patch:
+  # classify_manufactured_homes is the first unique step after the
+  # national derive of occupancy_statement_parcel and before the vote,
+  # so the patch names no occurrence that could shift.
+  - insert_before: classify_manufactured_homes
+    step:
+      step: suppress_where
+      phase_override: >-
+        withdraws a column derive_indicators wrote after resolve_occupancy,
+        before the vote reads it
+      column: occupancy_statement_parcel
+      indicators:
+        - {type: equals, column: use_group_combined_parcel, value: Residential}
