@@ -188,11 +188,13 @@ notes: >-
   which _apply_remap_csvs truncates to automatically. Validated against the
   independent FEMA structure classification on Jefferson: A is 98.0% Single
   Family (n=74,964), B is 89.7% Multi Family (n=1,193), E is 89.1% Single
-  Family, D is 68.4% Agricultural. Known cost of the one-character key:
-  A2 (mobile homes) is folded into A (single-family) -- 395 of 78,393 A rows
-  in Jefferson, 0.5%. The manufactured-home signal survives in
-  use_subgroup_code (Jefferson's local RMH covers 5,819 rows), which a
-  per-county crosswalk can recover later.
+  Family, D is 68.4% Agricultural. A2 is the one district code read at two
+  characters (mobile home): NSI places a manufactured home on 70% of the
+  96,644 A2 parcels it reaches across 31 Texas units, against about 1% of
+  A1 parcels (measured 2026-11-01; 30 of the 31 units between 32% and
+  92%). Kleberg (0.4%) keeps A2 as residential with no subtype claim, as
+  it does B. Read as single-family before, A2 parcels drew the cohort fill
+  of group_parcel toward Multi-Family where NSI did (Liberty).
 
   Kleberg is the measured exception to the statewide first-character
   key: its B codes sit on 29.2% of parcels (state median 0.2%, next

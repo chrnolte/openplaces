@@ -40,11 +40,22 @@ def _unscoped():
     return table[table['admin_id'].fillna('') == ''].drop(columns='admin_id')
 
 
-def test_statewide_two_character_keys_are_the_comptrollers():
+def test_statewide_two_character_keys_are_the_comptrollers_and_a2():
     keys = _unscoped()['use_group_code']
     assert keys.is_unique
-    assert set(keys[keys.str.len() == 2]) == COMPTROLLER
+    assert set(keys[keys.str.len() == 2]) == COMPTROLLER | {'A2'}
     assert set(keys[keys.str.len() == 1]) >= set('ABCDEFGJLMOX')
+
+
+def test_a2_is_a_mobile_home_except_in_kleberg():
+    # A district code, not the Comptroller's, but one meaning across
+    # Texas: NSI's manufactured homes sit on most A2 parcels.
+    table = pd.read_csv(STATEWIDE, dtype=str)
+    a2 = table[table['use_group_code'] == 'A2'].set_index(
+        table.loc[table['use_group_code'] == 'A2', 'admin_id'].fillna('')
+    )
+    assert a2.loc['', 'use_subgroup'] == 'mobile home'
+    assert pd.isna(a2.loc['US-TX-KLE', 'use_subgroup'])
 
 
 def test_commercial_and_industrial_are_split():
