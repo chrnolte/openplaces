@@ -33,6 +33,62 @@ def test_dry_run_uses_the_run_profile(monkeypatch, tmp_path):
     assert profile.is_absolute() and profile.parts[-2:] == ('profiles', 'scc')
 
 
+def _fake_snakemake(monkeypatch, tmp_path, returncode=0):
+    """Record each snakemake command instead of running it."""
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, returncode, stdout='', stderr='')
+
+    monkeypatch.setattr(submit.subprocess, 'run', fake_run)
+    monkeypatch.setattr(submit.cfg, 'get_dir', lambda name: tmp_path)
+    return calls
+
+
+def _main(*argv):
+    with pytest.raises(SystemExit) as exit_info:
+        submit.main(list(argv))
+    return exit_info.value.code
+
+
+def test_yes_reuses_a_stored_dry_run(monkeypatch, tmp_path):
+    calls = _fake_snakemake(monkeypatch, tmp_path)
+    config = ['--config', 'recipe=example', 'admin_ids=US-XX-AA']
+    assert _main('--dry-run-only', *config) == 0
+    assert _main('--yes', *config) == 0
+    # The dry run once, then the run itself: no second dry run.
+    assert ['-n' in c for c in calls] == [True, False]
+
+
+def test_yes_builds_a_new_dry_run_for_other_settings(monkeypatch, tmp_path):
+    calls = _fake_snakemake(monkeypatch, tmp_path)
+    assert _main('--dry-run-only', '--config', 'admin_ids=US-XX-AA') == 0
+    assert _main('--yes', '--config', 'admin_ids=US-XX-BB') == 0
+    assert ['-n' in c for c in calls] == [True, True, False]
+
+
+def test_a_failed_dry_run_is_not_reused(monkeypatch, tmp_path):
+    _fake_snakemake(monkeypatch, tmp_path, returncode=1)
+    config = ['--config', 'admin_ids=US-XX-AA']
+    assert _main('--dry-run-only', *config) == 1
+    calls = _fake_snakemake(monkeypatch, tmp_path)
+    assert _main('--yes', *config) == 0
+    assert ['-n' in c for c in calls] == [True, False]
+
+
+def test_a_dry_run_past_the_window_is_not_reused(monkeypatch, tmp_path):
+    calls = _fake_snakemake(monkeypatch, tmp_path)
+    config = ['--config', 'admin_ids=US-XX-AA']
+    _main('--dry-run-only', *config)
+    monkeypatch.setattr(submit, 'DRY_RUN_REUSE_HOURS', 0)
+    monkeypatch.setattr(
+        submit.time, 'time', lambda: (tmp_path / 'sge').stat().st_mtime + 60
+    )
+    _main('--yes', *config)
+    assert ['-n' in c for c in calls] == [True, True, False]
+
+
 def _submitted(tmp_path, mem_mb, threads, **env):
     """The qsub arguments the wrapper passes for one job."""
     stub = tmp_path / 'qsub'
