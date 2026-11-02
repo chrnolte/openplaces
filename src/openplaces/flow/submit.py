@@ -47,12 +47,20 @@ def _snakemake_command(*args) -> list[str]:
     return [sys.executable, '-m', 'snakemake', *args]
 
 
+def _profile_args(profile) -> list[str]:
+    path = Path(profile)
+    if not path.is_absolute():
+        path = cfg.code_root / path
+    return ['--profile', str(path)]
+
+
 def dry_run(
     config=None,
     targets=(),
     snakefile=None,
     extra_args=(),
     verbose=True,
+    profile=None,
 ) -> tuple[int, str, Path]:
     """Produce, print, and store a Snakemake dry run (the inspection gate).
 
@@ -69,6 +77,10 @@ def dry_run(
         Additional snakemake arguments (e.g. ``('--forcerun', 'rule')``).
     verbose : bool
         Print the dry-run output.
+    profile : str or Path, optional
+        Snakemake profile directory, as in `deploy`. Pass the profile
+        the run will use: its config file and settings (forced reruns,
+        default exclusions) decide which jobs the dry run lists.
 
     Returns
     -------
@@ -79,6 +91,7 @@ def dry_run(
     """
     command = _snakemake_command(
         '-n',
+        *(_profile_args(profile) if profile else []),
         *_snakefile_args(snakefile),
         *_config_args(config),
         *extra_args,
@@ -126,10 +139,7 @@ def deploy(
         is given.
     """
     if profile:
-        profile_path = Path(profile)
-        if not profile_path.is_absolute():
-            profile_path = cfg.code_root / profile_path
-        mode_args = ['--profile', str(profile_path)]
+        mode_args = _profile_args(profile)
     else:
         # The profiles set these; a run without one needs them as
         # flags, or a failed batched ingest deletes every unit's file.
@@ -177,7 +187,9 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     # Inspection gate: produce and store the dry run before any submission
-    returncode, _, _ = dry_run(config=args.config, targets=tuple(args.targets))
+    returncode, _, _ = dry_run(
+        config=args.config, targets=tuple(args.targets), profile=args.profile
+    )
     if returncode != 0:
         sys.exit('Dry run failed; nothing submitted.')
 

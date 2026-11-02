@@ -182,9 +182,13 @@ it to forget a peak. The input size it pairs with a peak is the
 `<rule>.input_mb` file the Snakefile writes beside the benchmark, also
 in a dry run (it is used only when the benchmark is newer). `python -m
 openplaces.flow.memory seed --scope <admin id>` refits the seed from a
-local table. The cluster starts from the seed and passes the value as
-`mem_per_core`; with no cap there, a job above its family's range keeps
-the envelope and is retried with twice the memory if it fails.
+local table. The cluster starts from the seed and requests the value as
+omp slots of 8 GB (`profiles/scc/qsub_submit.sh`), because the SCC reads
+`mem_per_core` as a node selector, not a reservation. With no run cap
+there, a job above its family's range keeps the envelope, up to
+`OPENPLACES_SCC_MAX_SLOTS` slots (default 16), and is retried with twice
+the memory if it fails. `flow.submit` runs its dry-run gate with the same
+profile as the run.
 
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
