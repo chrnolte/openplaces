@@ -470,13 +470,20 @@ def test_forced_delivery_ships_only_the_region_the_run_touches(shipping_dag):
         if spec['audience'] == 'public'
     ]
     assert public == ['US-NC']
-    # Its team twin ships with it; Texas has none and stays out.
+    # Its team twin ships with it; Texas and its twin stay out.
     assert {node.admin_id for node, _ in shipping_dag.delivery_nodes} == {'US-NC'}
 
 
 def test_state_scope_ships_that_state_alone():
     dag = RecipeDAG(TARGET, admin_ids=['US-TX'], deliver=True)
-    assert [node.admin_id for node, _ in dag.delivery_nodes] == ['US-TX']
+    public = [
+        node.admin_id
+        for node, spec in dag.delivery_nodes
+        if spec['audience'] == 'public'
+    ]
+    assert public == ['US-TX']
+    # Its team twin ships with it, at the same admin unit.
+    assert {node.admin_id for node, _ in dag.delivery_nodes} == {'US-TX'}
 
 
 def test_ambiguous_region_is_refused_rather_than_guessed():
