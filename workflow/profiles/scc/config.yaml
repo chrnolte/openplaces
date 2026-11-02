@@ -11,7 +11,9 @@
 #   from places is charged to places and one from openplaces to
 #   openplaces; OPENPLACES_SCC_PROJECT overrides it. It also passes the
 #   environment (-V), without which a compute node runs the system
-#   python on a bare PYTHONPATH.
+#   python on a bare PYTHONPATH. It turns a job's mem_mb into omp
+#   slots of 8 GB (see its header), because the SCC reads
+#   mem_per_core as a node selector, not a reservation.
 # - h_rt is 0:<minutes>:00. SGE rejects "<minutes>:00" (720:00 is "not
 #   a time value") and reads 0:720:00 as 12 hours.
 # - No cluster-generic-status-cmd. A status script that asks qacct
@@ -36,9 +38,8 @@
 executor: cluster-generic
 cluster-generic-submit-cmd: >-
   bash workflow/profiles/scc/qsub_submit.sh
+  {resources.mem_mb} {threads}
   -l h_rt=0:{resources.runtime}:00
-  -l mem_per_core={resources.mem_mb}M
-  -pe omp {threads}
   -j y
 jobs: 200
 latency-wait: 90

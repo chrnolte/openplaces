@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # qsub for the SCC profile. Snakemake appends the jobscript path.
 #
+# Usage: qsub_submit.sh MEM_MB THREADS [qsub args...] JOBSCRIPT
+#
+# Memory is requested as cores. On the SCC, mem_per_core selects nodes
+# with at least that much memory per core rather than reserving it, so
+# passing a job's total there sent a 26 GB job to wait for the rare
+# large-memory nodes and left a 106 GB one never starting. A job instead
+# takes max(THREADS, ceil(MEM_MB / 8000)) slots on nodes with at least
+# 8 GB per core, at most OPENPLACES_SCC_MAX_SLOTS (default 16, 128 GB):
+# beyond that the memory model is extrapolating, not measuring.
+# Measured 2026-11-01 on US-FL: property spines reserved up to 267 GB, peaked 16.7 GB.
+#
 # The job is charged to the SCC project the run belongs to: the one
 # whose space the checkout sits in (/project/<name>/...,
 # /projectnb/<name>/..., or the same under /restricted). A run from
@@ -13,6 +24,14 @@
 # PYTHONPATH. Logs go to OPENPLACES_SGE_LOG_DIR, which the Snakefile
 # sets to the configured logs directory.
 set -euo pipefail
+
+mem_mb=$1
+threads=$2
+shift 2
+max_slots="${OPENPLACES_SCC_MAX_SLOTS:-16}"
+slots=$(( (mem_mb + 7999) / 8000 ))
+[ "$slots" -lt "$threads" ] && slots=$threads
+[ "$slots" -gt "$max_slots" ] && slots=$max_slots
 
 project="${OPENPLACES_SCC_PROJECT:-}"
 if [ -z "$project" ]; then
@@ -29,4 +48,5 @@ fi
 
 log_dir="${OPENPLACES_SGE_LOG_DIR:-$PWD/.snakemake/sge}"
 mkdir -p "$log_dir"
-exec qsub -terse -V -P "$project" -o "$log_dir/" "$@"
+exec qsub -terse -V -P "$project" -o "$log_dir/" \
+  -pe omp "$slots" -l mem_per_core=8G "$@"

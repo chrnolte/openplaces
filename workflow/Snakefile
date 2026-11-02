@@ -257,7 +257,8 @@ def _pinned_mem_mb(stage, admin_id, recipe_id):
 #
 # The callable takes `input`, so Snakemake evaluates it when the job is
 # ready to run, with its inputs on disk (checked with Snakemake 9.23).
-# The cluster profile gets the same per-job value as `mem_per_core`.
+# The cluster profile turns the same per-job value into omp slots
+# (profiles/scc/qsub_submit.sh).
 MEM_MODEL = MemoryModel.from_files(
     config.get('mem_table') or default_table_path(),
     Path(workflow.basedir) / 'profiles' / 'mem_seed.csv',
