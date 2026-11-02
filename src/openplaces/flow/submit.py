@@ -8,17 +8,33 @@ dry-run output is stored next to the SGE logs for the post-hoc record::
 
     python -m openplaces.flow.submit --config recipe=US_footprint-cheer-2026 \\
         admin_ids=US-NC-BR,US-NC-AR
+
+With `--yes`, a successful dry run stored in the last
+`DRY_RUN_REUSE_HOURS` for the same profile, profile contents, config
+and targets stands in for a new one, so a run inspected beforehand
+with `--dry-run-only` does not build the job graph twice.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 from openplaces.config import cfg
+
+# How old a stored dry run may be and still stand in for a new one
+# under --yes. Building the graph is the slow part of a large run
+# (several minutes for a 267-unit wave), and an unattended submission
+# used to build it three times: a dry run to inspect, the gate's, and
+# the run's. The window is short because the graph depends on the
+# files on disk, which a run started a day later may find changed.
+DRY_RUN_REUSE_HOURS = 12
 
 
 def _snakefile_args(snakefile=None) -> list[str]:
@@ -39,6 +55,56 @@ def _config_args(config) -> list[str]:
     else:
         pairs = list(config)
     return ['--config', *pairs] if pairs else []
+
+
+def _run_key(profile, config, targets, snakefile, extra_args) -> str:
+    """Short hash of what decides a dry run's job list.
+
+    The profile's own files are hashed, not only its path, because a
+    wave's profile is rewritten in place (its forced rules).
+    """
+    profile_text = ''
+    if profile:
+        path = Path(_profile_args(profile)[1])
+        profile_text = ''.join(
+            p.read_text(encoding='utf-8', errors='replace')
+            for p in sorted(path.glob('*.yaml'))
+        )
+    payload = json.dumps(
+        [
+            profile_text,
+            _config_args(config),
+            list(targets),
+            str(snakefile or ''),
+            list(extra_args),
+        ]
+    )
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()[:12]
+
+
+def stored_dry_run(key: str, max_age_hours: float | None = None) -> Path | None:
+    """The newest successful stored dry run for *key*, if recent enough.
+
+    Parameters
+    ----------
+    key : str
+        The run key `dry_run` stored it under.
+    max_age_hours : float, optional
+        Older dry runs are ignored; `DRY_RUN_REUSE_HOURS` by default.
+
+    Returns
+    -------
+    Path or None
+        The stored output, None when there is none.
+    """
+    log_dir = Path(cfg.get_dir('logs')) / 'sge'
+    if max_age_hours is None:
+        max_age_hours = DRY_RUN_REUSE_HOURS
+    cutoff = time.time() - max_age_hours * 3600
+    for path in sorted(log_dir.glob(f'dryrun_*_{key}_rc0.txt'), reverse=True):
+        if path.stat().st_mtime >= cutoff:
+            return path
+    return None
 
 
 def _snakemake_command(*args) -> list[str]:
@@ -87,7 +153,8 @@ def dry_run(
     (returncode, output, stored_path)
         The dry run's exit code, its combined stdout+stderr, and the path
         it was stored at (under the logs directory, for the post-hoc
-        record).
+        record). The file name carries the run key and the exit code,
+        which is how `stored_dry_run` finds it again.
     """
     command = _snakemake_command(
         '-n',
@@ -105,7 +172,8 @@ def dry_run(
     log_dir = Path(cfg.get_dir('logs')) / 'sge'
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    stored_path = log_dir / f'dryrun_{stamp}.txt'
+    key = _run_key(profile, config, targets, snakefile, extra_args)
+    stored_path = log_dir / f'dryrun_{stamp}_{key}_rc{result.returncode}.txt'
     stored_path.write_text(output, encoding='utf-8')
     if verbose:
         print(f'Dry run stored: {stored_path}')
@@ -183,24 +251,40 @@ def main(argv=None) -> None:
         action='store_true',
         help='Submit without the interactive confirmation prompt',
     )
+    parser.add_argument(
+        '--dry-run-only',
+        action='store_true',
+        help='Produce and store the dry run, submit nothing; a later --yes '
+        f'run with the same settings reuses it for {DRY_RUN_REUSE_HOURS} h',
+    )
     parser.add_argument('targets', nargs='*', help='Optional Snakemake targets')
     args = parser.parse_args(argv)
+    if args.dry_run_only:
+        returncode, _, _ = dry_run(
+            config=args.config, targets=tuple(args.targets), profile=args.profile
+        )
+        sys.exit(returncode)
 
-    # Inspection gate: produce and store the dry run before any submission
-    returncode, _, _ = dry_run(
-        config=args.config, targets=tuple(args.targets), profile=args.profile
-    )
-    if returncode != 0:
-        sys.exit('Dry run failed; nothing submitted.')
+    # Inspection gate: produce and store the dry run before any
+    # submission, unless --yes finds a recent one for the same run.
+    targets = tuple(args.targets)
+    key = _run_key(args.profile, args.config, targets, None, ())
+    reused = stored_dry_run(key) if args.yes else None
+    if reused is not None:
+        print(f'Dry run reused: {reused}')
+    else:
+        returncode, _, _ = dry_run(
+            config=args.config, targets=targets, profile=args.profile
+        )
+        if returncode != 0:
+            sys.exit('Dry run failed; nothing submitted.')
 
     if not args.yes:
         answer = input('Submit these jobs to the cluster? [y/N] ').strip().lower()
         if answer not in ('y', 'yes'):
             sys.exit('Submission cancelled.')
 
-    sys.exit(
-        deploy(profile=args.profile, config=args.config, targets=tuple(args.targets))
-    )
+    sys.exit(deploy(profile=args.profile, config=args.config, targets=targets))
 
 
 if __name__ == '__main__':

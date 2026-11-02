@@ -188,7 +188,10 @@ omp slots of 8 GB (`profiles/scc/qsub_submit.sh`), because the SCC reads
 there, a job above its family's range keeps the envelope, up to
 `OPENPLACES_SCC_MAX_SLOTS` slots (default 16), and is retried with twice
 the memory if it fails. `flow.submit` runs its dry-run gate with the same
-profile as the run.
+profile as the run. Under `--yes` it reuses a successful dry run stored
+in the last 12 hours for the same profile contents, config and targets
+(`--dry-run-only` produces one), because building a wave's job graph
+takes minutes and an unattended run would otherwise build it twice.
 
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
