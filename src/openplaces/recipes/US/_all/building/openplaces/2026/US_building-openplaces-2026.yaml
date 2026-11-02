@@ -1755,6 +1755,14 @@ pipeline:
     min_value_per_sqft: 3500
     max_value_per_floor_sqft: 3000
 
+  # Standing check, every unit on every run: lots whose roll value sits
+  # on a minority of their large buildings, and buildings left without
+  # a roll value beside a valued one (which a fill counts twice). Counts
+  # only, to the log and the cache; no value changes
+  # (plans/lot-value-sharing-among-buildings.md, fix 5).
+  - step: report_lot_value_sharing
+    min_m2: 100
+
   # Format: dtypes, then deterministic column order.
   - step: cast_categoricals
 
