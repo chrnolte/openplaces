@@ -192,6 +192,30 @@ def test_split_units_keep_the_numbers_that_do_name_one_unit():
     assert report['n_coarse_numbers'] == 30
 
 
+def test_rows_differing_only_in_owner_fields_are_one_property():
+    # One account repeated on a row per co-owner, each row carrying the
+    # account's full value; the second account has two real units.
+    rows = _roll(
+        ['LOT'] * 3 + ['LOT2'] * 2,
+        land_value=[100.0, 100.0, 100.0, 50.0, 60.0],
+        owner_name=['Owner A', 'Owner B', 'Owner C', 'Owner D', 'Owner D'],
+        owner_postal_code=['00001', '00002', '00003', '00004', '00004'],
+    )
+    for by_content in (False, True):
+        ids, _ = mint_ids(
+            rows, ADMIN, 'account', 'layer:units', repeats_by_content=by_content
+        )
+        assert ids[:3].nunique() == 1
+        assert ids[3:].nunique() == 2
+        merged = merge_on_id(rows, ids, 'property_id')
+        assert merged['land_value'].sum() == 210.0
+    # The ids do not depend on whether the build kept the owner columns.
+    stripped = rows.drop(columns=['owner_name', 'owner_postal_code'])
+    with_owner, _ = mint_ids(rows, ADMIN, 'account', 'u', repeats_by_content=True)
+    without, _ = mint_ids(stripped, ADMIN, 'account', 'u', repeats_by_content=True)
+    assert with_owner.tolist() == without.tolist()
+
+
 def test_a_row_without_a_number_is_named_by_its_content():
     rows = _roll([None, 'A2'], value=[1.0, 2.0])
     ids, report = mint_ids(rows, ADMIN, 'account', 'roll')
