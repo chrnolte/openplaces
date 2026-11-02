@@ -1763,6 +1763,37 @@ pipeline:
   - step: report_lot_value_sharing
     min_m2: 100
 
+  # Why a building is at $0: imputation refills the zeros that say
+  # nothing about the structure (personal_property, exempt,
+  # included_elsewhere, not_on_roll) and learns only from no_value
+  # (plans/zero-structure-value-reasons.md, part A2). Last of the
+  # infer steps, after every vote: the vote must never read it, since
+  # personal_property reads the occupancy class. Classes as part A
+  # counted them on 100 NC and 42 TX units (2026-10-31).
+  - step: derive_structure_value_zero_reason
+    dwelling_classes: [Single-Family, Low-Rise Multi-Family, Multi-Family]
+    secondary_classes: [Secondary, Garage]
+    exempt_classes:
+      - Government Services
+      - Average School
+      - Church
+      - College/University
+      - Emergency Response
+      - Institutional Dormitory
+      - Nursing Home
+    exempt_land_use_classes: [Institutional]
+    exempt_use_groups:
+      - exempt
+      - totally exempt
+      - vacant exempt
+      - vacant governmental
+      - government transportation authority
+      - religious
+      - church
+    manufactured_home_land_use_classes: [Manufactured Home, Manufactured Home Park]
+    vacant_land_use_classes: [Vacant, Mostly Vacant]
+    not_on_roll_min_m2: 50
+
   # Format: dtypes, then deterministic column order.
   - step: cast_categoricals
 

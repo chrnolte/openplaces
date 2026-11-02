@@ -184,6 +184,10 @@ share:
     # resolved", never "one section".
     - n_sections
     - structure_value
+    # Why structure_value is 0 where it is (secondary, personal
+    # property, exempt, ...), so a user can take the roll's view back
+    # after imputation refills a zero.
+    - structure_value_zero_reason
     # NSI's two cost measures, each in its own column and never mixed
     # into structure_value (the roll's market value): depreciated and
     # new replacement cost at NSI's August 2025 prices, imputed where
@@ -217,6 +221,9 @@ share:
   derived_from:
     occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
     occupancy_type_conflict: [group_parcel]
+    # Read from the roll's value and use class.
+    structure_value_zero_reason:
+      [structure_value, use_group_combined_parcel, group_parcel]
   # Which admin units the region-wide bundles cover, and which units feed
   # them. Named in the recipe rather than passed at run time so `snakemake`
   # with no admin_ids builds and ships every region unattended -- and so a
