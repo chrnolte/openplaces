@@ -31,6 +31,7 @@ import warnings
 
 import pandas as pd
 
+from openplaces.core.attribute_registry import is_personal_attribute
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.stacked_units import LOT_LINK_KEY, STACKED_UNITS_LABEL_SUFFIX
 from openplaces.recipe import get_recipe_by_id
@@ -160,8 +161,21 @@ def choose_id_column(rows: pd.DataFrame, candidates) -> str | None:
 
 
 def _content_hash(rows: pd.DataFrame) -> pd.Series:
-    """Order-independent fingerprint of each row's values."""
-    return pd.util.hash_pandas_object(rows.astype('string'), index=False)
+    """Order-independent fingerprint of each row's property attributes.
+
+    Personal columns (owner, grantor, grantee) are left out: they describe
+    who holds the property, not the property. Texas rolls repeat one
+    account on a row per co-owner, every row carrying the account's full
+    values, and with the owner fields in the fingerprint each row became
+    a property of its own, so the account's land and value were counted
+    once per owner. Whether those columns are present depends on the
+    person running the build, and the ids must not.
+    Measured 2026-11-01 on US-TX-LIB: 7,702 owner-only rows, $1.63B of land.
+    """
+    personal = [c for c in rows.columns if is_personal_attribute(c)]
+    return pd.util.hash_pandas_object(
+        rows.drop(columns=personal).astype('string'), index=False
+    )
 
 
 def mint_ids(
