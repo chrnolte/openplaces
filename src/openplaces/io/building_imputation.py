@@ -64,6 +64,7 @@ multiclass model (L15). No published index is built here (L29).
 from __future__ import annotations
 
 import importlib
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -559,7 +560,9 @@ SMALL_ZERO_MAX_M2 = 120.0
 #: (curator.zero_value_reasons); a bundle built before the column
 #: existed falls back to the rules of :func:`value_labels` alone.
 ZERO_REASON_COLUMN = 'structure_value_zero_reason'
-#: Zeros that say nothing about the structure: refilled.
+#: Zeros that say nothing about the structure: never labels nor kept
+#: as observed. Filled, except where lot_value_elsewhere holds the
+#: building (every included_elsewhere zero), which ships its 0.
 REFILLED_ZERO_REASONS = ('personal_property', 'exempt', 'included_elsewhere')
 #: The roll's statement about the building: the only zeros that train.
 LABELED_ZERO_REASONS = ('no_value',)
@@ -944,15 +947,16 @@ TARGETS = [
     TargetSpec('n_dwellings', 'count', per_county=False),
     TargetSpec('structure_value', 'value', per_county=True),
 ]
+STRUCTURE_VALUE = TARGETS[-1]
 # NSI's cost measures, filled after the market value and beside it,
-# never from it. Each county trains on its own NSI values only
-# (MEASURE_OWN_ONLY): every county the curated inventories cover has
-# NSI points, and NSI sets its level per county (its county cost
-# factor) and per tract (its income term), so a county's own labels
-# carry its level and no county is paired with another (design limit
-# L30 is not approached). Neither measure reads the other's filled
-# value, nor the market value's (design limit L13: no model's
-# prediction becomes another value model's input).
+# never from it. Each county trains on its own NSI values where it has
+# MEASURE_MIN_OWN_LABELS of them: NSI sets its level per county (its
+# county cost factor) and per tract (its income term), so a county's
+# own labels carry its level. Below that, the delivered donor weights
+# (distance only, design limit L30) add other counties. Neither
+# measure reads the other's filled value, nor the market value's
+# (design limit L13: no model's prediction becomes another value
+# model's input).
 # Measured 2026-10-28 on cheer-eastern-nc: NSI values on 71.3% of
 # rows, 91.0% of single-family homes, 53% to 85% per county.
 # Replacement cost is filled first; the depreciated cost is then its
@@ -1271,6 +1275,25 @@ def fit_target(
     if spec.kind == 'log':
         return fit_regressor(x, np.log(y), w, loss='squared_error', seed=seed)
     return fit_classifier(x, y.astype('string'), w, seed)
+
+
+def target_rng(seed: int, column: str, offset: int = 0) -> np.random.Generator:
+    """Return the random generator of one target's draws.
+
+    Seeded by the delivery's seed and the target's column, so two
+    targets filled on the same rows draw independent numbers and a
+    delivery still reproduces. One generator per call from the seed
+    alone gave every target of a building the same uniform, which tied
+    its filled classes and counts to each other (cheer step review,
+    2026-11-03, on the v0.7 bundle).
+
+    Measured 2026-11-03 on cheer-eastern-nc: construction and foundation rank r 0.415.
+
+    The measure is between filled cells; where both were observed it
+    was -0.006.
+    """
+    key = zlib.crc32(column.encode())
+    return np.random.default_rng([int(seed) + offset, key])
 
 
 def predict_target(spec: TargetSpec, model, x: pd.DataFrame, rng) -> np.ndarray:
@@ -1922,13 +1945,13 @@ class Imputer:
         the 213,604 primary buildings missing a construction type has
         NSI or CHEER evidence, and every labeled row has one of them.
         """
-        rng = np.random.default_rng(self.seed)
+        rng = target_rng(self.seed, spec.column)
         hook = self.extensions.train_rows
         if hook is not None:
             # The training hook prepares the model for the target rows'
             # gaps itself, so one model fills them all.
             source = xt if patterns is None else patterns[xt.columns]
-            x, y, w = hook(x, y, w, source, np.random.default_rng(self.seed + 1))
+            x, y, w = hook(x, y, w, source, target_rng(self.seed, spec.column, 1))
             empty = [c for c in x.columns if x[c].notna().sum() == 0]
             model = fit_target(spec, x.drop(columns=empty), y, w, self.seed)
             out = predict_target(spec, model, xt.drop(columns=empty), rng)
@@ -2755,7 +2778,8 @@ def roll_level_check(imputer: Imputer) -> dict:
     """
     if imputer.acs_value is None:
         return {'ratio': {}, 'flagged': {}}
-    y = imputer._labels(TARGETS[-1])
+    # By name: the cost measures were appended after it (TARGETS).
+    y = imputer._labels(STRUCTURE_VALUE)
     single = imputer.frame['occupancy_type'].astype('string').eq('Single-Family')
     positive = single & y.gt(0).fillna(False)
     grouped = y[positive].groupby(imputer.frame.loc[positive, 'admin3_id'])

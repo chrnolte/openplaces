@@ -585,14 +585,26 @@ def test_roll_level_check_flags_a_county_far_from_its_acs_level():
         }
     )
     labels = pd.Series([100.0] * n + [170.0] * n)
+    # Only the market value's labels are the roll's; the cost measures
+    # appended after it in TARGETS must not be read.
     stub = SimpleNamespace(
         frame=frame,
         acs_value=pd.Series({'A': 150.0, 'B': 110.0}),
-        _labels=lambda spec: labels,
+        _labels=lambda spec: (
+            labels if spec.column == 'structure_value' else labels * 0 + 1e6
+        ),
     )
     level = bi.roll_level_check(stub)
     assert level['ratio'] == {'A': 0.667, 'B': 1.545}
     assert level['flagged'] == {'B': 1.545}
+
+
+def test_targets_draw_independent_numbers_and_reproduce():
+    a = bi.target_rng(2026, 'construction_type').random(1000)
+    b = bi.target_rng(2026, 'foundation_type').random(1000)
+    assert abs(np.corrcoef(a, b)[0, 1]) < 0.1
+    again = bi.target_rng(2026, 'construction_type').random(1000)
+    assert np.array_equal(a, again)
 
 
 def test_appraisal_scales_require_every_county():
