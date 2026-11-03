@@ -6,11 +6,16 @@
 # Memory is requested as cores. On the SCC, mem_per_core selects nodes
 # with at least that much memory per core rather than reserving it, so
 # passing a job's total there sent a 26 GB job to wait for the rare
-# large-memory nodes and left a 106 GB one never starting. A job instead
-# takes max(THREADS, ceil(MEM_MB / 8000)) slots on nodes with at least
-# 8 GB per core, at most OPENPLACES_SCC_MAX_SLOTS (default 16, 128 GB):
-# beyond that the memory model is extrapolating, not measuring.
+# large-memory nodes and left a 106 GB one never starting. A job that
+# fits in 3 GB per thread (OPENPLACES_SCC_ANY_NODE_MB_PER_CORE) fits on
+# any node, so it takes THREADS slots and no selector: the selector
+# confined small jobs to the 8 GB nodes, where they queued behind the
+# large ones. A larger job takes max(THREADS, ceil(MEM_MB / 8000))
+# slots on nodes with at least 8 GB per core, at most
+# OPENPLACES_SCC_MAX_SLOTS (default 16, 128 GB): beyond that the
+# memory model is extrapolating, not measuring.
 # Measured 2026-11-01 on US-FL: property spines reserved up to 267 GB, peaked 16.7 GB.
+# Measured 2026-11-02 on SCC: 1,052 of 1,068 nodes have at least 3 GB per core, 431 at least 8 GB.
 #
 # The job is charged to the SCC project the run belongs to: the one
 # whose space the checkout sits in (/project/<name>/...,
@@ -29,8 +34,15 @@ mem_mb=$1
 threads=$2
 shift 2
 max_slots="${OPENPLACES_SCC_MAX_SLOTS:-16}"
-slots=$(( (mem_mb + 7999) / 8000 ))
-[ "$slots" -lt "$threads" ] && slots=$threads
+any_node_mb="${OPENPLACES_SCC_ANY_NODE_MB_PER_CORE:-3000}"
+if [ "$mem_mb" -le $(( threads * any_node_mb )) ]; then
+  slots=$threads
+  selector=()
+else
+  slots=$(( (mem_mb + 7999) / 8000 ))
+  [ "$slots" -lt "$threads" ] && slots=$threads
+  selector=(-l mem_per_core=8G)
+fi
 [ "$slots" -gt "$max_slots" ] && slots=$max_slots
 
 project="${OPENPLACES_SCC_PROJECT:-}"
@@ -49,4 +61,4 @@ fi
 log_dir="${OPENPLACES_SGE_LOG_DIR:-$PWD/.snakemake/sge}"
 mkdir -p "$log_dir"
 exec qsub -terse -V -P "$project" -o "$log_dir/" \
-  -pe omp "$slots" -l mem_per_core=8G "$@"
+  -pe omp "$slots" ${selector[@]+"${selector[@]}"} "$@"

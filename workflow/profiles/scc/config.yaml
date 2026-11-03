@@ -11,9 +11,10 @@
 #   from places is charged to places and one from openplaces to
 #   openplaces; OPENPLACES_SCC_PROJECT overrides it. It also passes the
 #   environment (-V), without which a compute node runs the system
-#   python on a bare PYTHONPATH. It turns a job's mem_mb into omp
-#   slots of 8 GB (see its header), because the SCC reads
-#   mem_per_core as a node selector, not a reservation.
+#   python on a bare PYTHONPATH. It sends a job within 3 GB per
+#   thread to any node and turns a larger job's mem_mb into omp slots
+#   of 8 GB (see its header), because the SCC reads mem_per_core as a
+#   node selector, not a reservation.
 # - h_rt is 0:<minutes>:00. SGE rejects "<minutes>:00" (720:00 is "not
 #   a time value") and reads 0:720:00 as 12 hours.
 # - No cluster-generic-status-cmd. A status script that asks qacct

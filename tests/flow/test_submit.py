@@ -117,7 +117,7 @@ def _submitted(tmp_path, mem_mb, threads, **env):
 @pytest.mark.parametrize(
     ('mem_mb', 'threads', 'slots', 'env'),
     [
-        (2000, 4, '4', {}),  # threads decide a small job
+        (20000, 4, '4', {}),  # threads decide a 5 GB-per-core job
         (26000, 1, '4', {}),  # 26 GB is four 8 GB slots
         (267000, 1, '16', {}),  # an extrapolated estimate is capped
         (267000, 1, '28', {'OPENPLACES_SCC_MAX_SLOTS': '28'}),
@@ -127,4 +127,16 @@ def test_qsub_requests_memory_as_slots(tmp_path, mem_mb, threads, slots, env):
     args = _submitted(tmp_path, mem_mb, threads, **env)
     assert args[args.index('omp') + 1] == slots
     assert 'mem_per_core=8G' in args
+    assert args[-1] == 'job.sh'
+
+
+@pytest.mark.skipif(
+    shutil.which('bash') is None or not Path('/usr/bin').exists(),
+    reason='needs a POSIX bash',
+)
+@pytest.mark.parametrize(('mem_mb', 'threads'), [(1000, 1), (3000, 1), (8000, 4)])
+def test_qsub_sends_a_small_job_to_any_node(tmp_path, mem_mb, threads):
+    args = _submitted(tmp_path, mem_mb, threads)
+    assert args[args.index('omp') + 1] == str(threads)
+    assert not any('mem_per_core' in a for a in args)
     assert args[-1] == 'job.sh'
