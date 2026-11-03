@@ -181,6 +181,49 @@ def test_a_small_dwelling_at_zero_is_filled_not_a_label():
         assert labels.iloc[1:].tolist() == [0.0, 0.0]
 
 
+def test_a_zero_trains_only_where_its_reason_is_the_roll_statement():
+    # Fabricated 150 m2 houses at 0, one per reason, and one valued.
+    reasons = [
+        'no_value',
+        'personal_property',
+        'exempt',
+        'included_elsewhere',
+        'secondary',
+        'not_on_roll',
+        None,
+    ]
+    frame = pd.DataFrame(
+        {
+            'occupancy_type': ['Single-Family'] * 7,
+            'area_m2': [150.0] * 7,
+            'structure_value': [0.0] * 6 + [200000.0],
+            'structure_value_source': ['parcel'] * 7,
+            'structure_value_zero_reason': reasons,
+        }
+    )
+    train = bi.value_labels(frame)
+    keep = bi.value_labels(frame, train=False)
+    assert train.iloc[0] == 0.0 and train.iloc[6] == 200000.0
+    assert train.iloc[1:6].isna().all()
+    # Refilled reasons are missing; secondary and not_on_roll keep 0.
+    assert keep.iloc[1:4].isna().all()
+    assert keep.iloc[4:6].tolist() == [0.0, 0.0]
+
+
+def test_a_small_zero_the_roll_no_longer_carries_keeps_its_zero():
+    frame = pd.DataFrame(
+        {
+            'occupancy_type': ['Single-Family'] * 2,
+            'area_m2': [90.0] * 2,
+            'structure_value': [0.0] * 2,
+            'structure_value_source': ['parcel'] * 2,
+            'structure_value_zero_reason': ['not_on_roll', 'no_value'],
+        }
+    )
+    keep = bi.value_labels(frame, train=False)
+    assert keep.iloc[0] == 0.0 and pd.isna(keep.iloc[1])
+
+
 def test_manufactured_value_model_reads_the_home_not_the_parcel():
     inputs = bi.input_columns(bi.MANUFACTURED_VALUE)
     assert 'log_area_m2' in inputs and 'chain_year_built' in inputs
