@@ -21,6 +21,7 @@ from openplaces.config.user_config import (
     can_prompt,
     detect_agent,
     prompt_usage_profile,
+    user_config_path,
     write_identity,
     write_usage_profile,
 )
@@ -170,7 +171,7 @@ class OpenPlacesConfig:
 
     def _get_user_config_path(self) -> Path:
         """Get path to user-specific configuration file."""
-        return Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
+        return user_config_path()
 
     def _find_project_config(self) -> Path | None:
         """Search for project configuration file in current directory."""

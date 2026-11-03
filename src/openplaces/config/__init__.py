@@ -52,6 +52,7 @@ from openplaces.config.user_config import (  # noqa: F401
     detect_agent,
     merge_user_config,
     prompt_usage_profile,
+    user_config_path,
     write_identity,
     write_usage_profile,
 )
@@ -347,7 +348,7 @@ def reset_config():
 
     This will trigger the interactive setup on next import.
     """
-    config_path = Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
+    config_path = user_config_path()
 
     if config_path.exists():
         print(f'Deleting user config: {config_path}')
@@ -363,7 +364,7 @@ def reset_config():
 
 def show_config():
     """Display current configuration file location and contents."""
-    config_path = Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
+    config_path = user_config_path()
 
     print(f'User config location: {config_path}')
     print(f'Exists: {config_path.exists()}')
@@ -391,7 +392,7 @@ def show_credentials():
 
 def edit_config():
     """Open user config file in default editor."""
-    config_path = Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
+    config_path = user_config_path()
 
     if not config_path.exists():
         print(f'No config file exists at: {config_path}')

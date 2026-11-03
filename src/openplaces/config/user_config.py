@@ -8,10 +8,35 @@ import sys
 from pathlib import Path
 
 import yaml
+from platformdirs import user_config_dir
 
 from openplaces.config.identity import (
     AGENT_ENV_VARS,
+    APPAUTHOR,
+    APPNAME,
 )
+
+CONFIG_ENV = 'OPENPLACES_CONFIG'
+
+
+def user_config_path() -> Path:
+    """Path of the user config file.
+
+    The `OPENPLACES_CONFIG` environment variable names another file,
+    so a test run can point every data directory at a scratch folder.
+    The user config's directories override a project `openplaces.yaml`,
+    so that file alone cannot redirect a checkout.
+
+    Returns
+    -------
+    Path
+        `OPENPLACES_CONFIG` when set, else `config.yaml` in the
+        platform's user config directory.
+    """
+    override = os.environ.get(CONFIG_ENV)
+    if override:
+        return Path(override)
+    return Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
 
 
 class ConfigFileUnreadableError(OSError):

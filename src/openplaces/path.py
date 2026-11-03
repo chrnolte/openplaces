@@ -100,28 +100,70 @@ def _external_recipe_roots() -> list[Path]:
     return [Path(record['root']) for record in _external_recipe_root_records()]
 
 
+def git_commit(repo_root: Path) -> str | None:
+    """The commit a checkout's HEAD is on, abbreviated to 12 characters.
+
+    Read from the files under `.git`, without running git, so every
+    table write can afford it. Handles a linked worktree, whose `.git`
+    is a file naming its own git directory, and a branch whose ref git
+    has moved into `packed-refs`: both returned None before 2026-10-29,
+    so outputs built there recorded no commit.
+
+    Parameters
+    ----------
+    repo_root : pathlib.Path
+        The checkout's root directory.
+
+    Returns
+    -------
+    str or None
+        None when the directory is no checkout or HEAD cannot be read.
+    """
+    try:
+        git_dir = Path(repo_root) / '.git'
+        if git_dir.is_file():
+            pointer = git_dir.read_text(encoding='utf-8').strip()
+            git_dir = Path(pointer.removeprefix('gitdir:').strip())
+            if not git_dir.is_absolute():
+                git_dir = Path(repo_root) / git_dir
+        ref = (git_dir / 'HEAD').read_text(encoding='utf-8').strip()
+        if not ref.startswith('ref: '):
+            return ref[:12] or None
+        name = ref[5:]
+        # A worktree keeps HEAD in its own directory and the branches
+        # in the main repository's, which `commondir` points to.
+        common = git_dir
+        if (git_dir / 'commondir').is_file():
+            pointer = (git_dir / 'commondir').read_text(encoding='utf-8').strip()
+            common = (git_dir / pointer).resolve()
+        for directory in dict.fromkeys((git_dir, common)):
+            loose = directory / name
+            if loose.is_file():
+                return loose.read_text(encoding='utf-8').strip()[:12] or None
+        packed = common / 'packed-refs'
+        if packed.is_file():
+            for line in packed.read_text(encoding='utf-8').splitlines():
+                sha, _, packed_name = line.partition(' ')
+                if packed_name == name:
+                    return sha[:12]
+    except OSError:
+        return None
+    return None
+
+
 def _bundled_recipe_root_record() -> dict:
     """The bundled recipe directory, with the version it shipped in.
 
     From an installed package the version is the distribution's; from a
     checkout it is the commit the working tree is on, which is the
-    honest identity of a recipe tree that changes between releases.
+    honest identity of a recipe tree that changes between releases. The
+    same commit tells `flow.code_staleness` which code built an output.
     """
     try:
         version = importlib.metadata.version('openplaces')
     except importlib.metadata.PackageNotFoundError:
         version = None
-    commit = None
-    head = cfg.code_root / '.git' / 'HEAD'
-    try:
-        ref = head.read_text(encoding='utf-8').strip()
-        if ref.startswith('ref: '):
-            commit = (cfg.code_root / '.git' / ref[5:]).read_text(encoding='utf-8')
-        else:
-            commit = ref
-        commit = commit.strip()[:12] or None
-    except OSError:
-        commit = None
+    commit = git_commit(cfg.code_root)
     return {
         'root': str(BUNDLED_RECIPES_DIR),
         'provider': 'bundled',

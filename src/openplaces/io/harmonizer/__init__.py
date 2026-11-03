@@ -844,7 +844,10 @@ class Harmonizer:
         # reconcile block: profiling (Nueces, 2026-08-25) puts the
         # load-plus-reconcile prefix at about two-thirds of an
         # attribute rerun. Delete the '_checkpoint.parquet' beside the
-        # output to force a full rerun.
+        # output to force a full rerun. The chain does not cover code,
+        # so a rerun after a code change restores what the old code
+        # computed; `reprocess` (run_stage --reprocess) runs every step
+        # and writes a fresh checkpoint.
         checkpoint_index = next(
             (
                 i
@@ -856,8 +859,12 @@ class Harmonizer:
         resume_from = 0
         if checkpoint_index is not None:
             chain = _checkpoint_chain(recipe, pipeline, checkpoint_index, admin_id)
-            restored = _load_attribute_checkpoint(
-                recipe, admin_id, chain, verbose=self.verbose
+            restored = (
+                None
+                if reprocess
+                else _load_attribute_checkpoint(
+                    recipe, admin_id, chain, verbose=self.verbose
+                )
             )
             if restored is not None:
                 state.spine, handoff = restored

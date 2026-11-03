@@ -222,6 +222,68 @@ jobfinished/jobfailed markers are per group job, while metadata and
 kept outputs stay per job, since the submitting process postprocesses
 each job of a group as it would an ungrouped one.
 
+**Snakemake does not see a change to openplaces code.** Every rule runs
+the same `python -m openplaces.flow.run_stage ...` command, and the
+profiles rerun on mtime only, so a job whose code a merge changed keeps
+its old output unless the run forces it. When a run starts (in
+`onstart`, where Snakemake's force settings are known; not in a dry
+run), the Snakefile prints a summary of `flow/code_staleness.py`'s report: the jobs the run
+keeps whose output footer records a commit (`path.git_commit`, the
+checkout's HEAD at write time) that differs from the working tree in a
+file the job depends on. That is its stage's import closure (static,
+function-level imports and step modules loaded by name included), data
+files beside those modules, and its recipe, patch recipes and their
+sidecars. A registry (`core/attribute_registry.csv`) change counts
+only when a changed row names a column of the job's output or inputs;
+for an ingest, whose raw source no table records, any change counts.
+`python -m openplaces.flow.code_staleness RECIPE [units]` prints the
+full list (`--jobs` one rule per line); `--config code_report=false`
+skips it at launch. It reports and never reruns: the person running
+the wave decides what to force.
+
+**A code change is cleared by a sample rerun, never assumed
+harmless.** `--verify N` reruns N units of each listed (stage, recipe)
+group, spread over output size, in place, through `run_stage
+--reprocess --keep-if-equal`: every parquet write that produces the
+same table as the file in place keeps that file and its mtime. A group
+whose samples all write the same tables again is recorded in
+`<logs>/code_cleared.csv`, and its other units built by the same code
+leave the report, unless a dependency changed after the verified
+commit or the change is a recipe the samples do not share (a county
+patch). A sample that came out different has been rebuilt; force the
+rest of its group. Groups with uncommitted changes and enrich recipes
+that run an image model are not sampled. `--reprocess` matters here:
+without it, a harmonize job restores its attribute checkpoint, whose
+fingerprint covers step configs and inputs but not code, and a
+geospine reloads its own link sidecars on the same terms, so a rerun
+after a code change can reproduce what the old code computed. For the
+same reason the Snakefile runs every harmonize job with `--reprocess`.
+
+**A job whose inputs and code are unchanged exits without running.**
+The mtime trigger reruns every consumer of a rewritten file, though
+most read none of the columns that changed. A harmonize, enrich or
+curate job run by the Snakefile therefore records, when it succeeds,
+the commit it ran at, the content digest of each column it read from
+each file, and its outputs' digests (`flow/job_record.py`, in
+`<logs>/job_records/`). Next time, it exits at once, and Snakemake
+touches its outputs, when the run does not force it, its outputs still
+hold what it wrote, every column it read holds the same values, and no
+file its code depends on changed since that commit (the report's test,
+sample-rerun clearings included). Digests come from the table footers
+(`io.tables` records one per column on every write, and those of a
+`_geo` sidecar in its attribute file's footer); a file without them is
+digested when compared. Reads through `io.tables` are logged by
+column. A read that goes straight to pyarrow counts as reading the
+whole file, as does a declared input never seen read, and a file that
+is not parquet is compared by its bytes. Each errs toward running.
+Their outputs are therefore `update()`: Snakemake keeps them for the
+job to judge, backs them up, and restores them if the job fails. The
+Snakefile writes each unit's declared files, and which jobs the run
+forces, to `<logs>/job_io/<unit>.json` in `onstart`: the force
+settings are attached to the workflow only after the Snakefile is
+parsed, and a job on a cluster node parses it again without them.
+Ingests always run.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs
