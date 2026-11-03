@@ -101,6 +101,35 @@ def rule_name(node: StageNode) -> str:
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
 
 
+def group_name(node: StageNode) -> str | None:
+    """Snakemake group of one job: its family, the stage and recipe.
+
+    Every admin unit of a family shares the name, so a profile that sets
+    `group-components` for it bundles that many of the family's jobs
+    into one cluster job (`harmonize_US_parcel-spine-2026`; the SCC
+    profile lists the families it bundles). A run without a
+    `group-components` entry for the family submits one job per unit,
+    as an ungrouped rule would, and a local run ignores groups.
+
+    Jobs without an admin unit (a global ingest, the deliver and
+    validate jobs, which run once per region and for long) have no
+    group: bundling them would only delay them.
+
+    Parameters
+    ----------
+    node : StageNode
+        The job.
+
+    Returns
+    -------
+    str or None
+        The group name, or None for a job that is never grouped.
+    """
+    if node.stage not in RECIPE_STAGES or not node.admin_id:
+        return None
+    return re.sub(r'[^0-9a-zA-Z_-]', '_', f'{node.stage}_{node.recipe_id}')
+
+
 def needs_rerun(outputs, inputs) -> bool:
     """Whether a job's files on disk call for running it, by mtime.
 

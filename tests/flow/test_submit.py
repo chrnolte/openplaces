@@ -89,7 +89,7 @@ def test_a_dry_run_past_the_window_is_not_reused(monkeypatch, tmp_path):
     assert ['-n' in c for c in calls] == [True, True, False]
 
 
-def _submitted(tmp_path, mem_mb, threads, **env):
+def _submitted(tmp_path, mem_mb, threads, runtime=240, rule='job', **env):
     """The qsub arguments the wrapper passes for one job."""
     stub = tmp_path / 'qsub'
     stub.write_text('#!/usr/bin/env bash\necho "$@"\n', encoding='utf-8')
@@ -101,7 +101,15 @@ def _submitted(tmp_path, mem_mb, threads, **env):
         **env,
     }
     result = subprocess.run(
-        ['bash', str(QSUB_SUBMIT), str(mem_mb), str(threads), 'job.sh'],
+        [
+            'bash',
+            str(QSUB_SUBMIT),
+            str(mem_mb),
+            str(threads),
+            str(runtime),
+            rule,
+            'job.sh',
+        ],
         capture_output=True,
         text=True,
         env=environ,
@@ -110,10 +118,13 @@ def _submitted(tmp_path, mem_mb, threads, **env):
     return result.stdout.split()
 
 
-@pytest.mark.skipif(
+needs_posix_bash = pytest.mark.skipif(
     shutil.which('bash') is None or not Path('/usr/bin').exists(),
     reason='needs a POSIX bash',
 )
+
+
+@needs_posix_bash
 @pytest.mark.parametrize(
     ('mem_mb', 'threads', 'slots', 'env'),
     [
@@ -130,13 +141,26 @@ def test_qsub_requests_memory_as_slots(tmp_path, mem_mb, threads, slots, env):
     assert args[-1] == 'job.sh'
 
 
-@pytest.mark.skipif(
-    shutil.which('bash') is None or not Path('/usr/bin').exists(),
-    reason='needs a POSIX bash',
-)
+@needs_posix_bash
 @pytest.mark.parametrize(('mem_mb', 'threads'), [(1000, 1), (3000, 1), (8000, 4)])
 def test_qsub_sends_a_small_job_to_any_node(tmp_path, mem_mb, threads):
     args = _submitted(tmp_path, mem_mb, threads)
     assert args[args.index('omp') + 1] == str(threads)
     assert not any('mem_per_core' in a for a in args)
     assert args[-1] == 'job.sh'
+
+
+@needs_posix_bash
+@pytest.mark.parametrize(
+    ('runtime', 'rule', 'h_rt', 'env'),
+    [
+        (240, 'harmonize_x_US-XX-AA', '0:240:00', {}),
+        (2880, 'ingest_x_batch', '0:2880:00', {}),  # only groups are capped
+        (4800, 'GROUP', '0:720:00', {}),  # twenty 240-minute ceilings
+        (300, 'GROUP', '0:300:00', {}),
+        (4800, 'GROUP', '0:1440:00', {'OPENPLACES_SCC_MAX_GROUP_RUNTIME_MIN': '1440'}),
+    ],
+)
+def test_qsub_caps_a_group_runtime(tmp_path, runtime, rule, h_rt, env):
+    args = _submitted(tmp_path, 2000, 1, runtime=runtime, rule=rule, **env)
+    assert f'h_rt={h_rt}' in args
