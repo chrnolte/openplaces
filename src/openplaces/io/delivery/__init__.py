@@ -454,14 +454,17 @@ def share_derived_from(recipe) -> dict[str, list[str]]:
 
         share:
           derived_from:
-            occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
+            occupancy_type_parcel: [use_group_combined_parcel]
 
     A cell of such a column is withheld on every row where one of its
     inputs is (`io.delivery.redaction`, rule 7): the footprint's
     `occupancy_type_parcel` is the roll's use class in occupancy terms,
     and ships only where the roll's class may. Declared in the recipe,
     beside the step that computes the column, because nothing in the
-    curated file records the dependency.
+    curated file records the dependency. An input must be a column the
+    curated file keeps: one its `order_columns` step drops is never in
+    the frame, and a rule on it never fires. A canonical column's
+    inputs are read with the canonical pass, wherever they ship.
 
     Parameters
     ----------
@@ -487,6 +490,26 @@ def share_derived_from(recipe) -> dict[str, list[str]]:
             )
         derived[str(column)] = [str(name) for name in inputs]
     return derived
+
+
+def _derivation_inputs(derived_from, columns) -> list[str]:
+    """Inputs, and their sidecars, of the derivations among *columns*.
+
+    Followed to a fixed point, so an input that is itself declared
+    derived brings its own inputs. Personal columns are never read.
+    """
+    wanted: list[str] = []
+    pending = [column for column in columns if column in derived_from]
+    seen = set(pending)
+    while pending:
+        for name in derived_from[pending.pop()]:
+            for column in (name, f'{name}{SOURCE_SUFFIX}'):
+                if column not in wanted and not _is_personal_column(column):
+                    wanted.append(column)
+            if name in derived_from and name not in seen:
+                seen.add(name)
+                pending.append(name)
+    return wanted
 
 
 def _units_supplied(inputs, sources, admin_id_column) -> dict[str, set]:
@@ -1730,6 +1753,12 @@ def export_delivery(
         if impute
         else []
     )
+    # A declared derivation can only follow inputs in the frame it is
+    # in: a canonical column computed from an evidence column (the
+    # footprint's structure_value_zero_reason from the roll's use
+    # group) would otherwise ship where the evidence pass withholds
+    # its input. The inputs ride along in pass one only to be tested.
+    derivation_inputs = _derivation_inputs(derived_from, declared)
     frames = []
     for process_id, path in inputs:
         available = parquet_columns(path)
@@ -1742,7 +1771,7 @@ def export_delivery(
         # Some model inputs are canonical sidecars already (geometry_source).
         wanted += [
             column
-            for column in model_inputs
+            for column in [*model_inputs, *derivation_inputs]
             if column in available and column not in wanted
         ]
         # A split (non-combined) curated output keeps its geometry in a

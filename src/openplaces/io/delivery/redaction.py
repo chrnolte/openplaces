@@ -421,14 +421,28 @@ def _source_cells(
         return in_scope & frame[sidecar].astype('string').eq(WITHHELD).fillna(False)
 
     # Rule 7: a column the recipe declares computed from others, with
-    # no sidecar of its own, goes on the rows where an input goes.
-    for column, inputs in (derived_from or {}).items():
-        if column in skip or column not in frame.columns:
-            continue
+    # no sidecar of its own, goes on the rows where an input goes. An
+    # input may itself be declared derived (occupancy_type_conflict
+    # from occupancy_type_parcel), so the marks are repeated until none
+    # grows, whatever order the recipe lists them in.
+    derivations = [
+        (column, inputs)
+        for column, inputs in (derived_from or {}).items()
+        if column not in skip and column in frame.columns
+    ]
+    for column, inputs in derivations:
         for name in inputs:
-            if name in cells:
-                mark(column, cells[name])
             mark(column, withheld_before(name))
+    changed = True
+    while changed:
+        changed = False
+        for column, inputs in derivations:
+            before = int(cells[column].sum()) if column in cells else 0
+            for name in inputs:
+                if name in cells:
+                    mark(column, cells[name])
+            after = int(cells[column].sum()) if column in cells else 0
+            changed |= after > before
 
     # Rule 6: a ratio goes with its value, emptied here or before.
     for column in list(frame.columns):
