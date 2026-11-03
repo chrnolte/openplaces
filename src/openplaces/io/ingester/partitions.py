@@ -304,7 +304,15 @@ class _PartitionMixin:
                     recipe=admin_recipe_id,
                     columns=column,
                 ).iloc[0, 0]
-            except IndexError:
+            except (IndexError, FileNotFoundError):
+                # The guessed recipe is the last of several by version
+                # (six US admin2 recipes), and a machine need not have
+                # built it: the SCC has no US admin ingest output at
+                # all. The spine ships with the package and carries the
+                # names, so it answers wherever that guess is unbuilt.
+                # A recipe that names its admin_recipe_id still fails.
+                if self.recipe['download_by'].get('admin_recipe_id'):
+                    raise
                 partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
                     admin_level,
