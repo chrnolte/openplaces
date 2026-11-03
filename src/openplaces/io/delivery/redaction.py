@@ -56,7 +56,9 @@ too (maintainer's decision, 2026-10-23), within the admin unit:
 7. A column a recipe declares computed from others without a sidecar
    (`share: derived_from:`, the footprint's `occupancy_type_parcel`
    from the roll's use class) goes wherever one of its inputs goes,
-   row by row.
+   row by row, and inside the scope of a source that maps an input
+   (rule 3's test on the input's name) on every row, set or not: the
+   class can reach a row through a column the curate drops.
 
 Rule 5 is for restricted sources (decision 33, entries with
 `reasons`); a share-alike source's reach is measured by rules 1 to 4,
@@ -421,14 +423,56 @@ def _source_cells(
         return in_scope & frame[sidecar].astype('string').eq(WITHHELD).fillna(False)
 
     # Rule 7: a column the recipe declares computed from others, with
-    # no sidecar of its own, goes on the rows where an input goes.
-    for column, inputs in (derived_from or {}).items():
-        if column in skip or column not in frame.columns:
-            continue
+    # no sidecar of its own, goes on the rows where an input goes. An
+    # input may itself be declared derived (occupancy_type_conflict
+    # from occupancy_type_parcel), so the marks are repeated until none
+    # grows, whatever order the recipe lists them in.
+    derivations = [
+        (column, inputs)
+        for column, inputs in (derived_from or {}).items()
+        if column not in skip and column in frame.columns
+    ]
+
+    def maps_input(name):
+        # Rows where the source maps the input inside its scope (rule
+        # 3's test, on the input's name). A derivation goes on all of
+        # them, set or not: an input can be empty on a row whose class
+        # came through a column the curate drops (group_parcel), and
+        # can be in the other pass's file only.
+        for attribute in source.get('attributes') or ():
+            if as_layer:
+                named = _names_attribute(
+                    name, attribute, entity_type, known - {source_id}
+                )
+            else:
+                named = name == attribute
+            if not named:
+                continue
+            sidecar = sidecars.get(name) or sidecars.get(attribute)
+            if sidecar is None:
+                return in_scope
+            if as_layer:
+                return in_scope & ~_test_tokens(frame[sidecar], other_source)
+            return in_scope & _test_tokens(frame[sidecar], names_source)
+        return None
+
+    for column, inputs in derivations:
         for name in inputs:
-            if name in cells:
-                mark(column, cells[name])
             mark(column, withheld_before(name))
+            if in_scope.any():
+                mapped = maps_input(name)
+                if mapped is not None:
+                    mark(column, mapped)
+    changed = True
+    while changed:
+        changed = False
+        for column, inputs in derivations:
+            before = int(cells[column].sum()) if column in cells else 0
+            for name in inputs:
+                if name in cells:
+                    mark(column, cells[name])
+            after = int(cells[column].sum()) if column in cells else 0
+            changed |= after > before
 
     # Rule 6: a ratio goes with its value, emptied here or before.
     for column in list(frame.columns):

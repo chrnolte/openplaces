@@ -218,12 +218,30 @@ share:
   # group_parcel), so it ships only where the roll's class may
   # (maintainer, 2026-10-24); occupancy_type_conflict names the
   # parcel's class beside NSI's and FEMA's.
+  #
+  # Only columns that reach the bundle are listed: a rule on an input
+  # the order_columns step below drops can never fire. group_parcel,
+  # which both occupancy columns read, is dropped, so they follow the
+  # columns that carry its class into the bundle
+  # (use_group_combined_parcel, occupancy_type_parcel); with it alone,
+  # occupancy_type_conflict shipped Pitt's parcel class in the v0.7
+  # public cheer-eastern-nc bundle (test_delivery_derived_values).
   derived_from:
-    occupancy_type_parcel: [use_group_combined_parcel, group_parcel]
-    occupancy_type_conflict: [group_parcel]
-    # Read from the roll's value and use class.
+    occupancy_type_parcel: [use_group_combined_parcel]
+    occupancy_type_conflict: [occupancy_type_parcel, use_group_combined_parcel]
+    # Voted from group_parcel (its tiebreaker), NSI and FEMA in the
+    # parcel curate; its sidecar land_use_class_source_parcel is
+    # dropped below. It goes where the roll's class goes (maintainer,
+    # 2026-11-03), and so is withheld before the delivery's building
+    # imputation reads it as a model input.
+    land_use_class_parcel: [use_group_combined_parcel]
+    # Read from the roll's value, use group and land use class, and
+    # from the final occupancy class (derive_structure_value_zero_reason).
     structure_value_zero_reason:
-      [structure_value, use_group_combined_parcel, group_parcel]
+      - structure_value
+      - use_group_combined_parcel
+      - land_use_class_parcel
+      - occupancy_type
   # Which admin units the region-wide bundles cover, and which units feed
   # them. Named in the recipe rather than passed at run time so `snakemake`
   # with no admin_ids builds and ships every region unattended -- and so a

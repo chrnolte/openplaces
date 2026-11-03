@@ -331,11 +331,233 @@ def test_a_derivation_needs_its_inputs_listed():
 
 def test_the_footprint_recipe_declares_its_roll_classification():
     derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
-    assert set(derived['occupancy_type_parcel']) == {
+    assert set(derived['occupancy_type_parcel']) == {'use_group_combined_parcel'}
+    assert set(derived['occupancy_type_conflict']) == {
+        'occupancy_type_parcel',
         'use_group_combined_parcel',
-        'group_parcel',
     }
     assert 'fallback' not in get_recipe_by_id('US_footprint-cheer-2026')['share']
+
+
+def test_a_derivation_of_a_derivation_follows_it_in_any_order():
+    """The conflict summary is listed before the class it reads."""
+    roll = _roll(attributes=[*_roll()['attributes'], 'use_group_combined_parcel'])
+    frame = _frame()
+    frame['use_group_combined_parcel'] = ['RES'] * 6
+    frame['occupancy_type_parcel'] = ['Single-Family'] * 6
+    frame['occupancy_type_conflict'] = ['nsi: Multi-Family | parcel: Single-Family'] * 6
+    derived = {
+        'occupancy_type_conflict': ['occupancy_type_parcel'],
+        'occupancy_type_parcel': ['use_group_combined_parcel'],
+    }
+    found = find_restricted(frame, [roll], 'admin3_id', KNOWN, derived_from=derived)
+    assert _cells(found, 'occupancy_type_conflict') == [True] * 4 + [False] * 2
+
+
+def _pitt_frame():
+    """A share-alike roll's county beside an open one, as the footprint
+    curate writes it: group_parcel, which both occupancy columns read,
+    is dropped, and the structure values come from an open statewide
+    layer. Fabricated values."""
+    units = [RESTRICTED_UNIT] * 3 + [OPEN_UNIT] * 2
+    return pd.DataFrame(
+        {
+            'admin3_id': units,
+            'structure_value': [0.0, 0.0, 10.0, 0.0, 0.0],
+            'structure_value_source': ['parcel.openroll'] * 5,
+            'occupancy_type': ['Single-Family'] * 5,
+            'occupancy_type_source': ['nsi'] * 5,
+            'land_use_class_parcel': ['Residential'] * 5,
+            'use_group_combined_parcel': ['RES', 'RES', None, 'RES', 'RES'],
+            'occupancy_type_parcel': ['Single-Family'] * 5,
+            'occupancy_type_conflict': [
+                'nsi: Multi-Family | parcel: Single-Family',
+                None,
+                'fema: Multi-Family | parcel: Single-Family',
+                'nsi: Multi-Family | parcel: Single-Family',
+                None,
+            ],
+            'structure_value_zero_reason': [
+                'exempt',
+                'no_value',
+                None,
+                'exempt',
+                'secondary',
+            ],
+        },
+        index=pd.Index(list('abcde'), name='footprint_id'),
+    )
+
+
+def _share_alike_roll():
+    return _roll(
+        source_id='sharealikeroll',
+        attributes=['use_group_combined_parcel'],
+        reasons=[],
+    )
+
+
+def test_the_footprint_recipe_withholds_the_parcel_class_in_its_conflicts():
+    """Pitt's parcel class shipped in occupancy_type_conflict (v0.7).
+
+    Its only declared input was group_parcel, which the curate drops, so
+    the conflict summary kept the class its withheld inputs are voted
+    from.
+    """
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    found = find_restricted(
+        _pitt_frame(),
+        [_share_alike_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    cells = found['cells']
+    assert cells['use_group_combined_parcel'].tolist() == [True, True] + [False] * 3
+    # Row c has no use group of its own, and its class still goes: the
+    # roll maps the use group in its county, wherever the row's is empty.
+    assert cells['occupancy_type_parcel'].tolist() == [True] * 3 + [False] * 2
+    assert (
+        cells['occupancy_type_conflict'].tolist() == [True, False, True] + [False] * 2
+    )
+    # A reason read from the withheld use group goes with it; the open
+    # county keeps its reasons.
+    assert cells['structure_value_zero_reason'].tolist() == [True, True] + [False] * 3
+
+
+def _layer_roll():
+    """The share-alike county roll as the bundle reads it: a parcel
+    layer mapping the use group (Pitt's case)."""
+    return _roll(
+        source_id='sharealikeroll',
+        layer_source=True,
+        entity_type='parcel',
+        attributes=['use_group'],
+        via_entities=None,
+        reasons=[],
+    )
+
+
+def test_a_class_carried_only_by_the_dropped_group_is_withheld():
+    """Row c has no use group: its class reached the curate through
+    group_parcel alone, which the curate drops. Nothing on the row
+    names the roll, so following the use group's cells cannot find it.
+    """
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    frame = _pitt_frame()
+    frame['occupancy_type_conflict'] = frame['occupancy_type_conflict'].fillna(
+        'nsi: Multi-Family | parcel: Single-Family'
+    )
+    frame['structure_value'] = 0.0
+    frame['structure_value_zero_reason'] = 'exempt'
+    found = find_restricted(
+        frame,
+        [_layer_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    cells = found['cells']
+    restricted = [True] * 3 + [False] * 2
+    for column in (
+        'occupancy_type_parcel',
+        'occupancy_type_conflict',
+        'structure_value_zero_reason',
+        'land_use_class_parcel',
+    ):
+        assert cells[column].tolist() == restricted, column
+
+
+def test_a_class_follows_its_roll_into_the_other_pass():
+    """The canonical pass holds the land use class, never the use group
+    it is read from: the roll's scope decides, not the input's cells."""
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    frame = _pitt_frame()[['admin3_id', 'land_use_class_parcel']]
+    found = find_restricted(
+        frame,
+        [_layer_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    assert found['cells']['land_use_class_parcel'].tolist() == [True] * 3 + [False] * 2
+
+
+def test_a_derivation_follows_an_input_withheld_through_its_own_class():
+    """Row c: no use group, but its class went in the other pass."""
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    frame = _pitt_frame()
+    frame['occupancy_type_parcel_source'] = [None, None, WITHHELD, None, None]
+    found = find_restricted(
+        frame,
+        [_share_alike_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    assert found['cells']['occupancy_type_conflict'].tolist() == [
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
+
+
+def _recipe_files_with_derivations():
+    from pathlib import Path
+
+    import openplaces
+
+    root = Path(openplaces.__file__).parent / 'recipes'
+    return [
+        path
+        for path in sorted(root.rglob('*.yaml'))
+        if 'derived_from' in path.read_text(encoding='utf-8')
+    ]
+
+
+def _dropped_columns(recipe):
+    dropped = set()
+    for step in recipe.get('pipeline') or ():
+        if isinstance(step, dict) and step.get('step') == 'order_columns':
+            dropped.update(str(column) for column in step.get('drop') or ())
+    return dropped
+
+
+@pytest.mark.parametrize(
+    'path', _recipe_files_with_derivations(), ids=lambda path: path.stem
+)
+def test_no_declared_derivation_input_is_dropped_by_its_recipe(path):
+    """An input the curate drops is never in the frame (rule 7).
+
+    `occupancy_type_conflict: [group_parcel]` never fired for that
+    reason, and the class it summarizes shipped where its inputs were
+    withheld.
+    """
+    import yaml
+
+    recipe = yaml.safe_load(path.read_text(encoding='utf-8'))
+    derived = (recipe.get('share') or {}).get('derived_from') or {}
+    if not derived:
+        pytest.skip('no share: derived_from: block')
+    dropped = _dropped_columns(recipe)
+    dead = {
+        column: sorted(set(inputs) & dropped)
+        for column, inputs in derived.items()
+        if set(inputs) & dropped
+    }
+    assert not dead, (
+        f'{path.name}: declared inputs the recipe drops, so rule 7 can '
+        f'never follow them: {dead}. Declare columns that reach the bundle.'
+    )
+    # A derived column the recipe drops is never shipped: declaring it
+    # is harmless, but it is usually a typo for one that is.
+    assert not set(derived) & dropped
 
 
 # The bundle: public and team.
@@ -343,8 +565,17 @@ def test_the_footprint_recipe_declares_its_roll_classification():
 
 def _export_recipe():
     recipe = _recipe()
-    recipe['share']['columns'] = [*recipe['share']['columns'], 'structure_value']
-    recipe['share']['derived_from'] = DERIVED
+    recipe['share']['columns'] = [
+        *recipe['share']['columns'],
+        'structure_value',
+        'structure_value_zero_reason',
+    ]
+    # A canonical column read from an evidence-only input: the export
+    # has to read the input with the canonical pass to follow it.
+    recipe['share']['derived_from'] = {
+        **DERIVED,
+        'structure_value_zero_reason': ['use_group_combined_parcel'],
+    }
     return recipe
 
 
@@ -377,6 +608,7 @@ def _write_counties():
                 ),
                 'use_group_combined_parcel': ['RES'] * len(ids),
                 'occupancy_type_parcel': ['Single-Family'] * len(ids),
+                'structure_value_zero_reason': ['exempt'] * len(ids),
                 'city': ['Town'] * len(ids),
                 'city_source': ['zipcodes+imputed'] * len(ids),
             },
@@ -448,6 +680,21 @@ def test_public_bundles_withhold_the_rolls_classification_not_the_city(bundles):
     assert evidence.loc[['a', 'b', 'c'], 'occupancy_type_parcel'].isna().all()
     assert evidence.loc[['d', 'e'], 'occupancy_type_parcel'].notna().all()
     assert (evidence['city'] == 'Town').all()
+
+
+def test_a_canonical_derivation_follows_an_evidence_input(bundles):
+    """The zero reason ships in the canonical file, its use group in the
+    evidence file only, and the evidence pass withholds the use group."""
+    canonical = _read(bundles['public'], 'canonical')
+    evidence = _read(bundles['public'], 'evidence')
+    assert canonical.loc[['a', 'b', 'c'], 'structure_value_zero_reason'].isna().all()
+    assert (canonical.loc[['d', 'e'], 'structure_value_zero_reason'] == 'exempt').all()
+    # The input read along for the test is not written to the canonical
+    # file, and the evidence file still carries it, withheld.
+    assert 'use_group_combined_parcel' not in canonical.columns
+    assert evidence.loc[['a', 'b', 'c'], 'use_group_combined_parcel'].isna().all()
+    team = _read(bundles['team'], 'canonical')
+    assert team['structure_value_zero_reason'].notna().all()
 
 
 def test_team_bundles_keep_the_estimates_and_the_roll(bundles):
