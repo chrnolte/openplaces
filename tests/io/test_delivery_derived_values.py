@@ -415,13 +415,75 @@ def test_the_footprint_recipe_withholds_the_parcel_class_in_its_conflicts():
     )
     cells = found['cells']
     assert cells['use_group_combined_parcel'].tolist() == [True, True] + [False] * 3
-    # The class row c keeps is the one with no use group of its own:
-    # nothing withheld there for it to follow.
-    assert cells['occupancy_type_parcel'].tolist() == [True, True] + [False] * 3
-    assert cells['occupancy_type_conflict'].tolist() == [True] + [False] * 4
+    # Row c has no use group of its own, and its class still goes: the
+    # roll maps the use group in its county, wherever the row's is empty.
+    assert cells['occupancy_type_parcel'].tolist() == [True] * 3 + [False] * 2
+    assert (
+        cells['occupancy_type_conflict'].tolist() == [True, False, True] + [False] * 2
+    )
     # A reason read from the withheld use group goes with it; the open
     # county keeps its reasons.
     assert cells['structure_value_zero_reason'].tolist() == [True, True] + [False] * 3
+
+
+def _layer_roll():
+    """The share-alike county roll as the bundle reads it: a parcel
+    layer mapping the use group (Pitt's case)."""
+    return _roll(
+        source_id='sharealikeroll',
+        layer_source=True,
+        entity_type='parcel',
+        attributes=['use_group'],
+        via_entities=None,
+        reasons=[],
+    )
+
+
+def test_a_class_carried_only_by_the_dropped_group_is_withheld():
+    """Row c has no use group: its class reached the curate through
+    group_parcel alone, which the curate drops. Nothing on the row
+    names the roll, so following the use group's cells cannot find it.
+    """
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    frame = _pitt_frame()
+    frame['occupancy_type_conflict'] = frame['occupancy_type_conflict'].fillna(
+        'nsi: Multi-Family | parcel: Single-Family'
+    )
+    frame['structure_value'] = 0.0
+    frame['structure_value_zero_reason'] = 'exempt'
+    found = find_restricted(
+        frame,
+        [_layer_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    cells = found['cells']
+    restricted = [True] * 3 + [False] * 2
+    for column in (
+        'occupancy_type_parcel',
+        'occupancy_type_conflict',
+        'structure_value_zero_reason',
+        'land_use_class_parcel',
+    ):
+        assert cells[column].tolist() == restricted, column
+
+
+def test_a_class_follows_its_roll_into_the_other_pass():
+    """The canonical pass holds the land use class, never the use group
+    it is read from: the roll's scope decides, not the input's cells."""
+    derived = share_derived_from(get_recipe_by_id('US_footprint-cheer-2026'))
+    frame = _pitt_frame()[['admin3_id', 'land_use_class_parcel']]
+    found = find_restricted(
+        frame,
+        [_layer_roll()],
+        'admin3_id',
+        KNOWN | {'sharealikeroll'},
+        supplied={},
+        derived_from=derived,
+    )
+    assert found['cells']['land_use_class_parcel'].tolist() == [True] * 3 + [False] * 2
 
 
 def test_a_derivation_follows_an_input_withheld_through_its_own_class():

@@ -229,6 +229,12 @@ share:
   derived_from:
     occupancy_type_parcel: [use_group_combined_parcel]
     occupancy_type_conflict: [occupancy_type_parcel, use_group_combined_parcel]
+    # Voted from group_parcel (its tiebreaker), NSI and FEMA in the
+    # parcel curate; its sidecar land_use_class_source_parcel is
+    # dropped below. It goes where the roll's class goes (maintainer,
+    # 2026-11-03), and so is withheld before the delivery's building
+    # imputation reads it as a model input.
+    land_use_class_parcel: [use_group_combined_parcel]
     # Read from the roll's value, use group and land use class, and
     # from the final occupancy class (derive_structure_value_zero_reason).
     structure_value_zero_reason:

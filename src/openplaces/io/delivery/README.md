@@ -147,7 +147,11 @@ so no restricted value reached the cell. A `{col}_per_area` ratio
 goes with its `{col}`, since times the shipped area it is the value,
 and a column the recipe declares under `share: derived_from:` (the
 footprint's `occupancy_type_parcel`, the roll's use class in occupancy
-terms) goes on the rows where one of its inputs goes. Which unit a
+terms) goes on the rows where one of its inputs goes, and on every row
+of a source's scope where that source maps one of the inputs (Pitt's
+roll maps the use group, so its parcel class and land use class go on
+rows with no use group too: the class reaches some rows through
+`group_parcel`, which the curate drops). Which unit a
 source supplied is read from the bundle itself (its own token on a
 column it reaches, or its being the layer in scope), not from the
 tokens' wording, which names an estimate's peer group
