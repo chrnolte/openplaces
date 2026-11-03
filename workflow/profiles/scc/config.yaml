@@ -15,8 +15,8 @@
 #   thread to any node and turns a larger job's mem_mb into omp slots
 #   of 8 GB (see its header), because the SCC reads mem_per_core as a
 #   node selector, not a reservation.
-# - h_rt is 0:<minutes>:00. SGE rejects "<minutes>:00" (720:00 is "not
-#   a time value") and reads 0:720:00 as 12 hours.
+# - qsub_submit.sh turns the job's runtime into h_rt, capping a group's
+#   (see "Job groups" below and its header).
 # - No cluster-generic-status-cmd. A status script that asks qacct
 #   about every finished job costs 11.6 s per job, one job at a time,
 #   against jobs of about 3 minutes (measured 2026-10-18): Snakemake
@@ -39,10 +39,61 @@
 executor: cluster-generic
 cluster-generic-submit-cmd: >-
   bash workflow/profiles/scc/qsub_submit.sh
-  {resources.mem_mb} {threads}
-  -l h_rt=0:{resources.runtime}:00
+  {resources.mem_mb} {threads} {resources.runtime} {rule}
   -j y
 jobs: 200
+
+# Job groups: many short jobs of one family per SCC job.
+#
+# Most per-unit jobs run for seconds (the medians below; measured
+# 2026-11-02 on the 267-unit rerun), and one SGE job per step left a
+# one-slot curate waiting over an hour in qw for seconds of work. The
+# Snakefile puts every per-unit job in a group named after its family
+# (flow.dag.group_name: `<stage>_<recipe id>`); the count here bundles
+# that many of the family's jobs into one submission, sized to about
+# 10 to 15 minutes of median wall time. A family missing from this list
+# (a new recipe, or a misspelt id) is not bundled: each of its jobs is
+# a group of one, submitted and sized exactly as an ungrouped job.
+#
+# `cores: 1` is what keeps a group's request near one job's. Snakemake
+# sizes a group by packing its jobs into layers that fit the run's
+# --cores (snakemake/resources.py, GroupResources.basic_layered): with
+# no --cores, as on a cluster by default, all of them form one layer,
+# so the group asked for the sum of their mem_mb and threads, and its
+# jobs ran all at once on `--cores all` of whatever node it landed on.
+# With 1, each job is its own layer: the group asks for the largest
+# job's mem_mb, one thread and the sum of the runtimes (capped in
+# qsub_submit.sh), and runs its jobs one after the other under the
+# `--cores 1` Snakemake passes to it. The scheduler in this process
+# ignores --cores on a cluster (it counts jobs, up to `jobs:`), so the
+# setting limits nothing else. It does cap a rule's threads at 1, which
+# is moot while no rule declares any; a threaded rule would need its
+# family left out of this list and --cores raised.
+#
+# The costs: a group starts only when every job in it is ready, so its
+# jobs wait for the slowest of their inputs; and one failing job fails
+# the whole group, whose retry (retries: 1) reruns every job in it.
+# Hence the small counts for the families with a long tail or a large
+# peak: parcel geospines (median 67 s, p90 378 s, 18 GB peak) and
+# property spines (9 s, but a 30 GB peak, and a group holds its largest
+# job's reservation for its whole run).
+cores: 1
+# The jobscript is named after {rulename}, which is GROUP for a group
+# job. Snakemake's default, {name}, joins a group's first five rule
+# names, each with its unit, and the file name passed the 255-character
+# limit (US-FL building curates, 2026-11-03), failing the run at its
+# first group submission.
+jobname: snakejob.{rulename}.{jobid}.sh
+group-components:
+  harmonize_US_building-spine-2026: 20            # 34 s median
+  harmonize_US_parcel-spine-2026: 30              # 25 s
+  harmonize_US_parcel-geospine-2026: 5            # 67 s, p90 378 s
+  harmonize_US_property-spine-2026: 10            # 9 s, 30 GB peak
+  enrich_US-MA_parcel_rules-openspace-massgis-2026: 100  # 4 s
+  curate_US_building-openplaces-2026: 20          # 31 s
+  curate_US_parcel-openplaces-2026: 50            # 14 s
+  curate_US_property-openplaces-2026: 100         # 7 s
+  curate_US_footprint-cheer-2026: 50              # 13 s
 latency-wait: 90
 retries: 1
 rerun-triggers: mtime

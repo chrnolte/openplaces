@@ -57,7 +57,12 @@ from pathlib import Path
 
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
-from openplaces.flow.dag import needs_rerun, parse_deliver_config, rule_name
+from openplaces.flow.dag import (
+    group_name,
+    needs_rerun,
+    parse_deliver_config,
+    rule_name,
+)
 from openplaces.flow.memory import (
     MemoryModel,
     default_table_path,
@@ -449,6 +454,21 @@ for node in dag.nodes():
         output:
             _flagged,
             *_extra,
+        # One group per family (stage and recipe), so that the cluster
+        # can run many of a family's short jobs in one submission: most
+        # take under a minute, and a wave spent its time in queue wait
+        # and Python start-up, one SGE job per step. The group alone
+        # bundles nothing. How many jobs go into one submission is the
+        # profile's `group-components`, set in profiles/scc only, so a
+        # family the profile does not list still submits one job per
+        # unit, and a local run ignores groups altogether (Snakemake
+        # drops `group:` under local execution). The profile is the
+        # place for it because the right size depends on the scheduler:
+        # a workstation has no queue wait to amortize. Deliver and
+        # validate jobs get no group (group_name), and neither do the
+        # batched ingests above, which are one job per recipe already.
+        group:
+            group_name(node)
         # Persistent per-job wall/CPU/RSS profile, one tsv per rule, in
         # the same logs tree where openplaces' own stage timers land on
         # finish(). Together they give ex-post profiling at two grains:

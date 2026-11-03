@@ -195,6 +195,33 @@ in the last 12 hours for the same profile contents, config and targets
 (`--dry-run-only` produces one), because building a wave's job graph
 takes minutes and an unattended run would otherwise build it twice.
 
+**On the SCC, short jobs of one family share a cluster job.** Each
+per-unit rule carries `group: <stage>_<recipe id>` (`dag.group_name`;
+deliver, validate, global and batched ingest jobs carry none), and
+`profiles/scc/config.yaml` sets `group-components` per family, sized to
+about 10 to 15 minutes of median wall time (measured 2026-11-02 on the
+267-unit rerun: most jobs ran under a minute, and queue wait dominated).
+A family the profile does not list is submitted one job per unit, and a
+local run ignores groups: Snakemake drops `group:` under local
+execution (a dry run still lists each job as a group of one).
+**The profile's `cores: 1` is what keeps a group's request
+near one job's.** Snakemake packs a group's jobs into layers that fit
+`--cores` (`GroupResources.basic_layered` in `snakemake/resources.py`);
+with no `--cores` all of them form one layer, so the group requested
+the sum of their `mem_mb` and threads, and ran them at once under
+`--cores all`. With 1 each job is a layer: the group requests its
+largest job's `mem_mb`, one thread and the sum of the runtimes, and its
+jobs run one after another (`--cores 1` is passed to the group job; the
+submitting process ignores `--cores` on a cluster). The summed runtime
+is a sum of stage ceilings, so `qsub_submit.sh` caps a group's h_rt at
+12 hours (`OPENPLACES_SCC_MAX_GROUP_RUNTIME_MIN`); it recognizes a
+group by `{rule}`, which Snakemake gives as `GROUP`. A group starts
+when all its jobs are ready and fails as a whole: its retry reruns
+every job in it (with `--force`), each at twice its memory. Its
+jobfinished/jobfailed markers are per group job, while metadata and
+kept outputs stay per job, since the submitting process postprocesses
+each job of a group as it would an ungrouped one.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs
