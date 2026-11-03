@@ -555,6 +555,15 @@ def clip_to_caps(
 SMALL_ZERO_CLASSES = ('Single-Family', 'Low-Rise Multi-Family', 'Multi-Family')
 SMALL_ZERO_MAX_M2 = 120.0
 
+#: Why the curate says a structure value is 0
+#: (curator.zero_value_reasons); a bundle built before the column
+#: existed falls back to the rules of :func:`value_labels` alone.
+ZERO_REASON_COLUMN = 'structure_value_zero_reason'
+#: Zeros that say nothing about the structure: refilled.
+REFILLED_ZERO_REASONS = ('personal_property', 'exempt', 'included_elsewhere')
+#: The roll's statement about the building: the only zeros that train.
+LABELED_ZERO_REASONS = ('no_value',)
+
 
 def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     """Return parcel-recorded structure values (>= 0), else NaN.
@@ -564,8 +573,22 @@ def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     'listed' homes are labels; without it, 'unclear' homes also keep
     their observed value. 'unlisted' homes are always refilled.
 
+    A recorded 0 is read through its ZERO_REASON_COLUMN where the
+    bundle has one (plans/zero-structure-value-reasons.md, part B;
+    maintainer, 2026-10-31 and 2026-11-02). A zero for a reason in
+    REFILLED_ZERO_REASONS is neither a label nor kept: the home is
+    personal property, the building exempt, or the lot's value sits on
+    another building (which :func:`lot_value_elsewhere` then keeps
+    from being filled, so the lot is not counted twice). Only a reason
+    in LABELED_ZERO_REASONS trains the zero part. Any other zero
+    (secondary, not_on_roll) keeps its 0 but trains nothing: a shed
+    valued with its house, or a house the roll no longer carries,
+    mostly one removed since, would teach the zero part that houses
+    are worth nothing.
+
     A recorded 0 on a building of a dwelling class (SMALL_ZERO_CLASSES)
-    under SMALL_ZERO_MAX_M2 is neither a label nor kept, and is filled.
+    under SMALL_ZERO_MAX_M2, whose reason is no_value or unknown, is
+    neither a label nor kept, and is filled.
     Without a use code, a manufactured home held as personal property
     is often classed Single-Family, and the roll lists only its land:
     the 0 is the home's absence from the roll, as for an 'unlisted'
@@ -583,10 +606,20 @@ def value_labels(frame: pd.DataFrame, train: bool = True) -> pd.Series:
     listing = manufactured_home_listing(frame)
     keep = {'listed'} if train else {'listed', 'unclear'}
     ok &= listing.isna() | listing.isin(keep)
+    zero = value.eq(0).fillna(False)
+    # Without the column every zero reads as the roll's statement.
+    stated = zero
+    if ZERO_REASON_COLUMN in frame.columns:
+        reason = frame[ZERO_REASON_COLUMN].astype('string')
+        ok &= ~(zero & reason.isin(REFILLED_ZERO_REASONS).fillna(False))
+        stated = zero & (reason.isin(LABELED_ZERO_REASONS) | reason.isna())
+        kept = (zero & ~stated & ~reason.isin(REFILLED_ZERO_REASONS)).fillna(False)
+        if train:
+            ok &= ~kept
     if 'occupancy_type' in frame.columns:
         area = _numeric_column(frame, 'area_m2')
         small_zero = (
-            value.eq(0)
+            stated
             & frame['occupancy_type'].astype('string').isin(SMALL_ZERO_CLASSES)
             & area.lt(SMALL_ZERO_MAX_M2)
         ).fillna(False)
