@@ -1765,7 +1765,8 @@ pipeline:
 
   # Why a building is at $0: imputation refills the zeros that say
   # nothing about the structure (personal_property, exempt,
-  # included_elsewhere, not_on_roll) and learns only from no_value
+  # included_elsewhere), keeps not_on_roll at 0 (mostly removed
+  # buildings, maintainer 2026-11-02) and learns only from no_value
   # (plans/zero-structure-value-reasons.md, part A2). Last of the
   # infer steps, after every vote: the vote must never read it, since
   # personal_property reads the occupancy class. Classes as part A

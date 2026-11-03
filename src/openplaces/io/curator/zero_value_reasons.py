@@ -24,9 +24,12 @@ wins):
 - `included_elsewhere`: a dwelling whose lot's roll value another
   building holds (`building_imputation.lot_value_elsewhere`);
 - `secondary` again: any other building ranked secondary on its lot;
-- `not_on_roll`: a house on a lot the roll calls vacant whose
-  existence a second source confirms (an NSI point or the roll's own
-  building record);
+- `not_on_roll`: a house on a lot the roll calls vacant that a second
+  source also shows (an NSI point or the roll's own building record).
+  Both sources can be older than the roll, and most such houses that
+  can be dated were removed since: a teardown or a storm loss, not a
+  building the roll missed (plans/zero-structure-value-reasons.md,
+  research of 2026-11-02);
 - `no_value`: none of these; the roll's statement about the building.
 
 There is no `unassessed` reason: a 0 on a lot whose land is also 0, or
@@ -40,6 +43,7 @@ confirm itself.
 
 Measured 2026-11-02 on US-TX-HAR: 56,655 zeros, 12,296 no_value, 15,944 exempt.
 Measured 2026-11-02 on US-NC-BRU: 12,649 zeros, 10,935 personal_property.
+Measured 2026-11-02 on US-FL-LE: 77% of not_on_roll lots lost a prior value.
 """
 
 from __future__ import annotations
