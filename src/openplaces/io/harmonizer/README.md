@@ -559,8 +559,12 @@ The step sub-modules:
   Each unit's parcels then value their own piece in curate, as any
   outline. Measured 2026-10-18 on boston-inner-core: outline pairs drawn
   in two towns 48 to 0, outlines crossing into a neighbor 178 to 0, 232
-  pieces (CAM, SOM, BEL, ARL, in memory). `OPENPLACES_NEIGHBOR_READS=0`
-  turns the reads off for a debug run, in the DAG and the jobs alike.
+  pieces (CAM, SOM, BEL, ARL, in memory). **Reads stop at the state
+  line** (maintainer, 2026-11-03), so that building one state never
+  downloads another's footprints: across it, the outline is still cut at
+  the line, and each side keeps its piece of the envelope its own sources
+  draw. `OPENPLACES_NEIGHBOR_READS=0` turns the reads off for a debug
+  run, in the DAG and the jobs alike.
 - `links/` — join to reference datasets, one module per concern since
   2026-09-29 (until then one 4,259-line `links.py`): `spatial.py`
   (`link_to_reference`, the overlay crosswalk), `points.py` (the point

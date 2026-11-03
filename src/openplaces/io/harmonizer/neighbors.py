@@ -14,7 +14,8 @@ avoids).
 
 Neighbors are the units of the same level whose polygons touch or
 overlap the unit's, from the admin layer the units are built from. There
-is no distance tolerance.
+is no distance tolerance. Inputs are read only from neighbors in the
+unit's own state (`same_state_neighbors`).
 
 `OPENPLACES_NEIGHBOR_READS=0` in the environment turns the reads off for
 a debug run, for the orchestrator and every job it starts alike, since a
@@ -80,6 +81,26 @@ def touching_units(admin_id: str) -> tuple[str, ...]:
     return tuple(sorted(touching.index))
 
 
+def same_state_neighbors(admin_id) -> tuple[str, ...]:
+    """Touching units of *admin_id* that lie in its own state.
+
+    Reads stop at the state line (maintainer, 2026-11-03), so that a
+    run in one state never needs another state's inputs: building
+    Currituck, NC, otherwise downloaded Virginia's footprints for
+    Virginia Beach. A building crossing a state line is still cut at
+    it (`spine._cut_at_unit_lines` reads only the polygons), and each
+    side keeps its piece of the envelope its own sources draw. A unit
+    at level 2 or above has no state to share and reads no neighbor.
+    """
+    unit = AdminId(str(admin_id))
+    if unit.get_level() <= 2:
+        return ()
+    state = unit.truncate_to_level(2)
+    return tuple(
+        n for n in touching_units(str(unit)) if AdminId(n).truncate_to_level(2) == state
+    )
+
+
 def _unpatched(recipe: dict) -> dict:
     """The recipe file *recipe* was loaded from, before any patch.
 
@@ -141,7 +162,7 @@ def neighbor_inputs(recipe: dict, admin_id) -> list[tuple[str, str]]:
     own = spine_sources(str(admin_id))
     pairs = {
         (recipe_id, neighbor)
-        for neighbor in touching_units(str(admin_id))
+        for neighbor in same_state_neighbors(admin_id)
         for recipe_id in spine_sources(neighbor) & own
     }
     return sorted(pairs)

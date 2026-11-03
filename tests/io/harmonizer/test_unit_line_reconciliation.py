@@ -137,6 +137,20 @@ def test_each_neighbor_is_scanned_with_its_own_patches(monkeypatch):
     assert neighbors.neighbor_inputs(national, 'US-XX-AAA') == expected
 
 
+def test_neighbor_reads_stop_at_the_state_line(monkeypatch):
+    recipe = {'pipeline': [{'step': 'resolve_spine', 'neighbor_reads': True}]}
+
+    def fake_dependencies(recipe, admin_id=None):
+        return [DepEdge('r', 'obm', 'auto_discover', step='resolve_spine')]
+
+    monkeypatch.setattr(
+        neighbors, 'touching_units', lambda admin: ('US-XX-BBB', 'US-YY-CCC')
+    )
+    monkeypatch.setattr(neighbors, 'get_recipe_dependencies', fake_dependencies)
+    assert neighbors.neighbor_inputs(recipe, 'US-XX-AAA') == [('obm', 'US-XX-BBB')]
+    assert neighbors.same_state_neighbors('US-XX') == ()
+
+
 def test_a_recipe_without_neighbor_reads_reads_none(monkeypatch):
     recipe = {'pipeline': [{'step': 'resolve_spine'}]}
     assert neighbors.neighbor_inputs(recipe, 'US-XX-AAA') == []
