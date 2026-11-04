@@ -881,6 +881,18 @@ def test_value_sources_are_counted_apart_from_outline_sources():
     assert 'section.values' in (STATIC / 'viewer.js').read_text(encoding='utf-8')
 
 
+def test_nsi_fallback_values_are_credited_to_nsi_not_to_openplaces():
+    # The curate's fallback where a roll has no value: token `nsi`.
+    provenance = pd.Series(['parcel.dcgovitspe'] * 3 + ['nsi'])
+    shares = {s['name']: s['share'] for s in web_scene.value_sources(provenance)}
+    assert shares == pytest.approx(
+        {
+            'DC Office of Tax and Revenue (ITSPE)': 0.75,
+            'National Structure Inventory (USACE)': 0.25,
+        }
+    )
+
+
 def test_known_issues_follow_the_scene_units(tmp_path):
     issues = tmp_path / 'issues.yaml'
     issues.write_text(

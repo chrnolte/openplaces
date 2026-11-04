@@ -266,11 +266,17 @@ MODEL_CODE_LINE = re.compile(r'Model code:[^.]*?commit [0-9a-f]{7,40}\.')
 
 # A page whose buildings could carry imputed values but whose bundles
 # have no imputed twin (coordinator, 2026-11-03: the value-page regions
-# are not in the imputation's list) says so instead of nothing.
+# are not in the imputation's list) says so instead of nothing. It
+# names only the model that is absent: the curate still fills cells
+# of its own (`+imputed`, 24,264 in boston-inner-core's structure
+# values) and takes the National Structure Inventory's where a roll
+# has none (39,723 in washington-dc's, measured 2026-11-04), and each
+# layer's value sources below the note give their shares.
 RECORDED_ONLY_NOTE = {
     'name': 'Building values',
     'credit': (
-        "Building values on this page are the assessor's recorded values; "
+        'No building value on this page comes from the openplaces building '
+        'imputation; the sources below say where each value comes from, and '
         'a building without one is drawn as "no value".'
     ),
 }
