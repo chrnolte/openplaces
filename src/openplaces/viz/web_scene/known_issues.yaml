@@ -4,9 +4,35 @@
 # with a problem we know of; remove it once the fix is live.
 #
 # Each entry: admin_ids (level-3 ids, or "all"), found (date), and one
-# or two plain sentences for a visitor. No owner names, ever.
+# or two plain sentences for a visitor. No owner names, ever. An entry
+# about values only a team page carries adds `audiences: [team]`.
 
 issues:
+  - admin_ids: [US-NC-BLA, US-NC-HYD, US-NC-TYR]
+    found: 2026-11-03
+    text: >-
+      Bladen, Hyde and Tyrrell Counties: the roll's building values sit
+      at about a quarter of the Census median home value (0.23 to 0.27),
+      below the other counties. Check before using these counties'
+      building values.
+  - admin_ids: [US-TX-LAV]
+    found: 2026-11-03
+    text: >-
+      Lavaca County: the roll's building values sit at 0.28 of the
+      Census median home value, below the other counties. Check before
+      using Lavaca's building values.
+  - admin_ids: [US-TX-LIO]
+    found: 2026-11-03
+    text: >-
+      Live Oak County: the roll gives no building values, so they are
+      estimated from nearby counties and scaled up 2.0 times toward the
+      Census median home value, the most the method allows.
+  - admin_ids: [US-NC-EDG, US-NC-PIT]
+    audiences: [team]
+    found: 2026-11-03
+    text: >-
+      Edgecombe and Pitt Counties: manufactured homes carry the roll's
+      value, which is often the site improvements only, not the home.
   - admin_ids: [US-MA-SOM]
     found: 2026-10-17
     text: >-

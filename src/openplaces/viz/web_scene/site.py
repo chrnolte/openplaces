@@ -183,7 +183,9 @@ def refresh() -> None:
         manifest_path = folder / 'scene.json'
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
         units = sorted({u for layer in manifest['layers'] for u in layer['files']})
-        manifest['known_issues'] = known_issues(units)
+        manifest['known_issues'] = known_issues(
+            units, audience=manifest.get('audience')
+        )
         # A phone page (`<slug>-phone`) shows its place's title.
         slug = folder.name.removesuffix('-phone')
         if slug in titles:
