@@ -19,7 +19,7 @@ from shapely.strtree import STRtree
 
 from openplaces.core.constants import ALL_VERSIONS_ENTITY_TYPES
 from openplaces.core.held_recipes import is_undiscoverable
-from openplaces.core.schema import admin_scope_covers
+from openplaces.core.schema import AdminId, admin_scope_covers
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
 from openplaces.io.harmonizer import (
@@ -34,6 +34,7 @@ from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
 from openplaces.recipe import (
     get_recipe_by_id,
+    get_save_admin_level,
     raise_if_coverage_complete,
     version_sort_key,
 )
@@ -1473,6 +1474,24 @@ def derive_geometry_attributes(
     return state
 
 
+def _reference_scope(recipe_id, admin_id):
+    """The unit truncated to the reference recipe's save level.
+
+    The bounding box already limits the read to the spine's extent, so
+    narrowing the reference to the unit as well can only lose polygons.
+    It does lose them in New England: a state or national layer carries
+    no town id, so `get_entities` narrows it by each polygon's centroid,
+    and a tract crossing a town line is handed to one town only.
+    """
+    if admin_id is None:
+        return None
+    unit = AdminId(str(admin_id))
+    level = get_save_admin_level(get_recipe_by_id(recipe_id))
+    if level >= unit.get_level():
+        return unit
+    return unit.truncate_to_level(level) if level > 0 else None
+
+
 def _resolve_geographic_reference(state, link):
     """Load the reference layer for one `link_geographic_ids` entry.
 
@@ -1522,7 +1541,11 @@ def _resolve_geographic_reference(state, link):
     else:
         bbox = tuple(state.spine.total_bounds) if state.spine is not None else None
         ref = get_entities(
-            recipe_id, state.admin_id, geom=True, bbox=bbox, missing='warn'
+            recipe_id,
+            _reference_scope(recipe_id, state.admin_id),
+            geom=True,
+            bbox=bbox,
+            missing='warn',
         )
     if ref is None or len(ref) == 0 or 'geometry' not in ref.columns:
         # Also the missing-ingest case: get_entities(missing='warn')
@@ -1765,9 +1788,10 @@ def link_geographic_ids(
             the joined value is that reference's own index. Mutually
             exclusive with ``recipe_id``.
         ``recipe_id`` (str, optional)
-            Join against ``get_entities(recipe_id, state.admin_id, geom=True,
-            bbox=spine.total_bounds)``. Mutually exclusive with
-            ``admin_level``.
+            Join against the recipe's polygons within the spine's bounding
+            box, read at the recipe's own save scope (the state or the
+            country holding the unit), never narrowed to the unit itself.
+            Mutually exclusive with ``admin_level``.
         ``id_column`` (str, optional)
             Reference column to copy as the output value; defaults to the
             reference's own index.

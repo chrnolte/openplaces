@@ -36,30 +36,23 @@ columns:
   census_geo_id: GEOIDFQ
   census_blockgroup_geoid: GEOID
 
-# Extract county FIPS code (5-digit admin3_id used by country)
+# Extract the state FIPS code. See the note in
+# US_tile-census-2025_tract.yaml: a county code drops New England.
 transformations:
-  - output: admin3_id_admin1
+  - output: admin2_id_admin1
     type: string
     operation: substring
     input: census_geo_id
     args:
       start: 9
-      end: 14 
+      end: 11
 
-# Translate FIPS code to `admin3_id`
+# Translate FIPS code to `admin2_id`. The nationally-saved census layer,
+# not the harmonized reference, as this job is national.
 admin_id_crosswalk:
-  admin_level: 3
-  admin_id_column: admin3_id_admin1
-  # See the note in US_tile-census-2025_tract.yaml: 2025 TIGER GEOIDs carry
-  # Connecticut's planning-region codes, so the 2021 admin recipe matches
-  # nothing there and drops the state entirely.
-  # The nationally-saved census layer, not the harmonized reference.
-  # This job is national (save level 1), and admin-openplaces-2026 saves
-  # one file per state, so reading it here turns a single input into 52
-  # and drags every state's harmonize job into a one-county run. Admin
-  # unit-scoped recipes do use the harmonized reference; a national
-  # consumer needs a nationally-saved layer.
-  admin_recipe_id: "US_admin-census-2025_admin3"
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "US_admin-census-2025_admin2"
 
 # Use census GEOID as index
 set_index: census_geo_id
