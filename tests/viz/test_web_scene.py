@@ -237,6 +237,8 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
 
     manifest = json.loads((out / 'scene.json').read_text(encoding='utf-8'))
     assert manifest['audience'] == 'public' and manifest['people'] is None
+    # No imputed twin: Sources says the building values are recorded.
+    assert manifest['value_notes'] == [web_scene.RECORDED_ONLY_NOTE]
     assert [layer['name'] for layer in manifest['layers']] == ['parcels', 'buildings']
     assert set(manifest['layers'][0]['files']) == {'US-XX-AAA', 'US-XX-BBB'}
     assert set(manifest['layers'][1]['files']) == {'US-XX-AAA'}
@@ -432,6 +434,17 @@ def test_palettes_take_scene_bounds_and_color_stops():
     # separate, darker gray).
     assert pastel['layers']['parcels']['lut'][0] == '#eef1f7'
     assert pastel['theme'] == 'light'
+
+
+def test_team_twin_sits_in_the_public_twins_team_folder(tmp_path):
+    # The layout since version 0.8: region-x.imputed/team holds the
+    # team twin of region-x.team.
+    team_twin = tmp_path / 'region-x.imputed' / 'team'
+    team_twin.mkdir(parents=True)
+    bundle = tmp_path / 'region-x.team' / 'US-XX_footprint-cheer-2026.parquet'
+    assert web_scene.imputed_twin_dir(bundle, 'region-x.team') == team_twin
+    public = tmp_path / 'region-x' / 'US-XX_footprint-cheer-2026.parquet'
+    assert web_scene.imputed_twin_dir(public, 'region-x') == team_twin.parent
 
 
 def test_imputed_twin_supplies_only_the_models_cells(tmp_path, monkeypatch):
@@ -882,13 +895,22 @@ def test_known_issues_follow_the_scene_units(tmp_path):
         '    text: Everywhere.\n'
         '  - admin_ids: [US-NC-BBB]\n'
         '    found: 2026-01-03\n'
-        '    text: Elsewhere.\n',
+        '    text: Elsewhere.\n'
+        '  - admin_ids: [US-MA-AAA]\n'
+        '    audiences: [team]\n'
+        '    found: 2026-01-04\n'
+        '    text: Team values only.\n',
         encoding='utf-8',
     )
     assert web_scene.known_issues(['US-MA-AAA', 'US-MA-CCC'], path=issues) == [
         {'found': '2026-01-02', 'text': 'Town A: a fabricated problem.'},
         {'found': '2026-01-01', 'text': 'Everywhere.'},
     ]
+    # An issue of team-only values shows on the team page alone.
+    team = web_scene.known_issues(['US-MA-AAA'], path=issues, audience='team')
+    assert team[0] == {'found': '2026-01-04', 'text': 'Team values only.'}
+    public = web_scene.known_issues(['US-MA-AAA'], path=issues, audience='public')
+    assert 'Team values only.' not in [issue['text'] for issue in public]
     # The bundled list parses, and the Sources panel renders it.
     assert isinstance(web_scene.known_issues(['US-MA-SOM']), list)
     assert 'scene.known_issues' in (STATIC / 'viewer.js').read_text(encoding='utf-8')

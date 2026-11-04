@@ -85,7 +85,7 @@ ICON_FILES = ('icon-32.png', 'icon-180.png')
 KNOWN_ISSUES = files('openplaces.viz.web_scene') / 'known_issues.yaml'
 
 
-def known_issues(admin_ids, path=KNOWN_ISSUES) -> list[dict]:
+def known_issues(admin_ids, path=KNOWN_ISSUES, *, audience=None) -> list[dict]:
     """Known issues for a scene's units, for its Sources panel.
 
     Every page lists the problems we know of in what it shows, so a
@@ -98,6 +98,10 @@ def known_issues(admin_ids, path=KNOWN_ISSUES) -> list[dict]:
         The scene's level-3 units.
     path : path-like
         The issues file.
+    audience : str, optional
+        The page's audience. An entry with `audiences` is shown only on
+        those pages (an issue of values only a team page carries); None
+        shows only entries without `audiences`.
 
     Returns
     -------
@@ -112,7 +116,8 @@ def known_issues(admin_ids, path=KNOWN_ISSUES) -> list[dict]:
     picked = [
         {'found': str(entry['found']), 'text': ' '.join(str(entry['text']).split())}
         for entry in entries
-        if entry['admin_ids'] == 'all' or wanted & set(entry['admin_ids'])
+        if (entry['admin_ids'] == 'all' or wanted & set(entry['admin_ids']))
+        and ('audiences' not in entry or audience in entry['audiences'])
     ]
     return sorted(picked, key=lambda issue: issue['found'], reverse=True)
 
@@ -248,12 +253,27 @@ IMPUTATION_NOTE_TEXT = (
     'Buildings the assessor gives no usable value are filled by a model and '
     'marked "estimated"; "Tax assessor" shows only recorded values. '
     'Manufactured homes the roll does not list get a model of their own per '
-    'county, trained on the listed ones.'
+    'county, trained on the listed ones. A building value of 0 on the roll '
+    'is kept where the roll supports it (the land is valued and the total '
+    'equals it); a 0 that only fills an empty field reads as missing and is '
+    'filled (since version 0.8 of the imputation).'
 )
 # The model code's line in an imputed bundle's notice; the commit is read
 # from there, never written here, so the page names the code that made
 # the values it shows.
 MODEL_CODE_LINE = re.compile(r'Model code:[^.]*?commit [0-9a-f]{7,40}\.')
+
+
+# A page whose buildings could carry imputed values but whose bundles
+# have no imputed twin (coordinator, 2026-11-03: the value-page regions
+# are not in the imputation's list) says so instead of nothing.
+RECORDED_ONLY_NOTE = {
+    'name': 'Building values',
+    'credit': (
+        "Building values on this page are the assessor's recorded values; "
+        'a building without one is drawn as "no value".'
+    ),
+}
 
 
 def imputation_note(model_code) -> dict:
@@ -3792,13 +3812,23 @@ def imputed_twin_dir(bundle_file, region):
     A region's bundle sits in a folder of its own name, its twin beside
     it (`<region>.imputed`); a state's only region sits in the state's
     folder itself, its twin then inside it (measured 2026-10-19:
-    cheer-coastal-tx, whose regular bundle is the US-TX file).
+    cheer-coastal-tx, whose regular bundle is the US-TX file). A team
+    region's twin sits in a `team` folder inside the public region's
+    twin (`<region>.imputed/team`, the layout since version 0.8).
     """
     folder = Path(bundle_file).parent
-    for candidate in (
+    region = str(region)
+    base = region.removesuffix(TEAM_SUFFIX)
+    candidates = [
         folder.parent / f'{folder.name}{IMPUTED_SUFFIX}',
         folder / f'{region}{IMPUTED_SUFFIX}',
-    ):
+    ]
+    if base != region:
+        candidates += [
+            folder.parent / f'{base}{IMPUTED_SUFFIX}' / 'team',
+            folder / f'{base}{IMPUTED_SUFFIX}' / 'team',
+        ]
+    for candidate in candidates:
         if candidate.is_dir():
             return candidate
     return None
@@ -5024,7 +5054,7 @@ def build_web_scene(
         'restricted_cells': restricted_cells,
         'landmarks': marks,
         'phone_scene': phone_scene,
-        'known_issues': known_issues(admin_ids),
+        'known_issues': known_issues(admin_ids, audience=audience),
         'deck_gl_url': DECK_GL_URL,
         'palettes': [palette_manifest(p, layers, bounds) for p in palettes],
         # Shown first unless the visitor chose another before.
@@ -5057,7 +5087,13 @@ def build_web_scene(
         # county, and the models' credits for the Sources panel.
         'model_dollars': model_dollars,
         # Notes on values a model filled, for the Sources panel.
-        'value_notes': [imputation_note(model_code)] if imputed_cells else [],
+        'value_notes': (
+            [imputation_note(model_code)]
+            if imputed_cells
+            else [RECORDED_ONLY_NOTE]
+            if any(layer.imputed_columns for layer in layers)
+            else []
+        ),
         # Notes on what the page shows (`notes`), e.g. units left out.
         'page_notes': [{'name': n['name'], 'credit': n['credit']} for n in notes or []],
         # The year the models describe: PLACES-FMV's 2010, or none for
