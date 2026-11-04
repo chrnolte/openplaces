@@ -56,6 +56,31 @@ def test_pass1_within_match(monkeypatch):
     assert state.spine.loc['P1', 'the_id'] == 'A'
 
 
+@pytest.mark.parametrize(
+    ('recipe_id', 'expected'),
+    [
+        # National tracts, state blocks: a New England town is never
+        # narrowed by centroid, which handed a tract crossing a town
+        # line to one town only.
+        ('US_tile-census-2025_tract', 'US'),
+        ('US_tile-census-2025_block', 'US-MA'),
+    ],
+)
+def test_a_tile_is_read_at_its_save_scope(monkeypatch, recipe_id, expected):
+    scopes = []
+
+    def fake_get_entities(recipe, admin_id=None, **kwargs):
+        scopes.append(str(admin_id))
+        return _REF
+
+    monkeypatch.setattr(spine_module, 'get_entities', fake_get_entities)
+    spine = _spine({'P1': (box(0.2, 0.2, 0.4, 0.4), 0.3, 0.3)})
+    links = [{'recipe_id': recipe_id, 'output_column': 'the_id'}]
+    state = spine_module.link_geographic_ids(_state(spine, 'US-MA-NTC'), links=links)
+    assert scopes == [expected]
+    assert state.spine.loc['P1', 'the_id'] == 'A'
+
+
 def test_pass2_overlay_fallback_when_centroid_misses(monkeypatch):
     monkeypatch.setattr(spine_module, 'get_entities', lambda *a, **k: _REF)
     # Spans the gap (x: 0.9-1.5), centroid at x=1.2 falls in the gap (misses

@@ -36,32 +36,33 @@ columns:
   census_geo_id: GEOIDFQ
   census_tract_geoid: GEOID
 
-# Extract county FIPS code (5-digit admin3_id used by country)
+# Extract the state FIPS code, as the block recipe does. A tract's
+# county code matches no admin3 id in New England, where level 3 is the
+# town: crosswalked by county, every tract of CT, MA, ME, NH, RI and VT
+# was dropped at ingest, and no building there had a tract id.
+# Measured 2026-11-04 on US-MA: 0 tract rows in the national file.
+# Consumers read the tracts by bounding box at the national scope
+# (harmonizer spine._resolve_geographic_reference), never by town.
 transformations:
-  - output: admin3_id_admin1
+  - output: admin2_id_admin1
     type: string
     operation: substring
     input: census_geo_id
     args:
       start: 9
-      end: 14 
+      end: 11
 
-# Translate FIPS code to `admin3_id`
+# Translate FIPS code to `admin2_id`.
 admin_id_crosswalk:
-  admin_level: 3
-  admin_id_column: admin3_id_admin1
-  # 2025 TIGER tract GEOIDs carry Connecticut's nine planning-region codes
-  # (09110-09190), which the Census Bureau adopted as county-equivalents in
-  # June 2022. Crosswalking them against the 2021 admin recipe, which still
-  # holds the eight legacy counties, matched nothing for Connecticut and
-  # silently dropped all 884 of its tracts.
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
   # The nationally-saved census layer, not the harmonized reference.
   # This job is national (save level 1), and admin-openplaces-2026 saves
   # one file per state, so reading it here turns a single input into 52
   # and drags every state's harmonize job into a one-county run. Admin
   # unit-scoped recipes do use the harmonized reference; a national
   # consumer needs a nationally-saved layer.
-  admin_recipe_id: "US_admin-census-2025_admin3"
+  admin_recipe_id: "US_admin-census-2025_admin2"
 
 # Use census GEOID as index
 set_index: census_geo_id
