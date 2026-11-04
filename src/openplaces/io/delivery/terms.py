@@ -1315,9 +1315,9 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         code = imputation.get('code')
         if code:
             state = ', with uncommitted changes' if code.get('dirty') else ''
+            branch = f'branch {code["branch"]}, ' if code.get('branch') else ''
             lines.append(
-                f'Model code: openplaces branch {code.get("branch")}, '
-                f'commit {code.get("commit")}{state}.'
+                f'Model code: openplaces {branch}commit {code.get("commit")}{state}.'
             )
         lines.append('')
     if terms.get('restricted'):

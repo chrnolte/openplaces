@@ -1399,14 +1399,23 @@ def _with_adjusted_columns(canonical_columns):
     )
 
 
+CODE_REVISION_ENV = 'OPENPLACES_CODE_REVISION'
+
+
 def _code_revision() -> dict | None:
     """Branch and commit of the checkout this package runs from.
 
     Recorded with an imputation, because the model code may run from a
-    branch that a released version does not contain. None outside a git
-    checkout (an installed package) or without git; 'dirty' is True when
+    branch that a released version does not contain. 'dirty' is True when
     the package's files differ from the commit, untracked modules
     included (a model extension may be one).
+
+    Outside a git checkout, the revision comes from the environment
+    variable OPENPLACES_CODE_REVISION, as '<branch>@<commit>' or a bare
+    commit; a cluster job runs from a `git archive` of a commit, which
+    holds no git metadata, and its job script knows the commit it
+    archived. Such a run is never dirty: the archive is the commit.
+    None when neither is available (an installed package).
     """
     import subprocess
 
@@ -1424,7 +1433,11 @@ def _code_revision() -> dict | None:
 
     commit = git('rev-parse', '--short', 'HEAD')
     if commit is None:
-        return None
+        stated = os.environ.get(CODE_REVISION_ENV, '').strip()
+        if not stated:
+            return None
+        branch, _, commit = stated.rpartition('@')
+        return {'branch': branch or None, 'commit': commit, 'dirty': False}
     status = git('status', '--porcelain', '--', str(package)) or ''
     return {
         'branch': git('rev-parse', '--abbrev-ref', 'HEAD'),
