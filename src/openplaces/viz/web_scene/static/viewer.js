@@ -290,7 +290,7 @@ function renderSources(container, scene) {
   };
   container.replaceChildren();
   container.appendChild(el('p', 'src-intro',
-    'Values are as recorded by the assessors named below, with gaps filled by openplaces ' +
+    'Values are as recorded by the sources named below, with gaps filled by openplaces ' +
     '(openplaces.io), which harmonized and curated them. The terms are the sources\' own.'));
   // Known issues first: what we know is wrong in this page, and that
   // we look for it (maintainer, 2026-10-17).
