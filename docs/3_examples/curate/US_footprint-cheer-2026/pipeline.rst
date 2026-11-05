@@ -21,23 +21,13 @@ reviewed in the :ref:`step review <cheer_step_review>`.
    imputation
    step-review
 
-.. mermaid::
+.. figure:: images/pipeline-stages.png
+   :alt: The five stages (ingest, harmonize, enrich, curate, deliver) and
+      how footprints, buildings and parcels pass through them.
+   :width: 100%
 
-   flowchart TD
-     subgraph ingest [Ingest]
-       R[County tax rolls and parcels] --- O[Building footprints: OBM, Microsoft, NC state layer]
-       O --- P[Points: NSI, Overture addresses, FEMA]
-     end
-     subgraph harmonize [Harmonize]
-       FG[Footprint geospine: one footprint per building] --> BG[Building geospine and spine: points and parcels linked]
-       BG --> PS[Parcel geospine and spine: roll values on the lot]
-     end
-     subgraph curate [Curate]
-       PC[Parcel curate: use classes, clean values] --> BC[Building curate: values apportioned, occupancy voted]
-       BC --> FC[Footprint curate: buildings carried onto footprints]
-     end
-     ingest --> harmonize --> curate
-     FC --> D[Delivery: pool counties, withhold, impute, write the bundle]
+   The stages of the build. Each box is one table; arrows show which
+   table reads which.
 
 Three entities
 ~~~~~~~~~~~~~~

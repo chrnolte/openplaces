@@ -184,22 +184,36 @@ def doc_path(admin_id: str) -> Path:
     return Path(*slugs)
 
 
-def load_recipes() -> list[tuple[str, str, Path, dict]]:
+#: libyaml's parser where the installation has it, several times faster
+#: than the pure-Python one; the result is the same.
+_YAML_LOADER = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+
+
+@cache
+def load_recipes() -> tuple[tuple[str, str, Path, dict], ...]:
     """Return (admin_id, recipe_id, path, recipe) for every recipe YAML.
 
     The admin id is derived from the path components before the first
     '_all' escape directory ('Global' for global recipes, else e.g. 'US'
     or 'US-MA').
 
+    The tree is read once per build process and cached: every geography
+    page's directive calls this, and reading all recipes on each call
+    pushed the Read the Docs build past its time limit. The recipes do
+    not change during a build. Callers must not mutate the returned
+    dicts.
+
+    Measured 2026-11-05 on US: uncached, 234 calls took 1,826 of 2,008 s.
+
     Returns
     -------
-    list of tuple
+    tuple of tuple
         One entry per parsable recipe, sorted by path.
     """
     entries = []
     for path in sorted(RECIPES_DIR.rglob('*.yaml')):
         try:
-            recipe = yaml.safe_load(path.read_text(encoding='utf-8'))
+            recipe = yaml.load(path.read_text(encoding='utf-8'), Loader=_YAML_LOADER)
         except yaml.YAMLError as exc:
             logger.warning('catalog: cannot parse %s (%s)', path, exc)
             continue
@@ -213,7 +227,7 @@ def load_recipes() -> list[tuple[str, str, Path, dict]]:
             admin_parts.append(part)
         admin_id = '-'.join(admin_parts) or 'Global'
         entries.append((admin_id, path.stem, path, recipe))
-    return entries
+    return tuple(entries)
 
 
 def entity_label(recipe: dict) -> str:
