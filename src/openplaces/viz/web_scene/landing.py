@@ -81,9 +81,11 @@ def capture_thumbnail(scene_dir, target, width=960, height=600) -> Path:
                 'window.openplacesScene && window.openplacesScene.loaded',
                 timeout=600_000,
             )
-            # The panels, and the place's name shown as a page opens: the
-            # card prints the name beneath the photo.
-            page.add_style_tag(content='.panel,#place-title{display:none!important}')
+            # The panels, the place's name shown as a page opens (the
+            # card prints it beneath the photo) and the preview notice.
+            page.add_style_tag(
+                content='.panel,#place-title,#preview-notice{display:none!important}'
+            )
             page.evaluate(
                 '(v) => window.openplacesScene.deck.setProps('
                 '{initialViewState: {...v, maxPitch: 85}})',
