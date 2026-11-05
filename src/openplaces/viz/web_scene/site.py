@@ -82,6 +82,7 @@ def _page(place, radius_km, slug, phone_scene=None) -> None:
             elevation_recipe=place_elevation(place),
             phone_scene=None if name != slug else phone_scene,
             downtown=downtown_of(place),
+            tour_contrast=place.get('tour_contrast'),
             place_title=place['title'],
             model_files=models,
             lots_file=place_lots_file(place, built),

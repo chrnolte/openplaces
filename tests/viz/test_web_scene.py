@@ -232,11 +232,18 @@ def test_build_writes_only_the_allowed_fields(tmp_path, monkeypatch):
         tmp_path,
         layers=layers,
         build_id='b1',
+        tour_contrast={'center': [-71.1, 42.3], 'zoom': 12.5},
         verbose=False,
     )
 
     manifest = json.loads((out / 'scene.json').read_text(encoding='utf-8'))
     assert manifest['audience'] == 'public' and manifest['people'] is None
+    # A place's own per-home stop replaces the one read off the data.
+    assert manifest['tour_contrast'] == {
+        'longitude': -71.1,
+        'latitude': 42.3,
+        'zoom': 12.5,
+    }
     # No imputed twin: Sources says the building values are recorded.
     assert manifest['value_notes'] == [web_scene.RECORDED_ONLY_NOTE]
     assert [layer['name'] for layer in manifest['layers']] == ['parcels', 'buildings']

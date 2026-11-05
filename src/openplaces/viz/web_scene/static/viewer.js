@@ -924,7 +924,8 @@ const TOUR_DOWNTOWN_ACTIONS = [
 // left.
 const TOUR_DOWNTOWN_ONLY_ACTIONS = [
   ...TOUR_DOWNTOWN_ACTIONS,
-  {at: 37, hint: {target: 'buildings', text: 'Buildings back', linger: 3}},
+  // Maintainer's wording, 2026-11-04.
+  {at: 37, hint: {target: 'buildings', text: "Let's bring the buildings back", linger: 3}},
   {at: 39, buildings: true},
 ];
 // Leaving downtown for the contrast: the switch to value per home
@@ -962,7 +963,16 @@ const TOUR_CONTRAST_ACTIONS = [
       gentle: true,
     },
   },
-  {at: 11, hint: {target: 'buildings', text: 'Buildings back', countdown: 5, linger: 7}},
+  // Maintainer's wording, 2026-11-04.
+  {
+    at: 11,
+    hint: {
+      target: 'buildings',
+      text: "Let's bring the buildings back",
+      countdown: 5,
+      linger: 7,
+    },
+  },
   {at: 16, buildings: true},
   {
     at: 21,
@@ -1079,8 +1089,10 @@ function buildTour(view, foci, contrast, downtown = null) {
     // ground area and per home; then on to the other stops.
     // A contrast far from downtown is seen from higher up, so the
     // glide stays short and both ends fit the view.
+    // A place's own stop (`tour_contrast` in places.yaml) brings its
+    // zoom.
     const km = distanceKm(first, contrast);
-    const zoom = km > TOUR.nearKm
+    const zoom = contrast.zoom != null ? contrast.zoom : km > TOUR.nearKm
       ? TOUR.contrastZoom - Math.log2(km / TOUR.nearKm)
       : TOUR.contrastZoom;
     const high = stop(contrast, zoom, TOUR.contrastPitch);

@@ -4296,6 +4296,7 @@ def build_web_scene(
     landmarks=None,
     phone_scene=None,
     downtown=None,
+    tour_contrast=None,
     place_title=None,
     model_files=None,
     lots_file=None,
@@ -4378,6 +4379,12 @@ def build_web_scene(
         point: the tour's first stop, where it rests longest and hides
         the buildings (maintainer, 2026-10-18). None starts the tour at
         its densest stop instead.
+    tour_contrast : dict, optional
+        An editorial per-home stop of the tour, in place of the one
+        read off the data (`contrast_focus`): `center` (longitude,
+        latitude) and `zoom` (maintainer, 2026-11-04: Madison's tour
+        zooms out over the homes along both lakes). Only used on a page
+        with a per-home view.
     place_title : str, optional
         The place's name ("Boston area"), shown at the top of the page
         for a few seconds as it opens (maintainer, 2026-10-18).
@@ -4998,7 +5005,15 @@ def build_web_scene(
     # One stop of the tour shows the per-dwelling view, where homes'
     # values differ most within one view (`contrast_focus`).
     contrast = None
-    if any(layer.per_dwelling_label for layer in layers):
+    has_per_dwelling = any(layer.per_dwelling_label for layer in layers)
+    if has_per_dwelling and tour_contrast is not None:
+        longitude, latitude = tour_contrast['center']
+        contrast = {
+            'longitude': float(longitude),
+            'latitude': float(latitude),
+            'zoom': float(tour_contrast['zoom']),
+        }
+    elif has_per_dwelling:
         lots = rendered[bottom.name].gdf
         per_dwelling = f'{bottom.value_column}_per_dwelling'
         # What the page colors the lots by at the stop.
