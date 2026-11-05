@@ -18,7 +18,7 @@ from openplaces.io.delivery import (
     delivery_paths,
     delivery_regions,
 )
-from openplaces.recipe import get_output_path
+from openplaces.recipe import get_output_path, get_recipe_by_id
 
 TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BRU'
@@ -272,22 +272,24 @@ def test_delivery_outputs_match_the_writer(shipping_dag):
 
 
 PRICE_INDEX = 'US_built-prices-fhfa-2025'
+STATE_PRICE_INDEX = 'US_economy-price-house-fhfa-2026_state'
 CENSUS = 'US_population-acs-2024'
 GAZETTEER = 'US_population-gazetteer-2024'
 
 
 def test_delivery_inputs_are_every_member_county(shipping_dag):
     # Each member's curated file, then what the building imputation
-    # reads: the price index and the census tables. No land-market
-    # enrichment: the recipe reads none (restricted).
+    # reads: the county and state price indexes and the census tables.
+    # No land-market enrichment: the recipe reads none (restricted).
     members = delivery_members(TARGET, region=REGION)
     assert len(members) == 44
     inputs = shipping_dag.input_paths('deliver', TARGET, 'US-NC')
-    assert inputs[: len(members) + 1] == [
+    assert inputs[: len(members) + 2] == [
         *(get_output_path(TARGET, admin_id=member) for member in members),
         get_output_path(PRICE_INDEX, admin_id='US'),
+        get_output_path(STATE_PRICE_INDEX, admin_id='US'),
     ]
-    census = inputs[len(members) + 1 :]
+    census = inputs[len(members) + 2 :]
     assert census
     assert all(CENSUS in str(path) or GAZETTEER in str(path) for path in census)
 
@@ -308,6 +310,7 @@ def test_delivery_edges_let_plan_propagate(shipping_dag):
     assert upstreams == {
         *((TARGET, member, None) for member in built),
         (PRICE_INDEX, 'US', None),
+        (STATE_PRICE_INDEX, 'US', None),
         (CENSUS, 'US', None),
         (GAZETTEER, 'US', None),
     }
@@ -437,7 +440,9 @@ def test_regions_are_declared_and_disjoint():
     """The recipe ships several named regions, and no county feeds two.
 
     Membership comes from the shared region registry, not from the recipe,
-    so this also asserts the two CHEER regions stay wired together.
+    so this also asserts the two CHEER regions stay wired together. A
+    whole-state region (`whole_unit_regions`) holds every county of its
+    state, so it is left out of the disjointness check.
     """
     from openplaces.io.readers import get_region_admin_ids
 
@@ -451,7 +456,13 @@ def test_regions_are_declared_and_disjoint():
     assert {'cheer-eastern-nc', 'cheer-coastal-tx'} <= set(regions)
     assert len(regions['cheer-eastern-nc']['admin_ids']) == 44
     assert len(regions['cheer-coastal-tx']['admin_ids']) == 42
-    members = [m for spec in regions.values() for m in spec['admin_ids']]
+    whole = set(get_recipe_by_id(TARGET)['share']['delivery']['whole_unit_regions'])
+    members = [
+        m
+        for region_id, spec in regions.items()
+        if region_id not in whole
+        for m in spec['admin_ids']
+    ]
     assert len(members) == len(set(members))
     assert not set(regions['cheer-eastern-nc']['admin_ids']) & set(
         regions['cheer-coastal-tx']['admin_ids']

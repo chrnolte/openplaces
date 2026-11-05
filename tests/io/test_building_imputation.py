@@ -685,6 +685,108 @@ def test_sparse_own_labels_give_way_to_donors():
     assert not imputer._own_labels_too_sparse(bi.MANUFACTURED_VALUE, y, applicable, 'A')
 
 
+def test_a_county_index_that_stops_early_continues_with_its_state():
+    # Fabricated series: county 99001 stops in 2021, 99003 runs on.
+    hpi = pd.DataFrame(
+        {
+            'county_fips': ['99001', '99001', '99003', '99003'],
+            'index_year': [2020, 2021, 2021, 2023],
+            'house_price_index': [200.0, 250.0, 100.0, 130.0],
+        }
+    )
+    state = pd.DataFrame(
+        {
+            'admin2_id': ['US-XX'] * 3,
+            'year': [2021, 2022, 2023],
+            'house_price_index': [400.0, 440.0, 500.0],
+        }
+    )
+    by_fips = pd.Series({'99001': 'US-XX', '99003': 'US-XX'})
+    out, continued = bi.continue_with_state_index(hpi, state, by_fips)
+    assert continued == ['99001']
+    county = out[out['county_fips'] == '99001'].set_index('index_year')
+    # Its 2021 level carried by the state's change after 2021.
+    assert county.at[2022, 'house_price_index'] == pytest.approx(275.0)
+    assert county.at[2023, 'house_price_index'] == pytest.approx(312.5)
+    # A series reaching the state's last year is left as published.
+    assert (out['county_fips'] == '99003').sum() == 2
+
+
+def test_an_attribute_without_labels_in_the_region_stays_empty():
+    imputer = object.__new__(bi.Imputer)
+
+    def no_fit(*args):
+        raise AssertionError('fitted without labels')
+
+    imputer._guarded_fit_predict = no_fit
+    index = pd.RangeIndex(4)
+    y = pd.Series(np.nan, index=index, dtype=object)
+    rows = pd.Series(True, index=index)
+    current = pd.Series([np.nan] * 4, index=index, dtype=object)
+    spec = bi.TargetSpec('roof_shape', 'class', per_county=False)
+    values, filled = imputer._fill_pooled(
+        spec, y, rows, rows.copy(), current, pd.DataFrame(index=index), print
+    )
+    # Nothing written, and no cell flagged as imputed.
+    assert values.isna().all()
+    assert not filled.any()
+
+
+def test_a_county_no_labeled_building_reaches_is_not_fitted():
+    # Fabricated: county A has no labels, B's are beyond the radius.
+    imputer = object.__new__(bi.Imputer)
+    imputer.frame = pd.DataFrame({'admin3_id': ['A', 'A', 'B', 'B'], 'region_id': 'r'})
+    imputer.config = SimpleNamespace(own_cap=10, donor_cap=10)
+    imputer.seed = 0
+    imputer.donors = SimpleNamespace(weights=lambda c, s, cfg: np.zeros(len(s)))
+    imputer._x = lambda idx, spec, filled: pd.DataFrame(
+        {'area_m2': [100.0] * len(idx)}, index=idx
+    )
+
+    def no_fit(*args):
+        raise AssertionError('fitted without labels')
+
+    imputer._guarded_fit_predict = no_fit
+    y = pd.Series([np.nan, np.nan, 1950.0, 1960.0])
+    target = imputer.frame['admin3_id'].eq('A')
+    spec = bi.TargetSpec('year_built', 'year', per_county=True)
+    pred = imputer._fit_predict_county(spec, y, None, 'A', target, exclude=False)
+    assert pred is None
+
+
+def test_own_labels_only_is_resolved_per_region():
+    spec = {'own_labels_only': {'region-a': ['year_built']}}
+    assert bi.own_labels_only(spec, 'region-a') == ('year_built',)
+    assert bi.own_labels_only(spec, 'region-b') == ()
+    # The delivery's and the capture's spec hold the list itself.
+    assert bi.own_labels_only({'own_labels_only': ['year_built']}) == ('year_built',)
+    assert bi.own_labels_only({}) == ()
+    with pytest.raises(ValueError, match='resolve'):
+        bi.own_labels_only(spec)
+
+
+def test_own_labels_only_takes_per_county_targets_only():
+    with pytest.raises(ValueError, match='per-county'):
+        bi.Imputer(None, None, {}, None, own_labels_only=('roof_shape',))
+
+
+def test_a_county_on_its_own_labels_takes_no_donors():
+    imputer = object.__new__(bi.Imputer)
+    imputer.config = bi.DonorConfig(mode='km', bandwidth_km=250, radius_km=400)
+    config = imputer._own_only_config()
+    assert config.radius_km == 0.0
+    assert config.bandwidth_km == 250
+
+
+def test_cheer_own_labels_only_names_imputed_regions():
+    from openplaces.recipe import get_recipe_by_id
+
+    spec = get_recipe_by_id('US_footprint-cheer-2026')['share']['delivery']['impute']
+    targets = spec.get('own_labels_only') or {}
+    assert set(targets) <= set(spec['regions'])
+    assert targets.get('wisconsin-statewide') == ['year_built']
+
+
 def _census_fixture():
     # Fabricated levels for two tracts, one block group and two places.
     ids = [

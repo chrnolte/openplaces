@@ -275,6 +275,18 @@ share:
       # Washington DC and the counties within 15 km of the Wilson
       # Building (2026-10-19).
       - washington-dc
+      # Whole-state inventories, to build and test the imputation on
+      # (plans/building-imputation-ma-wi-fl-regions.md, 2026-11-04).
+      # Not published while the WI and FL sources' terms are open.
+      - wisconsin-statewide
+      - florida-statewide
+    # Each of these is its whole state, so its bundle is filed as the
+    # state's own (US-WI_footprint-cheer-2026.parquet), as in the
+    # transaction recipe; the export refuses one whose members are not
+    # every county of its state. The other regions do not overlap.
+    whole_unit_regions:
+      - wisconsin-statewide
+      - florida-statewide
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),
@@ -377,18 +389,36 @@ share:
       regions:
         - cheer-eastern-nc
         - cheer-coastal-tx
+        # Test runs (plans/building-imputation-ma-wi-fl-regions.md);
+        # nothing from them is published while the sources' terms
+        # are open.
+        - wisconsin-statewide
+        - florida-statewide
       # v0.6 (2026-10-24): Pender's appraisal year, no land-market
       # inputs, the roll level check, the recorded seed. v0.7
       # (2026-10-26): donor weights by distance only. v0.8
       # (2026-10-28): NSI's two cost measures imputed beside the
-      # market value, in their own columns.
-      version: building-imputation-v0.8
+      # market value, in their own columns. v0.9 (2026-11-04): whole
+      # WI and FL, an attribute with no label in the region left empty,
+      # WI year built from each county's own labels only.
+      version: building-imputation-v0.9
       common_year: 2025
       # Base seed of every random step; a delivery with the same seed,
       # inputs and code reproduces its filled values.
       seed: 2026
       price_index: US_built-prices-fhfa-2025
+      # A county series that stops before the common year continues
+      # with its state's published series (Nantucket's ends in 2021;
+      # maintainer, 2026-11-04). Both are FHFA's, the same release.
+      state_price_index: US_economy-price-house-fhfa-2026_state
       price_anchor: acs
+      # Targets a region fills from each county's own labels, with no
+      # donors; a county without labels leaves them empty. WI's year
+      # built is labeled in Dane County only, and Dane's buildings do
+      # not stand for the state's (maintainer, 2026-11-05).
+      own_labels_only:
+        wisconsin-statewide:
+          - year_built
       # No land-market inputs (location_recipe): the PLACES lab regions
       # and their 2010 land values are held pending review
       # (redistribution_restricted), and restricted evidence never

@@ -1375,6 +1375,68 @@ def value_scales(
     return out
 
 
+def continue_with_state_index(
+    hpi: pd.DataFrame, state_hpi: pd.DataFrame, state_by_fips: pd.Series
+) -> tuple[pd.DataFrame, list[str]]:
+    """Continue each county's index after its last year with its state's.
+
+    A county series that stops early (FHFA drops a year when the
+    county's sample is small) leaves its values without a factor to
+    the common year, and a county alone in its region then has no
+    same-year county to fall back on. Its last published level is
+    carried forward by the state's published change: the county's
+    level in year t is its level in its last year L times
+    state(t) / state(L). Both series are FHFA's, as published; nothing
+    is estimated from sales (design limits L7, L29). Gaps inside a
+    county's series are left as they are.
+
+    Parameters
+    ----------
+    hpi : DataFrame
+        County index: 'county_fips', 'index_year', 'house_price_index'.
+    state_hpi : DataFrame
+        State index: 'admin2_id', 'year', 'house_price_index'.
+    state_by_fips : Series
+        admin2_id by 5-digit county FIPS, for the counties to continue.
+
+    Returns
+    -------
+    hpi : DataFrame
+        *hpi* with the continued years appended.
+    continued : list of str
+        FIPS codes of the counties continued.
+    """
+    fips = hpi['county_fips'].astype(str).str.zfill(5)
+    valued = hpi[hpi['house_price_index'].notna()].assign(fips=fips)
+    last_year = valued.groupby('fips')['index_year'].max()
+    state = state_hpi.dropna(subset=['house_price_index']).pivot_table(
+        index='admin2_id', columns='year', values='house_price_index'
+    )
+    rows, continued = [], []
+    for county, admin2_id in state_by_fips.dropna().astype(str).items():
+        county = str(county).zfill(5)
+        if county not in last_year.index or admin2_id not in state.index:
+            continue
+        end = int(last_year[county])
+        later = [y for y in state.columns if int(y) > end]
+        if not later or end not in state.columns:
+            continue
+        base = valued.loc[
+            valued['fips'].eq(county) & valued['index_year'].eq(end),
+            'house_price_index',
+        ].iloc[0]
+        for year in later:
+            ratio = state.at[admin2_id, year] / state.at[admin2_id, end]
+            rows.append((county, int(year), base * ratio))
+        continued.append(county)
+    if not rows:
+        return hpi, continued
+    extra = pd.DataFrame(
+        rows, columns=['county_fips', 'index_year', 'house_price_index']
+    )
+    return pd.concat([hpi, extra], ignore_index=True), continued
+
+
 def _prepare_inputs(frame: pd.DataFrame, features: pd.DataFrame, table):
     x = features.copy()
     county = frame['admin3_id']
@@ -1416,6 +1478,10 @@ class Imputer:
         How a county without value labels gets its price level: 'acs'
         (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`) or 'both'
         (their geometric mean). Anything else raises ValueError.
+    own_labels_only : tuple of str
+        Per-county targets each county fills from its own labels
+        alone, without donors; a county with none leaves them empty
+        and unflagged. Any other column raises ValueError.
     """
 
     def __init__(
@@ -1430,9 +1496,18 @@ class Imputer:
         acs_value: pd.Series | None = None,
         extensions: ImputationExtensions | None = None,
         anchor: str = 'acs',
+        own_labels_only: tuple[str, ...] = (),
     ):
         if anchor not in {'acs', 'nsi', 'both'}:
             raise ValueError(f"anchor must be 'acs', 'nsi' or 'both', not {anchor!r}")
+        per_county = {t.column for t in TARGETS if t.per_county and t.kind != 'measure'}
+        unknown = sorted(set(own_labels_only) - per_county)
+        if unknown:
+            raise ValueError(
+                f'own_labels_only names {unknown}; only per-county targets '
+                f'can be limited to their own labels: {sorted(per_county)}'
+            )
+        self.own_labels_only = frozenset(own_labels_only)
         self.anchor = anchor
         self.extensions = extensions or ImputationExtensions()
         self.voided = {}
@@ -1539,11 +1614,12 @@ class Imputer:
             if spec.per_county:
                 for county in sorted(self.frame['admin3_id'].unique()):
                     in_county = missing & self.frame['admin3_id'].eq(county)
+                    own_only = spec.column in self.own_labels_only
                     for part_spec, part_y, part_rows in parts:
                         target_rows = in_county & part_rows
                         if not target_rows.any():
                             continue
-                        donors_only = self._own_labels_too_sparse(
+                        donors_only = not own_only and self._own_labels_too_sparse(
                             part_spec, part_y, rows & part_rows, county
                         )
                         if donors_only:
@@ -1555,8 +1631,16 @@ class Imputer:
                             county,
                             target_rows,
                             exclude=False,
+                            config=self._own_only_config() if own_only else None,
                             drop_own=donors_only,
                         )
+                        if pred is None:
+                            missing &= ~target_rows
+                            log(
+                                f'{spec.column} ({part_spec.rows}) {county}: '
+                                'no labels within reach, not filled'
+                            )
+                            continue
                         current.loc[target_rows] = pred
                         log(
                             f'{spec.column} ({part_spec.rows}) {county}: '
@@ -1588,14 +1672,9 @@ class Imputer:
                         'filled values to their value per m2 bound'
                     )
             elif missing.any():
-                labeled = y.notna() & rows
-                train = self._pooled_sample(labeled)
-                x = self._x(train, spec, filled)
-                xt = self._x(missing[missing].index, spec, filled)
-                current.loc[missing] = self._guarded_fit_predict(
-                    spec, x, y.loc[train], np.ones(len(train)), xt
+                current, missing = self._fill_pooled(
+                    spec, y, rows, missing, current, filled, log
                 )
-                log(f'{spec.column}: filled {int(missing.sum())}')
             if spec.kind == 'value':
                 current = current / self.value_scale
             if spec.column in NUMERIC_CLASS_COLUMNS or spec.kind in {
@@ -1613,6 +1692,43 @@ class Imputer:
                     current.dropna().astype(str).unique().tolist()
                 )
         return filled, flags
+
+    def _fill_pooled(
+        self,
+        spec: TargetSpec,
+        y: pd.Series,
+        rows: pd.Series,
+        missing: pd.Series,
+        current: pd.Series,
+        filled: pd.DataFrame,
+        log,
+    ) -> tuple[pd.Series, pd.Series]:
+        """Fill one attribute from a single model over the region.
+
+        An attribute no building of the region carries a label for is
+        left empty and not flagged as filled: roof shape and garage
+        come from CHEER evidence only, which exists in some states.
+
+        Returns
+        -------
+        values : Series
+            *current* with the missing cells written.
+        missing : Series
+            The rows filled; all False when nothing was.
+        """
+        labeled = y.notna() & rows
+        if not labeled.any():
+            log(f'{spec.column}: no labels in the region, not filled')
+            return current, pd.Series(False, index=missing.index)
+        train = self._pooled_sample(labeled)
+        x = self._x(train, spec, filled)
+        xt = self._x(missing[missing].index, spec, filled)
+        current = current.copy()
+        current.loc[missing] = self._guarded_fit_predict(
+            spec, x, y.loc[train], np.ones(len(train)), xt
+        )
+        log(f'{spec.column}: filled {int(missing.sum())}')
+        return current, missing
 
     def _fill_measure(
         self, spec: TargetSpec, filled: pd.DataFrame, log
@@ -1646,13 +1762,7 @@ class Imputer:
         missing = rows & observed.isna()
         current = pd.to_numeric(self.frame[spec.column], errors='coerce')
         current = current.where(observed.notna())
-        own_only = DonorConfig(
-            mode='km',
-            bandwidth_km=self.config.bandwidth_km,
-            radius_km=0.0,
-            own_cap=self.config.own_cap,
-            label='own',
-        )
+        own_only = self._own_only_config()
         admin = self.frame['admin3_id']
         for county in sorted(admin[missing].unique()):
             target_rows = missing & admin.eq(county)
@@ -1661,6 +1771,10 @@ class Imputer:
             pred = self._fit_predict_county(
                 spec, y, filled, county, target_rows, exclude=False, config=config
             )
+            if pred is None:
+                missing &= ~target_rows
+                log(f'{spec.column} {county}: no labels within reach, not filled')
+                continue
             if ratio:
                 cost = filled.loc[target_rows, 'replacement_cost'].to_numpy(float)
                 pred = cost * pred / (1.0 + pred)
@@ -1840,6 +1954,16 @@ class Imputer:
             return 1.0
         return float(np.clip(expected / current, *ANCHOR_RANGE))
 
+    def _own_only_config(self) -> DonorConfig:
+        """The donor configuration of a county trained on its own labels."""
+        return DonorConfig(
+            mode='km',
+            bandwidth_km=self.config.bandwidth_km,
+            radius_km=0.0,
+            own_cap=self.config.own_cap,
+            label='own',
+        )
+
     def _own_labels_too_sparse(
         self, spec: TargetSpec, y: pd.Series, applicable: pd.Series, county: str
     ) -> bool:
@@ -1870,7 +1994,7 @@ class Imputer:
         drop_own: bool = False,
         patterns: pd.DataFrame | None = None,
         holdout_patterns: pd.DataFrame | None = None,
-    ) -> np.ndarray:
+    ) -> np.ndarray | None:
         """Fit *county*'s model on weighted donors and predict *target_rows*.
 
         *exclude* hides the county's own labels and masks its parcel value
@@ -1879,6 +2003,9 @@ class Imputer:
         input rows of genuinely incomplete buildings for the training
         hook (default: the target rows); *holdout_patterns*, given, thin
         the target rows through the held-out hook (evaluation only).
+        Returns None when no labeled building reaches the county (none
+        of its own, no donor within reach), so the caller leaves the
+        rows empty and unflagged instead of fitting on nothing.
         """
         config = config or self.config
         labeled = self.frame.loc[y.notna(), ['admin3_id', 'region_id']]
@@ -1889,6 +2016,8 @@ class Imputer:
         keep = w > 1e-3
         sample, w = sample[keep], w[keep]
         x = self._x(sample.index, spec, filled)
+        if x.empty or not x.notna().any().any():
+            return None
         xt = self._x(target_rows[target_rows].index, spec, filled)
         if exclude:
             masked = [c for c in PARCEL_VALUE_INPUTS if c in xt.columns]
@@ -2046,6 +2175,9 @@ class Imputer:
                     patterns=train_pool,
                     holdout_patterns=test_pool if thin_heldout else None,
                 )
+                if pred is None:
+                    log(f'{spec.column} {county} {config.name()}: no donors, skipped')
+                    continue
                 variants = {config.name(): pred}
                 if spec.kind == 'value' and self.acs_value is not None:
                     # Scored with and without the price anchor, which
@@ -2388,6 +2520,29 @@ def delivery_config(spec: dict) -> DonorConfig:
     )
 
 
+def own_labels_only(spec: dict, region: str | None = None) -> tuple[str, ...]:
+    """Targets a region fills from each county's own labels only.
+
+    The recipe's `own_labels_only` maps a region id to target columns;
+    given *region*, this returns that region's list. A spec already
+    resolved for its region (the delivery's, and a captured one) holds
+    the list itself, and *region* is not needed.
+
+    A region whose labels for a target come from too few counties to
+    stand for the rest takes no donors for it (maintainer, 2026-11-05:
+    WI year built, labeled in Dane County only).
+    """
+    value = spec.get('own_labels_only') or ()
+    if isinstance(value, dict):
+        if region is None:
+            raise ValueError(
+                'own_labels_only maps regions to targets; resolve it for '
+                'the region delivered first.'
+            )
+        value = value.get(region) or ()
+    return tuple(str(column) for column in value)
+
+
 def acs_value_levels(
     acs_county: pd.Series,
     fips_by_county: pd.Series,
@@ -2687,6 +2842,9 @@ def build_imputer(
 ) -> tuple[Imputer, pd.DataFrame]:
     """The imputer a delivery runs, and its appraisal scales.
 
+    The spec's `own_labels_only` is the region's list of targets
+    (:func:`own_labels_only`).
+
     One construction for :func:`impute_delivery` and the leave-county-out
     tool, so the scored model is the shipped one.
 
@@ -2749,6 +2907,7 @@ def build_imputer(
         # recipe's value reproduces a delivery.
         seed=int(spec.get('seed', DEFAULT_SEED)),
         anchor=spec.get('price_anchor', 'acs'),
+        own_labels_only=own_labels_only(spec),
         exclude_inputs=tuple(sorted(excluded)),
         acs_value=acs_value,
         extensions=load_extensions(
