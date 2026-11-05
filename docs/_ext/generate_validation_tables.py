@@ -15,7 +15,8 @@ For every ``{name}_confusion.csv`` (with its ``_accuracy.csv`` and
 
 - a CSV snapshot of the three inputs under ``_generated/data/``, so a
   fragment can be regenerated, and checked, without the data root;
-- a reST fragment under ``docs/3_examples/curate/annexes/_generated/``,
+- a reST fragment under
+  ``docs/3_examples/curate/US_footprint-cheer-2026/_generated/``,
   opening with a do-not-edit comment, holding the pooled matrix of the
   primary source as a ``list-table`` (producer's accuracy column,
   consumer's accuracy row, overall accuracy and kappa in the corner),
@@ -41,7 +42,7 @@ from pathlib import Path
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ANNEX_DIR = REPO_ROOT / 'docs' / '3_examples' / 'curate' / 'annexes'
+ANNEX_DIR = REPO_ROOT / 'docs' / '3_examples' / 'curate' / 'US_footprint-cheer-2026'
 GENERATED_DIR = ANNEX_DIR / '_generated'
 SNAPSHOT_DIR = GENERATED_DIR / 'data'
 IMAGE_DIR = REPO_ROOT / 'docs' / '_static' / 'images' / 'validation'

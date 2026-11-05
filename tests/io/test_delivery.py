@@ -248,8 +248,8 @@ def test_a_piece_keeping_its_source_id_is_one_evidence_row(two_counties, monkeyp
     def fake_slice(pooled, unit_column, units):
         # 'c' in US-NC-BB is cut, and its piece gets back the id 'c'.
         pooled = pooled.copy()
-        pooled['sliced_from'] = None
-        pooled.loc['c', 'sliced_from'] = 'c'
+        pooled['footprint_id_parent'] = None
+        pooled.loc['c', 'footprint_id_parent'] = 'c'
         provenance = pd.DataFrame(
             {'piece_id': ['c'], 'source_id': ['c'], unit_column: ['US-NC-BB']}
         )
@@ -264,6 +264,10 @@ def test_a_piece_keeping_its_source_id_is_one_evidence_row(two_counties, monkeyp
     evidence = read_parquet(paths['evidence'])
     assert evidence.index.is_unique
     assert list(evidence.index) == list(read_parquet(paths['canonical']).index)
+    # A piece's parent id is rare, so it ships with the evidence only.
+    assert evidence.loc['c', 'footprint_id_parent'] == 'c'
+    assert evidence['footprint_id_parent'].isna().sum() == len(evidence) - 1
+    assert 'footprint_id_parent' not in read_parquet(paths['canonical']).columns
 
 
 def test_ships_a_licence_notice_beside_the_data(two_counties):

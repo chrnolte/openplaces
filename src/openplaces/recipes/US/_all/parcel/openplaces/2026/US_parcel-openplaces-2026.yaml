@@ -630,9 +630,9 @@ pipeline:
       # indicator: every non-Vacant Carteret parcel below this cutoff already
       # has exactly $0 recorded improvement value (i.e. very likely more
       # instances of the same empty-cohort mislabeling the derive_use_classes
-      # fix addresses, not genuine developed homes). Catches parcel
-      # c2042c90816b4fc9f590b5a2 (a ~51,500-acre national-forest tract with a
-      # handful of small structures, footprint_area_share ~7e-6), which the
+      # fix addresses, not genuine developed homes). Catches a
+      # ~51,500-acre national-forest tract in Carteret with a
+      # handful of small structures (footprint_area_share ~7e-6), which the
       # existing Vacant rule cannot: its footprint z-score is computed
       # relative to its own near-empty assessor-use cohort, so a few small
       # structures look anomalously *large* there, not small, and it has

@@ -243,7 +243,8 @@ units delivered one building, as the same outline or two outlines overlapping
 by half the smaller, one outline is kept (its representative point in its own
 unit, else the larger), cut along the unit line, and each piece takes its
 unit's copy's row and values under a new id (the piece centroid's Open
-Location Code, lengthened on a collision) with `sliced_from` naming the kept
+Location Code, lengthened on a collision); the evidence file's
+`footprint_id_parent` (`{id}_parent`, `slicing.parent_column`) names the kept
 outline. A piece under 10 m2 or 5% of the outline is not cut: the majority
 copy stays and the other copy's value stays on its parcel. An outline only
 one unit delivered stays whole. Curated files are untouched. Measured

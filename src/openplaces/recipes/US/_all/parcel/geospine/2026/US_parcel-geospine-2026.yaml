@@ -340,8 +340,8 @@ pipeline:
   # tolerance, and most are townhouses or condominiums, so a
   # single-family subdivision's open space and roads stay unlinked.
   # Run 2026-11-01 on curated parcels: NC-NHA 219 common areas over
-  # 7,359 lots (6,336 townhomes), among them the 887 Edgerton Dr common
-  # lot (5.3 ha at $0.16/m2) with 16 townhomes; FL-LE 750 over 10,106
+  # 7,359 lots (6,336 townhomes), among them one common lot of 5.3 ha
+  # at $0.16/m2 with 16 townhomes; FL-LE 750 over 10,106
   # lots (9,273 condominiums); TX-GAL none (its labels name no common
   # land); MD-PG none (its roll flags common areas; the plat key holds).
   # Measured 2026-11-01 on US-NC-NHA: 219 common areas linked to 7,359 lots.

@@ -47,8 +47,8 @@ def detect_shared_land_groups(
     cluster (a subdivision-wide common area or HOA amenity parcel, not a
     handful of townhome units sharing a strip of land). This is a heuristic,
     not a proof of enclosure -- validated empirically against Carteret
-    County, NC (e.g. an 8-unit group at "111 New Bern St, Atlantic Beach,
-    NC", the land parcel itself carrying $0 of both values); the thresholds
+    County, NC (e.g. an 8-unit townhome group whose land parcel carries
+    $0 of both values); the thresholds
     are tunable per state if they prove too permissive or too strict
     elsewhere.
 

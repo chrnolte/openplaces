@@ -42,7 +42,7 @@ assessor-derived, so that comparison is not fully independent.
 the class a source asserted. Beside the three residential classes,
 Secondary counts outbuildings, Non-residential counts any other
 asserted class, and No class counts rows where the source asserted
-nothing. Producer's accuracy (recall) is the share of a reference
+no class. Producer's accuracy (recall) is the share of a reference
 class's answered rows that a source classed correctly; consumer's
 accuracy (precision) is the share of rows a source assigned to a class
 that belong to it. A Secondary or Non-residential assertion counts as

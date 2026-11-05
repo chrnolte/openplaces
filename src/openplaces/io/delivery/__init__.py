@@ -51,7 +51,7 @@ from openplaces.io.delivery.redaction import (
     units_supplied,
     withhold,
 )
-from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
+from openplaces.io.delivery.slicing import parent_column, slice_at_unit_lines
 from openplaces.io.delivery.terms import (
     bundle_terms,
     format_notice,
@@ -1854,6 +1854,7 @@ def export_delivery(
     # them, each piece keeping its unit's values (io/delivery/slicing),
     # before the copies sharing one id could be resolved to one below.
     slice_provenance = None
+    parent = None
     delivery_block = (recipe.get('share') or {}).get('delivery') or {}
     if spatial and delivery_block.get('slice_at_unit_lines'):
         units = get_admin(
@@ -1862,9 +1863,11 @@ def export_delivery(
             geom=True,
         )
         pooled, slice_provenance = slice_at_unit_lines(pooled, admin_id_column, units)
-        if SLICED_FROM not in pooled.columns:
-            pooled[SLICED_FROM] = pd.NA
-        canonical_columns = [*canonical_columns, SLICED_FROM]
+        # Few rows are pieces, so their parent id ships in the evidence
+        # file, not beside every canonical row.
+        parent = parent_column(pooled.index.name)
+        if parent not in pooled.columns:
+            pooled[parent] = pd.NA
         if verbose:
             print(
                 f'Cut {len(slice_provenance):,} pieces from outlines two '
@@ -1944,6 +1947,7 @@ def export_delivery(
     # The evidence file repeats these sidecars; it must carry the
     # redacted tokens ('withheld'), not the ones pass one replaced.
     redacted_sources = pd.DataFrame(pooled[source_columns]).copy()
+    parent_ids = pooled[parent].copy() if parent is not None else None
     del pooled, canonical, point
 
     delivered = {*declared, *source_columns, *INTERNAL_COLUMNS, 'geometry'}
@@ -1984,6 +1988,8 @@ def export_delivery(
     for column in redacted_sources.columns:
         if column in evidence.columns:
             evidence[column] = redacted_sources[column].reindex(evidence.index)
+    if parent_ids is not None:
+        evidence[parent] = parent_ids.reindex(evidence.index)
     # Scope is tested on each row's unit, which this pass does not read;
     # it is borrowed from pass one under a name no curated column uses.
     unit_column = '_delivery_unit'

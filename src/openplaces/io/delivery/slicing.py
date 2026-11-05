@@ -28,8 +28,9 @@ pieces are never merged again.
 - **Ids.** A piece's id is the Open Location Code of its centroid, the
   way every footprint id is made; a code that collides with another id
   is replaced by a longer one (a finer cell), so a collision is broken
-  geometrically, never by a sequence number. `sliced_from` keeps the
-  chosen outline's id.
+  geometrically, never by a sequence number. `{id}_parent`
+  (`footprint_id_parent`) keeps the chosen outline's id. Few rows carry
+  one, so the delivery ships it in the evidence file.
 
 An outline only one unit delivered is left whole, even where it crosses
 the line: the other unit's parcel value never reached a footprint, and
@@ -52,7 +53,12 @@ PAIR_SHARE_MIN = 0.5
 MIN_PIECE_M2 = 10.0
 MIN_PIECE_SHARE = 0.05
 METRIC_CRS = 'epsg:6933'
-SLICED_FROM = 'sliced_from'
+PARENT_SUFFIX = '_parent'
+
+
+def parent_column(id_column: str) -> str:
+    """Name of the column holding a piece's parent id (`footprint_id_parent`)."""
+    return f'{id_column}{PARENT_SUFFIX}'
 
 
 def _piece_ids(pieces: gpd.GeoSeries, taken: set) -> pd.Series:
@@ -166,7 +172,7 @@ def slice_at_unit_lines(
         }
     )
     sliced[id_column] = new_ids.to_numpy()
-    sliced[SLICED_FROM] = [sliced_from[p] for p in positions]
+    sliced[parent_column(id_column)] = [sliced_from[p] for p in positions]
     sliced = sliced.set_geometry(piece_geoms.to_numpy())
     area = piece_geoms.to_crs(METRIC_CRS).area.to_numpy()
     if 'area_m2' in sliced.columns:
