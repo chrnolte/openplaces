@@ -8,6 +8,25 @@
 # about values only a team page carries adds `audiences: [team]`.
 
 issues:
+  # Maintainer, 2026-11-05: no donors for WI year built.
+  - admin_ids: [
+      US-WI-AD, US-WI-AS, US-WI-BA, US-WI-BF, US-WI-BR, US-WI-BU, US-WI-BY,
+      US-WI-CA, US-WI-CH, US-WI-CL, US-WI-CO, US-WI-CR, US-WI-DA, US-WI-DG,
+      US-WI-DO, US-WI-DR, US-WI-DU, US-WI-EC, US-WI-FD, US-WI-FL, US-WI-FO,
+      US-WI-GE, US-WI-GL, US-WI-GR, US-WI-IA, US-WI-IR, US-WI-JA, US-WI-JE,
+      US-WI-JU, US-WI-KE, US-WI-KW, US-WI-LA, US-WI-LC, US-WI-LF, US-WI-LI,
+      US-WI-MA, US-WI-ME, US-WI-MI, US-WI-MN, US-WI-MO, US-WI-MQ, US-WI-MR,
+      US-WI-OC, US-WI-ON, US-WI-OU, US-WI-OZ, US-WI-PE, US-WI-PI, US-WI-PL,
+      US-WI-PO, US-WI-PR, US-WI-RA, US-WI-RI, US-WI-RO, US-WI-RU, US-WI-SA,
+      US-WI-SC, US-WI-SH, US-WI-SW, US-WI-SY, US-WI-TA, US-WI-TR, US-WI-VE,
+      US-WI-VI, US-WI-WA, US-WI-WH, US-WI-WI, US-WI-WL, US-WI-WO, US-WI-WP,
+      US-WI-WS, US-WI-WU,
+    ]
+    found: 2026-11-05
+    text: >-
+      Wisconsin: year built comes from county records only where the
+      county has them (Dane County). Elsewhere it is left empty, not
+      estimated.
   - admin_ids: [US-NC-BLA, US-NC-HYD, US-NC-TYR]
     found: 2026-11-03
     text: >-

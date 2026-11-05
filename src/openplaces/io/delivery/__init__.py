@@ -1560,6 +1560,21 @@ def _impute(recipe, region, spec, pooled, audience, admin_level, verbose):
             dtype={'county_fips': str},
         )
         hpi = get_dataset(spec['price_index'], 'US')
+        if spec.get('state_price_index'):
+            # A county series that stops early continues with its
+            # state's (building_imputation.continue_with_state_index).
+            states = pooled.dropna(subset=['county_fips', 'admin3_id'])
+            state_by_fips = states.groupby('county_fips')['admin3_id'].first()
+            state_by_fips = state_by_fips.str.rsplit('-', n=1).str[0]
+            hpi, continued = building_imputation.continue_with_state_index(
+                hpi, get_dataset(spec['state_price_index'], 'US'), state_by_fips
+            )
+            log(f'price index continued with the state series: {continued}')
+        # The models and the capture see this region's targets only.
+        spec = {
+            **spec,
+            'own_labels_only': list(building_imputation.own_labels_only(spec, base)),
+        }
         area = _county_area_km2(pooled['admin3_id'].dropna().unique())
         # The models never read the polygons; copying them would double
         # the memory of a region-wide frame.

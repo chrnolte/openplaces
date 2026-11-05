@@ -767,7 +767,8 @@ class RecipeDAG:
         if not impute:
             return []
         upstreams = []
-        for key in ('price_index', 'census_recipe', 'gazetteer_recipe'):
+        keys = ('price_index', 'state_price_index', 'census_recipe', 'gazetteer_recipe')
+        for key in keys:
             if impute.get(key):
                 upstreams.append((impute[key], str(bundle_admin), False))
         if impute.get('location_recipe'):
