@@ -6,7 +6,9 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
 
-from openplaces.io.delivery.slicing import SLICED_FROM, slice_at_unit_lines
+from openplaces.io.delivery.slicing import slice_at_unit_lines
+
+PARENT = 'footprint_id_parent'
 
 # Two units meeting at longitude -71.0 (about 830 m by 1,100 m each).
 UNITS = gpd.GeoDataFrame(
@@ -55,9 +57,9 @@ def test_a_straddling_outline_is_cut_and_each_piece_keeps_its_units_value():
     )
     out, provenance = slice_at_unit_lines(pooled, 'admin3_id', UNITS)
     assert len(out) == 3
-    pieces = out[out[SLICED_FROM].notna()]
+    pieces = out[out[PARENT].notna()]
     assert sorted(pieces['admin3_id']) == ['US-XX-AAA', 'US-XX-BBB']
-    assert set(pieces[SLICED_FROM]) == {'X1'}
+    assert set(pieces[PARENT]) == {'X1'}
     by_unit = pieces.set_index('admin3_id')
     assert by_unit.loc['US-XX-AAA', 'structure_value'] == 300.0
     assert by_unit.loc['US-XX-BBB', 'structure_value'] == 120.0
