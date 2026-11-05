@@ -3,6 +3,7 @@ Low-level data-access functions for admin units and entities.
 Imported by internal modules (io/*, geo/*). Also re-exported from api.py.
 """
 
+import re
 import warnings
 from collections.abc import Sequence
 
@@ -30,15 +31,18 @@ ADMIN_SOURCE_DEFAULT = 'admin-spine-2026'
 REGION_SOURCE_DEFAULT = 'admin-regions-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-openplaces-2026'
 # Land-only geometry for drawing, by `get_admin(geom=...)` value: the
-# source id of the Census cartographic boundary recipes at each
-# resolution (500k, 5m and 20m). Only `censuscb` has every level; a
-# level or scope the requested resolution lacks reads `censuscb`.
-LAND_GEOMETRY_SOURCES = {
-    'land': 'censuscb',
-    'land_coarse': 'censuscb5m',
-    'land_coarsest': 'censuscb20m',
+# version prefix of the Census cartographic boundary recipes at each
+# resolution (500k, 5m and 20m), followed by the vintage year
+# (`census-carto500k2025`). Letters lead so that TIGER's `census-2025`
+# still sorts last and stays the default census recipe. Only 500k has
+# every level; a level or scope the requested resolution lacks reads it.
+LAND_GEOMETRY_SOURCE = 'census'
+LAND_GEOMETRY_PRODUCTS = {
+    'land': 'carto500k',
+    'land_coarse': 'carto5m',
+    'land_coarsest': 'carto20m',
 }
-LAND_GEOMETRY_FINEST_SOURCE = 'censuscb'
+LAND_GEOMETRY_FINEST_PRODUCT = 'carto500k'
 LAND_GEOMETRY_LEVELS = (2, 3, 4)
 ADMIN_PRIMARY_COLUMNS = {
     1: ['name', 'admin1_id_a3'],
@@ -229,8 +233,8 @@ def get_admin(
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
         level = admin_id_level
 
-    land_source = None
-    if isinstance(geom, str) and geom in LAND_GEOMETRY_SOURCES:
+    land_product = None
+    if isinstance(geom, str) and geom in LAND_GEOMETRY_PRODUCTS:
         if recipe is not None:
             raise ValueError(f"geom='{geom}' reads its own recipes; omit `recipe`.")
         if level is None:
@@ -244,10 +248,10 @@ def get_admin(
                 f"geom='{geom}' covers levels "
                 f'{format_list(list(LAND_GEOMETRY_LEVELS))}, not level {level}.'
             )
-        land_source = LAND_GEOMETRY_SOURCES[geom]
+        land_product = LAND_GEOMETRY_PRODUCTS[geom]
 
     # Pick default recipe for geometry attributes if None is provided
-    if geom and recipe is None and land_source is None:
+    if geom and recipe is None and land_product is None:
         if level is None:
             # Default to countries
             level = 1
@@ -439,9 +443,9 @@ def get_admin(
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)
 
-    if land_source is not None:
+    if land_product is not None:
         admin = _join_land_geometry(
-            admin, land_source, level, admin_ids if admin_id is not None else None
+            admin, land_product, level, admin_ids if admin_id is not None else None
         )
 
     # Filter columns
@@ -468,19 +472,25 @@ def get_admin(
     return admin[non_empty_columns]
 
 
-def _land_geometry_recipe_ids(source_id, level, admin_ids):
+def _land_product(version):
+    """The resolution prefix of a cartographic boundary version, or None."""
+    match = re.fullmatch(r'(carto\d+[a-z]+)\d{4}', str(version))
+    return match.group(1) if match else None
+
+
+def _land_geometry_recipe_ids(product, level, admin_ids):
     """Pick the land-only recipes that supply `level` units in scope.
 
     Every scope the cartographic boundary recipes cover at `level` (the
     national county file, each New England state's towns) gets one
-    recipe: the newest version of `source_id` where that scope has it,
+    recipe: the newest vintage of `product` where that scope has it,
     else of the finest resolution. Recipes read from the index, not a
     list here, so a state added beside the others needs no code.
 
     Parameters
     ----------
-    source_id : str
-        Source id of the requested resolution.
+    product : str
+        Version prefix of the requested resolution, such as 'carto5m'.
     level : int
         Admin level of the units.
     admin_ids : list of AdminId or None
@@ -495,9 +505,11 @@ def _land_geometry_recipe_ids(source_id, level, admin_ids):
     from openplaces.diagnostics import find_recipes
 
     index = find_recipes('admin', stage='ingest')
-    index = index[
+    products = index['version'].map(_land_product)
+    index = index.assign(product=products)[
         index['level'].eq(level)
-        & index['source_id'].isin([source_id, LAND_GEOMETRY_FINEST_SOURCE])
+        & index['source_id'].eq(LAND_GEOMETRY_SOURCE)
+        & products.isin([product, LAND_GEOMETRY_FINEST_PRODUCT])
     ]
     chosen = []
     for scope, rows in index.groupby('admin_id'):
@@ -509,22 +521,22 @@ def _land_geometry_recipe_ids(source_id, level, admin_ids):
                 for unit in admin_ids
             ):
                 continue
-        preferred = rows[rows['source_id'].eq(source_id)]
+        preferred = rows[rows['product'].eq(product)]
         rows = preferred if len(preferred) else rows
         newest = max(rows.itertuples(), key=lambda r: version_sort_key(r.version))
         chosen.append(newest.recipe_id)
     return sorted(chosen)
 
 
-def _join_land_geometry(admin, source_id, level, admin_ids):
+def _join_land_geometry(admin, product, level, admin_ids):
     """Attach land-only geometry to the spine rows `get_admin` selected.
 
     Parameters
     ----------
     admin : pandas.DataFrame
         Selected spine rows, indexed by `admin{level}_id`.
-    source_id : str
-        Source id of the requested resolution.
+    product : str
+        Version prefix of the requested resolution, such as 'carto5m'.
     level : int
         Admin level of the units.
     admin_ids : list of AdminId or None
@@ -537,7 +549,7 @@ def _join_land_geometry(admin, source_id, level, admin_ids):
         cartographic boundary files (the spine has units the Census does
         not draw) keep an empty geometry.
     """
-    recipe_ids = _land_geometry_recipe_ids(source_id, level, admin_ids)
+    recipe_ids = _land_geometry_recipe_ids(product, level, admin_ids)
     index_name = f'admin{level}_id'
     wanted = sorted(set(admin.index))
     parts = []

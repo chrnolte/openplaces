@@ -99,9 +99,11 @@ The spine's polygons (Census TIGER/Line, `US_admin-census-2025_admin{2,3,4}`)
 run out over water to the state water boundaries, so Michigan includes the
 Great Lakes. Every spatial join, clip and assignment uses them. For maps,
 `get_admin(..., geom='land')` returns the same units from the Census
-cartographic boundary files (`censuscb`, 1:500,000), clipped to the
-shoreline; `'land_coarse'` (`censuscb5m`) and `'land_coarsest'`
-(`censuscb20m`) are lighter, for quick plots. Levels 2 to 4 exist; towns
+cartographic boundary files (`census-carto500k2025`, 1:500,000), clipped
+to the shoreline; `'land_coarse'` (`census-carto5m2025`) and
+`'land_coarsest'` (`census-carto20m2025`) are lighter, for quick plots.
+The resolution leads the version so that TIGER's bare `2025` sorts last
+and stays the census recipe a lookup without a version picks. Levels 2 to 4 exist; towns
 (New England level 3) and subdivisions (level 4) have 500k only and come
 back at 500k at any setting. These recipes carry
 `exclude_from_auto_discover: true` and must keep it: a generalized,

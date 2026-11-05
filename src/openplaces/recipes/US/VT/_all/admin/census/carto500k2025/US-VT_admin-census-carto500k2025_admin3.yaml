@@ -1,11 +1,11 @@
-# Recipe to import land-only towns for Massachusetts (2025, 500k)
+# Recipe to import land-only towns for Vermont (2025, 500k)
 #
 # New England has no county government in the spine: these states' towns
-# are admin level 3. See US_admin-censuscb-2025_admin3 for why this
+# are admin level 3. See US_admin-census-carto500k2025_admin3 for why this
 # layer exists beside the TIGER one.
 
 description: >-
-  Massachusetts town boundaries clipped to the shoreline, Census cartographic
+  Vermont town boundaries clipped to the shoreline, Census cartographic
   boundary files 2025 county subdivisions at 1:500,000 (admin level 3).
 
 # Land-only boundaries for drawing, not for joining. The Census
@@ -18,25 +18,25 @@ description: >-
 # or clip takes its polygons: generalizing and clipping at the shore
 # would move shoreline and island points out of their unit.
 
-admin_id: US-MA
+admin_id: US-VT
 
 exclude_from_auto_discover: true
 
 entity:
   entity_type: admin
   source:
-    source_id: censuscb
+    source_id: census
     # Work of the U.S. Government, so uncopyrightable in the US by
     # statute (17 U.S.C. 105) rather than by a licence anyone grants.
     license: "public-domain (US Government work, 17 U.S.C. 105)"
     redistribution_restricted: false
     terms_url: null
     portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
-    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_25_cousub_500k.zip"
-  version: 2025
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_50_cousub_500k.zip"
+  version: carto500k2025
 
-compressed_file_name: "cb_2025_25_cousub_500k.zip"
-uncompressed_file_name: "cb_2025_25_cousub_500k.shp"
+compressed_file_name: "cb_2025_50_cousub_500k.zip"
+uncompressed_file_name: "cb_2025_50_cousub_500k.shp"
 
 columns:
   name: NAME
@@ -51,7 +51,7 @@ query: "COUSUBFP != '00000'"
 create_index:
   function: "openplaces.io.admin.admin3_id_index_from_admin3_code"
   args:
-    country_id: US-MA
+    country_id: US-VT
 
 save_to:
   data_dir: core
