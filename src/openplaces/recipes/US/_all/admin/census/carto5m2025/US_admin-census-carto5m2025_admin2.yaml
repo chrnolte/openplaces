@@ -1,12 +1,8 @@
-# Recipe to import land-only towns for Rhode Island (2025, 500k)
-#
-# New England has no county government in the spine: these states' towns
-# are admin level 3. See US_admin-censuscb-2025_admin3 for why this
-# layer exists beside the TIGER one.
+# Recipe to import land-only states for the United States (2025, 5m)
 
 description: >-
-  Rhode Island town boundaries clipped to the shoreline, Census cartographic
-  boundary files 2025 county subdivisions at 1:500,000 (admin level 3).
+  U.S. state boundaries clipped to the shoreline, Census cartographic
+  boundary files 2025 at 1:5,000,000 (admin level 2).
 
 # Land-only boundaries for drawing, not for joining. The Census
 # cartographic boundary files are TIGER/Line generalized in the interior
@@ -18,41 +14,40 @@ description: >-
 # or clip takes its polygons: generalizing and clipping at the shore
 # would move shoreline and island points out of their unit.
 
-admin_id: US-RI
+admin_id: US
 
 exclude_from_auto_discover: true
 
 entity:
   entity_type: admin
   source:
-    source_id: censuscb
+    source_id: census
     # Work of the U.S. Government, so uncopyrightable in the US by
     # statute (17 U.S.C. 105) rather than by a licence anyone grants.
     license: "public-domain (US Government work, 17 U.S.C. 105)"
     redistribution_restricted: false
     terms_url: null
     portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
-    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_44_cousub_500k.zip"
-  version: 2025
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_us_state_5m.zip"
+  version: carto5m2025
 
-compressed_file_name: "cb_2025_44_cousub_500k.zip"
-uncompressed_file_name: "cb_2025_44_cousub_500k.shp"
+compressed_file_name: "cb_2025_us_state_5m.zip"
 
 columns:
   name: NAME
-  name_long: NAMELSAD
-  admin3_id_admin1: GEOID
-  admin3_id_ansi: COUSUBNS
+  admin2_id_leaf: STUSPS
+  admin2_id_admin1: STATEFP
+  admin2_id_ansi: STATENS
 
-# Placeholder rows for open water and unorganized area, if present, have
-# a subdivision code of 00000 and no counterpart in the spine.
-query: "COUSUBFP != '00000'"
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
 
 create_index:
-  function: "openplaces.io.admin.admin3_id_index_from_admin3_code"
-  args:
-    country_id: US-RI
+  name: admin2_id
+  method: prefix
+  column: admin2_id_leaf
+  prefix: US-
 
 save_to:
   data_dir: core
-  filename: admin3
+  filename: admin2

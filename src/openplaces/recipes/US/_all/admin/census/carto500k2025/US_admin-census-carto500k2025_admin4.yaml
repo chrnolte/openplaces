@@ -23,7 +23,7 @@ exclude_from_auto_discover: true
 entity:
   entity_type: admin
   source:
-    source_id: censuscb
+    source_id: census
     # Work of the U.S. Government, so uncopyrightable in the US by
     # statute (17 U.S.C. 105) rather than by a licence anyone grants.
     license: "public-domain (US Government work, 17 U.S.C. 105)"
@@ -31,7 +31,7 @@ entity:
     terms_url: null
     portal_url: "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
     download_url: "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_{admin2_id_admin1}_cousub_500k.zip"
-  version: 2025
+  version: carto500k2025
 
 compressed_file_name: "cb_2025_{admin2_id_admin1}_cousub_500k.zip"
 
@@ -48,7 +48,8 @@ columns:
   stats_area_id_legal: LSAD
 
 # New England is excluded for the reason given in
-# US_admin-censuscb-2025_admin3: there a subdivision is the level-3 town.
+# US_admin-census-carto500k2025_admin3: there a subdivision is the
+# level-3 town.
 query: >-
   admin2_id_admin1 <= '56'
   and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
@@ -67,7 +68,7 @@ transformations:
 admin_id_crosswalk:
   admin_level: 3
   admin_id_column: admin3_id_admin1
-  admin_recipe_id: "US_admin-censuscb-2025_admin3"
+  admin_recipe_id: "US_admin-census-carto500k2025_admin3"
 
 create_index:
   function: "openplaces.io.admin_codes.assign_admin_ids"

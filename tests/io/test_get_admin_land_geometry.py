@@ -56,7 +56,7 @@ def stand_in_files(monkeypatch):
             self.recipe_id = recipe_id
 
         def exists(self):
-            return self.recipe_id == 'US_admin-censuscb-2025_admin2'
+            return self.recipe_id == 'US_admin-census-carto500k2025_admin2'
 
     def fake_get_output_path(recipe, admin_id=None, **kwargs):
         return _Path(get_recipe_id(recipe))
@@ -81,14 +81,14 @@ class TestJoin:
     def test_only_the_selected_units_are_read(self, stand_in_files):
         get_admin('US-MI', geom='land')
         recipe_id, geom, filters = stand_in_files[-1]
-        assert recipe_id == 'US_admin-censuscb-2025_admin2'
+        assert recipe_id == 'US_admin-census-carto500k2025_admin2'
         assert geom is True
         assert filters == [('admin2_id', 'in', ['US-MI'])]
 
     def test_a_resolution_not_ingested_names_what_to_ingest(self, stand_in_files):
         # No 20m file is stood in, and the state recipe has the 20m
-        # source, so the request cannot be answered.
-        with pytest.raises(FileNotFoundError, match='censuscb20m'):
+        # recipe, so the request cannot be answered.
+        with pytest.raises(FileNotFoundError, match='carto20m2025'):
             get_admin('US-MI', geom='land_coarsest')
 
 
