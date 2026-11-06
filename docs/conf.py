@@ -37,7 +37,8 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts', '**/_generate
 # -- AutoAPI configuration ---------------------------------------------------
 
 # Exclude untracked files/dirs so autoapi only documents committed code.
-# On ReadTheDocs (clean checkout) this returns nothing, so autoapi_ignore stays [].
+# In a clean checkout this returns nothing, so only the fixed pattern
+# below is ignored.
 _repo_root = Path(__file__).parent.parent
 try:
     _git = subprocess.run(
@@ -81,8 +82,12 @@ autoapi_keep_files = True
 
 html_title = 'openplaces'
 html_logo = 'images/openplaces_icon_transparent_130.png'
+html_favicon = 'images/openplaces_icon_transparent_130.png'
+# The canonical address of every page. The staging copy at
+# placeslab.org/openplaces-docs-preview/ declares this address too, so
+# search engines index one copy only.
+html_baseurl = 'https://docs.openplaces.io/en/latest/'
 html_theme = 'pydata_sphinx_theme'
-html_static_path = ['_static']
 html_theme_options = {
     'navigation_depth': 4,
     'show_nav_level': 2,
