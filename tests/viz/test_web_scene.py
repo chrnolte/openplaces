@@ -1846,7 +1846,11 @@ def test_team_page_goes_up_only_behind_a_password(tmp_path, monkeypatch):
     assert calls[0][0] == 'copyto' and calls[0][2].endswith('/nantucket-team/.htaccess')
     htaccess = (scene / '.htaccess').read_text(encoding='utf-8')
     assert f'AuthUserFile "{passwd}"' in htaccess and 'Require valid-user' in htaccess
-    assert FAKE_TOKEN in htaccess and 'access.html [R=302,L,QSD]' in htaccess
+    assert FAKE_TOKEN in htaccess
+    # The access page and the cookie at the site root, as the root's
+    # own gate (`deploy_access`) has them.
+    assert 'RewriteRule ^ /values/access.html [R=302,L,QSD]' in htaccess
+    assert ':/values:secure:httponly]' in htaccess
     # Apache's own 401 page, or the host's rewrite rules turn the
     # password request into a 404 and browsers never ask.
     assert 'ErrorDocument 401 default' in htaccess

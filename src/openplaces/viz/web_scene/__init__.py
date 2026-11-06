@@ -5613,6 +5613,11 @@ def deploy_web_scene(
         )
     settings = load_deploy_settings(env_file)
     env = _rclone_env(settings)
+    # The gate names the site's own address, not the page's: the access
+    # page and the token cookie live at the site root (`deploy_access`).
+    # A page's address sent refused visitors to a missing
+    # `<page>/access.html` (seen 2026-11-05).
+    gate_settings = settings
     if subpath:
         subpath = subpath.strip('/')
         settings = {
@@ -5649,7 +5654,7 @@ def deploy_web_scene(
     # the page. Written before the host check, so a bad setting fails
     # without a call to the host.
     (output_dir / '.htaccess').write_text(
-        site_htaccess(settings, team, restricted), encoding='utf-8'
+        site_htaccess(gate_settings, team, restricted), encoding='utf-8'
     )
     if team and not _rclone_output(env, 'lsf', f'bh:{settings["team_passwd"]}'):
         raise FileNotFoundError(
