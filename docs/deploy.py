@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Build the openplaces documentation from a commit and publish it.
 
-Usage::
-
-    python docs/deploy.py                # dry run: build, list changes
-    python docs/deploy.py --go           # publish (asks first)
-    python docs/deploy.py --build-only   # build, keep it, contact no host
-    python docs/deploy.py --go --force   # publish even if unchanged
+Run without flags for a dry run (build, list what would change).
+`--go` publishes after a typed confirmation, `--build-only` builds and
+keeps the site without contacting the host, and `--go --force`
+publishes even when nothing changed.
 
 Deploys are manual: nothing runs this on a push. The site is built
 from a commit (`--ref`, default `HEAD`), never from the working tree:
