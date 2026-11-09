@@ -280,6 +280,9 @@ share:
       # Not published while the WI and FL sources' terms are open.
       - wisconsin-statewide
       - florida-statewide
+      # Whole MA (351 towns), imputed per town: on 27 held-out
+      # towns a per-county model was no more accurate (2026-11-08).
+      - massachusetts-statewide
     # Each of these is its whole state, so its bundle is filed as the
     # state's own (US-WI_footprint-cheer-2026.parquet), as in the
     # transaction recipe; the export refuses one whose members are not
@@ -287,6 +290,7 @@ share:
     whole_unit_regions:
       - wisconsin-statewide
       - florida-statewide
+      - massachusetts-statewide
     # Also shipped as a team-internal bundle (`<region>.team`, in a
     # `team/` subdirectory beside the region's own): it keeps values of
     # sources cleared for team sharing only (Edgecombe County's parcels),
@@ -394,6 +398,7 @@ share:
         # are open.
         - wisconsin-statewide
         - florida-statewide
+        - massachusetts-statewide
       # v0.6 (2026-10-24): Pender's appraisal year, no land-market
       # inputs, the roll level check, the recorded seed. v0.7
       # (2026-10-26): donor weights by distance only. v0.8
