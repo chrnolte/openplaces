@@ -117,10 +117,14 @@ pipeline:
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
-      # Resolve NSI duplicate points at the same location by ignoring low-rank duplicates.
+      # A low-rank NSI point sharing a UBID with a Parcel point defers
+      # to it. NSI 2026 defines only P (Parcel) and H (HIFLD, every
+      # non-parcel point: businesses and facilities), so HIFLD is the
+      # low-rank source; labels are the source-labels sidecar's
+      # (plans/nsi-2026-source-codes-and-duplicate-points.md).
       resolve_duplicates:
         key: building_id_ubid
-        ignore_sources: [ESRI, HAZUS/NSI-2015]
+        ignore_sources: [HIFLD]
 
   - step: link_to_reference
     recipe_id: dwelling-overture-2025

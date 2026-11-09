@@ -1,6 +1,7 @@
 """Tests for `_link_spatial_point`'s ESRI-colocation exclusion flag.
 
-An NSI point sourced `'ESRI'` that shares a location with another,
+An NSI point whose source is in the recipe's
+`resolve_duplicates.ignore_sources` (here `'ESRI'`) that shares a location with another,
 differently-sourced point (e.g. a home-office duplicate of a Parcel-sourced
 record at the same address) gets `exclude_from_upward_correction = True` in the
 resulting crosswalk, so a later count-driven upward Single->Multi-Family
@@ -37,8 +38,10 @@ def _run(monkeypatch, points_df):
     state = _state()
     # save_link=False: persistence needs a real spine recipe for the
     # sidecar path and fingerprint; these tests exercise the flag logic.
+    # The low-rank source comes from the recipe's ignore_sources.
+    thresholds = {'resolve_duplicates': {'ignore_sources': ['ESRI']}}
     state = links._link_spatial_point(
-        state, 'nsi_ref', 'building', None, {}, save_link=False
+        state, 'nsi_ref', 'building', None, thresholds, save_link=False
     )
     return state.crosswalks['nsi_ref']
 

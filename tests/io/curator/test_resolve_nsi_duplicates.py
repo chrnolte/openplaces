@@ -141,6 +141,31 @@ def test_link_olc_key_catches_different_ubids(monkeypatch):
     assert pd.isna(resolution.loc['Parcel'])
 
 
+def test_upward_correction_flag_follows_ignore_sources(monkeypatch):
+    # The colocation flag reads the recipe's ignore_sources, so NSI
+    # 2026's relabeled low-rank source (HIFLD) is caught and a label
+    # the recipe does not list is not.
+    points = _points(
+        [
+            {'source': 'Parcel', 'building_id_ubid': 'B1'},
+            {'source': 'HIFLD', 'building_id_ubid': 'B1'},
+        ],
+        [Point(50, 50), Point(50, 50)],
+    )
+    config = {'resolve_duplicates': {'key': 'building_id_ubid'}}
+    config['resolve_duplicates']['ignore_sources'] = ['HIFLD']
+    flag = _run_link(monkeypatch, points, config).set_index('source')[
+        'exclude_from_upward_correction'
+    ]
+    assert bool(flag.loc['HIFLD']) and not bool(flag.loc['Parcel'])
+
+    config['resolve_duplicates']['ignore_sources'] = ['ESRI']
+    flag = _run_link(monkeypatch, points, config).set_index('source')[
+        'exclude_from_upward_correction'
+    ]
+    assert not flag.any()
+
+
 def test_link_without_config_adds_no_column(monkeypatch):
     points = _points(
         [
