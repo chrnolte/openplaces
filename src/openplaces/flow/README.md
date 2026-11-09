@@ -284,6 +284,18 @@ settings are attached to the workflow only after the Snakefile is
 parsed, and a job on a cluster node parses it again without them.
 Ingests always run.
 
+**The record is the only skip of a job it runs.** Curate and enrich
+stop on an existing output unless told otherwise, and an `update()`
+output is no longer deleted before the job, so `run_stage` passes
+curate `reprocess` and enrich `rerun_covered` (`RERUN_EXISTING`). A
+job that the record ran and that rewrote none of its existing outputs
+fails (`require_outputs_written`, compared by file mtime and size)
+rather than being recorded as current. Without both, every rerun of an
+existing curate or enrich output from 2026-11-01 was a no-op recorded
+as current: 70 Massachusetts towns kept parcels curated on 2026-11-02,
+with empty census tract and block-group ids, through the 2026-11-05
+wave, though their spines had since been rebuilt with the ids filled.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs

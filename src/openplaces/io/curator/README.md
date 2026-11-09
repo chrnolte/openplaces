@@ -327,5 +327,14 @@ carries these values onto the outlines (`aggregate_from_entities`). Building
 and footprint sums still fall short of parcel sums, by the parcels with no
 footprint or only secondary ones; read regional totals from curated parcels.
 
+**A curate never saves an id column empty that its entity filled.**
+`require_filled_ids_kept` notes which `*_id` columns of the harmonized
+entity hold a value when the curate loads it, and raises
+`EmptiedIdColumnError` before saving if one of them is empty on every
+curated row. An all-empty column is written with the Arrow null type and
+every downstream curate inherits it silently (the census tract and
+block-group ids of 70 Massachusetts towns, 2026-11-05). Dropping the
+column is not refused; that is a recipe's explicit choice.
+
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 

@@ -140,6 +140,101 @@ def test_run_stage_records_then_skips(logs, job, monkeypatch):
     assert calls == ['X', 'X']
 
 
+def _job_io_argv(job, stage='curate'):
+    (path,) = job_record.write_job_io(
+        [{**job['io'], 'admin_id': 'US-NC-CUR', 'rule': RULE}]
+    )
+    return [stage, 'X', 'US-NC-CUR', '--job-io', str(path), '--rule', RULE]
+
+
+def test_a_job_the_record_runs_ignores_its_existing_output(logs, job, monkeypatch):
+    """The record is the only skip: the real Curator, whose own skip on
+    an existing output made every rerun since update() outputs a no-op
+    recorded as current, must run and rewrite the file."""
+    import types
+
+    from openplaces.flow import run_stage
+    from openplaces.io import curator as curator_module
+
+    curated = []
+
+    def curate_one(self, admin_id):
+        curated.append(str(admin_id))
+        tables.to_parquet(pd.DataFrame({'a': [7]}), job['out'], index=False)
+
+    monkeypatch.setattr(curator_module.Curator, '__init__', _fake_curator_init)
+    monkeypatch.setattr(curator_module.Curator, '_curate_one', curate_one)
+    monkeypatch.setattr(curator_module, 'get_output_path', lambda *a: job['out'])
+    monkeypatch.setattr(
+        curator_module,
+        'get_timer',
+        lambda *a, **k: types.SimpleNamespace(finish=lambda: None),
+    )
+    job_record.discard_record(RULE)
+    assert job['out'].exists()
+    run_stage.main(_job_io_argv(job))
+    assert curated == ['US-NC-CUR']
+    assert tables.read_parquet(job['out'])['a'].tolist() == [7]
+    assert job_record.record_path(RULE).exists()
+
+
+def _fake_curator_init(self, recipe, admin_ids=None, **kwargs):
+    self.admin_ids = admin_ids
+    self.recipe = {}
+    self.verbose = False
+
+
+@pytest.mark.parametrize(
+    ('stage', 'flag'), [('curate', 'reprocess'), ('enrich', 'rerun_covered')]
+)
+def test_run_stage_tells_the_stage_to_rerun_an_existing_output(
+    logs, job, monkeypatch, stage, flag
+):
+    import types
+
+    from openplaces.flow import run_stage
+
+    seen = {}
+
+    def stage_fn(recipe_id, **kwargs):
+        seen.update(kwargs)
+        tables.to_parquet(pd.DataFrame({'a': [1]}), job['out'], index=False)
+
+    monkeypatch.setattr(
+        run_stage,
+        'import_module',
+        lambda name: types.SimpleNamespace(**{stage: stage_fn}),
+    )
+    job_record.discard_record(RULE)
+    run_stage.main(_job_io_argv(job, stage))
+    assert seen[flag] is True
+
+
+def test_a_job_that_rewrites_no_output_fails_unrecorded(logs, job, monkeypatch):
+    import types
+
+    from openplaces.flow import run_stage
+
+    monkeypatch.setattr(
+        run_stage,
+        'import_module',
+        lambda name: types.SimpleNamespace(curate=lambda recipe_id, **kwargs: None),
+    )
+    job_record.discard_record(RULE)
+    with pytest.raises(run_stage.OutputsNotWrittenError, match='out.parquet'):
+        run_stage.main(_job_io_argv(job))
+    assert not job_record.record_path(RULE).exists()
+
+
+def test_a_job_whose_output_is_new_passes_the_write_check(tmp_path):
+    from openplaces.flow import run_stage
+
+    out = tmp_path / 'new.parquet'
+    before = {str(out): run_stage._file_stamp(out)}
+    out.write_bytes(b'x')
+    run_stage.require_outputs_written(RULE, before)
+
+
 def test_job_io_files_merge_by_rule(logs):
     first = {'admin_id': 'US-NC-CUR', 'inputs': [], 'outputs': ['o'], 'forced': False}
     job_record.write_job_io([{**first, 'rule': 'r1'}])

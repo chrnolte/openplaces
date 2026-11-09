@@ -241,13 +241,22 @@ class Enricher:
         reprocess: bool = False,
         cleanup: str | None = None,
         include_images: bool = False,
+        rerun_covered: bool = False,
     ) -> None:
         """Run enrichment for all configured admin IDs.
 
         Parameters
         ----------
         reprocess : bool
-            If True, re-run even when existing evidence covers the request.
+            If True, re-run even when existing evidence covers the request,
+            and tell the steps so (a step may then rebuild a cache it would
+            otherwise reuse, such as the parcel crosswalk).
+        rerun_covered : bool
+            If True, run a unit whose existing evidence covers the request,
+            without the rest of what *reprocess* does. The workflow passes
+            it: its outputs are kept for the job to judge (`update()`), and
+            the job record (`flow.job_record`) has already decided the job
+            must run, so an existing output is no reason to stop.
         cleanup : str, optional
             ``'consumed'`` reclaims this recipe's direct inputs after each
             admin unit finishes. The image cache is deleted only when
@@ -268,7 +277,11 @@ class Enricher:
                 admin_id,
                 entity_recipe_id=self.entity_recipe,
             )
-            if not reprocess and self._is_covered(out_path, sub_admin_ids):
+            if (
+                not reprocess
+                and not rerun_covered
+                and self._is_covered(out_path, sub_admin_ids)
+            ):
                 if self.verbose:
                     print(f'[skip] {admin_id}: enrichment output exists.')
                 continue
@@ -494,20 +507,28 @@ def enrich(
     verbose: bool = False,
     cleanup: str | None = None,
     include_images: bool = False,
+    rerun_covered: bool = False,
 ) -> None:
     """Instantiate and run enrichment for *recipe*.
 
     ``cleanup='consumed'`` reclaims direct inputs after each admin unit;
     image caches additionally require ``include_images`` (or the
     retention.cleanup.include_images config) and complete evidence from
-    every enrich recipe sharing the ``image_recipe``.
+    every enrich recipe sharing the ``image_recipe``. ``rerun_covered``
+    runs a unit whose evidence exists without forcing ``reprocess``
+    (see `Enricher.enrich`).
     """
     Enricher(
         recipe,
         admin_ids=admin_ids,
         entity_recipe_id=entity_recipe_id,
         verbose=verbose,
-    ).enrich(reprocess=reprocess, cleanup=cleanup, include_images=include_images)
+    ).enrich(
+        reprocess=reprocess,
+        cleanup=cleanup,
+        include_images=include_images,
+        rerun_covered=rerun_covered,
+    )
 
 
 __all__ = [
