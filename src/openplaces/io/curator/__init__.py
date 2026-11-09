@@ -132,6 +132,64 @@ def _coerce_registry_numerics(curated):
     return curated
 
 
+class EmptiedIdColumnError(ValueError):
+    """A curate would save an id column empty that its entity filled."""
+
+
+def _filled_id_columns(frame: pd.DataFrame) -> list[str]:
+    """The id columns (named `*_id`) holding at least one value."""
+    return [
+        column
+        for column in frame.columns
+        if str(column).endswith('_id') and frame[column].notna().any()
+    ]
+
+
+def require_filled_ids_kept(filled: list[str], curated: pd.DataFrame, label: str):
+    """Refuse a curated table that empties an id column its entity filled.
+
+    An id column the harmonized entity carries with values (the census
+    tract and block-group ids a parcel geospine joins, an admin unit id)
+    cannot become empty on every row of a curated table without
+    something having gone wrong: a step that overwrote it with a join
+    that matched nothing, or a curate that ran on another table than
+    the spine it names. An all-empty column is also written with the
+    Arrow null type, which every downstream curate and delivery then
+    inherits without a word, so this fails at the step that produced it.
+
+    Parameters
+    ----------
+    filled : list of str
+        Id columns that held a value in the entity the curate started
+        from (`_filled_id_columns` of it).
+    curated : pandas.DataFrame
+        The table about to be saved.
+    label : str
+        The recipe and admin unit, named in the error.
+
+    Raises
+    ------
+    EmptiedIdColumnError
+        When *curated* has rows and one of *filled* is present in it
+        with no value on any row. A column dropped altogether is not
+        refused here; dropping is a recipe's explicit choice.
+    """
+    if curated.empty:
+        return
+    emptied = [
+        column
+        for column in filled
+        if column in curated.columns and curated[column].isna().all()
+    ]
+    if emptied:
+        raise EmptiedIdColumnError(
+            f'{label}: id column(s) {emptied} are empty on all '
+            f'{len(curated):,} curated rows, but the entity the curate read '
+            'filled them. A step overwrote them with nothing; refusing to '
+            'save a table whose ids would ship empty.'
+        )
+
+
 class Curator:
     """Create a canonical entity dataset from harmonized and enriched inputs."""
 
@@ -281,7 +339,9 @@ class Curator:
         # where the recipe and the admin unit can still be named,
         # rather than deep inside a step's reindex.
         recipe_id = self.recipe.get('recipe_id', 'recipe')
-        require_unique_index(curated, f'curate {recipe_id} for {admin_id}')
+        label = f'curate {recipe_id} for {admin_id}'
+        require_unique_index(curated, label)
+        filled_ids = _filled_id_columns(curated)
         curated = _coerce_registry_numerics(curated)
         state = CurateState(
             recipe=recipe,
@@ -328,6 +388,7 @@ class Curator:
             if state.timer:
                 state.timer.mark(f'step {step_index:02d} {step_name}')
 
+        require_filled_ids_kept(filled_ids, state.curated, label)
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
         save_kwargs = {'combined': combined}
         if applied_patches:
@@ -384,7 +445,9 @@ def curate(
 __all__ = [
     'CurateState',
     'Curator',
+    'EmptiedIdColumnError',
     'curate',
+    'require_filled_ids_kept',
     'phase_order_violations',
     'step_phase',
     '_STEP_REGISTRY',

@@ -15,7 +15,10 @@ physical output file the orchestrator expects is always produced.
 job, so its auto-discovery skips the recipes the graph pruned.
 --job-io and --rule, which the Snakefile passes to harmonize, enrich
 and curate jobs, make the job record what it read and exit early when
-nothing it read and none of its code changed (flow.job_record).
+nothing it read and none of its code changed (flow.job_record). The
+record is then the only skip: a job it runs ignores its existing output
+(RERUN_EXISTING), and one that rewrites none of its outputs fails
+instead of being recorded (require_outputs_written).
 
 'deliver' is the exception. It is not a recipe stage but the terminal
 bundling job (openplaces.io.delivery), it takes the region as a single
@@ -60,6 +63,62 @@ VALIDATE = 'validate'
 # Read by each validation notebook's test-arguments cell in place of its
 # interactive test string.
 NOTEBOOK_ARGS_VARIABLE = 'OPENPLACES_NOTEBOOK_ARGS'
+
+# What a job run with --job-io passes its stage so that an existing
+# output does not stop it (see main). A harmonize job gets --reprocess
+# from the Snakefile already.
+RERUN_EXISTING = {
+    'curate': {'reprocess': True},
+    'enrich': {'rerun_covered': True},
+}
+
+
+class OutputsNotWrittenError(RuntimeError):
+    """A job that ran left every one of its existing outputs untouched."""
+
+
+def _file_stamp(path) -> tuple[int, int] | None:
+    """A file's modification time and size, None when it does not exist."""
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def require_outputs_written(rule: str, before: dict) -> None:
+    """Refuse to record a job that ran but rewrote none of its outputs.
+
+    A job that the record decided to run and that then returns without
+    writing anything has skipped itself somewhere below, and recording
+    it would make every later run skip it too, keeping a stale output
+    for good. The stamps are compared with the file's own, not with the
+    clock, so a file server whose clock differs from the node's cannot
+    pass a stale file or fail a fresh one.
+
+    Parameters
+    ----------
+    rule : str
+        The Snakemake rule, named in the error.
+    before : dict
+        Each declared output's `_file_stamp` taken before the job ran.
+
+    Raises
+    ------
+    OutputsNotWrittenError
+        When every output existed before and none of them changed. A job
+        with an output it newly wrote, or with no declared outputs,
+        passes.
+    """
+    if not before or any(stamp is None for stamp in before.values()):
+        return
+    if all(_file_stamp(path) == stamp for path, stamp in before.items()):
+        names = ', '.join(Path(path).name for path in before)
+        raise OutputsNotWrittenError(
+            f'{rule}: the job ran but rewrote none of its outputs ({names}); '
+            'a stage skipped itself on an existing output. Not recording it, '
+            'so the next run does not trust the old files.'
+        )
 
 
 def notebook_arguments(recipe_id: str, region: str, verbose: bool = False) -> str:
@@ -340,7 +399,7 @@ def main(argv=None) -> None:
         return
 
     from openplaces.config import cfg
-    from openplaces.io.tables import start_read_log, stop_read_log
+    from openplaces.io.tables import KEEP_EQUAL_ENV, start_read_log, stop_read_log
     from openplaces.path import git_commit
 
     if not args.no_skip:
@@ -350,6 +409,15 @@ def main(argv=None) -> None:
         print(f'[{"skip" if skip else "run"}] {args.rule}: {reason}', flush=True)
         if skip:
             return
+    # The job record is the only skip here. The Snakefile declares these
+    # outputs update(), so Snakemake no longer deletes them before the
+    # job, and a stage's own "output exists" skip would turn the run
+    # into a no-op that is then recorded as current (70 MA towns kept
+    # parcels curated on 2026-11-02, census ids empty, through the
+    # 11-05 wave). Curate's reprocess does nothing else; enrich's also
+    # rebuilds step caches, so it gets the narrower rerun_covered.
+    kwargs.update(RERUN_EXISTING.get(args.stage, {}))
+    before = {path: _file_stamp(path) for path in job_io['outputs']}
     # A failed run leaves no record, so the next one runs in full.
     job_record.discard_record(args.rule)
     commit = git_commit(cfg.code_root)
@@ -358,6 +426,8 @@ def main(argv=None) -> None:
         stage_fn(args.recipe_id, **kwargs)
     finally:
         stop_read_log()
+    if not os.environ.get(KEEP_EQUAL_ENV):
+        require_outputs_written(args.rule, before)
     job_record.write_record(
         args.stage, args.recipe_id, args.admin_id, args.rule, job_io, read_log, commit
     )
