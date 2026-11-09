@@ -209,6 +209,7 @@ CENSUS_INPUTS = [
 # estimate cannot move a whole county's values far.
 ANCHOR_MIN_HOMES = 200
 ANCHOR_RANGE = (0.5, 2.0)
+ANCHOR_MODES = frozenset({'acs', 'nsi', 'both', 'none'})
 # Pools of incomplete buildings for the extension hooks in
 # leave-county-out (Imputer._gap_pools): a county with fewer draws
 # from the whole region, and at most this many per half are kept.
@@ -1476,8 +1477,9 @@ class Imputer:
         hooks); none by default.
     anchor : str
         How a county without value labels gets its price level: 'acs'
-        (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`) or 'both'
-        (their geometric mean). Anything else raises ValueError.
+        (:meth:`_price_anchor`), 'nsi' (:meth:`_nsi_anchor`), 'both'
+        (their geometric mean) or 'none' (the donors' level as
+        predicted). Anything else raises ValueError.
     own_labels_only : tuple of str
         Per-county targets each county fills from its own labels
         alone, without donors; a county with none leaves them empty
@@ -1498,8 +1500,10 @@ class Imputer:
         anchor: str = 'acs',
         own_labels_only: tuple[str, ...] = (),
     ):
-        if anchor not in {'acs', 'nsi', 'both'}:
-            raise ValueError(f"anchor must be 'acs', 'nsi' or 'both', not {anchor!r}")
+        if anchor not in ANCHOR_MODES:
+            raise ValueError(
+                f'anchor must be one of {sorted(ANCHOR_MODES)}, not {anchor!r}'
+            )
         per_county = {t.column for t in TARGETS if t.per_county and t.kind != 'measure'}
         unknown = sorted(set(own_labels_only) - per_county)
         if unknown:
@@ -1832,6 +1836,8 @@ class Imputer:
         not set its level: it has none, or too few to train on
         (MIN_OWN_LABEL_SHARE).
         """
+        if self.anchor == 'none':
+            return False
         if self.acs_value is None and self.anchor != 'nsi':
             return False
         if county in self.donors_only.get('structure_value', []):
@@ -2543,6 +2549,31 @@ def own_labels_only(spec: dict, region: str | None = None) -> tuple[str, ...]:
     return tuple(str(column) for column in value)
 
 
+def price_anchor(spec: dict, region: str | None = None) -> str:
+    """How a region's counties without value labels get their level.
+
+    The recipe's `price_anchor` is one mode for every region, or maps
+    region ids to modes with a 'default' for the regions not named;
+    given *region*, this returns that region's mode. A spec already
+    resolved for its region holds the mode itself.
+
+    Each region's mode is read off its own leave-county-out, which
+    scores the predictions with and without each anchor: a gate on
+    the county's ACS premium over its donors does not separate the
+    counties the anchor helps from those it hurts (maintainer,
+    2026-11-08).
+    """
+    value = spec.get('price_anchor', 'acs')
+    if isinstance(value, dict):
+        if region is None:
+            raise ValueError(
+                'price_anchor maps regions to modes; resolve it for the '
+                'region delivered first.'
+            )
+        value = value.get(region, value.get('default', 'acs'))
+    return str(value)
+
+
 def acs_value_levels(
     acs_county: pd.Series,
     fips_by_county: pd.Series,
@@ -2843,7 +2874,8 @@ def build_imputer(
     """The imputer a delivery runs, and its appraisal scales.
 
     The spec's `own_labels_only` is the region's list of targets
-    (:func:`own_labels_only`).
+    (:func:`own_labels_only`) and its `price_anchor` the region's mode
+    (:func:`price_anchor`).
 
     One construction for :func:`impute_delivery` and the leave-county-out
     tool, so the scored model is the shipped one.
@@ -2906,7 +2938,7 @@ def build_imputer(
         # Every draw, sample and fit derives from this one seed, so the
         # recipe's value reproduces a delivery.
         seed=int(spec.get('seed', DEFAULT_SEED)),
-        anchor=spec.get('price_anchor', 'acs'),
+        anchor=price_anchor(spec),
         own_labels_only=own_labels_only(spec),
         exclude_inputs=tuple(sorted(excluded)),
         acs_value=acs_value,
