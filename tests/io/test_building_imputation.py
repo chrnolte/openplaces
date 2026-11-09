@@ -770,6 +770,37 @@ def test_own_labels_only_takes_per_county_targets_only():
         bi.Imputer(None, None, {}, None, own_labels_only=('roof_shape',))
 
 
+def test_price_anchor_is_resolved_per_region():
+    spec = {'price_anchor': {'default': 'acs', 'region-a': 'none'}}
+    assert bi.price_anchor(spec, 'region-a') == 'none'
+    assert bi.price_anchor(spec, 'region-b') == 'acs'
+    # The delivery's and the capture's spec hold the mode itself.
+    assert bi.price_anchor({'price_anchor': 'none'}) == 'none'
+    assert bi.price_anchor({}) == 'acs'
+    with pytest.raises(ValueError, match='resolve'):
+        bi.price_anchor(spec)
+
+
+def test_no_anchor_leaves_every_county_at_its_donors_level():
+    imputer = object.__new__(bi.Imputer)
+    imputer.anchor = 'none'
+    imputer.acs_value = pd.Series({'A': 300_000.0})
+    imputer.donors_only = {'structure_value': ['A']}
+    assert not imputer._anchors_price(pd.Series(dtype=float), 'A')
+    with pytest.raises(ValueError, match='anchor'):
+        bi.Imputer(None, None, {}, None, anchor='premium')
+
+
+def test_cheer_price_anchor_names_imputed_regions():
+    from openplaces.recipe import get_recipe_by_id
+
+    spec = get_recipe_by_id('US_footprint-cheer-2026')['share']['delivery']['impute']
+    modes = spec['price_anchor']
+    assert set(modes) - {'default'} <= set(spec['regions'])
+    assert set(modes.values()) <= bi.ANCHOR_MODES
+    assert modes['wisconsin-statewide'] == 'none'
+
+
 def test_a_county_on_its_own_labels_takes_no_donors():
     imputer = object.__new__(bi.Imputer)
     imputer.config = bi.DonorConfig(mode='km', bandwidth_km=250, radius_km=400)

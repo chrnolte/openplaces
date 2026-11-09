@@ -364,8 +364,9 @@ share:
     #   or a park of five or more homes) is valued by a model of listed
     #   homes, park homes scaled by the park factor.
     # - Counties without value labels get their price level from the
-    #   ACS median home value (`price_anchor: acs`). Rejected: an NSI
-    #   anchor and a blend, 2026-10-24: NSI is near the roll on the
+    #   ACS median home value where `price_anchor` (per region) says
+    #   acs, or keep the donors' level where it says none. Rejected:
+    #   an NSI anchor and a blend, 2026-10-24: NSI is near the roll on the
     #   coast and 1.3 to 2.7 times it inland, so its level does not
     #   carry from donors (typical county miss 20.1% and 17.5%
     #   against 12.8%).
@@ -416,7 +417,18 @@ share:
       # with its state's published series (Nantucket's ends in 2021;
       # maintainer, 2026-11-04). Both are FHFA's, the same release.
       state_price_index: US_economy-price-house-fhfa-2026_state
-      price_anchor: acs
+      # Per region, from its own leave-county-out (typical county miss
+      # of structure value without / with the ACS anchor), maintainer,
+      # 2026-11-08. A gate on the ACS premium over the donors did not
+      # separate the counties it helps from those it hurts. Measured
+      # 2026-11-05/08: WI 3.0% / 24.0%, FL 8.1% / 11.7%, MA towns
+      # 15.4% / 16.8%. The default is the 2026-10-24 choice on
+      # cheer-eastern-nc, measured against NSI, not against none.
+      price_anchor:
+        default: acs
+        wisconsin-statewide: none
+        florida-statewide: none
+        massachusetts-statewide: none
       # Targets a region fills from each county's own labels, with no
       # donors; a county without labels leaves them empty. WI's year
       # built is labeled in Dane County only, and Dane's buildings do

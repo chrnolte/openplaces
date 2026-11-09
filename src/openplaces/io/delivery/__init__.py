@@ -1574,6 +1574,7 @@ def _impute(recipe, region, spec, pooled, audience, admin_level, verbose):
         spec = {
             **spec,
             'own_labels_only': list(building_imputation.own_labels_only(spec, base)),
+            'price_anchor': building_imputation.price_anchor(spec, base),
         }
         area = _county_area_km2(pooled['admin3_id'].dropna().unique())
         # The models never read the polygons; copying them would double
