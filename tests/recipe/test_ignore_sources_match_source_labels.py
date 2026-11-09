@@ -23,8 +23,9 @@ RECIPES = Path(openplaces.__file__).parent / 'recipes'
 def _steps_with_ignore_sources(node, found):
     if isinstance(node, dict):
         dup = (node.get('thresholds') or {}).get('resolve_duplicates')
-        if isinstance(dup, dict) and dup.get('ignore_sources'):
-            found.append((node.get('recipe_id'), list(dup['ignore_sources'])))
+        if isinstance(dup, dict) and 'ignore_sources' in dup:
+            labels = dup['ignore_sources'] or []
+            found.append((node.get('recipe_id'), list(labels)))
         for value in node.values():
             _steps_with_ignore_sources(value, found)
     elif isinstance(node, list):

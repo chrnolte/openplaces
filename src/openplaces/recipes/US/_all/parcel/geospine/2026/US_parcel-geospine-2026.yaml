@@ -377,11 +377,10 @@ pipeline:
       proximity_m: 10
       far_proximity_m: 100
       # Same colocated-duplicate resolution as the footprint geospine's NSI
-      # link: a HIFLD point sharing a UBID with a Parcel point defers to
-      # it when NSI evidence is merged onto the parcels.
+      # link: no NSI 2026 source defers to another (see there).
       resolve_duplicates:
         key: building_id_ubid
-        ignore_sources: [HIFLD]
+        ignore_sources: []
 
   # Link FEMA footprints to parcels; the dominant FEMA occupancy class by
   # overlap area is assigned in the attribute recipe from this crosswalk.
