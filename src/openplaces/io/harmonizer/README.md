@@ -190,7 +190,10 @@ geometry-free at the entity-link path and reloaded on later runs while
 its fingerprint matches, skipping every pass below):
 0. Optional pre-link duplicate resolution: `thresholds.resolve_duplicates`
    (`key`: any ref column, default `building_id_ubid`; `'olc'` = the computed
-   ~3 m `_olc` location cell; `ignore_sources`: e.g. `[ESRI, HAZUS/NSI-2015]`)
+   ~3 m `_olc` location cell; `ignore_sources`: labels from the linked
+   recipe's source-labels sidecar, `[]` for NSI 2026; the post-link
+   duplicate drop and the `exclude_from_upward_correction` flag read the
+   same list)
    runs `flag_duplicate_points` — within groups sharing the key, low-rank
    sources colocated with a higher-level record get
    `duplicate_resolution = 'colocated low-rank source'`. Rows are flagged,

@@ -462,11 +462,15 @@ def _link_spatial_point(
     # exclusion is applied where NSI evidence is merged onto the spine
     # (_attribute_point_reference), so the resolution stays inspectable and
     # the method swappable per recipe.
-    resolve_dup = thresholds.get('resolve_duplicates')
+    # The recipe names its low-rank sources once, in
+    # resolve_duplicates.ignore_sources, by the label its source-labels
+    # sidecar gives them; the two later rules below read the same list,
+    # so a relabel cannot leave one of them keyed on a dead string.
+    resolve_dup = thresholds.get('resolve_duplicates') or {}
+    ignore_sources = list(resolve_dup.get('ignore_sources', []))
     if resolve_dup:
         key_col = resolve_dup.get('key', 'building_id_ubid')
         key_col = '_olc' if key_col == 'olc' else key_col
-        ignore_sources = resolve_dup.get('ignore_sources', [])
         ref['duplicate_resolution'] = flag_duplicate_points(
             ref, key_col, ignore_sources
         )
@@ -739,9 +743,9 @@ def _link_spatial_point(
             if poly_ref_id_col in ref_on_poly.columns:
                 linked = linked.join(ref_on_poly[[poly_ref_id_col]])
 
-        # Drop low-quality NSI duplicates when a higher-quality source
-        # covers the same entity
-        if 'source' in linked.columns and overlay_ids:
+        # Drop low-rank duplicates (the recipe's ignore_sources) when a
+        # Parcel point covers the same footprint and parcel
+        if 'source' in linked.columns and overlay_ids and ignore_sources:
             poly_ref_id_col = (
                 state.references[overlay_ids[0]].index.name if overlay_ids else None
             )
@@ -749,34 +753,34 @@ def _link_spatial_point(
                 c for c in [spine_id_col, poly_ref_id_col] if c and c in linked.columns
             ]
             if group_cols:
-                low_quality = {'ESRI', 'HAZUS/NSI-2015'}
                 mask_dup = linked[group_cols].duplicated(keep=False)
                 first_source = linked.groupby(group_cols, sort=False)[
                     'source'
                 ].transform('first')
                 mask_to_drop = (
                     mask_dup
-                    & linked['source'].isin(low_quality)
+                    & linked['source'].isin(ignore_sources)
                     & first_source.eq('Parcel')
                 )
                 linked = linked[~mask_to_drop]
 
-        # Flag ESRI points that share a location with a differently-sourced point
-        # (e.g. a home-office duplicate of a Parcel-sourced record at the same
-        # address) -- broader and more targeted than the entity-membership drop
-        # above: it fires purely on coordinates, regardless of whether the two
-        # points happen to link to the same footprint/parcel, and regardless of
-        # what the other source is (not just 'Parcel'). Consumers that sum/count
-        # NSI evidence into an upward Single->Multi-Family correction (e.g.
-        # n_dwellings in _attribute_point_reference) should exclude flagged rows;
-        # other uses of `linked` are unaffected -- rows are flagged, not dropped.
+        # Flag low-rank points (the recipe's ignore_sources) that share a
+        # location with a differently-sourced point (e.g. a home-office
+        # duplicate of a Parcel-sourced record at the same address),
+        # broader than the entity-membership drop above: it fires on
+        # coordinates alone, whether or not the two points link to the
+        # same footprint or parcel, and whatever the other source is.
+        # Consumers that sum NSI evidence into an upward Single to
+        # Multi-Family correction (n_dwellings in
+        # _attribute_point_reference) exclude flagged rows; other uses
+        # of `linked` are unaffected (rows are flagged, not dropped).
         if 'source' in linked.columns and '_olc' in linked.columns:
             colocated_sources = (
                 linked.groupby('_olc')['source'].transform('nunique') > 1
             )
             linked['exclude_from_upward_correction'] = colocated_sources & linked[
                 'source'
-            ].eq('ESRI')
+            ].isin(ignore_sources)
 
         if state.verbose:
             n_linked = (
