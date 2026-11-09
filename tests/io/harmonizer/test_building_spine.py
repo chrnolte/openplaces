@@ -176,8 +176,13 @@ def test_a_point_link_after_load_links_is_fingerprinted_by_the_parcel_overlay(
     overlay = get_entity_link_path(
         'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', unit
     )
+    # b3 step 2: and by the overlay the split cut, whose pieces the
+    # point joins link to.
+    cut = get_entity_link_path(
+        'US_building-geospine-2026', 'US-NC_parcel-nconemap-2025', unit
+    )
     absent = fingerprint(building, nsi_index, 'US_building-nsi-2026')
-    assert absent['restored_links'] == {overlay.name: None}
+    assert absent['restored_links'] == {overlay.name: None, cut.name: None}
 
     overlay.parent.mkdir(parents=True, exist_ok=True)
     overlay.write_bytes(b'one')
@@ -202,11 +207,15 @@ def test_the_building_recipes_load_and_depend_on_the_footprint_geospine():
     spine = get_recipe_by_id('US_building-spine-2026')
     assert str(geospine['entity'].entity_type) == 'building'
     assert spine['entity_recipe'] == 'US_building-geospine-2026'
+    # b3 step 2: the outlines are cut at the parcel lines after the
+    # overlay is restored, before the geometry attributes and the point
+    # joins, which then work on the pieces.
     assert [s['step'] for s in geospine['pipeline']] == [
         'resolve_spine',
         'adopt_source_entity_id',
-        'derive_geometry_attributes',
         'load_links',
+        'split_outlines_at_parcel_lines',
+        'derive_geometry_attributes',
         'link_to_reference',
         'link_to_reference',
     ]
@@ -234,10 +243,11 @@ def test_the_footprint_spine_is_its_geospine_and_the_counts_fold():
     adopt = fold
     building_steps = [s['step'] for s in building['pipeline']]
     assert building_steps[:2] == ['load_geospine', 'link_entities_by_id']
-    assert building['pipeline'][0]['links_recipe_id'] == 'US_footprint-geospine-2026'
-    # The re-keyed sidecars are written beside the building geospine for
-    # the curate steps that read a link by the curated entity's geospine.
-    assert building['pipeline'][0]['persist_links'] is True
+    # b3 step 2: the building geospine owns its parcel overlay (cut at
+    # the parcel lines and written beside its output for the curate
+    # readers), so the spine restores its own links and re-keys nothing.
+    assert 'links_recipe_id' not in building['pipeline'][0]
+    assert 'persist_links' not in building['pipeline'][0]
     for moved in (
         'classify_footprint_priority',
         'reconcile_attributes',

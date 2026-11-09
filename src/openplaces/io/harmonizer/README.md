@@ -450,11 +450,22 @@ geometry source for it and today the only one. The building geospine is
 equal values while one outline is one building) and the geometry attributes.
 Since slice b3 step 1 the building geospine also restores the footprint
 geospine's parcel overlay under building ids (`load_links`) and runs the NSI
-and dwelling point joins itself. The building spine loads it with the
-footprint geospine's parcel overlay re-keyed to building ids (`load_geospine`
-with `links_recipe_id`, persisted beside the building geospine for the curate
-readers), writes the footprint-to-building link table (`link_entities_by_id`
-against the footprint geospine, method `footprint_outline`), and runs the
+and dwelling point joins itself. Since b3 step 2 it cuts an outline over
+several lots into one building per parcel piece where the evidence shows a
+structure of its own on the other pieces (`split_outlines_at_parcel_lines`,
+`links/parcel_pieces.py`, whose docstring states the rule): a point inside
+the piece, a lot improvement value of at least the recipe's floor (or no
+value and a structure flag), and a piece that is not round; a refused piece
+folds into the dominant one. The lot values come from running the parcel
+geospine's own `link_by_id` passes on the overlay's lots, because that
+recipe runs later. Pieces take centroid codes as ids, keep the outline in
+`footprint_id`, and say `parcel_piece` in `building_geometry`; the overlay
+is re-keyed at the (outline, parcel) pair and written beside the building
+geospine, which owns it from then on. The building spine loads the
+building geospine with that overlay and its point links (`load_geospine`),
+writes the footprint-to-building link table (`link_entities_by_id`
+against the footprint geospine, method `footprint_outline`, one row per
+building and so several per cut outline), and runs the
 parcel priority, evidence, address, postal and permit steps that ran on the
 footprint spine until b2; the relational counts take the building's name
 (`n_parcels_per_building`). Its consumers read it directly: the parcel
@@ -465,23 +476,26 @@ the footprint curate CHEER ships carries the building curate onto the
 outlines (`aggregate_from_entities`), renaming the counts back. Order per
 unit: footprint geospine, building geospine, building spine, parcel geospine;
 the footprint spine needs only the footprint geospine and is not ordered
-against the building chain. Later b3 slices (townhome splits, condo-tower merges, NSI
+against the building chain. Later b3 slices (condo-tower merges, NSI
 points with no outline as rows) are where a building stops being one
-footprint; the re-keying refuses rows that share a source id, so those slices
-have to decide the fan-out explicitly.
+footprint in other ways; the plain re-keying of `load_geospine` and
+`load_links` refuses rows that share a source id, so those slices have to
+decide the fan-out explicitly, as the split does at the pair.
 A merge is not caught that way: a building made of several outlines names
 one `footprint_id`, so the others' links would stay unattributed, and b3
 needs the footprint-to-building link table as its key. Both steps also
 refuse a spine built from another version of its source (the building
-spine's `footprint_id`s must be the footprint geospine's ids, and the
-projection refuses building rows naming a footprint it lacks), and the
+geospine's distinct `footprint_id`s must be the footprint geospine's ids,
+the cut overlay's fingerprint records the hash of the overlay it cut, and
+the projection refuses building rows naming a footprint it lacks), and the
 building spine's checkpoint is stamped with the footprint geospine's
-output as well as its own geospine's.
+output (the recipe its `link_entities_by_id` reads) as well as its own
+geospine's.
 
 **A checkpoint restores only while what it skips still stands.** Any
 attribute checkpoint's footer also stamps the package's Python source
-and every side file the steps before it wrote (the re-keyed parcel
-sidecar and the footprint-to-building link table, here), and a restore
+and every side file the steps before it wrote (the footprint-to-building
+link table, here), and a restore
 is refused when the code changed or one of those files is missing or
 changed. Snakemake deletes a forced job's declared outputs before the
 job runs, so a restore that skipped the step writing one of them left
@@ -495,9 +509,10 @@ properties together is separated at ingest (an `additional_layers` entry
 writes its own property table), so by harmonize every property table exists
 independently of any parcel spine. Per admin unit the order is: every
 ingest; `US_property-spine-2026`; the footprint geospine; the building
-geospine (one building per outline), which restores the footprint
-geospine's parcel overlay under building ids (`load_links`) and links the
-NSI and dwelling points to the buildings itself; the building spine,
+geospine (one building per outline, or per parcel piece where it cuts an
+outline), which restores the footprint geospine's parcel overlay under
+building ids (`load_links`), cuts and re-keys it, and links the NSI and
+dwelling points to the buildings itself; the building spine,
 which runs the evidence, address and permit steps against those links;
 the footprint spine (its geospine alone); the parcel geospine, which reads
 the building spine for its morphology and geographic ids, the
@@ -576,7 +591,8 @@ The step sub-modules:
   sidecars), `combine.py` (prioritized writes onto the spine),
   `roll_values.py` (an assessment roll's values, tax year and label kept
   together; prior-year fill; a coarser source's values emptied where a
-  covering roll omits the account), `address_ranges.py`, `additions.py` (`infer_spine_additions`),
+  covering roll omits the account), `parcel_pieces.py`
+  (`split_outlines_at_parcel_lines`), `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones
   included, and is a plain package: a test patches the submodule a step
@@ -597,10 +613,13 @@ The step sub-modules:
   from another entity's geospine has no links of its own:
   `links_recipe_id` names the geospine whose sidecars apply, and they
   are restored keyed by that entity's id and re-keyed to this spine
-  through `links_key` (the building spine reads the footprint geospine's
-  parcel overlay through `footprint_id`; a rename while the relation is
-  one to one, refused where rows share a source id). `load_links` does
-  the same inside a geospine, for the link steps after it.
+  through `links_key` (a rename while the relation is one to one,
+  refused where rows share a source id). `load_links` does the same
+  inside a geospine, for the link steps after it (the building
+  geospine reads the footprint geospine's parcel overlay through
+  `footprint_id`). A geospine whose `split_outlines_at_parcel_lines`
+  cut its outlines owns the cut overlay, and `load_geospine` restores it
+  at the split's position like any of its own links.
   `adopt_entity_attributes`, deprecated since b3 step 7 and named by no
   recipe, copies every column of another spine's output onto this one
   through a one-to-one key.

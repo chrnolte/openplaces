@@ -91,10 +91,16 @@ def test_extra_outputs_include_link_sidecar(dag):
         'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
     )
     assert extras == [parcel_sidecar]
+    # b3 step 2: the building geospine also owns the parcel overlay its
+    # split re-keyed to the buildings.
     extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
     assert extras == [
         get_entity_link_path('US_building-geospine-2026', ref, COUNTY)
-        for ref in ('US_building-nsi-2026', 'dwelling-overture-2025')
+        for ref in (
+            'US-NC_parcel-nconemap-2025',
+            'US_building-nsi-2026',
+            'dwelling-overture-2025',
+        )
     ]
     # The attribute recipe runs no link steps of its own.
     assert dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY) == []
@@ -117,7 +123,8 @@ def test_a_link_step_a_patch_removed_declares_no_sidecar(dag, monkeypatch):
     monkeypatch.setattr(dag_mod, 'apply_recipe_patches', _drop_nsi)
     # The point joins run on the building geospine (b3 step 1).
     extras = dag.extra_outputs('harmonize', 'US_building-geospine-2026', COUNTY)
-    assert len(extras) == 1
+    # The Overture link and the cut parcel overlay (b3 step 2) remain.
+    assert len(extras) == 2
     assert not any('building-nsi' in p.name for p in extras)
 
 

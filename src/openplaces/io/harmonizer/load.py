@@ -37,9 +37,11 @@ from openplaces.io.harmonizer.links import (
     _point_step_config,
     _prepare_reference,
     _resolve_reference_recipe,
+    cut_sidecar_path,
     overlay_step_config,
     reference_rows,
     snap_chained_links,
+    split_context,
 )
 from openplaces.io.harmonizer.written import note_written
 from openplaces.io.readers import get_entities
@@ -56,6 +58,10 @@ from openplaces.recipe import (
 #: Footer key naming the geospine whose sidecar a persisted re-keyed
 #: link table was made from (`load_geospine(persist_links=True)`).
 LINK_REKEYED_FROM_KEY = 'openplaces:link_rekeyed_from'
+
+#: The step that cuts outlines at parcel lines and owns the cut overlay
+#: (`links.parcel_pieces`).
+SPLIT_STEP = 'split_outlines_at_parcel_lines'
 
 
 @_register('load_geospine')
@@ -80,7 +86,10 @@ def load_geospine(
 
     Which links to restore, and with what configuration, is read from the
     geospine recipe's own pipeline -- deliberately not re-declared in the
-    attribute recipe, so the two YAMLs cannot drift. Each sidecar's footer
+    attribute recipe, so the two YAMLs cannot drift. A geospine that cut
+    its outlines at the parcel lines (`split_outlines_at_parcel_lines`,
+    the building geospine) owns the parcel overlay re-keyed to its
+    pieces, and that sidecar is restored at the split's position. Each sidecar's footer
     fingerprint is recomputed exactly as the geospine run computed it
     (same recipe, same step position, same config subset); a missing or
     mismatched sidecar raises with instructions to rerun the geospine
@@ -182,6 +191,14 @@ def load_geospine(
     for step_index, step_cfg in enumerate(geospine.get('pipeline') or []):
         if not isinstance(step_cfg, dict):
             continue
+        if step_cfg.get('step') == SPLIT_STEP and step_cfg.get('save_link', True):
+            # The geospine cut its outlines at the parcel lines and owns
+            # the re-keyed overlay; restored in pipeline order, so it
+            # stays ahead of the point links as the run saw it.
+            state = _restore_parcel_pieces(
+                state, geospine, step_index, step_cfg, spine_id_col
+            )
+            continue
         if step_cfg.get('step') != 'link_to_reference':
             continue
         if step_cfg.get('save_link') is False:
@@ -260,6 +277,17 @@ def restored_link_hashes(recipe: dict, step_index: int, admin_id) -> dict:
 
     hashes = {}
     for step_cfg in (recipe.get('pipeline') or [])[:step_index]:
+        if isinstance(step_cfg, dict) and step_cfg.get('step') == SPLIT_STEP:
+            # A link computed on the pieces is valid only while the cut
+            # is the same: a changed lot value or point can move a
+            # piece, and with it every building id after it.
+            resolved_id, _ = _resolve_reference_recipe(
+                None, step_cfg.get('entity_type', 'parcel'), admin_id
+            )
+            if resolved_id is not None:
+                path = cut_sidecar_path(recipe, resolved_id, admin_id)
+                hashes[path.name] = _hash_file(path) if path.exists() else None
+            continue
         if not isinstance(step_cfg, dict) or step_cfg.get('step') != 'load_links':
             continue
         other = _as_run_for(get_recipe_by_id(step_cfg['links_recipe_id']), admin_id)
@@ -330,10 +358,14 @@ def _restore_foreign_links(
     present = keys.notna()
     duplicated = keys[present].duplicated()
     if duplicated.any():
+        # A spine whose rows share a source id was cut by a step that
+        # re-keys the links at the pair and persists them itself
+        # (split_outlines_at_parcel_lines); a rename here cannot say
+        # which row a link belongs to.
         raise ValueError(
             f'load_geospine: {int(duplicated.sum()):,d} spine rows share a '
             f'{links_key} with another row; re-keying {other_id} links onto '
-            'several rows is a decision the slice that splits rows has to make.'
+            'several rows needs a pair-level map, which a plain rename lacks.'
         )
     mapping = pd.Series(spine.index[present.to_numpy()], index=keys[present].to_numpy())
     _require_same_rows(state, other, keys[present])
@@ -393,11 +425,14 @@ def _require_same_rows(state: HarmonizeState, other: dict, keys: pd.Series) -> N
     and this spine has ids the source dropped. Re-keying across that
     gap gave the dropped rows no evidence and the new outlines no row,
     silently. Ids rather than file times, because a sync tool touching
-    a file changes its mtime and not its content.
+    a file changes its mtime and not its content. The distinct ids are
+    compared, not the rows: several buildings cut from one outline
+    name it alike.
     """
     source_ids = get_entities(other, state.admin_id, geom=False, columns=[]).index
+    keys = pd.Index(pd.unique(keys.to_numpy()))
     stale = keys[~keys.isin(source_ids)]
-    new = source_ids.difference(pd.Index(keys))
+    new = source_ids.difference(keys)
     if len(stale) or len(new):
         raise ValueError(
             f'load_geospine: this spine was built from another version of '
@@ -782,6 +817,90 @@ def _restore_link(
     if resolved_et:
         state.reference_types[resolved_id] = resolved_et
     sgt = step_cfg.get('source_geometry_type')
+    if sgt is not None:
+        state.source_geometry_types[resolved_id] = SourceGeometryType(sgt)
+    return state
+
+
+def _restore_parcel_pieces(
+    state: HarmonizeState,
+    geospine: dict,
+    step_index: int,
+    step_cfg: dict,
+    spine_id_col: str,
+) -> HarmonizeState:
+    """Rebuild the parcel overlay a split step cut, from its sidecar.
+
+    The building geospine cuts its outlines at the parcel lines and
+    writes the overlay re-keyed to the pieces
+    (`links.parcel_pieces.split_outlines_at_parcel_lines`). This reads
+    it back as `_restore_link` reads an overlay: the fingerprint is
+    recomputed exactly as the split computed it and a missing or stale
+    sidecar raises; the crosswalk is rebuilt from the overlay with the
+    footprint geospine's thresholds and chain snapping, as the building
+    spine rebuilt it before the cut, so an uncut outline's pairs are
+    what they were; the reference is prepared with that overlay step's
+    configuration.
+    """
+    entity_type = step_cfg.get('entity_type', 'parcel')
+    resolved_id, resolved_et = _resolve_reference_recipe(
+        None, entity_type, state.admin_id
+    )
+    if resolved_id is None:
+        return state
+    context = split_context(geospine, step_index, step_cfg, state.admin_id)
+    source_cfg = context.overlay_step
+    shim = HarmonizeState(
+        recipe=geospine, admin_id=state.admin_id, verbose=False, timer=None
+    )
+    shim.step_index = step_index
+    fingerprint = _link_fingerprint(shim, resolved_id, context.fingerprint_config)
+    sidecar_path = cut_sidecar_path(geospine, resolved_id, state.admin_id)
+    overlay = _load_link_sidecar(
+        sidecar_path, fingerprint, spine_id_col, verbose=state.verbose
+    )
+    ref_raw, _ = reference_rows(resolved_id, state.admin_id, source_cfg.get('kept_by'))
+    if ref_raw is None or len(ref_raw) == 0:
+        if overlay is None:
+            raise_if_coverage_complete(resolved_id, state.admin_id)
+            return state
+        raise RuntimeError(
+            f'Link sidecar {sidecar_path.name} exists but its reference '
+            f'{resolved_id} has no data for {state.admin_id}; rerun '
+            f'{get_recipe_id(geospine)} for this admin unit.'
+        )
+    if overlay is None:
+        raise RuntimeError(
+            f'Missing or stale link sidecar {sidecar_path} for {resolved_id}; '
+            f'rerun {get_recipe_id(geospine)} for {state.admin_id} to cut the '
+            'outlines again.'
+        )
+    overlay = overlay.drop(columns=[context.links_key], errors='ignore')
+    thresholds = source_cfg.get('thresholds') or {}
+    crosswalk = _build_crosswalk(
+        overlay, spine_id_col, context.min_fraction, context.area_min_m2
+    )
+    if thresholds.get('snap_chains'):
+        crosswalk, _ = snap_chained_links(
+            crosswalk,
+            spine_id_col,
+            fraction_max=float(thresholds.get('chain_fraction_max', 0.75)),
+        )
+    state.references[resolved_id] = _prepare_reference(
+        ref_raw,
+        resolved_id,
+        resolved_et,
+        state,
+        aggregation_function=source_cfg.get('aggregation_function'),
+        sort_by=source_cfg.get('sort_by'),
+        list_columns=source_cfg.get('list_columns'),
+    )
+    state.crosswalks[resolved_id] = crosswalk
+    state.overlays[resolved_id] = overlay
+    _restore_inferred(state, resolved_id, resolved_et)
+    if resolved_et:
+        state.reference_types[resolved_id] = resolved_et
+    sgt = source_cfg.get('source_geometry_type')
     if sgt is not None:
         state.source_geometry_types[resolved_id] = SourceGeometryType(sgt)
     return state

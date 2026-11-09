@@ -1020,9 +1020,12 @@ def adopt_source_entity_id(
     this recipe's own `{entity_type}_id`. The values are unchanged: while
     the relation is one to one the building's id equals its footprint's,
     which is what makes the projection back onto footprints a join and
-    not a lookup. A row that later has no source of its own (a point
-    building with no outline, a townhome split into several buildings)
-    is minted by the step that adds it, not here.
+    not a lookup. A row that later has no source of its own is minted by
+    the step that adds it, not here: a townhome row or duplex cut into
+    one building per parcel piece takes its piece's centroid code
+    (`split_outlines_at_parcel_lines`), keeping the outline's id in
+    *source_id_column*, and a point building with no outline will take
+    its own.
 
     Parameters
     ----------

@@ -156,6 +156,9 @@ def get_recipe_dependencies(
     - a 'link_to_reference' step's 'kept_by' recipe: every source its
       'resolve_spine' step ranks, listed or discovered, and never that
       recipe itself (the key deliberately does not end in 'recipe_id')
+    - a step's 'lot_values_from' recipe: every source its
+      'auto_discover' 'link_by_id' passes discover, and never that
+      recipe itself, for the same reason
 
     Parameters
     ----------
@@ -393,12 +396,39 @@ def get_recipe_dependencies(
                     )
             break
 
+    def _add_lot_values_from(values_id, step_name):
+        # A step that runs another recipe's `link_by_id` passes on its
+        # own rows (the building geospine's split reads lot values the
+        # way the parcel geospine joins them) reads every source those
+        # passes discover, and never that recipe's output: the parcel
+        # geospine runs after the building geospine.
+        try:
+            values = _recipe.get_recipe_by_id(values_id)
+            if admin_id is not None:
+                values, _ = _recipe.apply_recipe_patches(values, admin_id)
+        except Exception:  # noqa: BLE001 - an unknown recipe adds nothing
+            _add(None, 'lot_values_from', step=step_name, resolved=False)
+            return
+        for spec in values.get('pipeline') or []:
+            if not isinstance(spec, dict) or spec.get('step') != 'link_by_id':
+                continue
+            if not spec.get('auto_discover'):
+                continue
+            _add_discovered(
+                spec.get('entity_type') or 'parcel',
+                'link_by_id',
+                True,
+                supplements_only=bool(spec.get('supplements_only')),
+            )
+
     for step_spec in recipe.get('pipeline') or []:
         if not isinstance(step_spec, dict):
             continue
         step_name = step_spec.get('step')
         if step_name == 'link_to_reference' and step_spec.get('kept_by'):
             _add_kept_by(str(step_spec['kept_by']), step_name)
+        if step_spec.get('lot_values_from'):
+            _add_lot_values_from(str(step_spec['lot_values_from']), step_name)
         multi = step_name in _MULTI_DISCOVER_STEPS
         sources = step_spec.get('sources')
         if isinstance(sources, list):
