@@ -913,6 +913,9 @@ share:
       - nantucket-ma
       # Lake County FL, for the team model page (2026-10-19).
       - lake-county-fl
+      # Orange, Seminole and Osceola counties, within 15 km of
+      # Orlando City Hall, for the public Orlando page (2026-11-09).
+      - orlando-fl
       # Washington DC and the counties within 15 km of the Wilson
       # Building (2026-10-19).
       - washington-dc
