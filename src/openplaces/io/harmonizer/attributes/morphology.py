@@ -19,9 +19,13 @@ def _outline_span(footprints, on: str | None, span: np.ndarray) -> np.ndarray:
     A building cut at parcel lines spans its own lot only, while the
     outline it was cut from spans every lot its pieces stand on. The
     count is the outline's: the distinct ids in `{on}_all` over all
-    rows sharing an *OUTLINE_COLUMN*. For an uncut outline that is the
-    row's own `{on}_all`, the same parcels *span* counts. Rows without
-    either column, or without linked parcels, keep *span*.
+    rows sharing an *OUTLINE_COLUMN*. Only an outline cut into two or
+    more rows takes it; every other row keeps *span*. An uncut outline's
+    `{on}_all` is not always the parcels *span* counts: a condo-cluster
+    outline lists every lot of its cluster where its span is missing,
+    and counting the list there (measured 2026-11-11 on US-NC-DUR: the
+    lots of 3,295 cluster outlines) turned 18,000 of its lots into
+    townhomes through the land-use rule that reads this count.
     """
     on_all = f'{on}_all' if on else None
     if (
@@ -38,6 +42,9 @@ def _outline_span(footprints, on: str | None, span: np.ndarray) -> np.ndarray:
     ).explode('parcel')
     parcels = parcels[parcels['outline'].notna() & parcels['parcel'].notna()]
     parcels = parcels[parcels['parcel'].astype(str) != '']
+    rows_per_outline = footprints[OUTLINE_COLUMN].value_counts()
+    cut = rows_per_outline.index[rows_per_outline > 1]
+    parcels = parcels[parcels['outline'].isin(cut)]
     per_outline = parcels.groupby('outline')['parcel'].nunique()
     outline_span = footprints[OUTLINE_COLUMN].map(per_outline).astype(float).to_numpy()
     return np.where(np.isnan(outline_span), span, outline_span)

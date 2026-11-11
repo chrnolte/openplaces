@@ -114,3 +114,26 @@ def test_an_uncut_building_keeps_its_own_span(monkeypatch):
         'L2': 2,
         'L3': 1,
     }
+
+
+def test_an_uncut_outline_listing_lots_without_a_span_keeps_none(monkeypatch):
+    """A condo-cluster outline lists every lot of its cluster in
+    parcel_id_all but carries no span count. Only a cut outline takes
+    its count from the list; this one stays without a span, so the
+    Townhome rule does not read its lots as a row."""
+    spine = _spine(a=box(0, 0, 20, 10))
+    lots = _lots(L1=box(0, -5, 10, 15), L2=box(10, -6, 20, 15))
+    spine, flat, _ = _split(spine, lots)
+    buildings = _building_spine(spine, flat)
+    buildings['n_parcels_per_building'] = np.nan
+    buildings['parcel_id_all'] = 'L1|L2'
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: buildings)
+    state = HarmonizeState(
+        recipe={},
+        admin_id='US-XX-YY',
+        verbose=False,
+        timer=None,
+        spine=gpd.GeoDataFrame(geometry=lots.geometry, crs=CRS),
+    )
+    out = attrs.summarize_footprint_morphology(state, footprint_recipe_id='bldg')
+    assert (out.spine['max_parcels_per_footprint'].fillna(0) < 2).all()
