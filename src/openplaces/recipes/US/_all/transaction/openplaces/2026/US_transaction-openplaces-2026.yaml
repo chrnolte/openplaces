@@ -129,6 +129,17 @@ pipeline:
     output: sale_double_closing_earlier_leg
     within: [sale_record_kind]
 
+  # The spine's duplicate-sale pairs, per sale: `sale_duplicate_of`
+  # names the row to keep instead of this one, `sale_duplicate_reason`
+  # the rule that paired them (deed_echo_document,
+  # deed_echo_period_price, roll_restated, double_closing,
+  # restates_document, in that order of precedence), and
+  # `sale_resale_within_window` marks a second market sale of one
+  # property within a month at another price, which is two sales, not a
+  # duplicate. A consumer drops by the reasons it trusts. The two flags
+  # above stay unchanged until openplaces-valuation reads these (D9).
+  - step: derive_duplicate_columns
+
   # A county with a recorder's table and a roll reports its latest
   # sales twice. Both rows stay; the last-sale row that repeats a deed
   # (same parcel, year, month and price, exactly) is flagged so that a
@@ -325,6 +336,9 @@ share:
     - n_parcels_per_sale
     - sale_matches_deed
     - sale_double_closing_earlier_leg
+    - sale_duplicate_of
+    - sale_duplicate_reason
+    - sale_resale_within_window
     - sale_nominal_price_floor
     - sale_price_to_assessed_ratio
     - single_family_sales_disclosure_share

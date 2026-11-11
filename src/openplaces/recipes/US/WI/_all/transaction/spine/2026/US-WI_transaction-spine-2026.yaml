@@ -1,0 +1,35 @@
+# Patch: a Wisconsin return that corrects an earlier one names it.
+#
+# The RETR states a "Previous Document Number" for a return filed under
+# a fee exemption that rests on an earlier recorded document. The
+# Department of Revenue's data-field list (RETRmlist.pdf, column CG)
+# describes it as "Exemption Previous Number": it is stated under
+# exemption 3 ("confirms, corrects or reforms a conveyance previously
+# recorded"), 17 (satisfaction of a land contract) and 11m (transfer on
+# death). Only exemption 3 names a document the return restates; the
+# other two name an earlier, different transfer. Measured 2026-11-11
+# on US-WI-VI: 624 exemption-3 returns name a document in the county
+# (median 51 days back), 156 exemption-17 returns one (median 1,008
+# days), 5 exemption-11m returns one (median 1,961 days).
+#
+# So the duplicate-sale pairs read the column only on exemption-3
+# returns (decision D8 of plans/transaction-sale-deduplication.md,
+# label `restates_document`, the correcting return kept). The columns
+# are the RETR's own headers as ingested.
+
+admin_id: US-WI
+stage: harmonize
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: spine
+  version: 2026
+
+patches: US_transaction-spine-2026
+pipeline_patch:
+  - set: link_duplicate_sales
+    params:
+      previous_document_column: Previous Document Number
+      correction_column: Fee Exemption
+      correction_values: ['3 - Correct prior']

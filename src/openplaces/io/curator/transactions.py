@@ -259,6 +259,71 @@ def collapse_double_closings(
     return state
 
 
+@_register('derive_duplicate_columns', phase='standardize')
+def derive_duplicate_columns(
+    state: CurateState, spine_recipe_id: str | None = None
+) -> CurateState:
+    """Summarize the spine's duplicate-sale pairs on each sale row.
+
+    Writes `sale_duplicate_of`, `sale_duplicate_reason` and
+    `sale_resale_within_window` (`io.sale_records.duplicate_columns`)
+    from the pair table `link_duplicate_sales` wrote beside the spine.
+    Values, not verdicts: no row is dropped, and a consumer wanting one
+    row per sale drops the rows with a `sale_duplicate_of`, or only
+    those of the labels it trusts.
+
+    Reads the pair table and the curated index and nothing else, so no
+    gathered value (an assessed value, a sales ratio) can reach the
+    columns, which keeps the keep-which-record decision clear of
+    plans/design-limits L7 and L29. A pair naming a sale the curated
+    table lacks (a table built before the spine was rebuilt) is left
+    out, with a warning.
+
+    Parameters
+    ----------
+    spine_recipe_id : str, optional
+        The spine that wrote the pair table; default the recipe this
+        curate's entity chain resolves to.
+    """
+    from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
+
+    curated = state.curated
+    owner = spine_recipe_id or get_link_owner_recipe_id(state.recipe)
+    path = get_entity_link_path(owner, owner, state.admin_id)
+    pairs = None
+    if path.exists():
+        pairs = pd.read_parquet(path, columns=list(sale_records.DUPLICATE_PAIR_COLUMNS))
+        ids = set(curated.index.astype('string'))
+        stale = ~(
+            pairs['transaction_id'].isin(ids) & pairs['other_transaction_id'].isin(ids)
+        )
+        if stale.any():
+            warnings.warn(
+                f'derive_duplicate_columns: {int(stale.sum()):,} of {len(pairs):,} '
+                f'pairs in {path.name} name a sale this table lacks; rebuild '
+                f'{owner} for {state.admin_id}.',
+                stacklevel=2,
+            )
+    else:
+        warnings.warn(
+            f'derive_duplicate_columns: no pair table at {path.name}; the three '
+            'columns are written missing.',
+            stacklevel=2,
+        )
+    summary = sale_records.duplicate_columns(curated.index, pairs)
+    for column in summary.columns:
+        curated[column] = summary[column].to_numpy()
+    state.curated = curated
+    if state.verbose:
+        print(
+            '  derive_duplicate_columns: '
+            f'{int(summary["sale_duplicate_of"].notna().sum()):,} duplicates '
+            f'({summary["sale_duplicate_reason"].value_counts().to_dict()}), '
+            f'{int((summary["sale_resale_within_window"] == 1).sum()):,} resales'
+        )
+    return state
+
+
 @_register('join_temporal_snapshot', phase='gather')
 def join_temporal_snapshot(
     state: CurateState,

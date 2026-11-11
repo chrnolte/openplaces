@@ -213,6 +213,23 @@ pipeline:
     parcel_recipe_id: US_parcel-spine-2026
     property_recipe_id: US_property-spine-2026
 
+  # Which sales describe one sale, as a transaction-to-transaction link
+  # table beside this output: a roll's last sale echoing a deed (by its
+  # document, or by thing sold, month and price), one last sale stated
+  # twice, the two legs of a double closing, a correction naming the
+  # return it corrects, and, as a fact rather than a duplicate, a resale
+  # within a month. Each pair carries the fixed label of the exact rule
+  # that found it, never a confidence; no row is dropped, and the curate
+  # recipe summarizes the pairs per sale. "The thing sold" is the
+  # linked property, else the parcel, never a lot reached through one of
+  # its units, so two condominium units of one lot are never paired.
+  # No name, assessed value or index-adjusted price enters a rule
+  # (plans/transaction-sale-deduplication.md, sections 4 to 6). After
+  # link_transactions, whose tables it reads.
+  - step: link_duplicate_sales
+    parcel_recipe_id: US_parcel-spine-2026
+    property_recipe_id: US_property-spine-2026
+
   # A fact on each parcel link, never a score: does the sale's address
   # key belong to an address point inside the linked parcel's own
   # polygon (`address_points_check`: agree, other_parcel,
