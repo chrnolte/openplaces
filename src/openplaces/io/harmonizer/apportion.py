@@ -20,6 +20,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps
+
 __all__ = [
     'APPORTIONED_VALUE_COLUMNS',
     'PROPORTIONAL_SPLIT_COLUMNS',
@@ -86,6 +88,8 @@ def apportion_reference_values(
     equal_area_ref_ids: set | None = None,
     ref_built_area: pd.Series | None = None,
     built_area_min_coverage: float = 0.2,
+    tie_improvement_value: pd.Series | None = None,
+    tie_ref_area: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Apportion reference values to spine entities over an n:m link.
 
@@ -190,6 +194,12 @@ def apportion_reference_values(
         (basements, half stories and attics enter the floor area), so a
         moderate gap is noise; only a mapped area far below the stated
         one shows a building the spine lacks.
+    tie_improvement_value, tie_ref_area : pandas.Series, optional
+        Improvement value and area per reference id, read only to break
+        a tie between two equal overlaps when choosing the dominant
+        reference (`dominant_parcel.rank_overlaps`). Without
+        *tie_improvement_value*, the `improvement_value` column of
+        *ref_values* is used where present.
 
     Returns
     -------
@@ -362,11 +372,16 @@ def apportion_reference_values(
     whole_allocations: dict[str, pd.DataFrame] = {}
     whole_value_cols = [c for c in WHOLE_VALUE_COLUMNS if c in value_cols]
     if whole_value_cols or 'address' in value_cols:
-        dominant = (
-            attrs.sort_values(area_col, ascending=False)
-            .drop_duplicates(spine_id_col)
-            .set_index(spine_id_col)
-        )
+        if tie_improvement_value is None and 'improvement_value' in ref_values:
+            tie_improvement_value = ref_values['improvement_value']
+        dominant = dominant_overlaps(
+            attrs,
+            spine_id_col=spine_id_col,
+            ref_id_col=ref_id_col,
+            area_col=area_col,
+            improvement_value=tie_improvement_value,
+            ref_area=tie_ref_area,
+        ).set_index(spine_id_col)
         if 'address' in value_cols:
             out['address'] = dominant['address']
         if whole_value_cols:

@@ -9,6 +9,7 @@ import re
 
 import pandas as pd
 
+from openplaces.io.harmonizer.dominant_parcel import OVERLAP_TIE_M2
 from openplaces.recipe import source_id_from_recipe_id
 
 
@@ -190,20 +191,43 @@ def _attributed_name(col: str, suffix: str, reserved_cols: set[str]) -> str:
     return f'{col}{suffix}'
 
 
-def _dominant_by_area(attrs, spine_id_col: str, col: str, area_col: str):
+def _dominant_by_area(
+    attrs,
+    spine_id_col: str,
+    col: str,
+    area_col: str,
+    preferred: pd.Series | None = None,
+):
     """Dominant categorical value per spine entity, weighted by overlap area.
 
     Returns ``(dominant, joined)``: *dominant* is the value with the largest total
     *area_col* within each spine entity; *joined* lists every value for that entity
     ordered by descending area, joined with ``' + '`` — missing where there is only
     one distinct value (see :func:`_join_distinct`). Both are indexed by spine id.
+
+    Values whose areas are within `OVERLAP_TIE_M2` of the largest tie. A
+    tie goes to the value in *preferred* (per spine id: the dominant
+    parcel's value) when it is among them, else to the value that sorts
+    first, so the result never depends on row order.
     """
+    # groupby returns its keys sorted, and a stable sort keeps that
+    # order among equal areas.
     areas = (
         attrs.groupby([spine_id_col, col])[area_col]
         .sum()
-        .sort_values(ascending=False)
+        .sort_values(ascending=False, kind='stable')
         .reset_index()
     )
-    dominant = areas.drop_duplicates(spine_id_col).set_index(spine_id_col)[col]
+    picks = areas
+    if preferred is not None and len(areas):
+        largest = areas.groupby(spine_id_col)[area_col].transform('max')
+        tied = areas[area_col] >= largest - OVERLAP_TIE_M2
+        wanted = areas[spine_id_col].map(preferred).astype(object)
+        is_preferred = tied & (areas[col].astype(object) == wanted).fillna(False)
+        # Tied values first, the preferred one ahead of the rest; the
+        # stable sort keeps the area order otherwise.
+        rank = (~tied).astype(int) * 2 + (~is_preferred).astype(int)
+        picks = areas.iloc[rank.to_numpy().argsort(kind='stable')]
+    dominant = picks.drop_duplicates(spine_id_col).set_index(spine_id_col)[col]
     joined = _join_distinct(areas, spine_id_col, col)
     return dominant, joined

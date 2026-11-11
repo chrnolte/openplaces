@@ -1602,7 +1602,12 @@ def _join_largest_overlap(
     if overlay.empty:
         return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
 
-    overlay = overlay.sort_values('area_intersection_m2', ascending=False)
+    # A tiling has no nested polygons, so the parcel tie rule
+    # (dominant_parcel) does not apply; an exact tie goes to the lower
+    # id so that row order never decides.
+    overlay = overlay.sort_values(
+        ['area_intersection_m2', '_ref_value'], ascending=[False, True]
+    )
     keep = ~overlay.index.get_level_values(spine_id_name).duplicated()
     n_dropped = int((~keep).sum())
     if n_dropped and verbose:

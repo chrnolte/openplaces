@@ -107,6 +107,7 @@ from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import get_areas, local_metric_crs
 from openplaces.io import to_parquet
 from openplaces.io.harmonizer import HarmonizeState, _record_source, _register
+from openplaces.io.harmonizer.dominant_parcel import rank_overlaps, tie_breakers
 from openplaces.io.harmonizer.links._shared import _LINK_METADATA_KEY
 from openplaces.io.harmonizer.links.by_id import link_by_id
 from openplaces.io.harmonizer.links.sidecars import (
@@ -353,7 +354,11 @@ def split_context(
 
 
 def candidate_pairs(
-    flat: pd.DataFrame, spine: pd.DataFrame, links_key: str
+    flat: pd.DataFrame,
+    spine: pd.DataFrame,
+    links_key: str,
+    tie_improvement_value: pd.Series | None = None,
+    tie_ref_area: pd.Series | None = None,
 ) -> pd.Series:
     """Outlines to cut and their kept parcels, largest overlap first.
 
@@ -366,15 +371,21 @@ def candidate_pairs(
         The spine, carrying *links_key* and `geometry_source`.
     links_key : str
         The outline id column.
+    tie_improvement_value, tie_ref_area : pandas.Series, optional
+        Improvement value and area per parcel id, which break a tie
+        between equal overlaps (`dominant_parcel.rank_overlaps`).
 
     Returns
     -------
     pandas.Series
         Per outline id, the list of its parcel ids labeled
-        'multi-parcel footprint', ordered by intersection area (largest
-        first, ties by parcel id), for outlines with two or more such
-        parcels that are on the spine once and are not of a never-cut
-        source.
+        'multi-parcel footprint', in the order of
+        `dominant_parcel.rank_overlaps` (largest overlap first; within
+        `OVERLAP_TIE_M2` an improved lot, then the smaller lot, then the
+        lower parcel id), for outlines with two or more such parcels
+        that are on the spine once and are not of a never-cut source.
+        The first is the dominant piece's parcel, the one the building
+        spine picks for the uncut outline.
     """
     multi = flat[(flat['link'] == MULTI_PARCEL_LINK) & flat['parcel_id'].notna()]
     multi = multi[[links_key, 'parcel_id', 'area_intersection_m2']]
@@ -389,10 +400,11 @@ def candidate_pairs(
         never = set(keys[token.isin(NEVER_CUT_TOKENS).fillna(False).to_numpy()])
         ids -= never
     multi = multi[multi[links_key].isin(ids)]
-    multi = multi.sort_values(
-        [links_key, 'area_intersection_m2', 'parcel_id'],
-        ascending=[True, False, True],
-        kind='stable',
+    multi = rank_overlaps(
+        multi,
+        spine_id_col=links_key,
+        improvement_value=tie_improvement_value,
+        ref_area=tie_ref_area,
     )
     return multi.groupby(links_key, sort=True)['parcel_id'].agg(list)
 
@@ -889,6 +901,7 @@ def split_overlay(
     evidence_for,
     rule: dict,
     taken: set,
+    references: pd.DataFrame | None = None,
 ) -> tuple[gpd.GeoDataFrame, pd.DataFrame, dict]:
     """The cut, without reading or writing anything.
 
@@ -910,6 +923,11 @@ def split_overlay(
         From `parse_keep_piece`.
     taken : set
         Ids a new piece id must not take.
+    references : DataFrame, optional
+        The prepared parcel reference the overlay was computed against,
+        by parcel id; its improvement value and area break a tie for
+        the dominant piece (`dominant_parcel`), as the building spine
+        breaks it for the dominant parcel.
 
     Returns
     -------
@@ -923,7 +941,14 @@ def split_overlay(
     keys = spine[links_key]
     mapping = pd.Series(spine.index[keys.notna().to_numpy()], index=keys.dropna())
     mapping = mapping[~mapping.index.duplicated(keep=False)]
-    pairs = candidate_pairs(flat, spine, links_key)
+    tie_value, tie_area = tie_breakers(references)
+    pairs = candidate_pairs(
+        flat,
+        spine,
+        links_key,
+        tie_improvement_value=tie_value,
+        tie_ref_area=tie_area,
+    )
     outlines = gpd.GeoSeries(
         spine.geometry.to_numpy(), index=keys.to_numpy(), crs=spine.crs
     )
@@ -1068,7 +1093,7 @@ def split_outlines_at_parcel_lines(
         flat[context.links_key].dropna().astype(str)
     )
     new_spine, new_flat, stats = split_overlay(
-        spine, flat, parcels, context, evidence_for, rule, taken
+        spine, flat, parcels, context, evidence_for, rule, taken, references
     )
     spine_id_col = spine.index.name
     if save_link:

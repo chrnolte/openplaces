@@ -224,6 +224,9 @@ def classify_footprint_priority(
 
     for parcel_id, group in multi_fp.groupby('parcel_id'):
         fp_ids = set(group[spine_id_col])
+        # Sorted, because idxmax below takes the first of equal areas
+        # and a set's order varies between processes.
+        fp_order = sorted(fp_ids)
         has_addr = fp_ids & address_evidence
         has_bldg = fp_ids & building_point_evidence
 
@@ -233,7 +236,7 @@ def classify_footprint_priority(
             # size override above.
             keep = set(has_addr)
             if override_ratio is not None:
-                fp_areas = areas_m2.reindex(list(fp_ids)).fillna(0.0)
+                fp_areas = areas_m2.reindex(fp_order).fillna(0.0)
                 largest = fp_areas.idxmax()
                 dwelling_max = fp_areas.reindex(list(has_addr)).max()
                 if (
@@ -266,7 +269,7 @@ def classify_footprint_priority(
         else:
             # No point evidence on this parcel: promote by geometry (see
             # the calibration note above), demote the rest.
-            fp_areas = areas_m2.reindex(list(fp_ids)).fillna(0.0)
+            fp_areas = areas_m2.reindex(fp_order).fillna(0.0)
             keep = {fp_areas.idxmax()}
             if always_primary_m2 is not None:
                 keep |= set(fp_areas.index[fp_areas >= always_primary_m2])

@@ -9,6 +9,39 @@ import pandas as pd
 
 from openplaces.io.harmonizer import HarmonizeState, _register
 
+#: Column of a building row naming the outline it was cut from.
+OUTLINE_COLUMN = 'footprint_id'
+
+
+def _outline_span(footprints, on: str | None, span: np.ndarray) -> np.ndarray:
+    """Parcels each row's drawn outline spans, where the rows say.
+
+    A building cut at parcel lines spans its own lot only, while the
+    outline it was cut from spans every lot its pieces stand on. The
+    count is the outline's: the distinct ids in `{on}_all` over all
+    rows sharing an *OUTLINE_COLUMN*. For an uncut outline that is the
+    row's own `{on}_all`, the same parcels *span* counts. Rows without
+    either column, or without linked parcels, keep *span*.
+    """
+    on_all = f'{on}_all' if on else None
+    if (
+        on_all is None
+        or on_all not in footprints.columns
+        or OUTLINE_COLUMN not in footprints.columns
+    ):
+        return span
+    parcels = pd.DataFrame(
+        {
+            'outline': footprints[OUTLINE_COLUMN].to_numpy(),
+            'parcel': footprints[on_all].astype('string').str.split('|').to_numpy(),
+        }
+    ).explode('parcel')
+    parcels = parcels[parcels['outline'].notna() & parcels['parcel'].notna()]
+    parcels = parcels[parcels['parcel'].astype(str) != '']
+    per_outline = parcels.groupby('outline')['parcel'].nunique()
+    outline_span = footprints[OUTLINE_COLUMN].map(per_outline).astype(float).to_numpy()
+    return np.where(np.isnan(outline_span), span, outline_span)
+
 
 @_register('summarize_footprint_morphology', phase='geometry')
 def summarize_footprint_morphology(
@@ -32,9 +65,11 @@ def summarize_footprint_morphology(
     plans/building-spine-consumers-and-footprint-projection.md). The
     areas are each building's own polygon, its building footprint, and
     keep their names. `max_parcels_per_footprint` keeps its name too: it
-    is the span of the drawn outline, which equals the building's while
-    one building is one outline; once buildings are cut at parcel lines
-    it has to come from the footprint geospine's parcel overlay instead.
+    is the span of the drawn outline. A building cut at parcel lines
+    (`split_outlines_at_parcel_lines`) spans its own lot only, so where
+    the rows carry `footprint_id` and `{on}_all` the span is counted
+    over every building cut from the same outline (the distinct parcels
+    they link to), which for an uncut outline is its own count.
 
     Footprint-to-parcel linkage is the harmonizer's job; this reads the footprint
     entity, assigns each footprint to a parcel (by a shared id column when *on* is
@@ -245,6 +280,7 @@ def summarize_footprint_morphology(
         ).to_numpy()
     else:
         n_parcels_span = np.full(len(footprints), np.nan)
+    n_parcels_span = _outline_span(footprints, on, n_parcels_span)
 
     # A parcel spine's own true id (parcel_id) lives on the index during this
     # step under a renamed, working index name (e.g. 'spine_id') --

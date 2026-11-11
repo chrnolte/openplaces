@@ -490,6 +490,35 @@ pipeline:
   # registry's mean would state a year none was built in. The counts
   # take the name of the entity they are written on, as the footprint
   # spine renames them.
+  #
+  # An outline cut at its lots (plans/buildings-from-parcel-pieces.md)
+  # folds its pieces back here (maintainer, 2026-11-10):
+  # - n_parcels_per_building sums. Each lot the outline overlaps is
+  #   linked to exactly one of its pieces, so the sum is the outline's
+  #   count; one building per outline sums to its own value. The
+  #   registry's `first` would become `agree`, and pieces of one lot
+  #   each agree on 1. Measured 2026-11-10 on US-NC-NHA: the sum is one
+  #   below the uncut outline's count on 239 of 2,273 cut outlines,
+  #   where a piece lies mostly on its own lot and the overlay's chain
+  #   snap drops a common lot's sliver from that piece's count.
+  # - parcel_id and parcel_id_local are the dominant piece's lot, the
+  #   one the uncut outline was linked to, not every piece's lot
+  #   joined. order_by puts that piece first: the dominant piece is
+  #   the outline less every other piece, so it is the largest, and an
+  #   area tie goes to the lower parcel id, as the cut orders lots
+  #   (parcel_pieces.candidate_pairs). The link table's row order is
+  #   not fixed by anything. Every lot is listed in parcel_id_all,
+  #   which collect_link_ids below rebuilds.
+  # - parcel_id_local_all merges the pieces' lists, a piece without
+  #   one contributing its parcel_id_local, so a cut outline lists
+  #   the assessor's number of every lot its pieces stand on, as the
+  #   uncut outline did (maintainer, 2026-11-11). The registry's rule
+  #   would be `distinct`, which joins whole lists and leaves a piece
+  #   on one lot out.
+  # An envelope crossing a unit line was cut at the line before this
+  # into one outline per unit (sharing envelope_id), and its pieces
+  # here are cut from that outline alone: each building belongs to one
+  # outline, so no piece's lots are summed into two outlines.
   - step: aggregate_from_entities
     recipe_id: US_building-openplaces-2026
     key: null
@@ -509,12 +538,28 @@ pipeline:
       - zcta5_id
     aggregations:
       year_built: min
+      n_parcels_per_building: sum
+      parcel_id: first
+      parcel_id_local: first
+      parcel_id_local_all: union
+    order_by:
+      area_m2: descending
+      parcel_id: ascending
     rename:
       n_parcels_per_building: n_parcels_per_footprint
       n_buildings_per_parcel: n_footprints_per_parcel
       n_permits_per_building: n_permits_per_footprint
       n_permits_per_building_address: n_permits_per_footprint_address
     count_as: n_buildings_per_footprint
+
+  # Every lot the outline overlaps, dominant first, from the outline's
+  # own overlay (the footprint geospine's link sidecar). The fold above
+  # cannot give it for a cut outline: each piece lists only its own
+  # lots, and a piece on one lot lists none. On an uncut outline this
+  # is the list its building carried, read from the same overlay rows.
+  - step: collect_link_ids
+    entity_type: parcel
+    column: parcel_id_all
 
   # The same format steps the building curate ends with: a joined class
   # (" | ") or a reduced count needs its dtype again.

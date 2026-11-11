@@ -163,7 +163,8 @@ def detect_shared_land_groups(
     pair_counts = (
         touching.groupby([unit_col, land_col]).size().rename('_n').reset_index()
     )
-    pair_counts = pair_counts.sort_values('_n', ascending=False)
+    # Stable over groupby's sorted keys: a tie goes to the lower id.
+    pair_counts = pair_counts.sort_values('_n', ascending=False, kind='stable')
     assigned = pair_counts.drop_duplicates(subset=[unit_col], keep='first')
 
     group_sizes = assigned.groupby(land_col).size()

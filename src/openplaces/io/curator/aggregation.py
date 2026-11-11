@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
@@ -189,6 +190,54 @@ AGREE = 'agree'
 DISTINCT = 'distinct'
 DISTINCT_SEPARATOR = ' | '
 
+#: Reduction for an `_all` list (`parcel_id_local_all`): every member
+#: of the group's lists, once each, in the `_all` format (see
+#: `_union_lists`).
+UNION = 'union'
+#: The separator the harmonize overlay joins an `_all` list with
+#: (`attributes._shared._join_distinct`).
+UNION_SEPARATOR = ' + '
+
+
+def _union_lists(values: pd.DataFrame, group_key, column: str) -> pd.Series:
+    """Per group, the members of *column*'s lists, merged into one list.
+
+    An `_all` column is missing where its list would only repeat the
+    base column (`parcel_id_local_all` beside `parcel_id_local`), so a
+    row missing the list contributes its base value. Members keep the
+    order of first appearance, the rows' order deciding; a group whose
+    merged list has one member is left missing, as the overlay leaves
+    it. A building cut into pieces at its lots needs this: each piece
+    lists only its own lots, and `distinct` would join whole lists,
+    repeating a lot two pieces share.
+    """
+    lists = values[column]
+    base = column.removesuffix('_all')
+    if base != column and base in values.columns:
+        lists = lists.where(lists.notna(), values[base])
+    # Positional throughout: rows placed through a link table can share
+    # an index label.
+    stated = lists.notna().to_numpy()
+    frame = pd.DataFrame(
+        {
+            'key': pd.Series(group_key).to_numpy()[stated],
+            'm': lists.to_numpy()[stated].astype(str),
+        }
+    )
+    frame['m'] = frame['m'].str.split(UNION_SEPARATOR, regex=False)
+    frame = frame.explode('m')
+    frame['m'] = frame['m'].str.strip()
+    frame = frame[frame['m'].ne('') & frame['m'].notna()]
+    frame = frame.drop_duplicates(['key', 'm'])
+    counts = frame.groupby('key', sort=False)['m'].size()
+    several = counts[counts > 1].index
+    joined = (
+        frame[frame['key'].isin(several)]
+        .groupby('key', sort=False)['m']
+        .agg(UNION_SEPARATOR.join)
+    )
+    return joined.reindex(counts.index)
+
 
 def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
     """Reduce *values* per group, one function per column.
@@ -207,8 +256,10 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
     'Single-Family' and 'Multi-Family' reads 'Single-Family |
     Multi-Family', which says what stands there, where `agree` would
     leave it missing.
+
+    `union` merges `_all` lists member by member (`_union_lists`).
     """
-    special = (AGREE, DISTINCT)
+    special = (AGREE, DISTINCT, UNION)
     plain = {c: f for c, f in functions.items() if f not in special}
     grouped = values[list(functions)].groupby(group_key)
     if plain:
@@ -220,7 +271,11 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
         reduced = pd.DataFrame(index=grouped.size().index)
     for column in functions:
         by_group = values[column].groupby(group_key)
-        if functions[column] == AGREE:
+        if functions[column] == UNION:
+            reduced[column] = _union_lists(values, group_key, column).reindex(
+                reduced.index
+            )
+        elif functions[column] == AGREE:
             reduced[column] = by_group.first().where(by_group.nunique() == 1)
         elif functions[column] == DISTINCT:
             single = by_group.first().where(by_group.nunique() == 1)
@@ -262,6 +317,59 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
     return tokens.groupby(keys).agg(union)
 
 
+#: Working column carrying each reference row's place in *order_by*.
+ROW_ORDER_COLUMN = '__row_order'
+
+_DIRECTIONS = {'ascending': True, 'descending': False}
+
+
+def _order_columns(order_by, available, recipe_id, admin_id) -> dict:
+    """*order_by* as {column: ascending (bool)}, for the columns described.
+
+    Raises ValueError for a direction other than `ascending` or
+    `descending`, so a misspelled one cannot silently sort the wrong way.
+    """
+    order = {}
+    for column, direction in (order_by or {}).items():
+        if direction not in _DIRECTIONS:
+            raise ValueError(
+                f'aggregate_from_entities: order_by {column!r} is ascending or '
+                f'descending; got {direction!r}.'
+            )
+        if column not in available:
+            warnings.warn(
+                f'aggregate_from_entities: order_by column {column!r} is not in '
+                f'{recipe_id} for {admin_id}; ordering without it.',
+                stacklevel=3,
+            )
+            continue
+        order[column] = _DIRECTIONS[direction]
+    return order
+
+
+def _row_ranks(reference: pd.DataFrame, order: dict) -> np.ndarray:
+    """Each reference row's position once sorted by *order* (0 first).
+
+    Ties keep the reference's order (a stable sort), and a missing value
+    sorts last whatever the direction. A non-numeric column is compared
+    as text, so ids of mixed types still sort.
+    """
+    frame = pd.DataFrame(
+        {
+            column: reference[column].to_numpy()
+            if pd.api.types.is_numeric_dtype(reference[column])
+            else reference[column].astype('string').to_numpy()
+            for column in order
+        }
+    )
+    positions = frame.sort_values(
+        list(order), ascending=list(order.values()), kind='stable', na_position='last'
+    ).index.to_numpy()
+    ranks = np.empty(len(frame), dtype=np.int64)
+    ranks[positions] = np.arange(len(frame))
+    return ranks
+
+
 @_register('aggregate_from_entities', phase='gather')
 def aggregate_from_entities(
     state: CurateState,
@@ -278,6 +386,7 @@ def aggregate_from_entities(
     count_as: str | None = None,
     rename: dict | None = None,
     keep: list[str] | None = None,
+    order_by: dict | None = None,
 ) -> CurateState:
     """Reduce a reference entity's rows onto the curated rows they belong to.
 
@@ -387,7 +496,9 @@ def aggregate_from_entities(
         With `columns: all`, per-column overrides of the rule
         (`{year_built: min}`: an outline's buildings date from the
         earliest of them, where the registry's mean would state a year
-        none was built in). Default None.
+        none was built in). Besides a pandas reduction it takes
+        `agree`, `distinct` and `union`; `union` merges an `_all` list
+        (`parcel_id_local_all`) member by member. Default None.
     count_as : str, optional
         Also write the number of reference rows each curated row takes
         (`n_buildings_per_footprint`), 0 where it takes none. Default
@@ -402,6 +513,18 @@ def aggregate_from_entities(
         outline's own centroid, area, geographic ids and geometry
         provenance describe the outline, not its buildings. Default
         None.
+    order_by : dict, optional
+        Reference columns to order each group's rows by before the
+        reduction, each `ascending` or `descending`, the first column
+        deciding and the next breaking its ties (`{area_m2: descending,
+        parcel_id: ascending}`). Without it the rows come in the link
+        table's or the reference's order, which nothing fixes, so
+        `first` names an arbitrary row; with it `first` names the row
+        that leads (an outline cut at its lots takes the lot of its
+        largest piece, the dominant one), and `distinct` lists values in
+        that order. A row missing an ordering value comes last. A column
+        the reference does not describe is left out with a warning.
+        Default None.
     """
     curated = state.curated
     all_columns = columns == 'all'
@@ -494,6 +617,7 @@ def aggregate_from_entities(
         if where_column not in available:
             # No row can match a column the unit's reference lacks.
             return state
+    order = _order_columns(order_by, available, recipe_id, state.admin_id)
     reference = get_entities(
         recipe_id,
         state.admin_id,
@@ -505,6 +629,7 @@ def aggregate_from_entities(
                     *sidecars.values(),
                     *([row_source] if row_source else []),
                     *([where_column] if where_column else []),
+                    *order,
                 ]
             )
         ),
@@ -580,6 +705,10 @@ def aggregate_from_entities(
         if column in functions:
             numeric[sidecar] = reference[sidecar]
     values = pd.DataFrame(numeric)
+    if order:
+        # Each row's place in the requested order travels with it
+        # through the link, which rearranges the rows.
+        values[ROW_ORDER_COLUMN] = _row_ranks(reference, order)
     linked = _rows_by_link(state, recipe_id, reference, values, functions)
     if linked is not None:
         values, group_key, keys = linked
@@ -592,6 +721,10 @@ def aggregate_from_entities(
         return state
     else:
         group_key, keys = reference[reference_key], curated[key]
+    if order:
+        sorted_rows = np.argsort(values[ROW_ORDER_COLUMN].to_numpy(), kind='stable')
+        values = values.iloc[sorted_rows].drop(columns=ROW_ORDER_COLUMN)
+        group_key = group_key.iloc[sorted_rows]
     reduced = _reduce(values, group_key, functions)
     written = []
     recover = set(recover or ())

@@ -15,6 +15,7 @@ from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
 )
+from openplaces.io.harmonizer.dominant_parcel import rank_overlaps, tie_breakers
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 
@@ -167,7 +168,17 @@ def _apportioned_sources(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[list(sides.values())]
     )
-    ranked = pairs.sort_values('area_intersection_m2', ascending=False)
+    # Ranked as apportion_reference_values ranks them, so the token
+    # names the reference whose value the entity took.
+    tie_value, tie_area = tie_breakers(
+        ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+    )
+    ranked = rank_overlaps(
+        pairs,
+        spine_id_col=spine_id_col,
+        improvement_value=tie_value,
+        ref_area=tie_area,
+    )
     dominant = ranked.drop_duplicates(spine_id_col).set_index(spine_id_col)['parcel_id']
 
     out = {}
@@ -994,6 +1005,12 @@ def apportion_curated_values(
                 ignore_index=True,
             )
 
+    # The curated parcel's improvement value and area break a tie
+    # between equal overlaps (dominant_parcel), whether or not this
+    # step apportions them.
+    tie_value, tie_area = tie_breakers(
+        ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+    )
     result = apportion_reference_values(
         pairs,
         ref_values,
@@ -1013,6 +1030,8 @@ def apportion_curated_values(
             if floor_weight
             else None
         ),
+        tie_improvement_value=tie_value,
+        tie_ref_area=tie_area,
     )
 
     from openplaces.io.curator.provenance import record_sources
@@ -1135,7 +1154,11 @@ def collect_link_ids(
     if not include_below_threshold and 'link' in links.columns:
         links = links[links['link'].notna()]
     if 'area_intersection_m2' in links.columns:
-        links = links.sort_values('area_intersection_m2', ascending=False)
+        # This step reads no reference values, so a tie on overlap is
+        # listed by id (dominant_parcel without its value and area
+        # keys): stable across runs, though in a tie the first id need
+        # not be the entity's own parcel_id.
+        links = rank_overlaps(links, spine_id_col=id_col, ref_id_col=ref_key)
 
     collected = links.groupby(id_col)[ref_key].agg(
         lambda s: '|'.join(s.dropna().astype(str).unique())

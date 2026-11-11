@@ -96,7 +96,7 @@ def _attribute_point_reference(
                     structure_value_col
                 ]
                 .sum()
-                .sort_values(ascending=False)
+                .sort_values(ascending=False, kind='stable')
                 .reset_index()
             )
         else:
@@ -121,7 +121,7 @@ def _attribute_point_reference(
         footprint_group_areas = (
             crosswalk.groupby([spine_id_col, group_col])[structure_value_col]
             .sum()
-            .sort_values(ascending=False)
+            .sort_values(ascending=False, kind='stable')
             .reset_index()
         )
         spine[group_out] = footprint_group_areas.drop_duplicates(
