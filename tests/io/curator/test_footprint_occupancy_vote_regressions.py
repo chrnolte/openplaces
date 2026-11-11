@@ -79,6 +79,8 @@ DEFAULTS = {
     # no parcel covers sets it to None.
     'parcel_id': 'p1',
     'n_stories': None,
+    # Parcels under the footprint: missing unless a case sets it.
+    'n_parcels_per_building': None,
     # Dwelling kinds the parcel's roll lists: missing (no roll with
     # unit types) unless a case sets them.
     'n_manufactured_home_units_parcel': None,
@@ -274,6 +276,52 @@ def test_two_dwellings_resolve_to_multi_then_multi_family(recipe):
     out = _run(recipe, [{'n_dwellings_overture': 2}])
     assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
     assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+
+
+_TWO_STORY_HOUSE_TWO_ADDRESSES = {
+    'n_dwellings_overture': 2,
+    'n_stories': 2,
+    'occupancy_type_parcel': 'Single-Family',
+    'land_use_class_parcel': 'Single-Family',
+    'n_parcels_per_building': 1,
+}
+
+
+def test_two_addresses_on_a_roll_single_family_house_do_not_prove_multi(recipe):
+    # plans/overture-count-multi-family-over-call.md: a corner house
+    # addressed on both streets, which the stories lane of the guard
+    # used to let through. The count no longer votes multi; the
+    # single decision still needs its own evidence, here NSI's.
+    out = _run(recipe, [_TWO_STORY_HOUSE_TWO_ADDRESSES])
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] != 'multi'
+    nsi = {'occupancy_type_building_nsi': 'Single Family, 2 story, with basement'}
+    out = _run(recipe, [{**_TWO_STORY_HOUSE_TWO_ADDRESSES, **nsi}])
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'single'
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
+@pytest.mark.parametrize(
+    'context',
+    [
+        # A townhome row spans several parcels: CHEER's Multi-Family.
+        {'n_parcels_per_building': 3},
+        {'land_use_class_parcel': 'Townhome'},
+        {'occupancy_type_parcel': None},
+    ],
+    ids=['several-parcels', 'townhome-land-use', 'roll-silent'],
+)
+def test_two_addresses_still_prove_multi_outside_a_one_parcel_house(recipe, context):
+    out = _run(recipe, [{**_TWO_STORY_HOUSE_TWO_ADDRESSES, **context}])
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
+
+
+def test_halifax_roll_is_no_house_statement_for_the_overture_guard(recipe):
+    # The Halifax patch withdraws the roll's statement on "Residential"
+    # parcels, so the count decides there as it did before.
+    patched, _ = apply_recipe_patches(recipe, 'US-NC-HAL')
+    row = {**_TWO_STORY_HOUSE_TWO_ADDRESSES, 'use_group_combined_parcel': 'Residential'}
+    out = _run(patched, [row])
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
 
 
 def test_one_dwelling_alone_resolves_to_single_family(recipe):

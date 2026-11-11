@@ -10,8 +10,9 @@
 # that code (impute_from_group_statistic), which is Single Family, so
 # occupancy_type_parcel there is NSI restated, and the guard would
 # read NSI agreeing with itself. Here the roll's statement is
-# withdrawn on "Residential" parcels for that guard only; every other
-# reading of occupancy_type_parcel in the vote is unchanged.
+# withdrawn on "Residential" parcels for that guard and for the
+# overture_count house guard, which reads the same column; every
+# other reading of occupancy_type_parcel in the vote is unchanged.
 #
 # Measured 2026-10-31 on US-NC-HAL: without this patch the shape guard with no_improvement_value takes the class from 25 surveyed manufactured homes (survey Manufactured Home F1 -0.042); with it, no surveyed building changes class.
 #
