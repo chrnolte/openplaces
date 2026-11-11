@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from openplaces.io.harmonizer import (
@@ -72,6 +73,11 @@ _CARRY = (
 # Carolina county layers store last_sale_date as floats like
 # 1345161600000.0 (measured 2026-09-20).
 _EPOCH_MS_MIN = 1e11
+
+# The roll year of a multi-year roll's row (Florida's DOR roll is 24
+# yearly rolls kept as one panel), read to tell a restated last sale
+# from two sales and never written to a transaction row.
+_ROLL_YEAR = 'tax_year'
 
 # Dated rows a table needs before "every date is the first of a month"
 # is read as month-only precision (see last_sales_to_transactions).
@@ -148,6 +154,105 @@ def _split_book_page(values: pd.Series) -> tuple[pd.Series, pd.Series]:
     book = parts.where(two).map(lambda p: p[0], na_action='ignore')
     page = parts.where(two).map(lambda p: p[1], na_action='ignore')
     return book.astype('string'), page.astype('string')
+
+
+def restated_last_sales(
+    rows: pd.DataFrame,
+    roll_year: pd.Series,
+    id_columns: list[str],
+    document_columns: tuple[str, ...] = ('sale_book', 'sale_page'),
+) -> pd.Series:
+    """True on a last-sale row the roll restated under a later spelling.
+
+    A multi-year roll can state one last sale of one account with one
+    document reference in its earlier roll years and another in its
+    later ones: Orange County FL's DOR roll states 260,256 of its
+    1,335,133 account last sales (statewide parcel id, year, month,
+    price) under two book and page references, each holding its own
+    range of roll years, and 258,467 of them switch in roll year 2003
+    (plans/transaction-sale-deduplication.md, 3.3). Kept by the
+    identity below, each spelling became a sale of its own, and the two
+    read as a double closing.
+
+    The rule reads only what the roll states. Rows of one account
+    (*id_columns*) with one sale year, month and price, stated with
+    different *document_columns*, are one sale when each stated
+    reference holds a range of roll years disjoint from every other's:
+    a roll year states one last sale per account, so a reference the
+    roll stopped stating was replaced, not joined, by the next. The
+    latest reference is kept (decision D7). Where the ranges overlap,
+    the roll stated two references in one year and nothing here
+    decides between them; both rows stay. A row stating no reference,
+    no roll year or no identifier takes no part.
+
+    Parameters
+    ----------
+    rows : pandas.DataFrame
+        Last-sale rows (`last_sales_to_transactions`, before its
+        identity drop).
+    roll_year : pandas.Series
+        Each row's roll year, aligned with *rows*.
+    id_columns : list of str
+        The account's identifiers.
+    document_columns : tuple of str, optional
+        The parts of the stated document reference.
+
+    Returns
+    -------
+    pandas.Series
+        Boolean, aligned with *rows*.
+    """
+    restated = pd.Series(False, index=rows.index)
+    parts = [c for c in document_columns if c in rows.columns]
+    present_ids = [c for c in id_columns if c in rows.columns]
+    if not parts or not present_ids:
+        return restated
+    year = pd.to_numeric(roll_year, errors='coerce')
+    reference = rows[parts].astype('string')
+    eligible = (
+        year.notna()
+        & reference.notna().all(axis=1)
+        & rows[present_ids].notna().any(axis=1)
+        & rows[['sale_year', 'price']].notna().all(axis=1)
+    )
+    if not eligible.any():
+        return restated
+    eligible = eligible.to_numpy()
+    sub = rows.loc[eligible, [*present_ids, 'sale_year', 'sale_month', 'price']]
+    keys = sub.astype('string').fillna('<NA>')
+    sale = keys.groupby(list(keys.columns), sort=False).ngroup()
+    spelling = reference[parts[0]].loc[eligible]
+    for part in parts[1:]:
+        spelling = spelling + '/' + reference[part].loc[eligible]
+    # Positional, since a roll's index need not be unique.
+    frame = pd.DataFrame(
+        {
+            'position': np.flatnonzero(eligible),
+            'sale': sale.to_numpy(),
+            'spelling': spelling.to_numpy(),
+            'year': year.to_numpy()[eligible],
+        }
+    )
+    spans = frame.groupby(['sale', 'spelling'])['year'].agg(['min', 'max'])
+    spans = spans.reset_index()
+    n_spellings = spans.groupby('sale')['spelling'].transform('size')
+    spans = spans[n_spellings > 1].sort_values(['sale', 'min', 'max'])
+    if spans.empty:
+        return restated
+    # Sorted by first year: disjoint when each range starts after every
+    # earlier one ended.
+    running_end = spans.groupby('sale')['max'].cummax()
+    earlier_end = running_end.groupby(spans['sale']).shift(1)
+    starts_after = earlier_end.isna() | (spans['min'] > earlier_end)
+    disjoint = starts_after.groupby(spans['sale']).transform('all')
+    latest = spans.groupby('sale')['max'].transform('max') == spans['max']
+    dropped = spans[disjoint & ~latest][['sale', 'spelling']]
+    if dropped.empty:
+        return restated
+    marked = frame.merge(dropped, on=['sale', 'spelling'])['position'].to_numpy()
+    values = restated.to_numpy().copy()
+    values[marked] = True
+    return pd.Series(values, index=rows.index)
 
 
 def last_sales_to_transactions(
@@ -236,6 +341,24 @@ def last_sales_to_transactions(
 
     keep = out['price'].notna() & out['sale_year'].notna()
     out = out.loc[keep]
+    id_columns = [
+        c
+        for c in (
+            'parcel_id_local',
+            'parcel_id_assessor',
+            'property_id_local',
+            'property_id_assessor',
+            'parcel_id_admin2',
+        )
+        if c in out.columns
+    ]
+    if _ROLL_YEAR in table.columns:
+        # One last sale restated under a later document reference
+        # (decision D2 of plans/transaction-sale-deduplication.md): a
+        # known systematic issue of a multi-year roll, dropped like the
+        # plain repeats below. The roll year itself is not carried.
+        restated = restated_last_sales(out, table.loc[keep, _ROLL_YEAR], id_columns)
+        out = out.loc[~restated.to_numpy()]
     # A roll ingested for several years states a property's last sale
     # once per roll year until the property sells again: Osceola County
     # FL's multi-year DOR roll produced 1,290,606 last-sale rows beside
@@ -261,7 +384,6 @@ def last_sales_to_transactions(
         )
         if c in out.columns
     ]
-    id_columns = [c for c in identity if c.endswith(('_local', '_assessor', 'admin2'))]
     if id_columns:
         # A row carrying no identifier at all is never merged: two
         # unnamed sales in one month at one price are still two sales.

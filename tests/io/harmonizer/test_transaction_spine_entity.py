@@ -172,9 +172,13 @@ def test_the_recipes_divide_the_steps_between_spine_and_curate():
         'assign_transaction_ids',
         'link_transactions',
     ]
-    # The address-points check labels the link table the last step
-    # wrote; it moved nothing from curate.
-    assert spine_steps_listed[-8:] == [*moved, 'check_parcel_links_by_address_points']
+    # The duplicate-sale pairs read the link tables; the address-points
+    # check labels the parcel table. Neither moved from curate.
+    assert spine_steps_listed[-9:] == [
+        *moved,
+        'link_duplicate_sales',
+        'check_parcel_links_by_address_points',
+    ]
     for step in moved:
         assert step not in curate_steps_listed
     # The fold precedes the ids, so a deed's id carries no suffix; the
@@ -208,8 +212,9 @@ def test_massachusetts_names_its_documents_by_book_and_page():
         step = next(s for s in patched['pipeline'] if s['step'] == 'derive_document_id')
         return step['candidates'], applied
 
+    # Wisconsin's patch sets only the duplicate-sale step's columns.
     national, applied = _candidates('US-WI-VI')
-    assert applied == []
+    assert applied == ['US-WI_transaction-spine-2026']
     assert national[0] != ['book', 'page']
     massachusetts, applied = _candidates('US-MA-SOM')
     assert applied == ['US-MA_transaction-spine-2026']

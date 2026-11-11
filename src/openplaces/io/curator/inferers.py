@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
+from openplaces.io.sale_records import nominal_price_floor
 
 
 @_register('derive_metrics', phase='infer')
@@ -506,20 +507,10 @@ def _derive_nominal_floor(state: CurateState, spec: dict) -> pd.Series | None:
     min_share = float(spec.get('min_share', 0.05))
     isolation = float(spec.get('isolation', 20))
 
+    # One definition, shared with the transaction spine's duplicate
+    # pairs, so a pair is judged by the floor this column publishes.
     def floor_of(group_values: pd.Series) -> float:
-        low = group_values[(group_values >= 0) & (group_values <= cap)]
-        if low.empty:
-            return 0.0
-        counts = low.value_counts()
-        floor = 0.0
-        for value, count in counts.items():
-            if count < min_share * len(group_values):
-                break  # value_counts is sorted descending
-            near = low[(low > value * 0.9 - 1) & (low < value * 1.1 + 1)]
-            neighbors = len(near) - count
-            if neighbors * isolation <= count:
-                floor = max(floor, float(value))
-        return floor
+        return nominal_price_floor(group_values, cap, min_share, isolation)
 
     floors = values.groupby(groups).apply(floor_of)
     return groups.map(floors).astype(float)

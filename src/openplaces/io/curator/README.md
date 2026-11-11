@@ -204,7 +204,15 @@ Steps are organized by the nature of the transformation:
   What runs here: `collapse_double_closings` (compared within
   one record kind) and `flag_sales_matching_other_kind`
   (`sale_matches_deed`: exact equality of parcel, year, month and price, no
-  tolerance and no score). `sale_arms_length_confidence` and
+  tolerance and no score), and `derive_duplicate_columns`, which
+  summarizes the spine's duplicate-sale pair table per row
+  (`sale_duplicate_of`, the kept partner; `sale_duplicate_reason`, the
+  label by a fixed precedence; `sale_resale_within_window`, a second
+  market sale within a month, kept apart so dropping duplicates never
+  drops a resale). It reads the pair table and the index only, never a
+  gathered value. The two older flags stay unchanged until
+  `openplaces-valuation` reads the new columns, then are re-derived from
+  the pair table (plans/transaction-sale-deduplication.md, phase 2). `sale_arms_length_confidence` and
   `sale_qualification_group` are graded per state, each in a patch recipe at
   the state's scope inserted right after the national recipe's first
   `derive_indicators` step: Florida from the state's qualification codes

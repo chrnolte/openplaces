@@ -716,6 +716,26 @@ The step sub-modules:
   `no_sale_address`), from the first listed dwelling recipe with points
   for the unit. A fact on the pair, never a score; it adds and removes no
   link, and a step that rewrites the table after it drops the column.
+  Between the two, **`link_duplicate_sales`** writes the one
+  transaction-to-transaction table
+  (`<unit>_transaction-spine-2026_US_transaction-spine-2026.parquet`,
+  columns `transaction_id`, `other_transaction_id`, `link_method`,
+  `link_source` and nothing else): pairs of rows describing one sale,
+  each with the fixed label of the exact rule that found it
+  (`io/sale_records.duplicate_sale_pairs`: `deed_echo_document`,
+  `deed_echo_period_price`, `roll_restated`, `double_closing`,
+  `restates_document`, and `resale_within_window`, which is two sales,
+  not a duplicate). `transaction_id` is the row in question,
+  `other_transaction_id` the one a consumer keeps. "The same thing
+  sold" is a shared linked property, else a shared parcel, never a lot
+  reached through `stacked_units`, so two units of one lot are never
+  paired. A price enters only by equality between two rows or against
+  the unit's one nominal floor (`sale_records.nominal_price_floor`, the
+  same the curate publishes): no index, ratio or assessed value
+  (plans/design-limits L7, L29), and no name. It drops no row. The
+  Wisconsin patch reads the RETR's `Previous Document Number` on
+  "correct prior" returns only; the land-contract and transfer-on-death
+  exemptions state it too, for an earlier, different transfer.
   Until 2026-10-01 five `link_by_id` passes stamped use
   group, values and area onto every sale row and the fold took them from
   the largest parcel; the curate's `aggregate_from_entities` gathers them
@@ -738,7 +758,15 @@ The step sub-modules:
   years repeats each last sale once per year** (Florida's DOR roll holds 24);
   the same ids, date and price are one row, while different last sales of
   one property across years are kept, which is history a single roll year
-  lacks. Property tables are read before parcel tables, and a later source
+  lacks. **A sale the roll restated under a later book and page is one
+  sale too** (`restated_last_sales`): rows of one account, sale year,
+  month and price whose stated references each hold a range of roll
+  years (`tax_year`) disjoint from the others' keep the latest
+  reference only; overlapping ranges keep both. Orange County FL's DOR
+  roll re-spelled about 260,000 last sales this way, mostly in roll
+  year 2003, and each spelling became a sale that also read as a double
+  closing. It changes the fingerprinted ids of the county's unnamed
+  sales, since fingerprint tiers widen over the whole unit. Property tables are read before parcel tables, and a later source
   adds a sale only for a `parcel_id_local` no earlier one supplied. Only an
   allow-list of columns is read, so owner fields cannot enter. A last-sale
   field is the most recent sale only: these rows support cross-sectional

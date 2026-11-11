@@ -1303,6 +1303,14 @@ class RecipeDAG:
                             )
                         )
                 continue
+            if step.get('step') == 'link_duplicate_sales':
+                # The transaction spine's pairs of its own rows, beside
+                # its output; always written, empty where none pair.
+                from openplaces.geo.link import get_link_owner_recipe_id
+
+                owner = get_link_owner_recipe_id(recipe)
+                paths.append(get_entity_link_path(owner, owner, node_admin))
+                continue
             if step.get('step') == 'link_to_reference':
                 if step.get('save_link') is False:
                     continue

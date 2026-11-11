@@ -842,6 +842,110 @@ def link_transactions_by_overlap(
     return state
 
 
+def duplicate_sale_pair_path(recipe, admin_id):
+    """Where the transaction-to-transaction pair table of a spine lives.
+
+    Beside the spine's output, named as any link table: the spine paired
+    with itself (`geo.link.get_entity_link_path` orders a same-type pair
+    by recipe id, which is the one id here).
+    """
+    owner_id = get_link_owner_recipe_id(recipe)
+    return get_entity_link_path(owner_id, owner_id, admin_id)
+
+
+@_register('link_duplicate_sales')
+def link_duplicate_sales(
+    state: HarmonizeState,
+    parcel_recipe_id: str = 'US_parcel-spine-2026',
+    property_recipe_id: str | None = 'US_property-spine-2026',
+    previous_document_column: str | None = None,
+    correction_column: str | None = None,
+    correction_values: list | None = None,
+) -> HarmonizeState:
+    """Write the pairs of sales that describe one sale, as a link table.
+
+    That two records describe one sale is a relation between two rows of
+    one entity, and relations are link tables, written where the entity
+    is built (the parcel-to-parcel plat link is the precedent). Each
+    pair carries the fixed label of the exact rule that found it
+    (`io.sale_records.duplicate_sale_pairs`), never a confidence (L17):
+    a consumer chooses which labels to drop, and the curate stage
+    summarizes them per row (`derive_duplicate_columns`). No row is
+    dropped and no id minted here.
+
+    Reads the spine and the two link tables `link_transactions` just
+    wrote, so it runs after that step and before any step that rewrites
+    them. The nominal floor is the unit's one mass point
+    (`io.sale_records.nominal_price_floor`, the same the curate stage
+    publishes), never a level per period, which would drift toward the
+    price index L7 keeps out of this decision.
+
+    Parameters
+    ----------
+    parcel_recipe_id, property_recipe_id : str
+        The spines `link_transactions` linked to; their link tables
+        name what each sale conveyed.
+    previous_document_column, correction_column : str, optional
+        A source's stated previous document, and the column whose
+        *correction_values* mark a return as correcting it. Set by a
+        state's patch (Wisconsin's RETR); without them no
+        `restates_document` pair is written.
+    correction_values : list of str, optional
+        Values of *correction_column* that mean "corrects the previous
+        document".
+    """
+    spine = state.spine
+    if spine is None or spine.empty:
+        return state
+    own_id = get_recipe_id(state.recipe)
+    owner_id = get_link_owner_recipe_id(state.recipe)
+    admin_id = state.admin_id
+
+    def _read(other_id):
+        if not other_id:
+            return None
+        path = get_entity_link_path(owner_id, other_id, admin_id)
+        return pd.read_parquet(path) if path.exists() else None
+
+    things = sale_records.sale_things(
+        _read(parcel_recipe_id), _read(property_recipe_id)
+    )
+    floor = sale_records.nominal_price_floor(
+        spine['price'] if 'price' in spine.columns else pd.Series(dtype='float64')
+    )
+    pairs = sale_records.duplicate_sale_pairs(
+        spine,
+        things,
+        floor,
+        previous_document_column=previous_document_column,
+        correction_column=correction_column,
+        correction_values=tuple(correction_values or ()),
+    )
+    write_entity_link(
+        duplicate_sale_pair_path(state.recipe, admin_id),
+        pairs,
+        writer_recipe_id=own_id,
+        finer_recipe_id=owner_id,
+        coarser_recipe_id=owner_id,
+        admin_id=admin_id,
+        step_config={
+            'nominal_floor': floor,
+            'previous_document_column': previous_document_column,
+            'correction_column': correction_column,
+            'correction_values': list(correction_values or ()),
+        },
+        # Both sides are this spine, saved after the step: a stamp of
+        # it would describe the previous build (see write_entity_link).
+        stamped_recipe_ids=(),
+    )
+    if state.verbose:
+        print(
+            f'  link_duplicate_sales: {len(pairs):,d} pairs '
+            f'({pairs["link_method"].value_counts().to_dict()}), floor {floor:g}'
+        )
+    return state
+
+
 #: Column `check_parcel_links_by_address_points` writes on each
 #: transaction-to-parcel link row, and its fixed values.
 ADDRESS_POINTS_CHECK = 'address_points_check'
