@@ -770,7 +770,8 @@ pipeline:
     ruleset: parcel-occupancy-keywords.csv
 
   # The roll's site-built statement, as the Manufactured Home vote's
-  # shape guard reads it (occupancy block, shape_insufficient_alone):
+  # shape guard reads it (occupancy block, shape_insufficient_alone),
+  # and the overture_count indicator's house guard:
   # occupancy_type_parcel where it names Single-Family or
   # Multi-Family, else missing. A column of its own so that a county
   # patch can withdraw it where the roll states no building type
@@ -955,6 +956,32 @@ pipeline:
                   - {type: is_null, column: occupancy_keyword_class}
                   - {type: numeric_at_least, column: n_stories, min: 2}
                   - {type: is_null, column: n_stories}
+              # A house the roll calls Single-Family, on land the roll
+              # calls Single-Family, alone on its parcel: here two
+              # Overture points are a corner lot addressed on both
+              # streets or a second house number, not a second
+              # dwelling. The guard above lets them through on any
+              # house of two stories. Both roll columns and the one
+              # parcel are required so that a townhome row (CHEER's
+              # Multi-Family) keeps its count. A null parcel count is
+              # read as one parcel, as in the replay that chose this.
+              # Measured 2026-11-09 on US-NC: on 1,725 Overture-alone Multi-Family calls (permits Single-Family on 1,679), Multi-Family F1 +0.048 [0.046, 0.050] against strong-tier permits in NHA, PIT, BRU, WAK and SAM, no surveyed row moved
+              - type: none_of
+                indicators:
+                  - type: all_of
+                    indicators:
+                      - type: equals
+                        column: occupancy_statement_parcel
+                        value: Single-Family
+                      - type: equals
+                        column: land_use_class_parcel
+                        value: Single-Family
+                      - type: any_of
+                        indicators:
+                          - {type: is_null, column: n_parcels_per_building}
+                          - type: numeric_at_most
+                            column: n_parcels_per_building
+                            max: 1
           # 83.6% precise; assessor keywords naming a multi-unit building.
           # Keywords also beat both modeled sources when they disagree
           # (permits back keyword over NSI 77/23 and over FEMA 80/20;
