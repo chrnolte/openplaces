@@ -24,6 +24,15 @@ the curate stage counts parcels per document from those alone.
 
 Only an allow-list of columns is read from a roll. Owner names and mailing
 addresses, which many rolls carry, never enter a transaction row.
+
+One source per sale (maintainer's rule, 2026-11-11). A sale comes from
+the unit's deed feed or from the roll's last sales, never both: deeds
+wherever the feed covers the sale's month, last sales only for months
+outside that coverage. Coverage is what the feed states about itself,
+the span of sale months each of its partitions lists
+(:func:`deed_coverage`), not where its rows happen to be dense, so a
+roll's last sale is never chosen over a deed by comparing the two.
+`sale_record_kind` marks which source every row came from.
 """
 
 from __future__ import annotations
@@ -40,6 +49,7 @@ from openplaces.io.harmonizer import (
 )
 from openplaces.io.harmonizer.spine import _expand_auto_discover
 from openplaces.io.readers import get_entities
+from openplaces.io.sale_records import derive_sale_period
 
 ASSESSOR_LAST_SALE = 'assessor_last_sale'
 DEED = 'deed'
@@ -396,11 +406,160 @@ def last_sales_to_transactions(
     return out
 
 
+def _month_bounds(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """First and last month a row's stated sale period can mean.
+
+    Months are counted as year * 12 + month - 1. A row stating a year
+    and a month means that month; a row stating the year alone means
+    any month of it, so its bounds are January and December. A row
+    stating no year has neither bound.
+    """
+    missing = pd.Series(np.nan, index=frame.index, dtype='float64')
+    if 'sale_year' not in frame.columns:
+        return missing, missing
+    year = pd.to_numeric(frame['sale_year'], errors='coerce').astype('float64')
+    month = missing
+    if 'sale_month' in frame.columns:
+        month = pd.to_numeric(frame['sale_month'], errors='coerce')
+        month = month.astype('float64').where(month.between(1, 12))
+    first = year * 12 + (month - 1).fillna(0)
+    last = year * 12 + (month - 1).fillna(11)
+    return first, last
+
+
+def _yyyymm_to_month(value: int) -> int:
+    """Read a YYYYMM number as a month count (year * 12 + month - 1)."""
+    year, month = divmod(int(value), 100)
+    if not 1 <= month <= 12:
+        raise ValueError(f'not a YYYYMM month: {value}')
+    return year * 12 + month - 1
+
+
+def deed_coverage(
+    deeds: pd.DataFrame,
+    partition_column: str | None = None,
+    limits: list[int] | tuple[int, int] | None = None,
+) -> np.ndarray:
+    """The months a unit's deed feed covers, as sorted month counts.
+
+    Coverage is read from what the feed states about itself: each
+    partition of each feed (`source`, and *partition_column* where a
+    feed is published as several files) covers the closed span from
+    the first to the last sale month it lists, and the unit's coverage
+    is the union of those spans. A month inside a span is covered
+    however few sales the feed lists for it. The alternative, reading
+    coverage from where the deed rows are dense, would make the choice
+    of source depend on how many sales a month had, which is the data
+    deciding about itself; a span only depends on which files exist.
+
+    Partitioning is what keeps a missing file a gap. Florida's DOR
+    sales file of roll year t lists sales of t - 1 and of the first
+    nine to twelve months of t; with the roll year as *partition_column*,
+    a county absent from one year's file leaves the months that file
+    alone would have covered uncovered, while one span over the whole
+    feed would claim them.
+
+    Parameters
+    ----------
+    deeds : pandas.DataFrame
+        The unit's deed rows, with `sale_year` and `sale_month` (or a
+        `recorded_date` they are derived from).
+    partition_column : str, optional
+        Column naming the file a row came from. A feed without it is
+        one partition per `source`.
+    limits : sequence of two int, optional
+        First and last month, as YYYYMM, that a feed's own description
+        states it reports completely; coverage is clipped to them. For
+        a feed whose early or late years are documented as partial.
+
+    Returns
+    -------
+    numpy.ndarray
+        Covered months (year * 12 + month - 1), sorted and unique.
+        Empty where the unit has no dated deed.
+    """
+    if deeds is None or len(deeds) == 0:
+        return np.array([], dtype='int64')
+    columns = [
+        c
+        for c in ('sale_year', 'sale_month', 'recorded_date', 'source')
+        if c in deeds.columns
+    ]
+    frame = derive_sale_period(deeds[columns].copy())
+    first, last = _month_bounds(frame)
+    keys = []
+    for column in ('source', partition_column):
+        if column and column in deeds.columns:
+            keys.append(deeds[column].astype('string').fillna('<NA>'))
+    spans = pd.DataFrame({'first': first, 'last': last}).dropna()
+    if spans.empty:
+        return np.array([], dtype='int64')
+    if keys:
+        group = pd.concat(keys, axis=1).loc[spans.index]
+        spans = spans.groupby([group[c] for c in group.columns]).agg(
+            first=('first', 'min'), last=('last', 'max')
+        )
+    else:
+        spans = pd.DataFrame(
+            {'first': [spans['first'].min()], 'last': [spans['last'].max()]}
+        )
+    months = np.unique(
+        np.concatenate(
+            [
+                np.arange(int(a), int(b) + 1)
+                for a, b in zip(spans['first'], spans['last'], strict=True)
+            ]
+        )
+    )
+    if limits is not None:
+        low, high = (_yyyymm_to_month(v) for v in limits)
+        months = months[(months >= low) & (months <= high)]
+    return months.astype('int64')
+
+
+def within_coverage(rows: pd.DataFrame, covered: np.ndarray) -> pd.Series:
+    """True on a row whose whole stated sale period is covered.
+
+    A row stating a month is inside when that month is covered. A row
+    stating only a year is inside only when all twelve of its months
+    are: if the feed missed part of the year, the deed for that sale
+    may be missing, and the roll's row is the only record left. A row
+    stating no year is never inside.
+
+    Parameters
+    ----------
+    rows : pandas.DataFrame
+        Rows with `sale_year` and, where stated, `sale_month`.
+    covered : numpy.ndarray
+        Sorted, unique covered months (:func:`deed_coverage`).
+
+    Returns
+    -------
+    pandas.Series
+        Boolean, aligned with *rows*.
+    """
+    if len(covered) == 0 or len(rows) == 0:
+        return pd.Series(False, index=rows.index)
+    first, last = _month_bounds(rows)
+    dated = first.notna() & last.notna()
+    low = first.fillna(0).to_numpy()
+    high = last.fillna(-1).to_numpy()
+    # Covered months are unique, so the count of them inside a row's
+    # bounds equals the bounds' width exactly when every month is.
+    n_inside = np.searchsorted(covered, high, side='right') - np.searchsorted(
+        covered, low, side='left'
+    )
+    full = n_inside == (high - low + 1)
+    return pd.Series(full & dated.to_numpy(), index=rows.index)
+
+
 @_register('append_last_sales', phase='geometry')
 def append_last_sales(
     state: HarmonizeState,
     entity_types: list[str] | None = None,
     min_year: int = 1800,
+    coverage_partition_column: str | None = None,
+    coverage_limits: list[int] | None = None,
 ) -> HarmonizeState:
     """Append assessor last-sale rows to a transaction spine.
 
@@ -409,8 +568,16 @@ def append_last_sales(
     sources, and appends the rows :func:`last_sales_to_transactions`
     builds from them. Every spine row ends up with a `sale_record_kind`:
     `deed` for the rows already there, `assessor_last_sale` for these.
-    The two kinds are kept apart on purpose, including where a county
-    has both for the same sale; preferring one is a curate decision.
+
+    A sale comes from one source (maintainer's rule, 2026-11-11): a
+    last sale whose month the unit's deed feed covers
+    (:func:`deed_coverage` over the rows already on the spine) is not
+    appended, since the feed holds that month's sales; a last sale
+    outside that coverage is. A unit with no deed feed keeps every last
+    sale. The choice reads only the two periods, never whether a deed
+    for the same sale exists: a deed missing from a covered month is
+    the feed's gap, and is left visible as one rather than filled from
+    the roll.
 
     Entity types are read in the order given, sources within a type most
     specific and newest first, and a later source adds a sale only for a
@@ -418,6 +585,8 @@ def append_last_sales(
     default order a condominium unit's sale comes from its property row,
     and a parcel layer repeating the same roll (Florida's does) adds
     nothing twice. Rows without a `parcel_id_local` are always kept.
+    The coverage rule runs after that choice, so a parcel layer never
+    stands in for a property row's sale dropped as covered.
 
     Registered in the geometry phase because, like
     `union_spine_sources`, it adds spine rows.
@@ -429,6 +598,13 @@ def append_last_sales(
         `['property', 'parcel']`.
     min_year : int, optional
         Earliest year accepted as a real sale year. Default 1800.
+    coverage_partition_column : str, optional
+        Deed column naming the file of a feed published as several
+        (Florida's roll year, `tax_year`), so that a missing file is a
+        gap in coverage. Default: one span per feed.
+    coverage_limits : list of two int, optional
+        First and last month (YYYYMM) a feed is documented to report
+        completely; coverage is clipped to them. Default: no clip.
     """
     entity_types = entity_types or ['property', 'parcel']
 
@@ -474,6 +650,28 @@ def append_last_sales(
                 print(f'  Last sales from {label} ({entity_type}): {len(rows):,d} rows')
 
     spine = state.spine
+    if parts and spine is not None and len(spine):
+        deeds = spine
+        if 'sale_record_kind' in spine.columns:
+            kind = spine['sale_record_kind'].astype('string').fillna(DEED)
+            deeds = spine.loc[(kind == DEED).to_numpy()]
+        covered = deed_coverage(
+            deeds,
+            partition_column=coverage_partition_column,
+            limits=coverage_limits,
+        )
+        n_before = sum(len(p) for p in parts)
+        parts = [p.loc[~within_coverage(p, covered).to_numpy()] for p in parts]
+        parts = [p for p in parts if len(p)]
+        state.metadata['last_sales_within_deed_coverage'] = n_before - sum(
+            len(p) for p in parts
+        )
+        if state.verbose and len(covered):
+            print(
+                f'  Deed coverage: {len(covered):,d} months; '
+                f'{n_before - sum(len(p) for p in parts):,d} last sales '
+                'inside it not added'
+            )
     if spine is not None and len(spine):
         spine = spine.copy()
         if 'sale_record_kind' not in spine.columns:

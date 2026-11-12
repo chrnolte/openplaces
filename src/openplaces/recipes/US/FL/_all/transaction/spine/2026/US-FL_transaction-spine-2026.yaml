@@ -1,4 +1,5 @@
-# Patch: Florida counts a deed's parcels by the DOR's statewide parcel id.
+# Patch: Florida's deed coverage is read per SDF roll year, and a deed's
+# parcels are counted by the DOR's statewide parcel id.
 #
 # The DOR's sales file of year t and of year t+1 both list a sale of
 # late t, each under the county parcel number of its own year. Where a
@@ -26,6 +27,15 @@ entity:
 
 patches: US_transaction-spine-2026
 pipeline_patch:
+  # The DOR's sales file of roll year t (`tax_year`) lists the sales of
+  # t - 1 and of the first nine to twelve months of t, so each file is
+  # its own span of deed coverage, and a county missing from one year's
+  # file (the SDF recipe skips it) leaves a gap the roll's last sales
+  # fill. Measured 2026-11-11 on US-FL-LA: 16 files, 2010 to 2025, cover sale months 2009-01 to 2025-10 without a gap.
+  - set: append_last_sales
+    params:
+      coverage_partition_column: tax_year
+
   - set: count_parcels_per_document
     params:
       parcel_column: [parcel_id_admin2, parcel_id_local, parcel_id_assessor]

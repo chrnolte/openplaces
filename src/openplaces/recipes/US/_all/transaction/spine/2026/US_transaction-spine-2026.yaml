@@ -58,10 +58,14 @@ pipeline:
   # sale_record_kind = assessor_last_sale (deed rows read 'deed'). It
   # is what gives a state with no recorder's feed any prices at all. A
   # row needs a price and a real date or year; the key is the roll
-  # row's own parcel_id_local, so nothing is matched here. A county
-  # with both kinds keeps both; the curate stage decides between them.
-  # A last-sale field is the most recent sale only: these rows support
-  # cross-sectional work, not a repeat-sales index.
+  # row's own parcel_id_local, so nothing is matched here. A sale comes
+  # from one source (maintainer's rule, 2026-11-11): a last sale is
+  # added only for a month the unit's deed feed does not cover, coverage
+  # being the span of sale months each file of the feed lists; a unit
+  # with no deed feed keeps every last sale. sale_record_kind says which
+  # source each row came from. A last-sale field is the most recent
+  # sale only: these rows support cross-sectional work, not a
+  # repeat-sales index.
   - step: append_last_sales
     entity_types: [property, parcel]
 
@@ -215,7 +219,9 @@ pipeline:
 
   # Which sales describe one sale, as a transaction-to-transaction link
   # table beside this output: a roll's last sale echoing a deed (by its
-  # document, or by thing sold, month and price), one last sale stated
+  # document, or by thing sold, month and price; since the one-source
+  # rule only where coverage is clipped or a last sale outside coverage
+  # cites a deed's document), one last sale stated
   # twice, the two legs of a double closing, a correction naming the
   # return it corrects, and, as a fact rather than a duplicate, a resale
   # within a month. Each pair carries the fixed label of the exact rule
