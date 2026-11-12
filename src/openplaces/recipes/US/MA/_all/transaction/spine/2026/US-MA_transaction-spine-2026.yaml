@@ -35,6 +35,17 @@ entity:
 
 patches: US_transaction-spine-2026
 pipeline_patch:
+  # The LA3 is the deed feed here, and its own recipe documents which
+  # years it reports completely: 2008 to 2024 is its first complete
+  # continuous panel, while its early years and its latest fill in late
+  # (a sale is reported in fiscal year sale + 2 on most rows). So a
+  # MassGIS last sale is left out only for a month inside 2008 to 2024
+  # that a town's LA3 rows span; outside it the roll's last sale stays
+  # (one source per sale, plans/transaction-sale-deduplication.md).
+  - set: append_last_sales
+    params:
+      coverage_limits: [200801, 202412]
+
   - set: derive_document_id
     params:
       candidates:

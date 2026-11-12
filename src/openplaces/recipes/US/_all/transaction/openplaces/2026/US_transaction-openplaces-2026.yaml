@@ -140,11 +140,14 @@ pipeline:
   # above stay unchanged until openplaces-valuation reads these (D9).
   - step: derive_duplicate_columns
 
-  # A county with a recorder's table and a roll reports its latest
-  # sales twice. Both rows stay; the last-sale row that repeats a deed
-  # (same parcel, year, month and price, exactly) is flagged so that a
-  # consumer can keep the deed and drop its echo. On Pitt County NC
-  # that is 89.9% of last-sale rows whose parcel has any deed.
+  # The spine adds a roll's last sale only outside the months the
+  # unit's deed feed covers (one source per sale, 2026-11-11), so a
+  # last-sale row repeating a deed is left only where that coverage is
+  # clipped (Massachusetts) or a last sale outside it repeats a deed.
+  # Such a row (same parcel, year, month and price, exactly) is flagged
+  # so that a consumer can keep the deed and drop its echo. Before the
+  # rule, on Pitt County NC that was 89.9% of last-sale rows whose
+  # parcel had any deed.
   - step: flag_sales_matching_other_kind
     key_column: parcel_id_local
 

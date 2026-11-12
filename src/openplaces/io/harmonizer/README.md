@@ -748,6 +748,18 @@ The step sub-modules:
   (`sale_record_kind = assessor_last_sale`; rows already on the spine read
   `deed`), so a state with no recorder's feed still has prices. It is a
   reshape, not a match: the row keeps the roll row's own `parcel_id_local`.
+  **A sale comes from one source** (maintainer's rule, 2026-11-11): a
+  last sale is added only for a month the unit's deed feed does not
+  cover. Coverage (`deed_coverage`) is the union of the closed spans of
+  sale months each file of each feed lists, never where deeds are
+  dense: a covered month with few deeds still drops the roll's sales,
+  and a deed missing from the feed stays missing. Florida's patch makes
+  each SDF roll year its own file (`coverage_partition_column:
+  tax_year`), so a county missing from one year's file has a gap the
+  roll fills; Massachusetts' clips coverage to the LA3's documented
+  complete years (`coverage_limits`). A last sale stating only a year is
+  covered only if all twelve months are. No deed is compared with the
+  last sale: the choice reads two periods, no price, name or value.
   Three things are not what the name suggests. **"Has a last sale" is never
   "non-null"**: Florida's parcel layer fills every last-sale column on every
   row and 0 is the placeholder, in the year as well as the price, so a row

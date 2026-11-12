@@ -182,7 +182,7 @@ def test_owner_columns_never_reach_a_transaction_row():
     assert not {'owner_name', 'owner_address', 'grantor', 'grantee'} & set(out.columns)
 
 
-def _run_step(monkeypatch, tables, spine=None):
+def _run_step(monkeypatch, tables, spine=None, **params):
     """Run append_last_sales over fabricated in-memory tables."""
 
     def fake_discover(sources, state):
@@ -205,7 +205,7 @@ def _run_step(monkeypatch, tables, spine=None):
     state.metadata = {}
     state.timer = None
     state.verbose = False
-    return ls.append_last_sales(state).spine
+    return ls.append_last_sales(state, **params).spine
 
 
 def test_stacked_unit_sale_comes_from_the_property_row(monkeypatch):
@@ -238,6 +238,8 @@ def test_stacked_unit_sale_comes_from_the_property_row(monkeypatch):
 
 
 def test_deed_rows_are_kept_apart_and_labeled(monkeypatch):
+    # The roll's sale of 2012 lies outside the feed's 2018 coverage, so
+    # it is added, and each row says which source it came from.
     deeds = pd.DataFrame(
         {
             'parcel_id_local': ['lot2'],
@@ -249,13 +251,145 @@ def test_deed_rows_are_kept_apart_and_labeled(monkeypatch):
     parcels = pd.DataFrame(
         {
             'parcel_id_local': ['lot2'],
-            'last_sale_price': [150000.0],
-            'last_sale_date': ['2018-09-01'],
+            'last_sale_price': [120000.0],
+            'last_sale_date': ['2012-04-01'],
         }
     )
     spine = _run_step(monkeypatch, {'layer': ('parcel', parcels)}, spine=deeds)
     assert spine['sale_record_kind'].tolist() == ['deed', 'assessor_last_sale']
     assert spine.index.is_unique
+
+
+def _deeds(months, source='recorder', partition=None):
+    """Fabricated deeds, one per YYYY-MM month given."""
+    frame = pd.DataFrame(
+        {
+            'parcel_id_local': [f'd{i}' for i in range(len(months))],
+            'price': 100000.0,
+            'sale_year': [float(m[:4]) for m in months],
+            'sale_month': [float(m[5:]) for m in months],
+            'source': source,
+        }
+    )
+    if partition is not None:
+        frame['tax_year'] = partition
+    return frame
+
+
+def _roll(periods):
+    """Fabricated roll rows, one last sale per (year, month) given."""
+    return pd.DataFrame(
+        {
+            'parcel_id_local': [f'r{i}' for i in range(len(periods))],
+            'last_sale_price': 90000.0,
+            'last_sale_year': [float(y) for y, _ in periods],
+            'last_sale_month': [m for _, m in periods],
+        }
+    )
+
+
+def test_a_sale_comes_from_the_deeds_inside_their_coverage(monkeypatch):
+    # Deeds of 2019-01 to 2019-12: a roll's last sale in any month of
+    # that span is not added, whether or not a deed of that month exists
+    # (2019-06 has none: coverage is the span, not the density); one
+    # before or after it is.
+    deeds = _deeds(['2019-01', '2019-03', '2019-12'])
+    roll = _roll([(2019, 6.0), (2019, 1.0), (2019, 12.0), (2018, 12.0), (2020, 1.0)])
+    spine = _run_step(monkeypatch, {'layer': ('parcel', roll)}, spine=deeds)
+    last = spine[spine['sale_record_kind'] == 'assessor_last_sale']
+    assert sorted(zip(last['sale_year'], last['sale_month'], strict=True)) == [
+        (2018.0, 12.0),
+        (2020.0, 1.0),
+    ]
+    assert (spine['sale_record_kind'] == 'deed').sum() == 3
+
+
+def test_a_unit_with_no_deed_feed_keeps_every_last_sale(monkeypatch):
+    roll = _roll([(2019, 6.0), (2005, 2.0)])
+    spine = _run_step(monkeypatch, {'layer': ('parcel', roll)})
+    assert (spine['sale_record_kind'] == 'assessor_last_sale').sum() == 2
+
+
+def test_a_missing_file_is_a_gap_the_roll_fills(monkeypatch):
+    # Files 2016 and 2018 of a feed listing sales of t - 1 and early t;
+    # file 2017 is missing, so 2016-10 to 2016-12 is uncovered. Read as
+    # one span the feed would claim those months too.
+    deeds = pd.concat(
+        [
+            _deeds(['2015-01', '2016-09'], partition=2016),
+            _deeds(['2017-01', '2018-09'], partition=2018),
+        ],
+        ignore_index=True,
+    )
+    roll = _roll([(2016, 11.0), (2016, 9.0), (2017, 1.0)])
+    spine = _run_step(
+        monkeypatch,
+        {'layer': ('parcel', roll)},
+        spine=deeds,
+        coverage_partition_column='tax_year',
+    )
+    last = spine[spine['sale_record_kind'] == 'assessor_last_sale']
+    assert last['sale_month'].tolist() == [11.0]
+
+    spine = _run_step(monkeypatch, {'layer': ('parcel', roll)}, spine=deeds)
+    assert not (spine['sale_record_kind'] == 'assessor_last_sale').any()
+
+
+def test_a_year_only_last_sale_is_covered_only_by_the_whole_year():
+    covered = ls.deed_coverage(_deeds(['2019-01', '2019-12', '2020-01', '2020-06']))
+    rows = pd.DataFrame(
+        {
+            'sale_year': [2019.0, 2020.0, 2020.0, None],
+            'sale_month': [None, None, 6.0, None],
+        }
+    )
+    assert ls.within_coverage(rows, covered).tolist() == [True, False, True, False]
+
+
+def test_coverage_limits_clip_a_feed_documented_as_partial():
+    deeds = _deeds(['2003-05', '2010-01', '2025-04'])
+    covered = ls.deed_coverage(deeds, limits=[200801, 202412])
+    rows = pd.DataFrame(
+        {'sale_year': [2004.0, 2008.0, 2024.0, 2025.0], 'sale_month': 1.0}
+    )
+    assert ls.within_coverage(rows, covered).tolist() == [False, True, True, False]
+
+
+def test_coverage_reads_a_recorded_date_and_each_feed_apart():
+    # A recorder states a date, not a year and month; two feeds of one
+    # unit each cover their own span, not the months between them.
+    deeds = pd.DataFrame(
+        {
+            'recorded_date': pd.to_datetime(
+                ['2014-01-10', '2014-03-02', '2021-02-01', '2021-04-30']
+            ),
+            'source': ['older', 'older', 'newer', 'newer'],
+        }
+    )
+    covered = ls.deed_coverage(deeds)
+    rows = pd.DataFrame(
+        {
+            'sale_year': [2014.0, 2014.0, 2016.0, 2021.0],
+            'sale_month': [2.0, 4.0, 1.0, 3.0],
+        }
+    )
+    assert ls.within_coverage(rows, covered).tolist() == [True, False, False, True]
+
+
+def test_the_rule_reads_periods_never_names_or_values(monkeypatch):
+    # Owner names and assessed values on the roll, and an index column
+    # on the deeds, leave the choice unchanged (design limits L7, L29).
+    deeds = _deeds(['2019-01', '2019-12'])
+    roll = _roll([(2019, 6.0), (2018, 3.0)])
+    base = _run_step(monkeypatch, {'layer': ('parcel', roll)}, spine=deeds.copy())
+    roll = roll.assign(
+        owner_name='Fabricated Owner', land_value=[1.0, 9e9], improvement_value=5.0
+    )
+    deeds = deeds.assign(price_index=[0.5, 2.0], grantee='Fabricated Buyer')
+    other = _run_step(monkeypatch, {'layer': ('parcel', roll)}, spine=deeds)
+    for frame in (base, other):
+        last = frame[frame['sale_record_kind'] == 'assessor_last_sale']
+        assert last['sale_year'].tolist() == [2018.0]
 
 
 def test_no_roll_and_no_deeds_leaves_the_state_untouched(monkeypatch):
