@@ -30,16 +30,3 @@ _CROSSWALK_COLS = [
 # Parquet footer key holding a link sidecar's validity fingerprint.
 _LINK_METADATA_KEY = 'openplaces:link'
 _LINK_INDEX_KEY = 'openplaces:link_index'
-
-# Buffer applied to a condo cluster's own parcel footprint before testing
-# whether a real footprint fragment touches it, to tolerate the usual
-# building-outline/parcel-boundary digitization slack without admitting a
-# genuinely disjoint fragment from an unrelated cluster.
-_REAL_FOOTPRINT_TOUCH_TOLERANCE_M = 2.0
-
-# Floor applied to a per-parcel coverage fraction before raising it to a
-# negative power (the generalized-mean coverage score) -- avoids a literal
-# 0 producing inf, while still driving the score for a fully-uncovered
-# parcel down close to 0 (a tiny base raised to a negative power is huge,
-# dominating the weighted sum).
-_COVERAGE_SCORE_EPS = 1e-12

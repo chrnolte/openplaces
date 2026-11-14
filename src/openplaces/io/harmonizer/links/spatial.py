@@ -642,44 +642,6 @@ def _link_spatial_overlay(
     return state
 
 
-def _superseded_by_consolidation(
-    index,
-    spine_id_col: str,
-    superseded_spine_ids: set,
-    consolidated_pids: set,
-):
-    """Rows a condo-cluster consolidation replaces.
-
-    A consolidation supersedes every link to a parcel it absorbed, and
-    every link from a spine row it replaced. The three copies of those
-    links (the crosswalk, the overlay, and the sidecar on disk) have to
-    agree on that. They did not: the crosswalk filtered by parcel while
-    the other two filtered by spine id, so a parcel joining a cluster
-    whose old footprint was not itself superseded kept its
-    pre-consolidation overlap beside the new 'condo cluster' link, and
-    those copies carried the pair twice.
-
-    Parameters
-    ----------
-    index : pandas.MultiIndex
-        A (spine id, parcel id) index.
-    spine_id_col : str
-        Name of the spine id level.
-    superseded_spine_ids : set
-        Spine rows the consolidation replaced.
-    consolidated_pids : set
-        Parcels the consolidation absorbed.
-
-    Returns
-    -------
-    numpy.ndarray
-        Boolean mask, True where the row is superseded.
-    """
-    return index.get_level_values(spine_id_col).isin(
-        superseded_spine_ids
-    ) | index.get_level_values('parcel_id').isin(consolidated_pids)
-
-
 def _build_crosswalk(
     footprints_on_ref,
     spine_id_col: str,

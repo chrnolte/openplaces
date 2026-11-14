@@ -51,9 +51,10 @@ def in_unit_extent(gdf, admin_id, margin_deg=STRAY_MARGIN_DEG) -> np.ndarray:
     delivery gate's own bbox logic. Every input a spine turns into rows
     passes this test: the sources `resolve_spine` reads
     (`_drop_out_of_unit_rows`) and the parcels the footprint geospine
-    turns into outlines (`infer_spine_additions`,
-    `consolidate_condo_cluster_footprints`). A parcel the parcel
-    geospine drops as a stray must not come back as an outline.
+    turns into outlines (`infer_spine_additions`) or links a kept
+    footprint to (`consolidate_condo_cluster_footprints`). A parcel the
+    parcel geospine drops as a stray must not come back as an outline
+    or a link.
 
     Every row counts as in the unit when the rows cannot be placed
     against it: no geometry, no CRS (synthetic fixtures, or a source

@@ -609,15 +609,13 @@ pipeline:
   # Infer: derive new features from the reconciled evidence.
   - step: derive_metrics
 
-  # A consolidated condo-cluster footprint smaller than any building is
-  # not the building its summed unit values describe: where the cluster's
-  # "unit" parcels are slivers (median 5 m2), the geospine falls back to
-  # their union, and every unit's improvement value lands on it. Measured
-  # 2026-09-20 on the shipped bundles: 68 TX and 5 NC such footprints,
-  # up to $1.0bn per m2. The value is unknown at this geometry, so it is
-  # withdrawn rather than shipped; the geometry fix (a minimum unit area
-  # in the cluster detection) belongs to the next geospine rerun. After
-  # derive_metrics, which computes both area_m2 and the ratio.
+  # A condo-cluster footprint smaller than any building is not the
+  # building its summed unit values describe. Measured 2026-09-20 on the
+  # shipped bundles: 68 TX and 5 NC such footprints, up to $1.0bn per
+  # m2, all outlines the geospine then built from sliver unit parcels.
+  # Since 2026-11-11 a cluster footprint is always a real outline over 9
+  # or more lots, so this guard should find none; it stays as a check.
+  # After derive_metrics, which computes both area_m2 and the ratio.
   - step: suppress_where
     phase_override: reads area_m2 and the ratio derive_metrics computes
     column: [structure_value, structure_value_per_area]

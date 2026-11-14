@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+# The ruleset reader and matcher live in core so a harmonize step can
+# apply the same files; the curate stage keeps reaching them here.
+from openplaces.core.rulesets import match_ruleset, read_ruleset  # noqa: F401
+
 if TYPE_CHECKING:
     from openplaces.io.curator import CurateState
 
@@ -54,33 +58,7 @@ def load_ruleset(
         recipe.get('entity') or recipe.get('dataset'),
         filename=filename,
     )
-    if not csv_path.exists():
-        raise FileNotFoundError(f'Classification ruleset not found: {csv_path}')
-
-    table = pd.read_csv(csv_path)
-    if class_column is None:
-        class_column = next(
-            (c for c in ('occupancy_type', 'land_use_class') if c in table.columns),
-            'occupancy_type',
-        )
-    if class_column not in table.columns:
-        raise KeyError(
-            f'Ruleset {csv_path.name} has no {class_column!r} column; '
-            f'found {list(table.columns)}.'
-        )
-
-    rules = []
-    for _, row in table.iterrows():
-        rules.append(
-            {
-                'pattern': str(row['pattern']),
-                'match_type': str(row.get('match_type', 'contains')).strip().lower(),
-                'occupancy_type': str(row[class_column]),
-                'reviewed': str(row.get('reviewed', '')).strip().lower()
-                in ('true', '1', 'yes'),
-            }
-        )
-    return rules
+    return read_ruleset(csv_path, class_column)
 
 
 def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
@@ -106,34 +84,6 @@ def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
             result.loc[mask] = rule['occupancy_type']
             unmatched.loc[mask] = False
     return result.where(series.notna())
-
-
-def match_ruleset(terms: pd.Series, rules: list[dict]) -> tuple[pd.Series, pd.Series]:
-    """Apply an ordered label ruleset, returning (matched class, reviewed).
-
-    First match wins, mirroring :func:`coerce_to_class` -- except a term
-    matching no rule yields a missing class rather than passing through
-    unchanged, because this answers "which class did the label assert?", not
-    "normalize this label".
-    """
-    from openplaces.io.curator.indicators import as_matchable_text
-
-    text = as_matchable_text(terms)
-    proposal = pd.Series(pd.NA, index=terms.index, dtype=object)
-    reviewed = pd.Series(False, index=terms.index)
-    unmatched = pd.Series(True, index=terms.index)
-    for rule in rules:
-        mask = unmatched & text.str.contains(
-            rule['pattern'],
-            case=False,
-            na=False,
-            regex=rule['match_type'] == 'regex',
-        ).astype(bool)
-        if mask.any():
-            proposal.loc[mask] = rule['occupancy_type']
-            reviewed.loc[mask] = rule['reviewed']
-            unmatched.loc[mask] = False
-    return proposal, reviewed
 
 
 def bucket_classes(coerced: pd.Series, config: dict) -> pd.Series:

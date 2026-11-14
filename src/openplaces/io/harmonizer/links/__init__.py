@@ -44,12 +44,10 @@ from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     spatial,
 )
 from openplaces.io.harmonizer.links._shared import (  # noqa: F401
-    _COVERAGE_SCORE_EPS,
     _CROSSWALK_COLS,
     _LINK_INDEX_KEY,
     _LINK_KEY_COLUMNS,
     _LINK_METADATA_KEY,
-    _REAL_FOOTPRINT_TOUCH_TOLERANCE_M,
     DEFAULT_LINK_KEY,
     PARCEL_ID_LOCAL_KEYS,
 )
@@ -82,7 +80,10 @@ from openplaces.io.harmonizer.links.combine import (  # noqa: F401
     _write_prioritized,
 )
 from openplaces.io.harmonizer.links.condo_clusters import (  # noqa: F401
+    CLUSTER_LINK,
+    CLUSTER_SOURCE_PREFIX,
     consolidate_condo_cluster_footprints,
+    lots_under_footprints,
 )
 from openplaces.io.harmonizer.links.discovery import (  # noqa: F401
     _apply_remap_csvs,
@@ -136,7 +137,6 @@ from openplaces.io.harmonizer.links.spatial import (  # noqa: F401
     _link_spatial_overlay,
     _prepare_reference,
     _resolve_reference_recipe,
-    _superseded_by_consolidation,
     link_to_reference,
     overlay_step_config,
     reference_rows,

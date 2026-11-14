@@ -101,14 +101,15 @@ pipeline:
       chain_fraction_max: 0.75
     sort_by: area_intersection_m2
 
-  # A stacked-condo building's real footprint(s) can end up dominant-linked
-  # only to the units' shared common-area parcel (the min_fraction_of_largest
-  # trim above drops each individual unit's much smaller overlap share),
-  # leaving most of the building's own units with no real footprint credit.
-  # Recognize the parcel-side cluster and consolidate before
-  # infer_spine_additions runs, so it doesn't also generate a redundant
-  # per-unit synthetic fallback for whichever units the trimmed real
-  # footprint(s) didn't happen to dominate.
+  # A footprint over the unit parcels of a condominium stays whole (the
+  # building geospine cuts every other footprint at lot lines) and gets
+  # a link to each of its units, which the min_fraction_of_largest trim
+  # above drops. Before infer_spine_additions, so no unit gets a
+  # parcel-shaped fallback outline. The rule (9 or more lots mostly
+  # classed Condominium by the parcel curate's keyword ruleset, or 33 or
+  # more lots) was set on the maintainer's labels of 2026-11-11; the
+  # step's docstring and plans/buildings-from-parcel-pieces.md (section
+  # 7.2) say how.
   - step: consolidate_condo_cluster_footprints
     entity_type: parcel
 
