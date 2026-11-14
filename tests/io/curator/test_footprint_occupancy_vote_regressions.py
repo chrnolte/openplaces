@@ -129,6 +129,18 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
         for row in rows
     ]
     merged = [{**DEFAULTS, **row} for row in rows]
+    # And between the roll's figures and structure_value: outside a
+    # county patch that derives improvement from the total, the figure
+    # structure_value is apportioned from is the roll's own, so a case
+    # that sets only the roll's values gets the same structure value.
+    # A case modelling such a patch sets structure_value itself.
+    for r in merged:
+        r.setdefault('structure_value', r['improvement_value_parcel'])
+        r.setdefault(
+            'improvement_value_imputed_parcel_whole',
+            r['improvement_value_parcel_whole'],
+        )
+        r.setdefault('land_value_imputed_parcel_whole', r['land_value_parcel_whole'])
     # Each row is its own box 0.01 degrees from the next, touching
     # nothing, unless a case draws its own outline (shared walls).
     geometry = []
@@ -1289,6 +1301,56 @@ class TestManufacturedHomeValueTestBasis:
         )
         assert 'no_improvement_value' in str(
             big['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+
+class TestNoImprovementValueFollowsStructureValue:
+    """A county patch that derives improvement from the total leaves the
+    roll's figure at 0 and fills structure_value (Northampton NC). The
+    signal reads structure_value there, and the roll's 0 only where
+    structure_value is missing (maintainer's ruling, 2026-11-14)."""
+
+    NSI_MH = {
+        'occupancy_type_building_nsi': 'Manufactured Home',
+        'n_dwellings_overture': 1,
+    }
+
+    def test_a_derived_structure_value_silences_the_rolls_zero(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': 0.0,
+                    'land_value_parcel_whole': 20_000.0,
+                    'structure_value': 64_000.0,
+                    'improvement_value_imputed_parcel_whole': 64_000.0,
+                    'land_value_imputed_parcel_whole': 20_000.0,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_without_a_structure_value_the_rolls_zero_still_counts(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': 0.0,
+                    'land_value_parcel_whole': 0.0,
+                    'structure_value': None,
+                    'improvement_value_imputed_parcel_whole': None,
+                    'land_value_imputed_parcel_whole': None,
+                }
+            ],
+        )
+        assert 'no_improvement_value' in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
         )
 
 

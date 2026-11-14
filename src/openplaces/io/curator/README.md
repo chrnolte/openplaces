@@ -305,10 +305,8 @@ counts.
 
 The hard part is propagation, not the decision: `impute_land_value` knows which
 rows it estimated, and the marker has to survive `apportion_curated_values`
-(which crosses parcel → building) and `select_value_source_by_admin_unit`
-(whose `output` and `parcel_column` are commonly the *same* column, so they
-share one sidecar) to reach the delivered `structure_value_source`. All three
-dropped or flattened it before 2026-08-21.
+(which crosses parcel → building) to reach the delivered
+`structure_value_source`. Both dropped or flattened it before 2026-08-21.
 
 These concern-based modules mirror the processor categories used by related
 inventory systems, while remaining native to the openplaces recipe and state
