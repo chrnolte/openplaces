@@ -54,6 +54,95 @@ def test_zfill_never_renders_a_float_point(values, dtype):
     assert result['parcel_id_local'].tolist() == ['001', '002']
 
 
+def _postal_code_recipe():
+    # The pair of steps a recipe declares for a ZIP stored in a numeric
+    # field (the Florida parcel and roll recipes).
+    return {
+        'transformations': [
+            {
+                'type': 'unary',
+                'operation': 'null_if_equal',
+                'input': 'postal_code',
+                'args': {'value': 0},
+                'output': 'postal_code',
+            },
+            {
+                'type': 'string',
+                'operation': 'zfill',
+                'input': 'postal_code',
+                'args': {'width': 5},
+                'output': 'postal_code',
+            },
+        ]
+    }
+
+
+def test_a_float_postal_code_becomes_a_five_digit_code():
+    # 0 is the field's "no ZIP"; a blank made the column float; 2134 is
+    # a ZIP whose leading zero the numeric field dropped.
+    df = pd.DataFrame({'postal_code': [32801.0, 0.0, np.nan, 2134.0]})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        result = apply_transformations(df, _postal_code_recipe())
+
+    codes = result['postal_code']
+    assert codes[0] == '32801'
+    assert pd.isna(codes[1])
+    assert pd.isna(codes[2])
+    assert codes[3] == '02134'
+
+
+def test_a_text_postal_code_keeps_its_leading_zero():
+    df = pd.DataFrame({'postal_code': ['02134', '32801', None]})
+
+    result = apply_transformations(df, _postal_code_recipe())
+
+    assert result['postal_code'][0] == '02134'
+    assert result['postal_code'][1] == '32801'
+    assert pd.isna(result['postal_code'][2])
+
+
+@pytest.mark.parametrize(
+    'recipe_id, values',
+    [
+        # A numeric geodatabase field: floats, 0 for "no ZIP".
+        ('US-FL_parcel-floridagio-2026', [32801.0, 0.0, np.nan, 2134.0]),
+        ('US-FL_parcel-floridagio-2025', [32801.0, 0.0, np.nan, 2134.0]),
+        # A CSV the recipe reads as text (see the csv_dtype test below).
+        ('US-FL_property-fldor-2026', ['32801', '0', None, '2134']),
+    ],
+)
+@pytest.mark.parametrize('column', ['postal_code', 'owner_postal_code'])
+def test_florida_recipes_ingest_postal_codes_as_codes(recipe_id, values, column):
+    # Both sources store the ZIP as a number. Ingested as a float, it
+    # reached address assembly as '32801.0' and came out as '328010'.
+    from openplaces.recipe.loading import get_recipe_by_id
+
+    recipe = get_recipe_by_id(recipe_id)
+    steps = [t for t in recipe['transformations'] if t.get('output') == column]
+    df = pd.DataFrame({column: values})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        result = apply_transformations(df, {'transformations': steps})
+
+    codes = result[column]
+    assert codes[0] == '32801'
+    assert pd.isna(codes[1])
+    assert pd.isna(codes[2])
+    assert codes[3] == '02134'
+
+
+def test_florida_roll_reads_its_postal_code_fields_as_text():
+    from openplaces.recipe.loading import get_recipe_by_id
+
+    recipe = get_recipe_by_id('US-FL_property-fldor-2026')
+
+    for column in ('postal_code', 'owner_postal_code'):
+        assert recipe['csv_dtype'][recipe['columns'][column]] == 'str'
+
+
 def test_add_prefix_leaves_a_missing_value_missing():
     # 'P-nan' is a wrong id, not a missing one: it matches nothing and
     # reads as present.

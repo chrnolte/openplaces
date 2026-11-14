@@ -85,6 +85,11 @@ csv_dtype:
   MP_ID: str
   STATE_PAR_ID: str
   ALT_KEY: str
+  # A ZIP is a code. Read as a number, a file with one blank row made
+  # the column float, and address assembly rendered 32801.0 as
+  # '328010'. See the two ZIP steps under `transformations`.
+  PHY_ZIPCD: str
+  OWN_ZIPCD: str
 
 columns:
   parcel_id_assessor: PARCEL_ID
@@ -210,6 +215,19 @@ transformations:
     operation: subtract
     inputs: [market_value, land_value]
     output: improvement_value
+  # The state writes both ZIP fields without leading zeros (owners'
+  # ZIPs in the Northeast arrive with four or three digits) and a
+  # lone 0 for "no ZIP". 0 becomes missing and the rest is padded to
+  # five digits. Every NAL file from 2002 to 2025 holds only digits
+  # or blanks in both fields (1,481 files, counted 2026-11-14).
+  - {type: unary, operation: null_if_equal, input: postal_code,
+     args: {value: "0"}, output: postal_code}
+  - {type: string, operation: zfill, input: postal_code,
+     args: {width: 5}, output: postal_code}
+  - {type: unary, operation: null_if_equal, input: owner_postal_code,
+     args: {value: "0"}, output: owner_postal_code}
+  - {type: string, operation: zfill, input: owner_postal_code,
+     args: {width: 5}, output: owner_postal_code}
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:

@@ -156,3 +156,59 @@ def test_reconcile_addresses_missing_source_columns_is_a_no_op():
         sources={'parcel': {'address_full': 'address_parcel'}},
     )
     assert 'address' not in state.spine.columns
+
+
+def _reconcile_with_postal_code(postal_codes):
+    n = len(postal_codes)
+    spine = pd.DataFrame(
+        {
+            'address_parcel': [f'{12 + 2 * i} EXAMPLE ST' for i in range(n)],
+            'city': ['COASTAL CITY'] * n,
+            'postal_code': postal_codes,
+        }
+    )
+    state = reconcile_addresses(
+        make_state(spine),
+        sources={
+            'parcel': {
+                'address_full': 'address_parcel',
+                'city': 'city',
+                'postal_code': 'postal_code',
+            },
+        },
+    )
+    return state.spine['address']
+
+
+def test_reconcile_addresses_reads_a_float_postal_code_as_a_code():
+    # A numeric source field arrives as float wherever a row is blank.
+    # str(32801.0) is '32801.0', and the punctuation cleaning then left
+    # '328010': a ZIP with a sixth digit on every Florida address.
+    address = _reconcile_with_postal_code([32801.0, float('nan'), 32803.0])
+
+    assert address[0].endswith(' 32801')
+    assert address[1].endswith('Coastal City')
+    assert address[2].endswith(' 32803')
+
+
+def test_reconcile_addresses_keeps_a_leading_zero_postal_code():
+    address = _reconcile_with_postal_code(['02134', '32801'])
+
+    assert address[0].endswith(' 02134')
+    assert address[1].endswith(' 32801')
+
+
+def test_reconcile_addresses_reads_a_float_house_number_as_a_code():
+    spine = pd.DataFrame(
+        {
+            'street': ['EXAMPLE ST', 'EXAMPLE ST'],
+            'number': [12.0, float('nan')],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(spine),
+        sources={
+            'parcel': {'address_street': 'street', 'address_number': 'number'},
+        },
+    )
+    assert state.spine.loc[0, 'address'] == '12 Example St'

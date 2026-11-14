@@ -124,3 +124,17 @@ transformations:
     type: expression
     expression: "market_value - land_value - special_feature_value"
     inputs: [market_value, land_value, special_feature_value]
+  # The two ZIP fields are numeric in the geodatabase, so they read as
+  # floats and 0 stands for "no ZIP". A ZIP is a code: 0 becomes
+  # missing, and the number is written as text, padded to the five
+  # digits a numeric field cannot keep (owners' ZIPs in the Northeast
+  # start with 0). Left as floats, address assembly rendered 32801.0
+  # as '328010'.
+  - {type: unary, operation: null_if_equal, input: postal_code,
+     args: {value: 0}, output: postal_code}
+  - {type: string, operation: zfill, input: postal_code,
+     args: {width: 5}, output: postal_code}
+  - {type: unary, operation: null_if_equal, input: owner_postal_code,
+     args: {value: 0}, output: owner_postal_code}
+  - {type: string, operation: zfill, input: owner_postal_code,
+     args: {width: 5}, output: owner_postal_code}
