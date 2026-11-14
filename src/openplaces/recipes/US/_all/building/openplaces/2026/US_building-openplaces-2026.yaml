@@ -391,6 +391,14 @@ pipeline:
     entity_type: parcel
     column: parcel_id_all
 
+  # Only lots the parcel curate kept: it drops slivers under 1 m2 (its
+  # filter_numeric_at_least on area_ha), which the harmonized building
+  # and the overlay can still name (transition review 3.5). A building
+  # whose dominant lot was dropped keeps no parcel_id.
+  - step: keep_curated_ids
+    recipe_id: US_parcel-openplaces-2026
+    columns: [parcel_id, parcel_id_all]
+
   # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
   # roof_shape is a direct, non-reconciled canonical column, so it keeps a
   # provenance sidecar; n_stories_brails is only an intermediate evidence

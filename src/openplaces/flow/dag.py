@@ -421,6 +421,9 @@ class RecipeDAG:
         # (stage, recipe_id, admin_id, region) of each enrich job left
         # out because its source is excluded or held
         self.left_out: set[tuple] = set()
+        # Node key of each job dropped because a more admin-specific
+        # recipe writes the same file, mapped to the kept job's key
+        self._shadowed: dict[tuple, tuple] = {}
         target = self._recipe(target_recipe_id)
         target_level = get_save_admin_level(target)
         if not admin_ids and deliver is not False:
@@ -965,10 +968,24 @@ class RecipeDAG:
     def _drop_shadowed_producers(self, seen: set[tuple]) -> None:
         """Keep one job per output file: the most admin-specific recipe.
 
-        Removes the other jobs from the graph and from *seen*, so no
-        edge points at them. A consumer still names the shared file as
-        input, and Snakemake resolves it to the kept job by its output.
+        Removes the other jobs from the graph and from *seen*. A consumer
+        still names the shared file as input, and Snakemake resolves it to
+        the kept job by its output; `_upstream_keys` maps a consumer's
+        edge to a dropped job onto the kept one (`_shadowed`), so
+        `plan` and `to_mermaid` show the edge too.
+
+        Raises
+        ------
+        ValueError
+            When two recipes equally specific (the same number of
+            admin levels in their ``admin_id``) write one file: which one
+            runs would otherwise depend on the walk's order.
         """
+
+        def specificity(node):
+            scope = self._recipe(node.recipe_id).get('admin_id')
+            return len(str(scope).split('-')) if scope else 0
+
         by_path: dict[str, list[StageNode]] = {}
         for node in self._nodes:
             try:
@@ -977,18 +994,22 @@ class RecipeDAG:
                 continue
             by_path.setdefault(path, []).append(node)
         dropped: set[tuple] = set()
-        for nodes in by_path.values():
+        for path, nodes in by_path.items():
             if len({n.recipe_id for n in nodes}) < 2:
                 continue
-
-            def specificity(node):
-                scope = self._recipe(node.recipe_id).get('admin_id')
-                return len(str(scope).split('-')) if scope else 0
-
-            keep = max(nodes, key=specificity)
+            top = max(specificity(n) for n in nodes)
+            tied = sorted({n.recipe_id for n in nodes if specificity(n) == top})
+            if len(tied) > 1:
+                raise ValueError(
+                    f'Recipes {tied} are equally admin-specific and all write '
+                    f'{path}; give one of them a narrower admin_id or a '
+                    'distinct output.'
+                )
+            keep = next(n for n in nodes if specificity(n) == top)
             for node in nodes:
                 if node.recipe_id != keep.recipe_id:
                     dropped.add(node_key(node))
+                    self._shadowed[node_key(node)] = node_key(keep)
         if dropped:
             self._nodes = [n for n in self._nodes if node_key(n) not in dropped]
             seen.difference_update(dropped)
@@ -1017,6 +1038,9 @@ class RecipeDAG:
                 for key in node_keys:
                     if key[0] == upstream_id:
                         yield key
+                for dropped, kept in self._shadowed.items():
+                    if dropped[0] == upstream_id and kept in node_keys:
+                        yield kept
                 continue
             try:
                 upstream_admins = self._node_admins(upstream_id, node_admin)
@@ -1028,6 +1052,8 @@ class RecipeDAG:
                     str(upstream_admin) if upstream_admin is not None else None,
                     None,
                 )
+                # A dropped producer's file comes from the job kept for it
+                key = self._shadowed.get(key, key)
                 if key in node_keys:
                     yield key
         for upstream_id, neighbor in self._neighbor_pairs(node.recipe_id, node_admin):
@@ -1041,6 +1067,7 @@ class RecipeDAG:
                     str(upstream_admin) if upstream_admin is not None else None,
                     None,
                 )
+                key = self._shadowed.get(key, key)
                 if key in node_keys:
                     yield key
 

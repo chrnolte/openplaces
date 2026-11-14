@@ -1185,6 +1185,91 @@ def collect_link_ids(
     return state
 
 
+@_register('keep_curated_ids', phase='gather')
+def keep_curated_ids(
+    state: CurateState,
+    recipe_id: str,
+    columns: tuple[str, ...] | list[str] = ('parcel_id', 'parcel_id_all'),
+    ref_key: str = 'parcel_id',
+) -> CurateState:
+    """Keep only ids that name a row of another curated output.
+
+    The parcel curate drops some harmonized parcels (slivers under
+    1 m2, `filter_numeric_at_least` on ``area_ha``), but a building or
+    footprint built from the harmonized links can still name one in its
+    ``parcel_id`` or ``parcel_id_all``, an id no curated parcel carries.
+    This step removes such ids: a single id becomes missing, a
+    pipe-separated list keeps the ids that remain, in order, and becomes
+    missing when none do. An ``_all`` column is again left missing where
+    it would repeat its base column, as `collect_link_ids` leaves it.
+
+    A dropped dominant parcel is not replaced by the next one in the
+    list: the values were apportioned from the curated parcels, so the
+    dropped parcel contributed nothing, and choosing another dominant
+    parcel is the harmonizer's decision, not the curate's. The link
+    tables are left as written (no link is removed); a reader joining
+    them to the curated parcels finds no row for the dropped id.
+
+    Parameters
+    ----------
+    recipe_id : str
+        A stage ``curate`` recipe whose output holds the ids that count.
+    columns : sequence of str, optional
+        Columns to clean (default ``parcel_id`` and ``parcel_id_all``);
+        those absent are skipped.
+    ref_key : str, optional
+        Id column (or index) of the referenced output (default
+        ``parcel_id``).
+    """
+    ref_recipe = get_recipe_by_id(recipe_id)
+    if ref_recipe.get('stage') != 'curate':
+        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
+    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
+    if ref_key not in ref.columns and ref.index.name == ref_key:
+        ref = ref.reset_index()
+    if ref_key not in ref.columns:
+        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    known = set(ref[ref_key].dropna().astype(str))
+
+    curated = state.curated
+    removed = {}
+    for column in columns:
+        if column not in curated.columns:
+            continue
+        ids = curated[column].astype('string')
+        listed = ids.dropna()
+        if listed.empty:
+            continue
+        kept = listed.str.split('|').map(
+            lambda parts: '|'.join(p for p in parts if p in known)
+        )
+        changed = kept != listed
+        removed[column] = int(changed.sum())
+        if changed.any():
+            # Only changed rows are written, so the column keeps its dtype.
+            curated[column] = curated[column].mask(
+                curated.index.isin(changed.index[changed]),
+                kept.where(kept != '').reindex(curated.index),
+            )
+
+    for column in columns:
+        base = column.removesuffix('_all')
+        if base == column or column not in curated.columns:
+            continue
+        if base not in curated.columns:
+            continue
+        same = (
+            curated[column].astype('string') == curated[base].astype('string')
+        ).fillna(False)
+        curated[column] = curated[column].mask(same)
+
+    if state.verbose:
+        detail = ', '.join(f'{c} {n:,}' for c, n in removed.items())
+        print(f'  keep_curated_ids: rows changed: {detail or "none"}.')
+    state.curated = curated
+    return state
+
+
 @_register('merge_enrichments', phase='gather')
 def merge_enrichments(
     state: CurateState,

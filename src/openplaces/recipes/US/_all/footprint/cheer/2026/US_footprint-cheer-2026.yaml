@@ -561,6 +561,12 @@ pipeline:
     entity_type: parcel
     column: parcel_id_all
 
+  # Only lots the parcel curate kept: it drops slivers under 1 m2,
+  # which the overlay can still list (transition review 3.5).
+  - step: keep_curated_ids
+    recipe_id: US_parcel-openplaces-2026
+    columns: [parcel_id, parcel_id_all]
+
   # The same format steps the building curate ends with: a joined class
   # (" | ") or a reduced count needs its dtype again.
   - step: cast_categoricals
