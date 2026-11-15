@@ -820,9 +820,12 @@ pipeline:
   # Order: NSI first, LiDAR where NSI is silent (it scored below NSI
   # against the roll; maintainer, 2026-10-22), CHEER last because it is
   # the same modeled lineage as NSI rather than an independent
-  # observation. The street-imagery count (n_stories_brails) is not a
-  # lane: it was empty in all 360 built units on 2026-11-14, and it
-  # re-enters by a recipe edit with a measurement once the model runs.
+  # observation. The street-imagery count (n_stories_brails) is off by
+  # default: it was empty in all 360 built units on 2026-11-14. The
+  # column is still gathered above, so a test or a research run turns
+  # it on by listing n_stories_brails in evidence (first, to let it
+  # win), in a patch recipe at the scope of the test (maintainer,
+  # 2026-11-15). Its cells are then labeled brails.
   #
   # LiDAR height converts at 3.5 m per story: the height includes the
   # roof, and a pitched one-story roof reads as two stories at 3.05.

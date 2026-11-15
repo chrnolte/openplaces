@@ -71,6 +71,22 @@ def test_first_available_lane_wins_in_order():
     assert pd.isna(out['n_stories_source'].iloc[3])
 
 
+def test_imagery_lane_is_off_until_listed_as_evidence():
+    # The street-imagery count is gathered but not a lane by default. A
+    # test or research run lists it in evidence, and its cells then say
+    # so in the source column.
+    df = _lanes(nsi=[2.0, np.nan])
+    df['n_stories_brails'] = [3.0, 3.0]
+    off = _decide(df.copy())
+    assert off['n_stories'].iloc[0] == 2
+    assert pd.isna(off['n_stories'].iloc[1])
+    on = decide_stories(
+        _state(df.copy()), evidence=['n_stories_brails', *EVIDENCE]
+    ).curated
+    assert on['n_stories'].tolist() == [3, 3]
+    assert (on['n_stories_source'] == 'brails').all()
+
+
 def test_out_of_range_evidence_falls_through():
     df = _lanes(nsi=[219.0, 0.4, 111.0], height=7.0)
     out = _decide(df)

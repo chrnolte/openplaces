@@ -1151,37 +1151,34 @@ Choose the year built
    :Why: The assessor's record comes first, a record of the building
       itself next, and an average for the block last.
 
-Estimate stories from measured height
-   :Step: ``derive_stories_from_height`` (#23)
-   :Does: Divides the height FEMA measured by lidar by 3.5 m to get a
-      story count.
-   :Why: Gives a story count where no record states one. A smaller
-      height per story (3.05 m) counted pitched roofs as a second story.
-   :Verdict: holds, reworded. The code's explanation still gives 3.05 m
-      as the default.
+Decide the number of stories
+   :Step: ``decide_stories`` (#23)
+   :Does: Sets ``n_stories`` in one step. It divides the height FEMA
+      measured by lidar by 3.5 m to get a story count. It then takes the
+      first of NSI, that lidar count and CHEER v0 that lies between 1
+      and 110. Where none has a value, it takes the roll's count, county
+      by county, but only where the roll's story counts agree with its
+      own floor areas on at least 70% of at least 100 buildings tested.
+      The result is rounded once to a whole number, a half going up.
+   :Why: One step decides the count, so one entry explains it. NSI
+      agreed best with roll counts, lidar at 3.5 m next (80.9% of
+      1,132,920 buildings, against 75.9% at 3.05 m, 2026-11-14).
+      Counties define a story differently, so the roll fills gaps only
+      where its counts are consistent with its floor areas. Only 9 of
+      139 NC and TX counties have a roll story count (2,721 buildings,
+      2026-11-01).
 
-Choose stories, roof shape, foundation and construction type
-   :Step: ``reconcile_values``, stories, roof, foundation, construction (#24)
+Choose roof shape, foundation and construction type
+   :Step: ``reconcile_values``, roof, foundation, construction (#24)
    :Does: Takes each attribute from the first source in a fixed list
-      that has a value. Stories: image classification (BRAILS), NSI,
-      FEMA's lidar height, CHEER v0. Roof shape: BRAILS, CHEER v0.
-      Foundation: NSI, CHEER v0. Construction type: CHEER v0, NSI.
+      that has a value. Roof shape: BRAILS, CHEER v0. Foundation: NSI,
+      CHEER v0. Construction type: CHEER v0, NSI.
    :Why: The lists follow how reliable each source proved in tests.
    :Verdict: holds, reworded. Several numbers in the recipe's
       explanation are undated.
 
-Take story counts from the roll where the roll is consistent
-   :Step: ``adopt_stories_by_floor_area_fit`` (#25)
-   :Does: County by county, fills a building's missing number of stories
-      from the roll, but only where the roll's story counts agree with
-      its own floor areas on at least 70% of the buildings tested.
-   :Why: Counties define a story differently. Checking the counts
-      against the roll's own floor areas keeps a county's counts only
-      where they are consistent. Only 9 of 139 NC and TX
-      counties have a roll story count (2,721 buildings, 2026-11-01).
-
 Estimate how likely each building is a manufactured home
-   :Step: ``classify_manufactured_homes`` (#26)
+   :Step: ``classify_manufactured_homes`` (#25)
    :Does: For each county, fits a model that estimates the probability
       that a building is a manufactured home from its footprint's shape
       and its neighbors' shapes. The model learns from buildings whose
@@ -1193,7 +1190,7 @@ Estimate how likely each building is a manufactured home
       text, but buildings with the keyword are set to 1.
 
 Decide one dwelling or several
-   :Step: ``resolve_by_vote``, one dwelling or several (#27)
+   :Step: ``resolve_by_vote``, one dwelling or several (#26)
    :Does: A vote of Overture's address counts, keywords in the land-use
       description, NSI and FEMA decides whether a building holds one
       dwelling or several.
@@ -1205,7 +1202,7 @@ Decide one dwelling or several
       2026-10-25 (eastern North Carolina) match what the recipe says.
 
 Decide the occupancy class
-   :Step: ``resolve_by_vote``, occupancy class (#28)
+   :Step: ``resolve_by_vote``, occupancy class (#27)
    :Does: Scores RV Dwelling, Manufactured Home, Multi-Family,
       Single-Family and Secondary from the footprint's shape, keywords,
       NSI, FEMA, the building's share of the lot's value and signs of a
@@ -1218,12 +1215,12 @@ Decide the occupancy class
       documents it cites have moved.
 
 Count the manufactured homes on each lot
-   :Step: ``derive_group_count`` (#29)
+   :Step: ``derive_group_count`` (#28)
    :Does: Counts the main manufactured homes on each lot.
    :Why: The second pass below needs the count.
 
 Rank manufactured homes on a lot by size
-   :Step: ``derive_group_rank`` (#30)
+   :Step: ``derive_group_rank`` (#29)
    :Does: Numbers the manufactured homes on each parcel from largest to
       smallest.
    :Why: Where a roll says a lot holds, say, two mobile homes, the two
@@ -1234,20 +1231,20 @@ Rank manufactured homes on a lot by size
       two identifiers are the same today, so the order is the same.
 
 Reclass small secondary manufactured homes as sheds
-   :Step: ``resolve_by_vote``, second pass (#31)
+   :Step: ``resolve_by_vote``, second pass (#30)
    :Does: Turns a secondary building classed Manufactured Home into
       Secondary where it is smaller than 40 m2.
    :Why: Small secondary footprints that took the class from the lot
       were almost all sheds.
 
 Split multi-family buildings by height
-   :Step: ``resolve_by_vote``, height bands (#32)
+   :Step: ``resolve_by_vote``, height bands (#31)
    :Does: Splits Multi-Family into Low-Rise (up to 3 stories), Mid-Rise
       (4 to 7) and High-Rise (8 or more).
    :Why: These are the height bands of HAZUS, FEMA's loss model.
 
 Decide the number of sections of a manufactured home
-   :Step: ``resolve_by_vote``, section count (#33)
+   :Step: ``resolve_by_vote``, section count (#32)
    :Does: Decides whether a manufactured home has 1, 2 or 3 sections,
       from a keyword in the roll ("double wide", weight 3) and the
       footprint's width and length-to-width ratio (weight 1 each).
@@ -1257,7 +1254,7 @@ Decide the number of sections of a manufactured home
       there are now 44, and its numbers are undated.
 
 Flag manufactured home communities
-   :Step: ``flag_manufactured_home_communities`` (#34)
+   :Step: ``flag_manufactured_home_communities`` (#33)
    :Does: Flags lots with four or more manufactured homes, after the
       votes above.
    :Why: The lot steps run before the building classes are final, so
@@ -1266,7 +1263,7 @@ Flag manufactured home communities
       input that does not exist.
 
 Flag values too high for the building's height
-   :Step: ``flag_unconfirmed_height`` (#35)
+   :Step: ``flag_unconfirmed_height`` (#34)
    :Does: Flags a building whose value per area is too high for the
       number of floors measured (``height_unconfirmed``). The value
       itself is not changed.
@@ -1279,7 +1276,7 @@ Flag values too high for the building's height
       (Pender 11, Galveston 44, 2026-11-01).
 
 Record why a building's value is 0
-   :Step: ``derive_structure_value_zero_reason`` (#37)
+   :Step: ``derive_structure_value_zero_reason`` (#36)
    :Does: Where ``structure_value`` (the building's market value) is 0,
       writes the first reason that applies: a secondary building,
       personal property (such as a manufactured home taxed apart from
@@ -1289,20 +1286,19 @@ Record why a building's value is 0
       each reason differently (maintainer, 2026-10-31 and 2026-11-02).
 
 Store classes as categories
-   :Step: ``cast_categoricals`` (#38)
+   :Step: ``cast_categoricals`` (#37)
    :Does: Stores the class columns as categories.
    :Why: Smaller files, faster to load.
 
 Store counts and years as whole numbers
-   :Step: ``cast_integers`` (#39)
-   :Does: Rounds ``year_built``, ``n_stories`` (stories), ``n_dwellings``
-      and ``n_sections`` (manufactured-home sections) and stores them as
-      whole numbers.
-   :Why: Some sources give fractions: NSI's story counts are averages
-      and its dwelling counts midpoints of a range.
+   :Step: ``cast_integers`` (#38)
+   :Does: Rounds ``year_built``, ``n_dwellings`` and ``n_sections``
+      (manufactured-home sections) and stores them as whole numbers.
+   :Why: Some sources give fractions: NSI's dwelling counts are
+      midpoints of a range.
 
 Drop working columns and order the rest
-   :Step: ``order_columns`` (#40)
+   :Step: ``order_columns`` (#39)
    :Does: Drops 34 working columns, among them building permit evidence
       from a source whose licence does not allow publishing it, and puts
       the rest in a fixed order.
@@ -1322,7 +1318,7 @@ They were not reviewed step by step.
 .. rubric:: Steps that do not reach the bundle
 
 - A report of lots whose roll value is not shared among their large
-  buildings (``report_lot_value_sharing``, #36). It
+  buildings (``report_lot_value_sharing``, #35). It
   changes no value. *Holds, reworded*: a parcel value that openplaces
   estimated is counted as if the roll had stated it.
 
