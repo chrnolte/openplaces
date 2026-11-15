@@ -28,8 +28,9 @@ after a later phase, and `tests/recipe/test_curate_phase_order.py` runs it
 over every curate recipe. A step that has to run out of order for a
 dependency reason declares `phase_override: <reason>` in the recipe (a
 control key like `enabled`, never passed to the step): the building
-recipe's `year_built` and `n_stories` reconciles stay after the first
-votes because the indicators read those columns as they stand, and the
+recipe's `year_built` reconcile stays after the first votes because
+the indicators read that column as it stands (the roof, foundation
+and construction reconcile stays where it ran beside it), and the
 transaction recipe's temporal joins need `sale_year` and the folded deed
 rows. A separate assemble stage for the gather phase was measured and
 rejected on 2026-09-29: gathering is 7% to 35% of a county's curate time
@@ -134,7 +135,10 @@ Steps are organized by the nature of the transformation:
   manufactured-home classifier, the occupancy and story estimators and
   `derive_admin_attribute` (1,707 lines); those now live in
   `group_context.py`, `estimators/` (one module per attribute:
-  `manufactured_homes.py`, `occupancy.py`, `stories.py`; the package
+  `manufactured_homes.py`, `occupancy.py`, `stories.py`, whose
+  `decide_stories` is the one step that sets a building's `n_stories`:
+  ordered evidence, a lidar height at 3.5 m per story, a roll gap fill
+  per unit, rounded half up once; the package
   file imports them because the shared step loader skips sub-packages)
   and `evidence.py`. `inferers.py` still re-exports every moved step
   name, so `from openplaces.io.curator.inferers import ...` keeps

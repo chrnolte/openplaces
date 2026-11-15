@@ -22,10 +22,17 @@ def _state(df: pd.DataFrame) -> CurateState:
 
 
 def test_rounds_to_nearest_story():
-    df = pd.DataFrame({'height_footprint_fema': [3.05, 6.5, 9.5]})
+    df = pd.DataFrame({'height_footprint_fema': [3.5, 6.5, 9.5]})
     out = derive_stories_from_height(_state(df)).curated
-    # 3.05/3.05=1.0 -> 1; 6.5/3.05=2.13 -> 2; 9.5/3.05=3.11 -> 3
+    # 3.5/3.5=1.0 -> 1; 6.5/3.5=1.86 -> 2; 9.5/3.5=2.71 -> 3
     assert out['n_stories_footprint_fema'].tolist() == [1.0, 2.0, 3.0]
+
+
+def test_half_stories_round_up():
+    # 8.75/3.5 = 2.5 and 15.75/3.5 = 4.5: half up, not half to even.
+    df = pd.DataFrame({'height_footprint_fema': [8.75, 15.75]})
+    out = derive_stories_from_height(_state(df)).curated
+    assert out['n_stories_footprint_fema'].tolist() == [3.0, 5.0]
 
 
 def test_floors_at_one_story():

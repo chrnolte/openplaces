@@ -738,8 +738,12 @@ pipeline:
     conflict_column: land_use_class_conflict
     report: land-use-evidence-conflicts.csv
 
-  # Derive stories from FEMA LiDAR height.
+  # Derive stories from FEMA LiDAR height, at the building curate's
+  # 3.5 m per story (the height includes the roof); one floor height
+  # for both (plans/n-stories-one-deciding-step.md).
+  # Measured 2026-11-14 on US: building LiDAR equals roll count 80.9% at 3.5 m, 75.9% at 3.05 m.
   - step: derive_stories_from_height
+    floor_height_m: 3.5
 
   # Calculate parcel lot area (ha) based on parcel geometry.
   - step: derive_metrics

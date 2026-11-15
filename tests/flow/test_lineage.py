@@ -22,6 +22,16 @@ def test_no_recipe_decides_a_column_twice():
     assert lineage.repeated_deciders(lineage.all_steps()) == {}
 
 
+def test_one_step_decides_n_stories_in_the_building_curate():
+    # plans/n-stories-one-deciding-step.md: decide_stories is the only
+    # declared writer of n_stories there, so nothing rewrites it later.
+    recipe_id = 'US_building-openplaces-2026'
+    building = [use for use in lineage.all_steps() if use.recipe_id == recipe_id]
+    found = lineage.writers('n_stories', building)
+    assert [use.step for use in found] == ['decide_stories']
+    assert 'n_stories' in found[0].decides
+
+
 def test_writers_readers_and_repeated_deciders():
     steps = [
         StepUse('r1', 'curate', 1, 'a', True, writes=frozenset({'x'})),
