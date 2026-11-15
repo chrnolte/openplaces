@@ -56,6 +56,12 @@ class EnrichState:
         decide whether to reuse a cached artifact it saved on a prior run
         (e.g. `enrich_parcels_from_reference_crosswalk`'s crosswalk sidecar)
         instead of always recomputing.
+    grid_cache
+        Work a raster step may reuse across the steps of this unit: the
+        spine reprojected to a raster's CRS and the spine burned onto a
+        raster window (`zonal.sample_raster` with `method='rasterized'`).
+        Lives as long as the state, one admin unit, and is cleared when
+        the unit's pipeline ends.
     """
 
     recipe: dict
@@ -67,6 +73,7 @@ class EnrichState:
     evidence: pd.DataFrame
     metadata: dict = field(default_factory=dict)
     reprocess: bool = False
+    grid_cache: dict = field(default_factory=dict)
 
 
 #: Maps step name strings (as used in recipe ``pipeline`` sections) to the
@@ -405,6 +412,39 @@ class Enricher:
             reprocess=reprocess,
         )
 
+        try:
+            state = self._run_steps(state, pipeline)
+        finally:
+            # Burned grids are worth keeping across the years of one
+            # unit only; release them before the save and the next unit.
+            state.grid_cache.clear()
+
+        out_path = get_output_path(
+            self.recipe,
+            admin_id,
+            entity_recipe_id=self.entity_recipe,
+        )
+        evidence = state.evidence
+        coverage = [_COVERAGE_ALL]
+        if sub_admin_ids is not None:
+            coverage = self._merged_coverage(out_path, sub_admin_ids)
+            if out_path.exists():
+                evidence = self._merge_evidence(
+                    read_parquet(out_path),
+                    evidence,
+                    state.metadata.get('attempted_keys'),
+                )
+        save_parquet(
+            evidence,
+            out_path,
+            file_metadata={'openplaces:partitions': json.dumps(sorted(coverage))},
+        )
+        # Resume checkpoints are superseded by the saved evidence.
+        for checkpoint in state.metadata.get('checkpoints', []):
+            checkpoint.delete()
+
+    def _run_steps(self, state: EnrichState, pipeline: list[dict]) -> EnrichState:
+        """Run the unrolled *pipeline* on *state*, one step after another."""
         for step_index, step_cfg in enumerate(expand_year_steps(pipeline)):
             step_name = step_cfg.get('step')
             if not step_name:
@@ -432,30 +472,7 @@ class Enricher:
             # One mark per recipe step (see the harmonizer's loop).
             if state.timer:
                 state.timer.mark(f'step {step_index:02d} {step_name}')
-
-        out_path = get_output_path(
-            self.recipe,
-            admin_id,
-            entity_recipe_id=self.entity_recipe,
-        )
-        evidence = state.evidence
-        coverage = [_COVERAGE_ALL]
-        if sub_admin_ids is not None:
-            coverage = self._merged_coverage(out_path, sub_admin_ids)
-            if out_path.exists():
-                evidence = self._merge_evidence(
-                    read_parquet(out_path),
-                    evidence,
-                    state.metadata.get('attempted_keys'),
-                )
-        save_parquet(
-            evidence,
-            out_path,
-            file_metadata={'openplaces:partitions': json.dumps(sorted(coverage))},
-        )
-        # Resume checkpoints are superseded by the saved evidence.
-        for checkpoint in state.metadata.get('checkpoints', []):
-            checkpoint.delete()
+        return state
 
     def _merged_coverage(self, out_path, sub_admin_ids: list[str]) -> list[str]:
         """Union the run's admin units with existing footer coverage."""

@@ -444,18 +444,160 @@ def sample_rasterstats(parcels_r, raster_path, raster_key, stat) -> pd.Series:
     return result
 
 
-def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
-    """Burn polygons to the raster grid, then aggregate with a numpy groupby.
+class _BurnedGrid:
+    """Entity positions burned onto one raster window, kept for reuse.
 
-    No fractional-overlap weighting (unlike ``sample_exactextract``), but no
+    Holds the entity frame itself, not only its id: the cache key uses
+    id(), which Python may hand to a new object once the old one is
+    gone, and a live reference rules that out.
+    """
+
+    __slots__ = ('entities', 'pixel_index', 'ids', 'pixels_per_entity')
+
+    def __init__(self, entities, id_grid: np.ndarray):
+        flat_ids = id_grid.ravel()
+        self.entities = entities
+        # Flat positions of the burned pixels, and the 1-based entity
+        # position at each; a further raster on the same window is
+        # then one gather over these pixels.
+        self.pixel_index = np.flatnonzero(flat_ids)
+        self.ids = flat_ids[self.pixel_index]
+        self.pixels_per_entity = np.bincount(self.ids, minlength=len(entities) + 1)
+
+
+def _burned_grid(parcels_r, shape, transform, crs, grid_cache) -> _BurnedGrid:
+    """Burn *parcels_r* onto a window, or reuse the burn in *grid_cache*.
+
+    The burn depends on nothing but the geometries, the output shape
+    and the window transform (fill, dtype and all_touched are fixed
+    here), so those make the key. The transform carries the window's
+    offset and the pixel size, so two windows that differ in either
+    miss each other. The CRS is in the key so that numerically equal
+    transforms in two CRSs never share a burn. The geometries enter as
+    the identity of the frame, checked with `is` against the frame the
+    entry holds: the caller passes the same frame for every raster
+    that should share a burn, and a new frame simply misses.
+    """
+    key = None
+    if grid_cache is not None:
+        key = (
+            'burned_grid',
+            id(parcels_r),
+            tuple(transform)[:6],
+            tuple(shape),
+            crs.to_wkt() if crs is not None else None,
+        )
+        hit = grid_cache.get(key)
+        if hit is not None and hit.entities is parcels_r:
+            return hit
+
+    shapes = (
+        (geom, idx)
+        for geom, idx in zip(
+            parcels_r.geometry, range(1, len(parcels_r) + 1), strict=True
+        )
+    )
+    id_grid = rasterize(
+        shapes,
+        out_shape=shape,
+        transform=transform,
+        fill=0,
+        dtype='int32',
+    )
+    burned = _BurnedGrid(parcels_r, id_grid)
+    if key is not None:
+        grid_cache[key] = burned
+    return burned
+
+
+# Below this bound every partial sum of integer pixel values is an
+# integer float32 represents exactly, so a float64 bincount sum equals
+# the float32 sum numpy's nanmean and nansum take per entity.
+_FLOAT32_EXACT_INTEGERS = 2**24
+
+
+def _aggregate_burned(burned: _BurnedGrid, raster_f, integer_valued, stat):
+    """Per-entity statistic over the burned pixels, one value per entity.
+
+    `mean`, `sum` and `count` are computed with one bincount over the
+    burned pixels when that is provably equal to the per-entity numpy
+    reduction (integer pixel values whose sums stay below 2**24); every
+    other case takes the pandas groupby. Entities without a burned
+    pixel get NaN either way.
+    """
+    n = len(burned.entities)
+    vals = raster_f.ravel()[burned.pixel_index]
+    has_pixels = burned.pixels_per_entity[1:] > 0
+    valid = ~np.isnan(vals)
+    exact = stat == 'count'
+    if stat in ('mean', 'sum') and integer_valued:
+        max_abs = float(np.abs(vals[valid]).max()) if valid.any() else 0.0
+        max_pixels = int(burned.pixels_per_entity.max(initial=0))
+        exact = max_abs * max_pixels < _FLOAT32_EXACT_INTEGERS
+    if exact:
+        counts = np.bincount(burned.ids[valid], minlength=n + 1)[1:]
+        if stat == 'count':
+            values = counts.astype('float64')
+        else:
+            sums = np.bincount(
+                burned.ids[valid],
+                weights=vals[valid].astype('float64'),
+                minlength=n + 1,
+            )[1:]
+            if stat == 'sum':
+                values = sums
+            else:
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    # Rounded to float32 as numpy's nanmean of a float32
+                    # array rounds its quotient.
+                    values = (sums / counts).astype('float32').astype('float64')
+        values[~has_pixels] = np.nan
+        return values
+
+    df = pd.DataFrame({'idx': burned.ids, 'val': vals})
+    grouped = df.groupby('idx')['val'].agg(_RASTERIZED_STAT_FN[stat])
+    # Reindex on the burned row positions, not on the parcel ids:
+    # keying a dict by the id collapses two rows sharing a label into
+    # one entry, and both then read back the same statistic.
+    return grouped.reindex(np.arange(1, n + 1)).to_numpy(dtype='float64')
+
+
+def sample_rasterized(
+    parcels_r, raster_path, raster_key, stat, grid_cache: dict | None = None
+) -> pd.Series:
+    """Burn polygons to the raster grid, then aggregate per polygon.
+
+    No fractional-overlap weighting (unlike `sample_exactextract`), but no
     extra dependency either.
+
+    Parameters
+    ----------
+    parcels_r : geopandas.GeoDataFrame
+        Polygons, already in the raster's CRS.
+    raster_path : str or Path
+        Single-band raster to aggregate.
+    raster_key : str
+        Unused; kept for the signature shared with the other back ends.
+    stat : str
+        One of `mean`, `max`, `min`, `sum`, `std`, `count`.
+    grid_cache : dict, optional
+        Burned id grids from earlier calls, filled by this one. A raster
+        on the same window, CRS and pixel grid as an earlier one, sampled
+        over the same *parcels_r* object, reuses that burn instead of
+        rasterizing again. The caller owns the dict and its lifetime
+        (the Enricher keeps one per admin unit); None burns every time.
+
+    Returns
+    -------
+    pandas.Series
+        One float per row of *parcels_r*, on its index; NaN for a
+        polygon that covers no pixel center.
     """
     if stat not in _RASTERIZED_STAT_FN:
         raise ValueError(
             f"method='rasterized' does not support stat={stat!r}. Choose "
             f'from: {list(_RASTERIZED_STAT_FN)}'
         )
-    agg_fn = _RASTERIZED_STAT_FN[stat]
 
     with rasterio.open(raster_path) as src:
         bounds = parcels_r.total_bounds
@@ -464,38 +606,16 @@ def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
         win_transform = src.window_transform(win)
         raster_data = src.read(1, window=win)
         nodata = src.nodata
+        crs = src.crs
 
-    parcel_ids = parcels_r.index
-    int_indices = range(1, len(parcel_ids) + 1)
-
-    shapes = (
-        (geom, idx) for geom, idx in zip(parcels_r.geometry, int_indices, strict=True)
-    )
-    id_grid = rasterize(
-        shapes,
-        out_shape=raster_data.shape,
-        transform=win_transform,
-        fill=0,
-        dtype='int32',
-    )
+    burned = _burned_grid(parcels_r, raster_data.shape, win_transform, crs, grid_cache)
 
     raster_f = raster_data.astype('float32')
     if nodata is not None:
         raster_f[raster_data == nodata] = np.nan
 
-    flat_ids = id_grid.ravel()
-    flat_vals = raster_f.ravel()
-    mask = flat_ids > 0
-
-    df = pd.DataFrame({'idx': flat_ids[mask], 'val': flat_vals[mask]})
-    grouped = df.groupby('idx')['val'].agg(agg_fn)
-    # Reindex on the burned row positions, not on the parcel ids:
-    # keying a dict by the id collapses two rows sharing a label into
-    # one entry, and both then read back the same statistic.
-    values = grouped.reindex(np.arange(1, len(parcel_ids) + 1)).to_numpy(
-        dtype='float64'
-    )
-    return pd.Series(values, index=parcel_ids, dtype='float64')
+    values = _aggregate_burned(burned, raster_f, raster_data.dtype.kind in 'biu', stat)
+    return pd.Series(values, index=parcels_r.index, dtype='float64')
 
 
 def clip(
