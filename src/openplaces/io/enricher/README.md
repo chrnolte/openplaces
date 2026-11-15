@@ -58,6 +58,12 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   geometry, dispatching to one of three backends in `geo/raster.py`
   (`exactextract` for fractional pixel-area weighting, `rasterstats`, or
   `rasterized` for a burn-and-groupby). Requires `spine_geom: true`.
+  With `rasterized`, the spine burned onto a raster window is kept in
+  `EnrichState.grid_cache` and reused by every later raster on the same
+  window, CRS and pixel grid (each year of an annual layer), so a further
+  year costs one read and one pass over the burned pixels. The cache
+  belongs to one admin unit's run and is emptied when its pipeline ends;
+  a raster on another grid simply burns its own.
 - `vicinity.py` — `vicinity_coverage`: derives a neighborhood-percentage
   raster from a boolean source raster by FFT convolution, windowed to one
   admin unit and padded so neighboring units still count, then samples it

@@ -145,21 +145,58 @@ def sample_raster(
 
     with rasterio.open(raster_path) as src:
         raster_crs = src.crs
-        raster_extent = box(*src.bounds)
+        raster_bounds = tuple(src.bounds)
 
-    parcels_r = spine.to_crs(raster_crs)
-    parcels_r = parcels_r[
-        parcels_r.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
-    ]
-    parcels_r = parcels_r[parcels_r.intersects(raster_extent)]
+    if method == 'rasterized':
+        parcels_r = _spine_in_raster_crs(state, spine, raster_crs, raster_bounds)
+    else:
+        parcels_r = _polygons_on_raster(spine, raster_crs, raster_bounds)
 
     if parcels_r.empty:
         state.evidence[column] = pd.NA
         return state
 
-    values = _METHODS[method](parcels_r, raster_path, raster_key, stat)
+    if method == 'rasterized':
+        values = sample_rasterized(
+            parcels_r, raster_path, raster_key, stat, grid_cache=state.grid_cache
+        )
+    else:
+        values = _METHODS[method](parcels_r, raster_path, raster_key, stat)
     state.evidence[column] = values.reindex(state.evidence.index)
     return state
+
+
+def _polygons_on_raster(spine, raster_crs, raster_bounds):
+    """The spine's polygons in *raster_crs* that touch the raster's bounds."""
+    parcels_r = spine.to_crs(raster_crs)
+    parcels_r = parcels_r[
+        parcels_r.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
+    ]
+    return parcels_r[parcels_r.intersects(box(*raster_bounds))]
+
+
+def _spine_in_raster_crs(state, spine, raster_crs, raster_bounds):
+    """`_polygons_on_raster`, computed once per spine, CRS and extent.
+
+    Every year of an annual layer shares the CRS and extent, so this
+    returns one and the same frame for all of them, which is what lets
+    `sample_rasterized` find its burned grid again (it keys on that
+    frame's identity). The entry holds *spine* and is checked with
+    `is`: an id() is reused only after its object is gone, and enrich
+    steps write evidence, never the spine.
+    """
+    key = (
+        'spine_in_raster_crs',
+        id(spine),
+        raster_crs.to_wkt() if raster_crs is not None else None,
+        raster_bounds,
+    )
+    hit = state.grid_cache.get(key)
+    if hit is not None and hit[0] is spine:
+        return hit[1]
+    parcels_r = _polygons_on_raster(spine, raster_crs, raster_bounds)
+    state.grid_cache[key] = (spine, parcels_r)
+    return parcels_r
 
 
 @_register('sample_raster_at_centroids')
