@@ -18,9 +18,9 @@ construction. This annex lists every one of those steps, says why it
 is there, and says whether that reason still holds. It was written on
 2026-11-03 by reading the code (main branch, commit 500b09b9) and
 checking the results in small North Carolina and Texas counties. On
-2026-11-14 the entries for footprints cut at lot lines, condominium
-buildings kept whole and the building curate's value steps were
-brought up to date, with the step numbers each recipe now has.
+2026-11-14 and 2026-11-15 the entries for footprints cut at lot lines,
+condominium buildings kept whole, building roles and the value steps
+were brought up to date. Their step numbers are the current ones.
 
 How to read this annex
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -309,7 +309,7 @@ address points) attached. Values and classes are decided for
 buildings and later added up onto the footprints. A footprint that
 stands on several lots, such as a townhome row, is cut at the lot
 lines: the piece on its main lot is a building, and a piece on another
-lot is one where the evidence shows a structure there.
+lot becomes a building where the evidence shows a structure there.
 
 Start with one building per footprint
    :Step: ``resolve_spine`` (#1)
@@ -420,10 +420,18 @@ Tell main buildings from sheds and garages
       beside such a building, other buildings of 355 m2 or more whose
       NSI point counts two or more dwellings. Where no
       building has an address point, those with an NSI point are
-      primary; else the largest.
+      primary; else the largest. The role is decided on each lot a
+      building touches. A building's own role, ``priority_on_parcel``,
+      is its role on its main lot, and ``parcel_id_secondary`` lists any
+      lots where it is secondary. A house reaching onto its neighbor's
+      lot, where the neighbor's house holds the address point, stays
+      primary on its own lot and takes no share of the neighbor's
+      improvement value or dwellings.
    :Why: Only primary buildings share the lot's building value from the
       roll. Without this, a detached garage would take part of the
-      house's value.
+      house's value. Deciding the role per lot keeps each house primary
+      on its own lot, so it receives its own lot's improvement value
+      and none of a neighboring lot's.
 
 Attach the lot's and the points' information to each building
    :Step: ``reconcile_attributes`` (#4)
@@ -1060,7 +1068,8 @@ Record no address point as zero
 
 Compute area and value per area
    :Step: ``derive_metrics`` (#15)
-   :Does: Writes ``area_m2`` (the footprint's area in square meters) and
+   :Does: Writes ``area_m2`` (the building's area in square meters, its
+      piece's where a footprint was cut) and
       the value per square meter.
    :Why: Later checks compare buildings by size and by value per area.
 
@@ -1073,10 +1082,10 @@ Remove values from condominium slivers
       receive them.
    :Verdict: holds, reworded. On 2026-11-01 there were 193 such
       footprints across North Carolina and Texas, all drawn from the
-      unit lots themselves. Since 2026-11-14 a condominium footprint is
-      always a drawn footprint over 9 or more condominium lots or 33 or
-      more lots of any use, so the step is expected to find none; it
-      stays as a check.
+      unit lots themselves. Since 2026-11-14 a condominium building is
+      always a drawn footprint over 9 or more lots (at least half of
+      them classed condominium) or 33 or more lots of any use, so the
+      step is expected to find none; it stays as a check.
 
 Prepare the evidence for the building votes
    :Step: ``derive_indicators`` (#17)

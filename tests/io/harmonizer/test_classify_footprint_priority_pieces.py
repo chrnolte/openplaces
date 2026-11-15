@@ -16,7 +16,10 @@ from shapely.geometry import Point, box
 
 from openplaces.core.schema import SourceGeometryType
 from openplaces.io.harmonizer import HarmonizeState
-from openplaces.io.harmonizer.apportion import apportion_reference_values
+from openplaces.io.harmonizer.apportion import (
+    apportion_reference_values,
+    secondary_pairs_from,
+)
 from openplaces.io.harmonizer.attributes import classify_footprint_priority
 from tests.io.harmonizer.test_parcel_pieces import _lots, _spine, _split, _values
 
@@ -60,7 +63,8 @@ def _roles(spine, flat, dwelling_points, building_points):
         BUILDINGS: SourceGeometryType.single_building_point,
     }
     out = classify_footprint_priority(state, entity_type='parcel')
-    return out.spine['priority_on_parcel'].astype(str).to_dict(), crosswalk
+    roles = out.spine['priority_on_parcel'].astype(str).to_dict()
+    return roles, crosswalk, out.spine['parcel_id_secondary']
 
 
 def test_each_half_of_a_cut_duplex_is_primary_on_its_own_lot():
@@ -73,7 +77,7 @@ def test_each_half_of_a_cut_duplex_is_primary_on_its_own_lot():
     values = _values(L1=(90000.0, None), L2=(90000.0, None))
     spine, flat, stats = _cut(outlines, lots, points, values)
     assert stats['outlines_cut'] == 1
-    roles, _ = _roles(spine, flat, points, [])
+    roles, _, _ = _roles(spine, flat, points, [])
     halves = spine.index[spine['footprint_id'] == 'd1']
     assert {roles[b] for b in halves} == {'primary'}
     assert roles['g1'] == 'secondary'
@@ -103,31 +107,24 @@ def test_the_piece_on_the_neighbors_lot_is_refused():
     assert sorted(kept.loc[kept['building_id'] == 'h', 'parcel_id']) == ['A', 'B']
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='Transition review 3.10, open: a demotion on a non-dominant '
-    'parcel demotes the outline everywhere (attributes/priority.py, the '
-    'per-parcel loop writes one role per building).',
-)
 def test_a_house_is_not_demoted_by_its_neighbors_dwelling_point():
+    """Transition review 3.10: the house is primary on its own lot A,
+    its dominant parcel, and secondary only on lot B."""
     spine, flat, _, dwelling, building = _house_reaching_onto_its_neighbor()
-    roles, _ = _roles(spine, flat, dwelling, building)
+    roles, _, secondary = _roles(spine, flat, dwelling, building)
     assert roles == {'h': 'primary', 'n': 'primary'}
+    assert secondary['h'] == 'B'
+    assert pd.isna(secondary['n'])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='Transition review 3.10, open: the demoted house takes none of '
-    'its own lot A, whose value then reaches no building.',
-)
 def test_the_house_keeps_its_own_lots_value_and_the_neighbor_keeps_its_own():
     spine, flat, _, dwelling, building = _house_reaching_onto_its_neighbor()
-    roles, crosswalk = _roles(spine, flat, dwelling, building)
+    roles, crosswalk, secondary = _roles(spine, flat, dwelling, building)
     pairs = crosswalk.reset_index()[
         ['building_id', 'parcel_id', 'area_intersection_m2']
     ]
     lot_values = pd.DataFrame(
-        {'improvement_value': [120000.0, 150000.0]},
+        {'improvement_value': [120000.0, 150000.0], 'n_dwellings': [1.0, 1.0]},
         index=pd.Index(['A', 'B'], name='parcel_id'),
     )
     result = apportion_reference_values(
@@ -135,7 +132,25 @@ def test_the_house_keeps_its_own_lots_value_and_the_neighbor_keeps_its_own():
         lot_values,
         spine_id_col='building_id',
         priority=pd.Series(roles),
+        secondary_pairs=secondary_pairs_from(secondary),
         dwelling_linked_ids={'n'},
     )
     assert result.loc['h', 'improvement_value'] == pytest.approx(120000.0)
     assert result.loc['n', 'improvement_value'] == pytest.approx(150000.0)
+    assert result.loc['h', 'n_dwellings'] == pytest.approx(1.0)
+    assert result.loc['n', 'n_dwellings'] == pytest.approx(1.0)
+
+
+def test_a_building_secondary_on_its_dominant_parcel_stays_secondary():
+    """A shed on lot A beside the house that holds A's dwelling point,
+    its corner reaching onto an empty lot C: secondary on A, its
+    dominant parcel, so secondary as a building."""
+    outlines = {'house': box(0, 0, 10, 10), 'shed': box(12, 0, 18, 4)}
+    lots = {'A': box(-5, -5, 16, 15), 'C': box(16, -5, 30, 15)}
+    points = [Point(5, 5)]
+    values = _values(A=(100000.0, None), C=(0.0, None))
+    spine, flat, _ = _cut(outlines, lots, points, values)
+    roles, _, secondary = _roles(spine, flat, points, [])
+    assert roles['house'] == 'primary'
+    assert roles['shed'] == 'secondary'
+    assert secondary['shed'] == 'A'

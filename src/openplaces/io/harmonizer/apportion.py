@@ -28,8 +28,41 @@ __all__ = [
     'WHOLE_VALUE_COLUMNS',
     'NegativeReferenceValueError',
     'ValueOverAllocationError',
+    'SECONDARY_PAIR_SEP',
     'apportion_reference_values',
+    'secondary_pairs_from',
 ]
+
+#: Separator of the parcel ids in a ``{entity}_id_secondary`` column
+#: (classify_footprint_priority), the same as in ``parcel_id_all``.
+SECONDARY_PAIR_SEP = '|'
+
+
+def secondary_pairs_from(column: pd.Series | None) -> set[tuple]:
+    """The (spine id, parcel id) pairs a ``{entity}_id_secondary`` column lists.
+
+    Parameters
+    ----------
+    column : pandas.Series or None
+        Indexed by spine id; each value the parcel ids on which that
+        entity is secondary, joined by `SECONDARY_PAIR_SEP`, or missing.
+
+    Returns
+    -------
+    set of tuple
+        Empty where *column* is None or holds no ids.
+    """
+    if column is None:
+        return set()
+    listed = column.dropna().astype(str)
+    listed = listed[listed != '']
+    return {
+        (spine_id, parcel_id)
+        for spine_id, ids in listed.items()
+        for parcel_id in ids.split(SECONDARY_PAIR_SEP)
+        if parcel_id
+    }
+
 
 # Reference columns this module knows how to apportion; anything else is the
 # caller's business (e.g. the registry-driven generic aggregation in
@@ -83,6 +116,7 @@ def apportion_reference_values(
     ref_id_col: str = 'parcel_id',
     area_col: str = 'area_intersection_m2',
     priority: pd.Series | None = None,
+    secondary_pairs: set | None = None,
     dwelling_linked_ids: set | None = None,
     volume_weight: pd.Series | None = None,
     equal_area_ref_ids: set | None = None,
@@ -152,6 +186,13 @@ def apportion_reference_values(
         ``priority_on_parcel``-style role per spine id (``'primary'`` /
         ``'secondary'`` / ``'unknown'``). Drives the secondary and
         principal-only rules above.
+    secondary_pairs : set of tuple, optional
+        (spine id, reference id) pairs on which the entity is secondary
+        although its *priority* is not, a building primary on its own
+        lot that reaches onto a lot where another building holds the
+        role (`secondary_pairs_from`). Such a pair takes the secondary
+        rule of the proportional columns and of ``n_dwellings``, and is
+        excluded from the whole-value fallback, on that reference only.
     dwelling_linked_ids : set, optional
         Spine ids with dwelling-point evidence. Within references where at
         least one linked entity has such evidence, entities without it get a
@@ -283,6 +324,11 @@ def apportion_reference_values(
         )
     else:
         is_secondary_pair = np.zeros(len(pairs), dtype=bool)
+    if secondary_pairs:
+        listed = pd.MultiIndex.from_arrays(
+            [spine_ids.astype(str), ref_ids.astype(str)]
+        ).isin([(str(s), str(r)) for s, r in secondary_pairs])
+        is_secondary_pair = is_secondary_pair | listed
     # An entity exempt by equal_area_ref_ids keeps its share on every
     # reference it touches, as the per-entity mask below always did.
     secondary_pair = pd.Series(

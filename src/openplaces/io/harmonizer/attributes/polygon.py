@@ -12,6 +12,7 @@ from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
+    secondary_pairs_from,
 )
 from openplaces.io.harmonizer.attributes._shared import (
     _POLYGON_REF_COLS,
@@ -140,6 +141,7 @@ def _attribute_polygon_reference(
         ref_polys[[c for c in avail_cols if c in APPORTIONED_VALUE_COLUMNS]],
         spine_id_col=spine_id_col,
         priority=spine.get('priority_on_parcel'),
+        secondary_pairs=secondary_pairs_from(spine.get(f'{ref_label}_id_secondary')),
         dwelling_linked_ids=dwelling_linked_ids,
         volume_weight=volume_weight,
         tie_improvement_value=tie_value,

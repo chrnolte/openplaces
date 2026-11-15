@@ -212,7 +212,7 @@ The evidence file holds 92 columns (and their ``_source`` sidecars), grouped her
      - The parcel's whole recorded land value, as the roll states it for the lot
      - USD
    * - ``priority_on_parcel``
-     - Footprint priority on its parcel (primary secondary or unknown)
+     - Building priority on its dominant parcel (primary secondary or unknown)
      - 
    * - ``parcel_id``
      - Parcel identifier

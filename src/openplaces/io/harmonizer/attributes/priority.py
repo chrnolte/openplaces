@@ -7,6 +7,32 @@ from __future__ import annotations
 import pandas as pd
 
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer.apportion import SECONDARY_PAIR_SEP
+from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps, tie_breakers
+
+
+def _dominant_parcel(state, crosswalk, parcel_recipe_id, spine_id_col, ids):
+    """Each building's dominant parcel among *ids*, or None.
+
+    Ranked by the shared rule (`dominant_parcel.dominant_overlaps`) over
+    the crosswalk's overlap areas, with the parcel reference's values as
+    tie breakers; without areas, the spine's own ``parcel_id``.
+    """
+    overlaps = crosswalk.reset_index()
+    if 'area_intersection_m2' in overlaps.columns:
+        overlaps = overlaps[overlaps[spine_id_col].isin(ids)].dropna(
+            subset=['parcel_id']
+        )
+        tie_value, tie_area = tie_breakers(state.references.get(parcel_recipe_id))
+        return dominant_overlaps(
+            overlaps,
+            spine_id_col=spine_id_col,
+            improvement_value=tie_value,
+            ref_area=tie_area,
+        ).set_index(spine_id_col)['parcel_id']
+    if 'parcel_id' in state.spine.columns:
+        return state.spine['parcel_id']
+    return None
 
 
 @_register('classify_footprint_priority')
@@ -19,7 +45,17 @@ def classify_footprint_priority(
     """Classify each footprint's priority on its parcel.
 
     Assigns ``priority_on_parcel`` as ``'primary'``, ``'secondary'``, or
-    ``'unknown'``.
+    ``'unknown'``, and ``{entity_type}_id_secondary``: the parcels on
+    which the footprint is secondary, joined by ``'|'`` (missing where
+    there are none).
+
+    The rules below decide a role per (footprint, parcel) pair. A
+    footprint's own ``priority_on_parcel`` is its role on its dominant
+    parcel (`dominant_parcel`); on another parcel it may be secondary
+    while primary on its own, a house reaching onto its neighbor's lot
+    where the neighbor's house holds the address point. Value
+    apportionment then gives it no share of that parcel only
+    (`apportion.apportion_reference_values`, *secondary_pairs*).
 
     Uses dwelling-point and building-point evidence to assign roles within each
     parcel (Lochhead et al. 2026, Table 4):
@@ -137,6 +173,9 @@ def classify_footprint_priority(
         state.spine['priority_on_parcel'] = pd.Categorical(
             role, categories=['primary', 'secondary', 'unknown']
         )
+        state.spine[f'{entity_type}_id_secondary'] = pd.Series(
+            None, index=state.spine.index, dtype=object
+        )
         return state
 
     # Collect point-evidence sets.
@@ -222,6 +261,15 @@ def classify_footprint_priority(
         else get_areas(state.spine, unit='m2')
     )
 
+    # The roles are decided per parcel, so a building on two lots can be
+    # primary on one and secondary on the other: a house reaching onto
+    # its neighbor's lot, where the neighbor's house holds the address
+    # point. Each (building, parcel) pair keeps its own role (below).
+    secondary_pairs: list[tuple] = []
+
+    def demote(fp_id, parcel_id):
+        secondary_pairs.append((fp_id, parcel_id))
+
     for parcel_id, group in multi_fp.groupby('parcel_id'):
         fp_ids = set(group[spine_id_col])
         # Sorted, because idxmax below takes the first of equal areas
@@ -261,11 +309,11 @@ def classify_footprint_priority(
                     ):
                         keep.add(fp_id)
             for fp_id in fp_ids - keep:
-                role[fp_id] = 'secondary'
+                demote(fp_id, parcel_id)
         elif has_bldg:
             # NSI evidence: NSI-linked footprints are primary, rest secondary.
             for fp_id in fp_ids - has_bldg:
-                role[fp_id] = 'secondary'
+                demote(fp_id, parcel_id)
         else:
             # No point evidence on this parcel: promote by geometry (see
             # the calibration note above), demote the rest.
@@ -274,7 +322,37 @@ def classify_footprint_priority(
             if always_primary_m2 is not None:
                 keep |= set(fp_areas.index[fp_areas >= always_primary_m2])
             for fp_id in fp_ids - keep:
-                role[fp_id] = 'secondary'
+                demote(fp_id, parcel_id)
+
+    # A building's own role is its role on its dominant parcel, the one
+    # its parcel_id names (the shared dominant_parcel rule). Until
+    # 2026-11-15 a building secondary on any of its parcels was
+    # secondary everywhere: a house reaching onto its neighbor's lot
+    # lost its own lot's value, which then reached no building
+    # (transition review 3.10, which counted 2 such outlines in
+    # Somerville and 21 in Durham on 2026-10-17; maintainer, 2026-11-15).
+    secondary_on = pd.Series(dtype=object)
+    if secondary_pairs:
+        demoted = pd.DataFrame(secondary_pairs, columns=[spine_id_col, 'parcel_id'])
+        dominant = _dominant_parcel(
+            state, crosswalk, parcel_recipe_id, spine_id_col, set(demoted[spine_id_col])
+        )
+        if dominant is None:
+            # No overlap area and no parcel_id to rank by: a building
+            # secondary on any of its parcels is secondary, as before.
+            on_dominant = pd.Series(True, index=demoted.index).to_numpy()
+        else:
+            on_dominant = (
+                demoted['parcel_id'].astype(str).to_numpy()
+                == dominant.reindex(demoted[spine_id_col]).astype(str).to_numpy()
+            )
+        for fp_id in demoted.loc[on_dominant, spine_id_col]:
+            role[fp_id] = 'secondary'
+        secondary_on = (
+            demoted.sort_values([spine_id_col, 'parcel_id'])
+            .groupby(spine_id_col)['parcel_id']
+            .agg(lambda s: SECONDARY_PAIR_SEP.join(s.astype(str).unique()))
+        )
 
     # Promote unlinked footprints with dwelling evidence from 'unknown' to 'primary'.
     for fp_id in address_evidence:
@@ -286,6 +364,12 @@ def classify_footprint_priority(
     state.spine['priority_on_parcel'] = pd.Categorical(
         role, categories=['primary', 'secondary', 'unknown']
     )
+    # The parcels on which the building is secondary, so that value
+    # apportionment gives it no share there while it keeps its share
+    # of the parcels where it is primary.
+    state.spine[f'{entity_type}_id_secondary'] = secondary_on.reindex(
+        state.spine.index
+    ).astype(object)
     if state.verbose:
         counts = state.spine['priority_on_parcel'].value_counts()
         print(

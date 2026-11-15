@@ -88,10 +88,10 @@ lot line does not count twice.
 
 **Buildings.** Each footprint becomes a building. A footprint on two or
 more lots, other than a condominium kept whole, is cut at the lot
-lines: the piece on its main lot is a
-building, and a piece on another lot is a building of its own where a
-point lies in it and its lot records a structure, so a townhome row
-becomes one building per lot. NSI points and Overture
+lines. The piece on its main lot is a building. A piece on another lot
+is a building of its own where a point lies in it and its lot records
+a structure; otherwise it stays part of the main piece. A townhome row
+thus becomes one building per lot. NSI points and Overture
 address points are joined to the building they fall in, or to the
 nearest building on the same parcel. On a parcel with several
 buildings, the ones with an address point are marked ``primary`` and
@@ -153,8 +153,8 @@ set to missing.
 
 **Footprint curate.** The building table is carried onto the footprints.
 Where one footprint holds several buildings, such as the pieces of a
-cut townhome row, counts and values add up, classes list each
-building's value, and ``year_built`` is the earliest. The footprint's
+cut townhome row, counts and values add up, the class columns list
+each building's class, and ``year_built`` is the earliest. The footprint's
 ``parcel_id`` is its main piece's lot, and ``parcel_id_all`` lists every
 lot it overlaps.
 

@@ -14,6 +14,7 @@ from openplaces.io.curator import CurateState, _register
 from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
+    secondary_pairs_from,
 )
 from openplaces.io.harmonizer.dominant_parcel import rank_overlaps, tie_breakers
 from openplaces.recipe import get_output_path, get_recipe_by_id
@@ -690,6 +691,26 @@ def _promote_on_complexes(priority, pairs, id_col, complex_refs, min_m2):
     return priority.astype(object).mask(promote, 'primary')
 
 
+def _secondary_pairs_off_complexes(
+    secondary_pairs, pairs, id_col, complex_refs, min_m2
+):
+    """*secondary_pairs* less those a complex lot reads as primary.
+
+    The pair-level counterpart of `_promote_on_complexes`: a building
+    secondary on a reference in *complex_refs* that it overlaps by at
+    least *min_m2* square meters keeps its share there.
+    """
+    if not secondary_pairs or not complex_refs:
+        return secondary_pairs
+    area = pd.to_numeric(pairs['area_intersection_m2'], errors='coerce')
+    large = pairs['parcel_id'].isin(complex_refs) & area.ge(min_m2)
+    lifted = {
+        (str(i), str(r))
+        for i, r in zip(pairs.loc[large, id_col], pairs.loc[large, 'parcel_id'])
+    }
+    return {p for p in secondary_pairs if (str(p[0]), str(p[1])) not in lifted}
+
+
 @_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
@@ -1017,6 +1038,15 @@ def apportion_curated_values(
         spine_id_col=id_col,
         priority=_promote_on_complexes(
             curated.get(priority_column), pairs, id_col, complex_refs, complex_min_m2
+        ),
+        # The parcels on which a building is secondary while primary on
+        # its own (classify_footprint_priority): no share of those only.
+        secondary_pairs=_secondary_pairs_off_complexes(
+            secondary_pairs_from(curated.get(f'{entity_type}_id_secondary')),
+            pairs,
+            id_col,
+            complex_refs,
+            complex_min_m2,
         ),
         dwelling_linked_ids=(
             set(curated.index[curated[dwelling_column] > 0])

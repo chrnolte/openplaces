@@ -212,7 +212,8 @@ polygon_type,"The cadastre's own polygon type (MassGIS POLY_TYPE: FEE, TAX, ROW,
 spine_resolution,"Why resolve_spine took this footprint from a later source over the earlier ones it overlaps (fragment replaced); missing where the source ranking decided",,categorical,first,,,harmonize
 geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,harmonize
 source_date,Source last-update date,,datetime,first,,,ingest
-priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
+priority_on_parcel,Building priority on its dominant parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
+parcel_id_secondary,"The parcels on which the building is secondary (pipe-joined; missing where there are none): it takes no share of those parcels' improvement value or dwellings, and keeps its share of the parcels where it is primary",,string,first,,building,harmonize,
 area_m2,Footprint area,m2,float,sum,,,curate
 area_ha,Parcel lot area,ha,float,sum,,,harmonize
 area_ac,Parcel lot area,ac,float,sum,,,curate
