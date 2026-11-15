@@ -168,12 +168,24 @@ Name a plan file after what it does, in kebab-case
 auto-generated name built from random words or from the prompt that started the
 session; rename it before writing.
 
-Move a plan to ``plans/implemented/`` once its work has landed, prefixed with
-the date it landed: ``YYYY-MM-DD_<same-descriptive-name>.md``. ``plans/README.md``
-ranks the open plans; update it when adding or finishing one. It is an index:
-keep it under 150 lines, one line per row, and put measurements, build logs and
-history in the plan they describe, never in the index. Overwrite its state
-block rather than appending to it.
+``plans/`` has a fixed top level, set out in ``plans/README.md``; never add a
+file or folder beside it. An open plan lives in its work lane,
+``plans/active/<lane>/<name>.md``; once it has scripts, figures or handoffs it
+becomes a folder, ``plans/active/<lane>/<name>/<name>.md``, with those inside
+(never a ``<name>-scripts/`` sibling). No file over 1 MB goes into ``plans/``:
+bulk data stays in the data root and the plan cites its path.
+
+A plan's basename never changes, so a ``plans/<name>.md`` citation in code or
+docs stays valid wherever the plan sits: find it by searching
+``plans/**/*<name>.md``. When a plan lands, is superseded or is abandoned, move
+it (file or folder) to ``plans/archive/YYYY-QN/YYYY-MM-DD_<name>``, dated the
+day it left, with a ``Status:`` line under its title.
+
+``plans/README.md`` ranks the open plans; update it when adding or finishing
+one. It is an index: keep it under 150 lines, one line per row, and put
+measurements, build logs and history in the plan they describe, never in the
+index. The coordinator's running state lives in
+``plans/coordination/STATE.md``; overwrite it rather than appending.
 
 Implement all complex plans (plans affecting the functionality of multiple src/ files or notebooks) on a new git worktree in ``<repository_root>/_<worktree_branch_name>/``. If the plan is simple (variable renaming, comments, single file), ask the user whether implementing the plan directly on 'main' is acceptable.
 
