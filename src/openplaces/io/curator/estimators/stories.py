@@ -26,8 +26,8 @@ def round_half_up(values: pd.Series) -> pd.Series:
     """Round to whole numbers, sending a half up (1.5 to 2, 2.5 to 3).
 
     pandas rounds half to even (2.5 to 2, 3.5 to 4), which is harder to
-    explain for a count and treats a roll's half story differently
-    depending on the floor below it.
+    explain for a count and treats a half differently depending on the
+    whole number below it.
     """
     return np.floor(pd.to_numeric(values, errors='coerce').astype(float) + 0.5)
 
@@ -73,7 +73,8 @@ def _roll_fills(
     admin_level: int,
     max_roll_stories: float,
 ) -> tuple[pd.Series, pd.Series]:
-    """The roll's count and the rows where it fills a missing *current*.
+    """The roll's count as the roll states it, and the rows where it
+    fills a missing *current*.
 
     The roll is adopted per admin unit, never per row: a unit qualifies
     when, on at least *min_rows* rows that are the only non-secondary
@@ -89,11 +90,12 @@ def _roll_fills(
     from openplaces.io.curator.reconcilers import _resolve_admin_group
 
     curated = state.curated
-    roll = round_half_up(curated[roll_column])
+    # Not rounded: the fit test scores the count a fill would write.
+    roll = pd.to_numeric(curated[roll_column], errors='coerce').astype(float)
     roll = roll.where((roll >= 1) & (roll <= max_roll_stories))
     # The incumbent can be a mean over several points (1.33): it only
-    # disagrees with the roll if it rounds to a different count, but
-    # the fit is scored on the value itself.
+    # disagrees with the roll if the count step 2 delivers (half up)
+    # differs, but the fit is scored on the value itself.
     current_count = round_half_up(current)
     floor_m2 = pd.to_numeric(curated[floor_area_column], errors='coerce') * _SQFT_TO_M2
     area = pd.to_numeric(curated[area_column], errors='coerce')
@@ -216,14 +218,17 @@ def decide_stories(
        *valid_range*. A value outside it (a modeled count of 219 floors,
        a sentinel) falls through to the next column. No weights, no
        blending: the first available value wins.
-    3. Where nothing qualified, take the roll's count (*roll_column*,
-       half up, 1 to *max_roll_stories*) in admin units where the roll's
-       counts fit the roll's own floor area: on at least *min_rows*
-       buildings that are their lot's only non-secondary building and
-       where the roll and step 2 disagree, outline area times the roll's
-       count must come closer to the roll's floor area on at least
-       *min_share* of them. A count from step 2 is never overwritten.
-    4. Round half up, once, and write a nullable integer.
+    3. Round the value of step 2 half up (see Rounding below).
+    4. Where nothing qualified, take the roll's count as the roll
+       states it (*roll_column*, 1 to *max_roll_stories*, a 1.5 stays
+       1.5) in admin units where the roll's counts fit the roll's own
+       floor area: on at least *min_rows* buildings that are their
+       lot's only non-secondary building and where the roll and step 3
+       disagree, outline area times the roll's count must come closer
+       to the roll's floor area on at least *min_share* of them. A
+       count from step 2 is never overwritten.
+    5. Write *output* as a float: whole numbers, except a roll's
+       fraction.
 
     *output*_source names the column that supplied each value by its
     provenance suffix (`nsi`, `fema`, `cheer`), or *roll_token*
@@ -242,12 +247,25 @@ def decide_stories(
     lot's only one:
     Measured 2026-11-14 on US: lidar equals roll count 80.9% at 3.5 m, 75.9% at 3.05 m.
 
-    Why half up, once: before this step a roll fill rounded half up and
-    the final cast half to even, so a roll's 2.5 and an NSI mean of 2.5
-    became different counts. Half to even also sends 2.5 to 2 and 3.5 to
-    4, which a reader cannot predict. The two rules differ only on
-    values ending in .5 (and on 874 lidar counts at 3.5 m):
-    Measured 2026-11-14 on US: rounding decides 53,243 roll counts, 5,269 NSI means.
+    Rounding, by evidence:
+
+    - The roll's count is used as the roll states it, in the gap fill
+      and in its fit test alike, so a delivered count can be 1.5 or
+      2.75. A roll's half story is a real half (a floor under the roof,
+      about half a floor of area), and the assessor states it
+      (maintainer, 2026-11-15).
+    - A lidar count is whole by its conversion (step 1), and CHEER's
+      counts are whole.
+    - An NSI value is a mean over the NSI points linked to a building,
+      and it is fractional where those points disagree: an averaging
+      artifact, not a half story. Until NSI arrives as its tallest
+      point (a separate change), it is rounded half up here, an
+      interim rule. Half up, not half to even (the pandas default),
+      because half to even sends 2.5 to 2 and 3.5 to 4, which a
+      reader cannot predict.
+
+    Measured 2026-11-15 on US: rounding decides 143,299 NSI means, 177 lidar heights.
+    Measured 2026-11-15 on US: roll fills 25,349 counts, 5,753 of them a fraction.
 
     Parameters
     ----------
@@ -310,12 +328,16 @@ def decide_stories(
     else:
         value, supplied = pd.Series(np.nan, index=curated.index), {}
 
+    # Step 3: lidar and CHEER are already whole; this rounds NSI's mean.
+    stated = value
+    value = round_half_up(value)
+
     gap_inputs = [roll_column, floor_area_column, area_column, group_column]
     filled = pd.Series(False, index=curated.index)
     if roll_column and all(c in curated.columns for c in gap_inputs):
         roll, filled = _roll_fills(
             state,
-            value,
+            stated,
             roll_column,
             floor_area_column,
             area_column,
@@ -330,7 +352,7 @@ def decide_stories(
     elif state.verbose:
         print('  decide_stories: roll inputs missing; no gap fill.')
 
-    curated[output] = round_half_up(value).astype('Int64')
+    curated[output] = value.astype(float)
     side = source_column(output)
     if side in curated.columns:
         curated[side] = curated[side].astype(object)

@@ -100,12 +100,13 @@ def test_range_bounds_are_inclusive():
     assert out['n_stories'].tolist() == [1, 110]
 
 
-def test_half_values_round_up_once():
-    # An NSI mean of 2.5 is 3 and of 3.5 is 4 (half to even gives 2, 4).
+def test_nsi_means_round_half_up_for_now():
+    # An NSI mean of 2.5 is 3 and of 3.5 is 4 (half to even gives 2, 4):
+    # the interim rule until NSI arrives as its tallest point.
     df = _lanes(nsi=[1.5, 2.5, 3.5, 1.33])
     out = _decide(df)
     assert out['n_stories'].tolist() == [2, 3, 4, 1]
-    assert str(out['n_stories'].dtype) == 'Int64'
+    assert out['n_stories'].dtype == float
 
 
 def test_height_converts_at_three_and_a_half_meters_half_up():
@@ -192,11 +193,39 @@ def test_roll_zero_and_implausible_counts_are_ignored():
     assert out['n_stories'].iloc[2] == 3
 
 
-def test_roll_half_stories_round_up():
-    df = _roll_frame(120, roll=2.5, nsi=1, floors_true=3)
-    df.loc[:4, 'n_stories_building_nsi'] = None
+def test_roll_counts_fill_as_the_roll_states_them():
+    # A roll's half story is kept: 1.5 fills as 1.5, 2.5 as 2.5.
+    for roll in (1.5, 2.5, 2.75):
+        df = _roll_frame(120, roll=roll, nsi=4, floors_true=roll)
+        df.loc[:4, 'n_stories_building_nsi'] = None
+        out = _decide(df)
+        assert (out.loc[:4, 'n_stories'] == roll).all()
+        assert (out.loc[:4, 'n_stories_source'] == 'parcel').all()
+        assert (out.loc[5:, 'n_stories'] == 4).all()
+
+
+def test_roll_below_one_story_stays_missing():
+    df = _roll_frame(120, roll=2.0, nsi=4, floors_true=2)
+    df.loc[:1, 'n_stories_building_nsi'] = None
+    df.loc[0, 'n_stories_parcel'] = 0.5
     out = _decide(df)
-    assert (out.loc[:4, 'n_stories'] == 3).all()
+    assert pd.isna(out['n_stories'].iloc[0])
+    assert out['n_stories'].iloc[1] == 2
+
+
+def test_roll_fit_test_scores_the_stated_count():
+    # The roll says 2.5 and the floor area is two and a half outlines.
+    # As stated, 2.5 disagrees with NSI's 3 and fits better, so the
+    # unit adopts; rounded half up (3) it would agree with NSI and
+    # leave nothing to test.
+    df = _roll_frame(120, roll=2.5, nsi=3, floors_true=2.5)
+    df.loc[:4, 'n_stories_building_nsi'] = None
+    assert (_decide(df).loc[:4, 'n_stories'] == 2.5).all()
+    # The roll says 1.5, NSI 1, the floor area 1.3 outlines: 1.5 is
+    # closer than 1 (a rounded 2 would not be), so the unit adopts.
+    df = _roll_frame(120, roll=1.5, nsi=1, floors_true=1.3)
+    df.loc[:4, 'n_stories_building_nsi'] = None
+    assert (_decide(df).loc[:4, 'n_stories'] == 1.5).all()
 
 
 def test_a_fractional_incumbent_that_rounds_to_the_roll_is_no_disagreement():

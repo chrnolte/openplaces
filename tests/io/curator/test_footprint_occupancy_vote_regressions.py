@@ -197,6 +197,11 @@ HEIGHT_BANDS = [
     (7, 'Mid-Rise Multi-Family'),
     (20, 'High-Rise Multi-Family'),
     (None, 'Multi-Family'),
+    # A roll's half story is kept in n_stories: 3.5 is above the
+    # low-rise bound, 7.5 above the mid-rise one.
+    (2.5, 'Low-Rise Multi-Family'),
+    (3.5, 'Mid-Rise Multi-Family'),
+    (7.5, 'High-Rise Multi-Family'),
 ]
 
 

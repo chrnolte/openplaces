@@ -1159,7 +1159,9 @@ Decide the number of stories
       and 110. Where none has a value, it takes the roll's count, county
       by county, but only where the roll's story counts agree with its
       own floor areas on at least 70% of at least 100 buildings tested.
-      The result is rounded once to a whole number, a half going up.
+      The result is rounded once to a whole number, a half going up,
+      except the roll's count, which is kept as the roll states it,
+      half stories included.
    :Why: One step decides the count, so one entry explains it. NSI
       agreed best with roll counts, lidar at 3.5 m next (80.9% of
       1,132,920 buildings, against 75.9% at 3.05 m, 2026-11-14).

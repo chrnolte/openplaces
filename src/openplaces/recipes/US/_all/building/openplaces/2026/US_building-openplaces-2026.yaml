@@ -813,8 +813,11 @@ pipeline:
 
   # The number of stories, decided once (decide_stories): the first of
   # NSI's modeled count, FEMA's LiDAR height and CHEER's count that
-  # lies within 1 to 110, then the roll's count where it fits the roll's
-  # floor area, rounded half up once. Plan:
+  # lies within 1 to 110, rounded half up (lidar and CHEER are whole;
+  # NSI's mean over its points is rounded until NSI arrives as its
+  # tallest point), then the roll's count as the roll states it where
+  # it fits the roll's floor area: a roll's 1.5 stays 1.5, so
+  # n_stories is a float (maintainer, 2026-11-15). Plan:
   # plans/n-stories-one-deciding-step.md.
   #
   # Order: NSI first, LiDAR where NSI is silent (it scored below NSI
@@ -1887,7 +1890,7 @@ pipeline:
   # because resolve_by_vote writes a Categorical whatever its class
   # values look like, so the section count arrives here as a category
   # of '1'/'2'/'3' rather than as a number. n_stories is not here:
-  # decide_stories rounds and casts it where it is decided.
+  # decide_stories writes it as a float that keeps a roll's half story.
   - step: cast_integers
     columns: [year_built, n_dwellings, n_sections]
 

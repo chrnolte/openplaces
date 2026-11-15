@@ -137,8 +137,9 @@ Steps are organized by the nature of the transformation:
   `group_context.py`, `estimators/` (one module per attribute:
   `manufactured_homes.py`, `occupancy.py`, `stories.py`, whose
   `decide_stories` is the one step that sets a building's `n_stories`:
-  ordered evidence, a lidar height at 3.5 m per story, a roll gap fill
-  per unit, rounded half up once; the package
+  ordered evidence, a lidar height at 3.5 m per story, rounded half up
+  once, and a roll gap fill per unit, as the roll states it (a 1.5
+  stays 1.5); the package
   file imports them because the shared step loader skips sub-packages)
   and `evidence.py`. `inferers.py` still re-exports every moved step
   name, so `from openplaces.io.curator.inferers import ...` keeps
