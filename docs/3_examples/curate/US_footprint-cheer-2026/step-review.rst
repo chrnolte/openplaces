@@ -17,7 +17,10 @@ lots, drop a duplicate footprint, choose a building's year of
 construction. This annex lists every one of those steps, says why it
 is there, and says whether that reason still holds. It was written on
 2026-11-03 by reading the code (main branch, commit 500b09b9) and
-checking the results in small North Carolina and Texas counties.
+checking the results in small North Carolina and Texas counties. On
+2026-11-14 the entries for footprints cut at lot lines, condominium
+buildings kept whole and the building curate's value steps were
+brought up to date, with the step numbers each recipe now has.
 
 How to read this annex
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -110,7 +113,7 @@ holds.
      - 0
      - 1
    * - Buildings and the points linked to them (building geospine)
-     - 4
+     - 5
      - 1
      - 1
      - 0
@@ -132,7 +135,7 @@ holds.
    * - Lots and their values (parcel geospine)
      - 6
      - 6
-     - 2
+     - 1
      - 1
    * - Lot-level evidence (parcel spine)
      - 12
@@ -155,7 +158,7 @@ holds.
      - 1
      - 1
    * - Footprint curate: carrying buildings onto footprints
-     - 2
+     - 4
      - 1
      - 2
      - 0
@@ -174,10 +177,10 @@ holds.
      - 1
      - 0
      - 1
-   * - **Total (173 steps)**
-     - **99**
+   * - **Total (175 steps)**
+     - **102**
      - **54**
-     - **15**
+     - **14**
      - **5**
 
 Steps by recipe
@@ -233,15 +236,23 @@ Link each footprint to the lots it stands on
       the step sorts them by lot area instead, which is the sensible
       order. The link itself is not affected.
 
-Draw one footprint per condominium building
+Keep a condominium building whole
    :Step: ``consolidate_condo_cluster_footprints`` (#3)
-   :Does: Finds groups of small, touching lots that are condominium
-      units of one building, and replaces the footprints drawn over them
-      with one footprint per building.
+   :Does: Finds footprints that stand over the unit lots of a
+      condominium: 9 or more lots, at least half of them classed
+      Condominium by the land-use keyword list, or 33 or more lots of
+      any use. A lot counts when at least half of its area lies under
+      the footprint. Such a footprint is marked to stay whole in the
+      building table and linked to each of its lots.
    :Why: In some counties each condominium unit is drawn as its own
-      small lot. Without this step, those unit lots would get no
-      footprint, or a stand-in footprint each, and one building would
-      appear as many.
+      small lot. The building table cuts other footprints at lot lines,
+      so that a townhome row becomes one building per lot; a
+      condominium building is one building. The thresholds come from
+      the maintainer's labels of 37 footprints over several lots
+      (2026-11-11): every labeled townhome row lay over 21 lots or
+      fewer, every condominium kept whole over 12 or more. The links
+      also keep each unit lot from getting a stand-in footprint of its
+      own in the next step.
 
 Add a stand-in footprint where the roll values a building no layer draws
    :Step: ``infer_spine_additions`` (#4)
@@ -295,20 +306,18 @@ Recipe: :gh-file:`US_building-geospine-2026 <src/openplaces/recipes/US/_all/buil
 This recipe makes the building table: one row per structure, with
 the points that describe it (NSI's building points and Overture's
 address points) attached. Values and classes are decided for
-buildings and later added up onto the footprints. Today each
-footprint becomes one building; splitting a footprint that holds
-several buildings, such as a townhome row, is planned.
+buildings and later added up onto the footprints. A footprint that
+stands on several lots, such as a townhome row, is cut at the lot
+lines: the piece on its main lot is a building, and a piece on another
+lot is one where the evidence shows a structure there.
 
-Make each footprint one building
+Start with one building per footprint
    :Step: ``resolve_spine`` (#1)
-   :Does: Creates one building for every footprint. A footprint that
-      holds several buildings, such as a townhome row, stays one
-      building: the pipeline does not yet split footprints into their
-      buildings (planned). The step also skips other building layers.
-   :Why: One building per footprint is the first stage of the building
-      table. Adding other layers would pull in the earlier CHEER
-      inventory (CHEER v0) as extra buildings, duplicating ones already
-      drawn.
+   :Does: Creates one building for every footprint, which the cut below
+      may divide. The step also skips other building layers.
+   :Why: The footprints are the starting point of the building table.
+      Adding other layers would pull in the earlier CHEER inventory
+      (CHEER v0) as extra buildings, duplicating ones already drawn.
    :Verdict: holds, reworded. The recipe's opening comment describes an
       older arrangement in which the footprint table was derived from the
       building table. Since 2026-10-26 the delivered inventory is built
@@ -320,20 +329,41 @@ Keep the footprint's identifier on each building
    :Why: The building values are later added up onto the footprints, and
       this identifier says which footprint each building belongs to.
 
-Compute each building's center point and area
-   :Step: ``derive_geometry_attributes`` (#3)
-   :Does: Writes the center point and area of each building.
-   :Why: The building's own measurements, used by the steps below.
-
 Reuse the footprints' links to lots
-   :Step: ``load_links`` (#4)
+   :Step: ``load_links`` (#3)
    :Does: Copies the links between footprints and lots made above, under
       each building's identifier.
    :Why: The overlay of footprints on lots is done once, and every later
       step reads the same links.
 
+Cut footprints at lot lines
+   :Step: ``split_outlines_at_parcel_lines`` (#4)
+   :Does: Cuts a footprint linked to two or more lots at the lot lines.
+      The piece on the footprint's main lot is a building. A piece on
+      another lot is a separate building when three conditions hold: an
+      NSI or Overture point lies in it; its lot records a structure (a
+      building value of at least $5,000, or North Carolina's structure
+      flag); and the piece is not nearly circular. Otherwise it stays
+      part of the main piece. A condominium building kept whole above is
+      not cut. Each building
+      keeps its footprint's identifier, and its links to lots are the
+      ones of its own piece.
+   :Why: A footprint drawn from imagery often covers several buildings
+      that share walls, such as a townhome row or a side-by-side duplex.
+      Each lot's value and sales belong to the building on that lot. The
+      rules come from three rounds of labeled pieces in 13 test counties
+      (2026-11-06): pieces under the $5,000 value were part of the main
+      building, a garage or a token value on a public lot, and the
+      nearly circular ones were mobile-home shares drawn as circles.
+
+Compute each building's center point and area
+   :Step: ``derive_geometry_attributes`` (#5)
+   :Does: Writes the center point and area of each building: of its
+      piece, where the cut divided a footprint.
+   :Why: The building's own measurements, used by the steps below.
+
 Attach NSI's building points to buildings
-   :Step: ``link_to_reference``, NSI points (#5)
+   :Step: ``link_to_reference``, NSI points (#6)
    :Does: Links each point of the National Structure Inventory (NSI) to
       the building it falls in; failing that, to the nearest building
       within 10 m; failing that, to the nearest within 100 m on the same
@@ -348,7 +378,7 @@ Attach NSI's building points to buildings
       (Pender and Galveston, 2026-11-03).
 
 Attach Overture's address points to buildings
-   :Step: ``link_to_reference``, Overture addresses (#6)
+   :Step: ``link_to_reference``, Overture addresses (#7)
    :Does: Links Overture's address points to the building within 10 m
       (50 m on the same lot), and counts unit addresses (such as
       apartment numbers) at one building as its dwellings.
@@ -582,7 +612,7 @@ Join each county roll and keep its latest tax year
       table, so it is not misdated.
 
 Link NSI's points to lots
-   :Step: ``link_to_reference``, NSI points (#13)
+   :Step: ``link_to_reference``, NSI points (#12)
    :Does: Links each point of the National Structure Inventory (NSI) to
       its lot, for the lot's land-use vote (the parcel curate below
       explains the vote).
@@ -592,14 +622,14 @@ Link NSI's points to lots
       The step itself is fine.
 
 Link FEMA's footprints to lots
-   :Step: ``link_to_reference``, FEMA footprints (#14)
+   :Step: ``link_to_reference``, FEMA footprints (#13)
    :Does: Lays FEMA's USA Structures footprints over the lots and keeps
       overlaps of at least 10 m2.
    :Why: The FEMA occupancy class covering most of a lot is one input to
       the lot's land-use vote.
 
 Count and measure the buildings on each lot
-   :Step: ``summarize_footprint_morphology`` (#15)
+   :Step: ``summarize_footprint_morphology`` (#14)
    :Does: Counts each lot's buildings, and its small, long and narrow
       buildings (the shape of a manufactured home), and adds up their
       areas.
@@ -617,13 +647,10 @@ Count and measure the buildings on each lot
   inventory reads it. *Weakened.*
 - Common land of townhome groups (``detect_shared_land_groups``, #9): finds the shared lot that belongs to a row of
   townhomes.
-- Condominium building groups (``detect_condo_building_clusters``,
-  #10). A later step on the footprints finds these groups
-  again for itself, so this result is not used. *Weakened.*
 - Common areas joined to their lots (``link_common_areas_by_contiguity``,
-  #11). Acts in New Hanover County only.
+  #10). Acts in New Hanover County only.
 - Parcel addresses from Overture (``link_to_reference``, Overture
-  addresses, #12). *Holds, reworded*: the recipe's
+  addresses, #11). *Holds, reworded*: the recipe's
   explanation names the wrong recipe.
 
 Lot-level evidence (parcel spine)
@@ -964,8 +991,18 @@ List every lot a building overlaps
    :Why: A building that straddles a lot line can then be traced to
       every lot it touches.
 
+Keep only lots the parcel table delivers
+   :Step: ``keep_curated_ids`` (#7)
+   :Does: Removes from ``parcel_id`` and ``parcel_id_all`` the number of
+      any lot the curated parcel table does not carry: the slivers under
+      1 m2 it leaves out. A building whose main lot is such a sliver has
+      no ``parcel_id``.
+   :Why: Every parcel number a building names can then be found in the
+      parcel table. The value of a sliver never reached the building, so
+      no value changes.
+
 Gather the remaining evidence
-   :Step: ``merge_enrichments`` (#7)
+   :Step: ``merge_enrichments`` (#8)
    :Does: Adds the evidence from other sources, each in its own column:
       roof shape, stories, construction, garage and foundation from the
       earlier CHEER inventory (CHEER v0) and from image classification
@@ -978,20 +1015,11 @@ Gather the remaining evidence
       is below it.
 
 Write the county's federal code
-   :Step: ``derive_admin_attribute`` (#8)
+   :Step: ``derive_admin_attribute`` (#9)
    :Does: Writes ``county_fips``, the county's five-digit federal (FIPS)
       code.
    :Why: The federal code stays stable even if openplaces renames its
       own area codes.
-
-Choose the roll or NSI for values, area by area
-   :Step: ``select_value_source_by_admin_unit`` (#9)
-   :Does: In each municipality, keeps the roll's building values where
-      at least half of the main buildings have one. Elsewhere it uses
-      NSI's value for every building in that area.
-   :Why: Whether a roll is usable depends on the local roll. Taking the
-      roll for one building and NSI for its neighbor would mix two
-      different measures of value.
 
 Ignore address points on vacant lots
    :Step: ``suppress_where``, address points on vacant lots (#10)
@@ -1043,9 +1071,12 @@ Remove values from condominium slivers
       building. Where a tiny footprint sits on those unit parcels, it is
       not the building the units' values describe, and it should not
       receive them.
-   :Verdict: holds, reworded. The count of such footprints in the recipe
-      is out of date: on 2026-11-01 there were 193 across North Carolina
-      and Texas.
+   :Verdict: holds, reworded. On 2026-11-01 there were 193 such
+      footprints across North Carolina and Texas, all drawn from the
+      unit lots themselves. Since 2026-11-14 a condominium footprint is
+      always a drawn footprint over 9 or more condominium lots or 33 or
+      more lots of any use, so the step is expected to find none; it
+      stays as a check.
 
 Prepare the evidence for the building votes
    :Step: ``derive_indicators`` (#17)
@@ -1311,26 +1342,46 @@ Put each footprint's buildings on one row
    :Why: The inventory has one row per footprint, and the values were
       decided for buildings. Where one footprint holds several
       buildings (a row of townhomes, for example), their counts and
-      values are added up.
+      values are added up. The pieces of a footprint cut at lot lines
+      come back together here: their values, dwellings and numbers of
+      lots are added, and the footprint's ``parcel_id`` is the lot of its
+      main piece (the largest), the lot the uncut footprint was linked
+      to.
    :Verdict: holds, reworded. The recipe's explanation of why the
       building values replace the footprint's own is out of date since
       2026-10-28. The step itself is fine.
 
+List every lot a footprint overlaps
+   :Step: ``collect_link_ids`` (#2)
+   :Does: Writes the ids of all lots the footprint overlaps into
+      ``parcel_id_all``, main lot first, from the footprint's own
+      overlay.
+   :Why: The pieces of a cut footprint each list only their own lots,
+      so the footprint's full list is read from its own links.
+
+Keep only lots the parcel table delivers
+   :Step: ``keep_curated_ids`` (#3)
+   :Does: Removes from ``parcel_id`` and ``parcel_id_all`` the number of
+      any lot the curated parcel table does not carry (slivers under
+      1 m2).
+   :Why: Every parcel number a footprint names can then be found in the
+      parcel table.
+
 Restore category column types
-   :Step: ``cast_categoricals`` (#2)
+   :Step: ``cast_categoricals`` (#4)
    :Does: Stores the class columns again as categories (a compact
       format for columns with few distinct values).
    :Why: Combining the buildings creates new columns, which lose that
       format.
 
 Restore whole-number column types
-   :Step: ``cast_integers`` (#3)
+   :Step: ``cast_integers`` (#5)
    :Does: Stores counts such as stories and dwellings as whole numbers
       again.
    :Why: Combining the buildings returns them as decimal numbers.
 
 Remove restricted columns and order the rest
-   :Step: ``order_columns`` (#4)
+   :Step: ``order_columns`` (#6)
    :Does: Removes the columns that the building step was told never to
       pass on, then puts the columns in their standard order.
    :Why: Building-permit evidence comes from a source whose terms do not

@@ -76,14 +76,22 @@ the state's footprints. A lower-ranked footprint enters only where it
 overlaps no footprint already accepted. Very small footprints (under
 10 m2) and long thin duplicates are dropped. Where a roll records a
 building on a parcel that no layer draws, the parcel polygon stands in
-for it (its ``geometry_source`` reads ``parcel.<county>``). Stacked
-condominium parcels are drawn as one footprint per building.
+for it (its ``geometry_source`` reads ``parcel.<county>``). A footprint
+over the unit parcels of a condominium (9 or more lots with at least
+half classed condominium, or 33 or more lots of any use) is marked to
+stay one building (its
+``geometry_source`` reads ``condo_cluster.<layer>``).
 
 **Parcel links.** Every footprint is overlaid on the parcels. A footprint
 keeps the parcels it overlaps substantially, so a building straddling a
 lot line does not count twice.
 
-**Buildings.** Each footprint becomes a building. NSI points and Overture
+**Buildings.** Each footprint becomes a building. A footprint on two or
+more lots, other than a condominium kept whole, is cut at the lot
+lines: the piece on its main lot is a
+building, and a piece on another lot is a building of its own where a
+point lies in it and its lot records a structure, so a townhome row
+becomes one building per lot. NSI points and Overture
 address points are joined to the building they fall in, or to the
 nearest building on the same parcel. On a parcel with several
 buildings, the ones with an address point are marked ``primary`` and
@@ -122,7 +130,10 @@ set to missing.
 
 - *Structure value.* A parcel's improvement value is shared among its
   primary buildings by their area on the parcel, weighted by floors. A secondary building carries 0, with
-  ``structure_value_zero_reason`` set to ``secondary``.
+  ``structure_value_zero_reason`` set to ``secondary``. Where the roll
+  states no value, the structure value is missing; the delivery's
+  imputation fills it. NSI's replacement costs ship in their own columns
+  (``depreciated_replacement_cost`` and ``replacement_cost``).
 - *Single-source attributes.* Year built, stories, dwellings,
   foundation and the others are each taken from a fixed order of
   sources: the first source that has a value supplies it.
@@ -141,8 +152,11 @@ set to missing.
   a reason is recorded (see :doc:`columns`).
 
 **Footprint curate.** The building table is carried onto the footprints.
-Where one footprint holds several buildings, counts and values add up,
-classes list each building's value, and ``year_built`` is the earliest.
+Where one footprint holds several buildings, such as the pieces of a
+cut townhome row, counts and values add up, classes list each
+building's value, and ``year_built`` is the earliest. The footprint's
+``parcel_id`` is its main piece's lot, and ``parcel_id_all`` lists every
+lot it overlaps.
 
 Delivery
 ~~~~~~~~

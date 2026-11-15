@@ -66,10 +66,14 @@ The floor weight keeps a one-story annex from taking a tall building's
 value. A secondary building is usually valued with the main one; giving
 it a share would take value from the house.
 
-**Alternative.** NSI's modeled value for every building. NSI's value is
-a replacement cost, not a market value; filling held-out counties with
+Where the roll states no value for a building, its structure value is
+missing, and the delivery's imputation fills it (see :doc:`imputation`).
+
+**Alternative.** NSI's modeled value for every building, or for every
+building in an area where the roll values few of them. NSI's value is a
+replacement cost, not a market value; filling held-out counties with
 it put county totals 42.8% above the roll (cheer-eastern-nc,
-2026-10-24). It ships in its own columns instead.
+2026-10-24). NSI's replacement costs ship in their own columns instead.
 
 A 0 is a statement
 ------------------
