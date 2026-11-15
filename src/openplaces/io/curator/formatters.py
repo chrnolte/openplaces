@@ -154,7 +154,7 @@ def cast_categoricals(state: CurateState) -> CurateState:
     return state
 
 
-@_register('cast_integers', phase='format')
+@_register('cast_integers', phase='format', reads=['{columns}'], writes=['{columns}'])
 def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
     """Cast numeric columns to a nullable integer dtype.
 

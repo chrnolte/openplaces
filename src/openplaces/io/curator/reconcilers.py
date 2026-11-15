@@ -45,7 +45,13 @@ def _source_token(col: str, default: str | None = None) -> str:
     return col if default is None else default
 
 
-@_register('reconcile_values', phase='reconcile')
+@_register(
+    'reconcile_values',
+    phase='reconcile',
+    reads=[lambda args: [c for cols in args['priority'].values() for c in cols]],
+    writes=['{priority:keys}', '{priority:keys}_source'],
+    decides=['{priority:keys}'],
+)
 def reconcile_values(
     state: CurateState,
     priority: dict[str, list[str]],
@@ -329,7 +335,19 @@ def select_value_source_by_admin_unit(
     return state
 
 
-@_register('adopt_stories_by_floor_area_fit', phase='infer')
+@_register(
+    'adopt_stories_by_floor_area_fit',
+    phase='infer',
+    reads=[
+        '{output}',
+        '{candidate_column}',
+        '{floor_area_column}',
+        '{area_column}',
+        '{group_column}',
+        '{priority_column}',
+    ],
+    writes=['{output}', '{output}_source'],
+)
 def adopt_stories_by_floor_area_fit(
     state: CurateState,
     output: str = 'n_stories',
