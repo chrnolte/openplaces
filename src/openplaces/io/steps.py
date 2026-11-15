@@ -18,8 +18,14 @@ that fills them is shared.
 
 from __future__ import annotations
 
+import inspect
+import itertools
 import pkgutil
-from collections.abc import Callable
+import re
+import warnings
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from importlib import import_module
 
 #: The two phases a harmonize step can declare. Geometry-phase steps
@@ -29,9 +35,198 @@ from importlib import import_module
 PHASES = ('geometry', 'attributes')
 
 
+#: The attribute a declared step function carries (a StepColumns).
+_COLUMNS_ATTRIBUTE = '__step_columns__'
+
+#: A parameter reference inside a declared column name: `{column}`, or
+#: `{mapping:keys}` / `{mapping:values}` for a mapping parameter.
+_PARAMETER_REFERENCE = re.compile(r'\{([A-Za-z_][A-Za-z0-9_]*)(?::(keys|values))?\}')
+
+
+class UndeclaredColumnWarning(UserWarning):
+    """A step added a column that its declaration does not list."""
+
+
+@dataclass(frozen=True)
+class StepColumns:
+    """The columns a step declares, as written on its registration.
+
+    Entries are column names, templates naming the step's parameters
+    (`'{column}_source'`), or callables taking the step's arguments
+    and returning names. See :func:`resolve_step_columns`.
+    """
+
+    reads: tuple = ()
+    writes: tuple = ()
+    decides: tuple = ()
+    reads_from: Mapping = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ResolvedColumns:
+    """A step's declared columns for one recipe entry, as plain names.
+
+    `reads_from` maps an upstream recipe id to the columns read from
+    its table. A name in `writes` may hold `*` as a wildcard.
+    """
+
+    reads: frozenset
+    writes: frozenset
+    decides: frozenset
+    reads_from: Mapping
+
+
 def _identity(fn: Callable) -> tuple[str, str]:
     """A step function's module and qualified name."""
     return (getattr(fn, '__module__', ''), getattr(fn, '__qualname__', repr(fn)))
+
+
+def _as_entries(value) -> tuple:
+    """A declaration argument as a tuple of entries."""
+    if value is None:
+        return ()
+    if isinstance(value, str) or callable(value):
+        return (value,)
+    return tuple(value)
+
+
+def step_columns(fn: Callable) -> StepColumns | None:
+    """The declaration a step function carries, or None without one."""
+    return getattr(fn, _COLUMNS_ATTRIBUTE, None)
+
+
+def _arguments(fn: Callable, params: Mapping) -> dict:
+    """The recipe's arguments over the function's own defaults."""
+    arguments = {
+        name: parameter.default
+        for name, parameter in inspect.signature(fn).parameters.items()
+        if parameter.default is not inspect.Parameter.empty
+    }
+    arguments.update(params)
+    return arguments
+
+
+def _names_of(value, part: str | None, reference: str) -> list[str]:
+    """The column names one parameter value stands for."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        if part is None:
+            raise ValueError(
+                f'{reference} is a mapping: write {{name:keys}} or {{name:values}}'
+            )
+        value = value.keys() if part == 'keys' else value.values()
+    # Items that are not names (nested specs) are left to a callable
+    # entry, which can read any shape.
+    return [item for item in value if isinstance(item, str)]
+
+
+def _expand(entry, arguments: Mapping) -> list[str]:
+    """One declared entry as the column names it stands for."""
+    if callable(entry):
+        return [name for name in entry(arguments) if isinstance(name, str)]
+    references = list(_PARAMETER_REFERENCE.finditer(entry))
+    if not references:
+        return [entry]
+    choices = []
+    for match in references:
+        name, part = match.group(1), match.group(2)
+        if name not in arguments:
+            raise ValueError(f'{match.group(0)} names no parameter of the step')
+        choices.append(_names_of(arguments[name], part, match.group(0)))
+    names = []
+    for combination in itertools.product(*choices):
+        filled = iter(combination)
+        names.append(_PARAMETER_REFERENCE.sub(lambda _: next(filled), entry))
+    return names
+
+
+def _expand_all(entries: Iterable, arguments: Mapping) -> frozenset:
+    return frozenset(name for entry in entries for name in _expand(entry, arguments))
+
+
+def resolve_step_columns(fn: Callable, params: Mapping) -> ResolvedColumns | None:
+    """The columns a step reads and writes under one recipe entry.
+
+    Parameters
+    ----------
+    fn : Callable
+        A registered step function.
+    params : Mapping
+        The step's arguments as the recipe gives them (control keys
+        such as `step` and `enabled` removed).
+
+    Returns
+    -------
+    ResolvedColumns or None
+        None when the step declares nothing. A template is filled from
+        *params*, then from the function's defaults: a list parameter
+        stands for each of its items, a mapping parameter for its keys
+        or values, a parameter that is None for nothing.
+
+    Raises
+    ------
+    ValueError
+        On a template that names no parameter of the step, or a mapping
+        parameter referenced without `:keys` or `:values`.
+    """
+    declared = step_columns(fn)
+    if declared is None:
+        return None
+    arguments = _arguments(fn, params)
+    reads_from: dict[str, frozenset] = {}
+    for recipe_parameter, entries in declared.reads_from.items():
+        columns = _expand_all(_as_entries(entries), arguments)
+        for recipe_id in _names_of(
+            arguments.get(recipe_parameter), 'keys', recipe_parameter
+        ):
+            reads_from[recipe_id] = reads_from.get(recipe_id, frozenset()) | columns
+    return ResolvedColumns(
+        reads=_expand_all(declared.reads, arguments),
+        writes=_expand_all(declared.writes, arguments),
+        decides=_expand_all(declared.decides, arguments),
+        reads_from=reads_from,
+    )
+
+
+def undeclared_new_columns(
+    fn: Callable, params: Mapping, before: Iterable, after: Iterable
+) -> list[str]:
+    """Columns a step added that its declaration does not list.
+
+    Compares column names only, so the cost is a set difference. A
+    step without a declaration, or one that declares `writes='*'`,
+    reports nothing. Changes to existing columns are not seen here.
+    """
+    resolved = resolve_step_columns(fn, params)
+    if resolved is None:
+        return []
+    added = set(after) - set(before)
+    if not added:
+        return []
+    exact = {name for name in resolved.writes if '*' not in name}
+    patterns = [name for name in resolved.writes if '*' in name]
+    return sorted(
+        name
+        for name in added - exact
+        if not any(fnmatchcase(str(name), pattern) for pattern in patterns)
+    )
+
+
+def warn_undeclared_columns(
+    step_name: str, fn: Callable, params: Mapping, before: Iterable, after: Iterable
+) -> None:
+    """Warn when a declared step added columns outside its declaration."""
+    undeclared = undeclared_new_columns(fn, params, before, after)
+    if undeclared:
+        warnings.warn(
+            f'step {step_name!r} added columns it does not declare in '
+            f'writes: {", ".join(map(str, undeclared))}',
+            UndeclaredColumnWarning,
+            stacklevel=2,
+        )
 
 
 def make_register(
@@ -65,9 +260,39 @@ def make_register(
     -------
     Callable
         ``_register(*names, phase=...)``, used as ``@_register('name')``.
+        It also takes the step's column declaration: ``reads`` and
+        ``writes`` (column names, or templates naming the step's own
+        parameters), ``decides`` (the written columns that are the
+        final value of a registry column, a subset of ``writes``) and
+        ``reads_from`` (a recipe-id parameter mapped to the columns
+        read from that recipe's table). See `resolve_step_columns`.
     """
 
-    def _register(*names: str, phase: str | None = None) -> Callable:
+    def _register(
+        *names: str,
+        phase: str | None = None,
+        reads=None,
+        writes=None,
+        decides=None,
+        reads_from: Mapping | None = None,
+    ) -> Callable:
+        declared = None
+        if any(value is not None for value in (reads, writes, decides, reads_from)):
+            declared = StepColumns(
+                reads=_as_entries(reads),
+                writes=_as_entries(writes),
+                decides=_as_entries(decides),
+                reads_from=dict(reads_from or {}),
+            )
+            unwritten = [
+                entry for entry in declared.decides if entry not in declared.writes
+            ]
+            if unwritten and '*' not in declared.writes:
+                raise ValueError(
+                    f'{names[0]!r}: decides lists entries missing from writes: '
+                    f'{unwritten!r}'
+                )
+
         if phases is None:
             if phase is not None:
                 raise TypeError('this stage has no step phases')
@@ -101,6 +326,8 @@ def make_register(
                 registry[name] = fn
                 if phases is not None:
                     phases[name] = phase
+            if declared is not None:
+                setattr(fn, _COLUMNS_ATTRIBUTE, declared)
             return fn
 
         return decorator

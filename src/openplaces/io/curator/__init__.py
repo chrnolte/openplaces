@@ -19,7 +19,7 @@ from openplaces.core.constants import CURATE_PHASES
 from openplaces.core.schema import AdminId
 from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.steps import make_loader, make_register
+from openplaces.io.steps import make_loader, make_register, warn_undeclared_columns
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
@@ -383,7 +383,13 @@ class Curator:
                 for key, value in step_cfg.items()
                 if key not in ('step', 'enabled', 'phase_override')
             }
+            columns_before = frozenset(state.curated.columns)
             state = fn(state, **params)
+            # A set difference on names: a declared step that adds a
+            # column outside its `writes` is reported (io.steps).
+            warn_undeclared_columns(
+                step_name, fn, params, columns_before, state.curated.columns
+            )
             # One mark per recipe step (see the harmonizer's loop).
             if state.timer:
                 state.timer.mark(f'step {step_index:02d} {step_name}')

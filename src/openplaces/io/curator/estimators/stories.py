@@ -7,7 +7,12 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('derive_stories_from_height', phase='infer')
+@_register(
+    'derive_stories_from_height',
+    phase='infer',
+    reads=['{height_column}'],
+    writes=['{column}'],
+)
 def derive_stories_from_height(
     state: CurateState,
     column: str = 'n_stories_footprint_fema',
