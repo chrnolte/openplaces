@@ -1,0 +1,9 @@
+{
+  "accuracy_m": 1.0,
+  "grid_files": [],
+  "operation_definition": "proj=noop ellps=GRS80",
+  "operation_name": "axis order change (2D) + MAGNA-SIRGAS to WGS 84 (1) + axis order change (2D)",
+  "registered": "2026-10-22",
+  "source_crs": "EPSG:4686",
+  "target_crs": "EPSG:4326"
+}

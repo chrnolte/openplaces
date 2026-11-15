@@ -1,0 +1,74 @@
+# Recipe: Colombia's formally constituted indigenous reserves
+# (resguardos indígenas formalizados), as the Agencia Nacional de
+# Tierras (ANT) publishes them today.
+#
+# Read by CO_parcel_rules-protected-2026 for French et al.'s
+# indigenous-land covariate (they used ANT's 2024 layer) and, with the
+# 2012 layer of constitution dates, for the annual status.
+#
+# Source: ANT's open-data Hub export of the layer
+# Resguardo_Indigena_Formalizado (ArcGIS item
+# 8944116ccfd34a7189c4bc44b8e19186, shapefile zip of 20,262,839 bytes,
+# Last-Modified 2026-08-13), 968 resguardos, EPSG:4686. Licence: the
+# item reads CC BY-SA 4.0 ("Este conjunto de datos se distribuye bajo
+# la Licencia Creative Commons Atribución-CompartirIgual 4.0
+# Internacional"); ANT's publication guide GINFO-G-024 v1 (2026-03-13)
+# says CC BY 4.0 for its open data. Recorded as the stricter, CC BY-SA.
+#
+# Only date: ULTIMA_FEC, the date of the latest administrative act
+# (ULTIMO_TIP: a constitution, extension or restructuring), so its year
+# is an upper bound of the constitution year: it never counts a
+# resguardo too early, and counts one extended later late, which the
+# 2012 layer (CO_rules-indigenous-incoder-2012) covers. Names (NOMBRE,
+# PUEBLO) are not mapped.
+
+description: >-
+  Colombia's constituted indigenous reserves (ANT, current release): the
+  year of the latest administrative act, an upper bound of constitution.
+
+admin_id: CO
+
+dataset:
+  theme: rules-indigenous
+  source:
+    source_id: ant
+    portal_url: "https://data-agenciadetierras.opendata.arcgis.com/"
+    download_url: "https://data-agenciadetierras.opendata.arcgis.com/api/download/v1/items/8944116ccfd34a7189c4bc44b8e19186/shapefile?layers=0"
+    license: >-
+      CC BY-SA 4.0 (the ArcGIS item); ANT's guide GINFO-G-024 states
+      CC BY 4.0 for its open data
+    terms_url: "https://www.arcgis.com/sharing/rest/content/items/8944116ccfd34a7189c4bc44b8e19186?f=json"
+    redistribution_restricted: false
+  version: 2026
+
+compressed_file_name: "ant_resguardo_formalizado.zip"
+uncompressed_file_name: "Resguardo_Indigena_Formalizado.shp"
+
+transformations:
+  - output: indigenous_reserve_year
+    input: ULTIMA_FEC
+    type: datetime
+    operation: year
+
+keep_unnamed_columns: False
+
+# keep_unnamed_columns acts only with a `columns:` mapping; every source
+# field is dropped by name (2026-10-22: the first trial ingest kept
+# them).
+drop_columns:
+  - OBJECTID
+  - ID
+  - CODIGO_DAN
+  - NOMBRE
+  - ULTIMO_TIP
+  - ULTIMO_NUM
+  - ULTIMA_FEC
+  - AREA_TOTAL
+  - ULTIMO_N_1
+  - PUEBLO
+  - DEPARTAMEN
+  - MUNICIPIO
+  - GlobalID
+
+save_to:
+  data_dir: core

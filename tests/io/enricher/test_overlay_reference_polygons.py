@@ -18,6 +18,7 @@ from openplaces.io.enricher import overlay as overlay_module
 from openplaces.io.enricher.overlay import (
     overlay_reference_polygons,
     overlay_shares,
+    yearly_shares,
 )
 from openplaces.recipe import (
     apply_recipe_patches,
@@ -101,6 +102,43 @@ def test_a_large_site_cut_into_pieces_counts_once():
 
     assert dominant['g'] == '176-2'
     assert share['g'] == pytest.approx(1, abs=1e-6)
+
+
+def test_yearly_shares_count_each_area_from_its_year():
+    # Two areas established in different years, and one with no year:
+    # the share in a year counts only the areas in effect by then, and
+    # the undated area counts in none.
+    sites = _sites().assign(year=[2005.0, 2012.0, float('nan')])
+    share, _, _, pairs, own = overlay_shares(_lots().geometry, sites, return_pairs=True)
+    per_year = yearly_shares(pairs, own, sites['year'], range(2004, 2014))
+
+    assert share['e'] == pytest.approx(1, rel=1e-3)
+    assert (per_year.loc['e'] == 0).all()  # only the undated polygon
+    assert per_year.loc['a', 2004] == 0
+    assert per_year.loc['a', 2005] == pytest.approx(1)
+    # across the line: 20 m in the 2005 area, 40 m in the 2012 area
+    assert per_year.loc['c', 2011] == pytest.approx(20 / 60)
+    assert per_year.loc['c', 2012] == pytest.approx(1)
+    assert (per_year.loc['d'] == 0).all()
+
+
+def test_the_step_writes_one_share_per_year(monkeypatch):
+    sites = _sites().assign(year=[2005, 2012, None])
+    monkeypatch.setattr(overlay_module, '_load_reference', lambda *a: sites)
+    state = overlay_reference_polygons(
+        _state(),
+        reference_recipe_id=REFERENCE,
+        share_column='protected_share',
+        suffix='_test',
+        year_column='year',
+        year_range=[2010, 2012],
+        year_share_column='protected_share_test_{year}',
+    )
+    evidence = state.evidence
+
+    assert {f'protected_share_test_{y}' for y in (2010, 2011, 2012)} <= set(evidence)
+    assert evidence.loc['b', 'protected_share_test_2011'] == 0
+    assert evidence.loc['b', 'protected_share_test_2012'] == pytest.approx(1, rel=1e-3)
 
 
 def _state(admin_id='US-MA-MED'):

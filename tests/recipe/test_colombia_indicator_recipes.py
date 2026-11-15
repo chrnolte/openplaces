@@ -22,6 +22,14 @@ RECIPE_IDS = [
     'CO_transaction_landcover-forest-annual-2026',
     'CO_parcel_land-value-predictors-2026',
     'CO_transaction_land-value-predictors-2026',
+    'CO_rules-protected-runap-2026',
+    'CO_rules-protected-pnn-2015',
+    'CO_rules-protected-sinap-2015',
+    'CO_rules-protected-rnsc-2015',
+    'CO_rules-indigenous-ant-2026',
+    'CO_rules-indigenous-incoder-2012',
+    'CO_parcel_rules-protected-2026',
+    'CO_transaction_rules-protected-2026',
 ]
 
 PAIRS = [
@@ -35,7 +43,35 @@ PAIRS = [
         'CO_transaction_land-value-predictors-2026',
         set(),
     ),
+    (
+        'CO_parcel_rules-protected-2026',
+        'CO_transaction_rules-protected-2026',
+        set(),
+    ),
 ]
+
+
+def test_protection_layers_keep_no_names():
+    # Civil-society reserves are private land, often named after their
+    # owners, and resguardo names and peoples are not needed: every
+    # layer keeps only its year, category and geometry.
+    allowed = {
+        'protected_area_id',
+        'protected_area_category',
+        'protected_area_year',
+        'indigenous_reserve_year',
+    }
+    for recipe_id in RECIPE_IDS:
+        if '_rules-' not in recipe_id or get_recipe_by_id(recipe_id).get('stage'):
+            continue
+        recipe = get_recipe_by_id(recipe_id)
+        written = set(recipe.get('columns') or {}) | {
+            t['output'] for t in recipe.get('transformations') or []
+        }
+        assert written <= allowed, (recipe_id, written - allowed)
+        if not recipe.get('columns'):
+            # keep_unnamed_columns acts only with a columns mapping
+            assert recipe.get('drop_columns'), recipe_id
 
 
 @pytest.mark.parametrize('recipe_id', RECIPE_IDS)
