@@ -2,9 +2,13 @@
 
 Pins the rule order (point, then a unique id key, then a unique address
 key), the tie-break for stacked polygons, that an ambiguous key links
-nothing, and the per-parcel summary the validation notebooks read. All
-records, ids, and addresses are fabricated.
+nothing, the per-parcel summary the validation notebooks read, and the
+record-to-building pairs (outline first, then the parcel's buildings,
+every building where there are several). All records, ids, and
+addresses are fabricated.
 """
+
+import warnings
 
 import geopandas as gpd
 import pandas as pd
@@ -94,6 +98,86 @@ def test_point_beats_a_conflicting_id_key():
 
     assert links['parcel_id'].iloc[0] == 'p4'
     assert links['matched_via'].iloc[0] == 'point'
+
+
+def _outlines_and_buildings():
+    # f1: one building on p1; f2: a townhome row, two buildings on p1;
+    # f3: an outline on p2 with no building. b5 on p2 and b3/b4 on p5
+    # have no outline. Fabricated ids.
+    outlines = gpd.GeoDataFrame(
+        geometry=[box(0.5, 0.5, 1.5, 1.5), box(5, 5, 9, 9), box(12, 2, 14, 4)],
+        index=pd.Index(['f1', 'f2', 'f3'], name='footprint_id'),
+        crs='EPSG:3857',
+    )
+    buildings = pd.DataFrame(
+        {
+            'footprint_id': ['f1', 'f2', 'f2', None, None, None],
+            'parcel_id': ['p1', 'p1', 'p1', 'p5', 'p5', 'p2'],
+        },
+        index=pd.Index(['b1', 'b2a', 'b2b', 'b3', 'b4', 'b5'], name='building_id'),
+    )
+    return outlines, buildings
+
+
+def test_records_reach_buildings_by_outline_then_parcel():
+    records = gpd.GeoDataFrame(
+        {'parcel_id_local': [None, None, None, 'K-5', None, None]},
+        geometry=[
+            Point(1, 1),  # inside f1: its one building
+            Point(6, 6),  # inside f2: both buildings
+            Point(13, 3),  # inside f3, which has none: p2's building
+            None,  # no point: key K-5 reaches p5's two buildings
+            Point(100, 100),  # nothing
+            Point(3, 3),  # stacked p4 holds no building: nothing
+        ],
+        index=pd.Index([f'r{i}' for i in range(6)], name='record_id'),
+        crs='EPSG:3857',
+    )
+    outlines, buildings = _outlines_and_buildings()
+
+    pairs = rl.link_records_to_buildings(records, outlines, buildings, _parcels())
+
+    got = {
+        (r, b): m
+        for r, b, m in pairs[['record_id', 'building_id', 'link_method']].itertuples(
+            index=False
+        )
+    }
+    assert got == {
+        ('r0', 'b1'): 'footprint',
+        ('r1', 'b2a'): 'footprint, several buildings',
+        ('r1', 'b2b'): 'footprint, several buildings',
+        ('r2', 'b5'): 'parcel',
+        ('r3', 'b3'): 'parcel, several buildings',
+        ('r3', 'b4'): 'parcel, several buildings',
+    }
+    assert list(pairs.columns) == ['record_id', 'building_id', 'link_method']
+
+
+def test_outline_hit_beats_the_parcel_key():
+    # The key names p5, but the point lies in f1: the outline decides.
+    records = gpd.GeoDataFrame(
+        {'parcel_id_local': ['K-5']},
+        geometry=[Point(1, 1)],
+        index=pd.Index(['r0'], name='record_id'),
+        crs='EPSG:3857',
+    )
+    outlines, buildings = _outlines_and_buildings()
+
+    pairs = rl.link_records_to_buildings(records, outlines, buildings, _parcels())
+
+    assert pairs['building_id'].tolist() == ['b1']
+
+
+def test_overlap_tie_break_measures_geographic_layers_in_meters():
+    parcels = _parcels().to_crs('EPSG:4326')
+    records = _records().iloc[[0]].to_crs('EPSG:4326')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', UserWarning)
+        links = rl.link_records_to_parcels(records, parcels)
+
+    assert links['parcel_id'].iloc[0] == 'p4'
 
 
 def test_summary_mode_share_recency_and_majority_rule():
@@ -200,3 +284,50 @@ def test_build_files_cover_every_parcel_and_footprint(monkeypatch, tmp_path):
     assert parcel_file.loc['p1', 'matched_via'] == 'none'
     assert summary['linked'] == 4
     assert summary['footprints_labeled'] == 3
+
+
+def test_build_building_links_writes_pairs_only(monkeypatch, tmp_path):
+    parcels = _parcels()
+    outlines, buildings = _outlines_and_buildings()
+    records = gpd.GeoDataFrame(
+        {'parcel_id_local': [None, 'K-5'], 'cls': ['Class A', 'Class B']},
+        geometry=[Point(6, 6), None],
+        index=pd.Index(['r0', 'r1'], name='record_id'),
+        crs='EPSG:3857',
+    )
+    tables = {
+        'records': records,
+        'parcels-geo': parcels.drop(columns=['address_street', 'address_number']),
+        'parcels-attr': pd.DataFrame(parcels[['address_street', 'address_number']]),
+        'outlines': outlines,
+        'buildings': buildings,
+    }
+
+    def fake_get_entities(recipe, admin_id, geom=False, columns=None, **kwargs):
+        return tables[recipe].copy()
+
+    import openplaces.io.readers as readers
+
+    monkeypatch.setattr(readers, 'get_entities', fake_get_entities)
+
+    summary = rl.build_building_reference_links(
+        'US-XX-AAA',
+        tmp_path,
+        record_recipe_id='records',
+        footprint_recipe_id='outlines',
+        building_recipe_id='buildings',
+        parcel_recipe_id='parcels-geo',
+        parcel_address_recipe_id='parcels-attr',
+    )
+
+    out = pd.read_parquet(tmp_path / 'US-XX-AAA_building_permit_links.parquet')
+    # Ids and the rule only: no record attribute travels with a link.
+    assert list(out.columns) == ['record_id', 'building_id', 'link_method']
+    assert len(out) == 4
+    assert summary == {
+        'admin_id': 'US-XX-AAA',
+        'records': 2,
+        'linked': 2,
+        'linked_footprint, several buildings': 1,
+        'linked_parcel, several buildings': 1,
+    }
