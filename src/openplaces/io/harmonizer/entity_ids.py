@@ -31,8 +31,8 @@ import warnings
 
 import pandas as pd
 
-from openplaces.core.attribute_registry import is_personal_attribute
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.core.attribute_registry import is_personal_attribute, load_registry
+from openplaces.io.harmonizer import _PROVENANCE_SUFFIX, HarmonizeState, _register
 from openplaces.io.stacked_units import LOT_LINK_KEY, STACKED_UNITS_LABEL_SUFFIX
 from openplaces.recipe import get_recipe_by_id
 
@@ -293,6 +293,12 @@ def merge_on_id(rows: pd.DataFrame, ids: pd.Series, id_name: str) -> pd.DataFram
     *rows* must be in priority order (most specific source first, as
     `union_spine_sources` loads them). `source` becomes the `+`-joined
     labels of the sources that described the row, in that order.
+
+    Each cell keeps the label of the row that supplied it, in its
+    `{column}_source`: that row's own sidecar where it has one, else
+    its `source`. A sidecar is left empty where that label is the
+    merged row's whole `source`, so an empty sidecar keeps meaning
+    "the row's `source`".
     """
     rows = rows.copy()
     rows[id_name] = ids.to_numpy()
@@ -305,6 +311,64 @@ def merge_on_id(rows: pd.DataFrame, ids: pd.Series, id_name: str) -> pd.DataFram
         merged['source'] = grouped['source'].agg(
             lambda labels: '+'.join(dict.fromkeys(labels.astype('string')))
         )
+        merged = _keep_cell_sources(rows, merged, id_name)
+    return merged
+
+
+def _holds_text(series) -> bool:
+    """True when *series* holds text or nothing, as a label column does."""
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        series = pd.Series(series.cat.categories)
+    return pd.api.types.infer_dtype(series, skipna=True) in ('string', 'empty')
+
+
+def _keep_cell_sources(rows, merged, id_name):
+    """Label each merged cell with the row it was taken from.
+
+    GroupBy.first takes each column, sidecars included, from its own
+    first stating row, so a sidecar could name a row other than the
+    one that supplied its value, and a cell of a merged row read as
+    the union of every row's source. Only the rows that merged are
+    read; a row left alone keeps its sidecars as they are.
+    """
+    suffix = _PROVENANCE_SUFFIX
+    shared = rows[id_name].duplicated(keep=False).to_numpy()
+    part = rows[shared]
+    keys = part[id_name]
+    group_ids = pd.Index(keys.unique())
+    labels = part['source'].astype('string')
+    whole = merged['source'].astype('string')
+    # A registered name ending in `_source` is an attribute, not a
+    # label, and so is a numeric one (MassGIS's `admin3_id_source`
+    # holds a town code): neither is touched.
+    registered = set(load_registry().index)
+    added = {}
+    for column in part.columns:
+        side = f'{column}{suffix}'
+        if (
+            column in {id_name, 'source', 'geometry'}
+            or side in registered
+            or (column.endswith(suffix) and column[: -len(suffix)] in part)
+            or (side in part and not _holds_text(part[side]))
+        ):
+            continue
+        stating = part[column].notna().to_numpy()
+        if not stating.any() and side not in merged.columns:
+            continue
+        cell = labels
+        if side in part.columns:
+            own = part[side].astype('string')
+            cell = own.where(own.notna(), labels)
+        first = cell[stating].groupby(keys[stating].to_numpy(), sort=False).first()
+        first = first.reindex(group_ids)
+        first = first.where(first.ne(whole.reindex(group_ids)).fillna(True))
+        if side in merged.columns:
+            merged[side] = merged[side].astype(object)
+            merged.loc[group_ids, side] = first.astype(object).to_numpy()
+        elif first.notna().any():
+            added[side] = first.reindex(merged.index).astype(object)
+    if added:
+        merged = pd.concat([merged, pd.DataFrame(added, index=merged.index)], axis=1)
     return merged
 
 

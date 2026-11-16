@@ -114,14 +114,21 @@ def record_source(curated, column: str, mask, token: str, imputed: bool = False)
     return curated
 
 
-def record_sources(curated, column: str, tokens, mask=None, imputed: bool = False):
+def record_sources(
+    curated,
+    column: str,
+    tokens,
+    mask=None,
+    imputed: bool = False,
+    clear_missing: bool = False,
+):
     """Set the ``{column}_source`` sidecar from a per-row *tokens* series.
 
     The row-varying counterpart of :func:`record_source`, for a step that
     carries an upstream sidecar forward rather than deciding one token for
     a whole group of rows. Rows whose token is missing are left untouched,
     so a partially-known provenance never blanks what an earlier step
-    recorded.
+    recorded, unless *clear_missing* asks otherwise.
 
     Parameters
     ----------
@@ -131,20 +138,29 @@ def record_sources(curated, column: str, tokens, mask=None, imputed: bool = Fals
         Restrict the write to these rows (default: every row with a token).
     imputed : bool, optional
         Mark every written token as a derived value (default False).
+    clear_missing : bool, optional
+        Empty the sidecar on *mask* rows whose token is missing (default
+        False). For a step that wrote those rows' values: the label they
+        held named the value it replaced, and would credit the wrong
+        source.
     """
     tokens = pd.Series(tokens, index=curated.index).astype(object)
     if imputed:
         tokens = tokens.map(mark_imputed)
-    write = tokens.notna()
+    rows = pd.Series(True, index=curated.index)
     if mask is not None:
-        write &= pd.Series(mask, index=curated.index).fillna(False).astype(bool)
-    if not write.any():
+        rows = pd.Series(mask, index=curated.index).fillna(False).astype(bool)
+    write = tokens.notna() & rows
+    side = source_column(column)
+    clear = rows & tokens.isna() if clear_missing and side in curated.columns else None
+    if not write.any() and (clear is None or not clear.any()):
         return curated
 
-    side = source_column(column)
     existing = _object_sidecar(
         curated[side] if side in curated.columns else None, curated.index
     )
     existing.loc[write] = tokens.loc[write]
+    if clear is not None:
+        existing.loc[clear] = pd.NA
     curated[side] = existing
     return curated

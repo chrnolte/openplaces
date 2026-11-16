@@ -720,10 +720,10 @@ def test_a_lot_counts_the_stories_of_its_tallest_property(monkeypatch):
     )
     out = aggregation.aggregate_from_entities(_state(curated), **params).curated
     assert out['n_stories'].tolist() == [3.0, 2.5, 1.5, 4.0]
-    # The replaced and the filled value name the rows they came from;
-    # the kept values keep their own.
+    # The replaced value names the row that stated the tallest count,
+    # the filled value its one row; the kept values keep their own.
     sources = out['n_stories_source'].tolist()
-    assert sources == ['rolla+rollb', 'layer', 'rolla', 'layer']
+    assert sources == ['rollb', 'layer', 'rolla', 'layer']
 
 
 def test_the_sidecar_names_the_rows_the_value_came_from(classed_properties):

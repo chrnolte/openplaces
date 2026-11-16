@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
+from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import record_sources, source_column
 from openplaces.io.readers import describe_recipe, get_entities
@@ -38,14 +39,16 @@ def _row_source_tokens(labels: pd.Series) -> pd.Series:
     (`edgecombecounty:units`) loses its suffix, and an explicit source
     labeled with its recipe id becomes that recipe's source id. Copied
     verbatim, either would have cleared Edgecombe County's restricted
-    values for shipping.
+    values for shipping. A part that is not a recipe id (a source id,
+    or a token such as `not_on_roll`) is kept as it is, so a cell's own
+    sidecar can pass through here too.
     """
 
     def normalize(label):
         parts = []
         for part in str(label).split('+'):
             part = part.removesuffix(STACKED_UNITS_LABEL_SUFFIX)
-            if '_' in part:
+            if '_' in part and _is_admin_id(part.split('_', 1)[0]):
                 part = source_id_from_recipe_id(part)
             if part and part not in parts:
                 parts.append(part)
@@ -54,6 +57,15 @@ def _row_source_tokens(labels: pd.Series) -> pd.Series:
     values = labels.astype('string')
     lookup = {v: normalize(v) for v in values.dropna().unique()}
     return values.map(lookup).astype(object)
+
+
+def _is_admin_id(text: str) -> bool:
+    """True when *text* parses as an admin id (a recipe id's first part)."""
+    try:
+        AdminId(text)
+    except (ValueError, IndexError, KeyError):
+        return False
+    return True
 
 
 def _linked_recipe_id(recipe_id: str) -> str:
@@ -332,6 +344,35 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
     return tokens.groupby(keys).agg(union)
 
 
+#: Reductions whose value is one row's value, so its token is that row's.
+_PICKS = frozenset({'max', 'min', 'first', 'last'})
+
+
+def _supplier_tokens(values, group_key, column, sidecar, function, reduced):
+    """Per group, the tokens of the rows that supplied the reduced value.
+
+    `max` and `min` take the rows holding the group's value, and `first`
+    and `last` the first or last row stating one, in the order the
+    reduction saw. Rows of several sources tied on a `max` or `min`
+    each supplied it, so their tokens are joined by `+`, the separator
+    of `io.curator.provenance`. Every other reduction (a sum, a mean,
+    `agree`) takes something from each row stating the column, and
+    names them all (`_union_tokens`).
+    """
+    if not isinstance(function, str) or function not in _PICKS:
+        return _union_tokens(values, group_key, column, sidecar)
+    key = pd.Series(pd.Series(group_key).to_numpy(), index=values.index)
+    stating = values[column].notna().to_numpy()
+    if function in ('max', 'min'):
+        held = values[column].eq(key.map(reduced)).fillna(False)
+        chosen = stating & held.to_numpy(dtype=bool)
+    else:
+        repeat = key[stating].duplicated(keep=function).to_numpy()
+        chosen = stating.copy()
+        chosen[stating] = ~repeat
+    return _union_tokens(values[chosen], key[chosen], column, sidecar)
+
+
 #: Working column carrying each reference row's place in *order_by*.
 ROW_ORDER_COLUMN = '__row_order'
 
@@ -460,9 +501,13 @@ def aggregate_from_entities(
         where every reference row stating one states the same one, for
         a class such as `foundation_type`. Where the reference carries
         a `{column}_source` sidecar, the curated column gets one too,
-        naming the tokens of the rows its value came from. A column
-        with no sidecar takes its tokens from the reference's per-row
-        `source` (a property spine's), reduced to source ids. 'all'
+        naming the tokens of the rows its value came from: for `max`,
+        `min`, `first` and `last` the row holding it (ties across
+        sources joined by `+`), otherwise every row stating the column.
+        A reference with a per-row `source` (a property spine's) gives
+        each cell its own sidecar where set and the row's `source`
+        where not, reduced to source ids. A written cell no row labels
+        loses its earlier label. 'all'
         reduces every column of the reference except its sidecars, its
         row `source`, the keys and the curated table's index column:
         by the registry's rule, except that `first`, and a column the
@@ -471,9 +516,9 @@ def aggregate_from_entities(
         to speak for it: a townhome row's buildings stating two
         occupancy types give the outline 'Single-Family |
         Multi-Family', and two disagreeing latitudes give it none. The
-        sidecars come along as above; their tokens are a union, never an
-        agreement, so an `imputed` marker on any contributing row stays
-        on the reduced cell.
+        sidecars come along as above; their tokens are a union over the
+        supplying rows, never an agreement, so an `imputed` marker on
+        any row a value came from stays on the reduced cell.
     key : str or list of str or None, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both
@@ -611,16 +656,14 @@ def aggregate_from_entities(
     if not present:
         return state
     sidecars = {c: source_column(c) for c in present if source_column(c) in available}
-    # A property spine records which source each row came from, not a
-    # sidecar per value: there the row's source is every value's
-    # source, and without it a curated value would carry no token at
-    # all, so a delivery could withhold it only by the coarser scope
-    # rules (Lake County FL sales: land_value_source on 0.1% of rows).
-    row_source = (
-        ROW_SOURCE_COLUMN
-        if ROW_SOURCE_COLUMN in available and len(sidecars) < len(present)
-        else None
-    )
+    # A property spine records which source each row came from, and a
+    # sidecar only on the cells another source filled (a supplement, a
+    # merged row's other source): an empty sidecar means the row's
+    # source. Without the row's label a curated value would carry no
+    # token at all, so a delivery could withhold it only by the coarser
+    # scope rules (Lake County FL sales: land_value_source on 0.1% of
+    # rows).
+    row_source = ROW_SOURCE_COLUMN if ROW_SOURCE_COLUMN in available else None
     where_column = None
     if where is not None:
         if set(where) != {'column', 'pattern'}:
@@ -668,11 +711,15 @@ def aggregate_from_entities(
         if len(reference) == 0:
             return state
     if row_source and row_source in reference.columns:
-        tokens = _row_source_tokens(reference[row_source])
+        labels = reference[row_source].astype('string')
         for column in present:
-            if column not in sidecars:
-                sidecars[column] = source_column(column)
-                reference[sidecars[column]] = tokens
+            side = source_column(column)
+            cell = labels
+            if column in sidecars:
+                own = reference[side].astype('string')
+                cell = own.where(own.notna(), labels)
+            sidecars[column] = side
+            reference[side] = _row_source_tokens(cell)
     # Rows without the key stay: the link table may still place them (a
     # unit that names its lot), and the key join's groupby drops them.
     functions = {}
@@ -771,9 +818,22 @@ def aggregate_from_entities(
         else:
             wrote = incoming.notna()
             curated[target] = incoming
-        if column in sidecars and wrote.any():
-            tokens = _union_tokens(values, group_key, column, sidecars[column])
-            record_sources(curated, target, keys.map(tokens).where(wrote))
+        if wrote.any():
+            tokens = pd.Series(pd.NA, index=curated.index, dtype=object)
+            if column in sidecars:
+                tokens = keys.map(
+                    _supplier_tokens(
+                        values,
+                        group_key,
+                        column,
+                        sidecars[column],
+                        functions[column],
+                        reduced[column],
+                    )
+                )
+            # A written cell without a token loses the label it had:
+            # that label named the value this step replaced.
+            record_sources(curated, target, tokens, mask=wrote, clear_missing=True)
         written.append(target)
     if count_as:
         counts = pd.Series(group_key).value_counts()
