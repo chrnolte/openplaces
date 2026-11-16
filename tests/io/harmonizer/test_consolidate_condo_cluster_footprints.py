@@ -164,6 +164,35 @@ def test_a_use_code_is_read_through_the_recipes_crosswalk(code, whole):
     assert 'use_group' not in state.references[florida].columns
 
 
+def test_a_trimmed_pair_in_the_sidecar_takes_the_cluster_label():
+    # The sidecar holds every raw overlay pair; one the overlay's trim
+    # dropped is there with a null label, which the curates read as no
+    # link. The step labels it, keeps a labeled pair's label and
+    # appends the pairs not yet there.
+    from openplaces.geo.link import get_entity_link_path
+    from openplaces.io import to_parquet
+    from openplaces.io.harmonizer.links._shared import _LINK_METADATA_KEY
+    from openplaces.recipe import get_recipe_id
+
+    state = _state([(9, 'Condominium')])
+    path = get_entity_link_path(get_recipe_id(state.recipe), PARCEL, state.admin_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sidecar = pd.DataFrame(
+        {
+            'footprint_id': ['f0', 'f0'],
+            'parcel_id': ['g0_0', 'g0_3'],
+            'area_intersection_m2': [120.0, 120.0],
+            'link': ['spatial_overlay', None],
+        }
+    )
+    to_parquet(sidecar, path, file_metadata={_LINK_METADATA_KEY: '{}'})
+    links_mod.consolidate_condo_cluster_footprints(state)
+    after = pd.read_parquet(path).set_index('parcel_id')['link']
+    assert len(after) == 9
+    assert after['g0_0'] == 'spatial_overlay'
+    assert (after.drop('g0_0') == links_mod.CLUSTER_LINK).all()
+
+
 def test_a_stray_lot_does_not_count(monkeypatch):
     state = _state([(9, 'Condominium')])
     ref = state.references[PARCEL]
