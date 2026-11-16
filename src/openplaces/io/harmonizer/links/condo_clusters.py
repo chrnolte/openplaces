@@ -312,6 +312,11 @@ def _append_to_sidecar(
     the building geospine read the sidecar, not the in-memory crosswalk;
     without these rows a footprint kept whole would reach only the lots
     the overlay kept. The sidecar's stored fingerprint is reused as is.
+
+    The sidecar holds every raw overlay pair, and a pair the overlay's
+    trim dropped is already there with a null label, which its readers
+    take as no link. Such a pair takes the label of *added*; a pair
+    with a label keeps it, and a pair not yet there is appended.
     """
     sidecar_path = get_entity_link_path(
         get_recipe_id(state.recipe), recipe_id, state.admin_id
@@ -322,6 +327,18 @@ def _append_to_sidecar(
     if stored_raw is None:
         return
     existing = pd.read_parquet(sidecar_path).set_index([spine_id_col, 'parcel_id'])
+    if 'link' not in existing.columns:
+        existing['link'] = pd.Series(pd.NA, index=existing.index, dtype=object)
+    # Before 2026-11-16 these pairs were skipped as present: measured
+    # on pass B, US-NC-CAR, 2,140 of 4,086 pairs of the 149 footprints
+    # kept whole stayed unlabeled, and 1,315 condo lots reached no
+    # building.
+    unlabeled = existing['link'].isna() & existing.index.isin(added.index)
+    if unlabeled.any():
+        existing['link'] = existing['link'].astype(object)
+        existing.loc[unlabeled, 'link'] = (
+            added['link'].reindex(existing.index[unlabeled]).to_numpy()
+        )
     new = added[~added.index.isin(existing.index)]
     merged = pd.concat([existing, new[['area_intersection_m2', 'link']]]).sort_index()
     to_parquet(
