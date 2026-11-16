@@ -847,6 +847,18 @@ get `_2`, `_3` ordered by content, and a source with no issued number is
 named `{admin}_{source}:{content hash}`. A spatial entity's id comes from its
 geometry; this is the equivalent for an entity that has none.
 
+**A property spine cell names its source by one convention**: an empty
+`{column}_source` means the row's `source` supplied it, and a filled one
+names the source that did. The supplements join (`link_by_id`,
+`supplements_only: true`, `track_provenance: all`) labels every cell a
+supplement fills or overwrites with the supplement's source id, since the
+row keeps its roll's `source`. A merged row's cell keeps the label of the
+row it was taken from (`merge_on_id`), left empty only where that label
+is the merged row's whole `source`. Curate reads the convention
+(`aggregate_from_entities`), and a delivery withholds by these labels.
+Measured 2026-11-15 on US-MA-BOS: 21 sidecars added, parquet size +2.5%.
+Measured 2026-11-15 on US-FL-LA: 99 sidecars added (1,206 merged rows), +0.7%.
+
 **Relationships between entities are link tables** (`geo/link.py`,
 `io/harmonizer/entity_links.py`), one row per pair, stored beside the finer
 entity's output (`get_entity_link_path`, finer by `ENTITY_LINK_ORDER`). The

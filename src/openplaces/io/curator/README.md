@@ -85,7 +85,8 @@ Steps are organized by the nature of the transformation:
   through the footprint-to-building link (`columns: all`): sums add, a
   class the buildings disagree on keeps each value joined by " | "
   (`distinct`), a number they disagree on stays missing (`agree`),
-  provenance tokens are a union so an `imputed` marker survives, and
+  a value's tokens are those of the rows it came from (an `imputed`
+  marker on any of them survives), and
   `n_buildings_per_footprint` counts them. One building per outline is
   a copy. Measured 2026-10-26 on US-MA-SOM: the fold equals the
   footprint curate it replaced in all 113 columns. A parcel's `year_built` is
@@ -124,6 +125,13 @@ Steps are organized by the nature of the transformation:
   value wherever it states one. The Massachusetts parcel patch uses
   all three to count a condominium lot's dwellings from its 102 unit
   accounts, each at least one, ahead of the master record's count.
+  Each written cell's `{column}_source` names the rows its value came
+  from: for `max`, `min`, `first` and `last` the row holding it (rows of
+  several sources tied on it are joined by `+`), for every other rule
+  each row stating the column. On the property spine a row's token is
+  its cell's own `{column}_source` where one is set (a supplement, a
+  merged row's other source) and its `source` otherwise, reduced to
+  source ids. A written cell no row labels loses the label it held.
 - `common_land.py` — `apportion_common_land` (gather), the plat's
   common land as an area: it reads the parcel spine's `plat key` link
   table and writes `common_land_share_ha` on each lot (the common area

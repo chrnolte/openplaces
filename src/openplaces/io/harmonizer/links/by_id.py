@@ -317,6 +317,18 @@ def _upstream_tokens(ref_indexed, column: str, skey: pd.Series, token: str | Non
     return upstream.where(upstream.notna(), token)
 
 
+def _tracked_columns(track_provenance, pairs) -> set[str]:
+    """Output names whose cells get a `_source` label (see link_by_id).
+
+    `all` names every column the join writes: a supplement can fill
+    any attribute of its roll, and a delivery withholds a restricted
+    supplement's cells only by finding its name on them.
+    """
+    if track_provenance == 'all':
+        return {out_name for _col, out_name in pairs}
+    return set(track_provenance or [])
+
+
 def _warn_if_link_underperforms(
     matched: int,
     total: int,
@@ -631,7 +643,7 @@ def _link_attributes(
     _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
     ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
     ref_unique.index = ref_unique[ref_key].astype('string')
-    provenance_cols = set(track_provenance or [])
+    provenance_cols = _tracked_columns(track_provenance, pairs)
     token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
     for col, out_name in pairs:
         name = f'{out_name}{suffix}' if suffix else out_name
@@ -764,7 +776,7 @@ def _link_aggregate(
     if protect_own_columns and 'geometry_source' in spine.columns:
         own_label = source_id_from_recipe_id(recipe_id)
         own_geometry_mask = spine['geometry_source'].astype('string') == own_label
-    provenance_cols = set(track_provenance or [])
+    provenance_cols = _tracked_columns(track_provenance, pairs)
     token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
 
     def aggregated(col: str, out_name: str, warn: bool = True) -> pd.Series:
@@ -961,7 +973,7 @@ def link_by_id(
     layer: str | None = None,
     ref_sort_by: str | None = None,
     ref_sort_ascending: bool = True,
-    track_provenance: list[str] | None = None,
+    track_provenance: list[str] | str | None = None,
     fill_only: bool = False,
     supplements_only: bool = False,
     ref_address_key: dict | None = None,
@@ -1125,13 +1137,16 @@ def link_by_id(
         groups of up to 335, so the second pass replaced every parcel's
         own improvement value with one arbitrary row's, and the county's
         total came out 31 times its source (measured 2026-09-09).
-    track_provenance : list of str, optional
+    track_provenance : list of str or 'all', optional
         Output column names (post-rename, post-suffix base names) to record
         per-cell source provenance for via :func:`_write_prioritized`'s
         ``provenance_token`` (see there) -- writes a ``{column}_source``
         sidecar for exactly the columns named here, not every joined
-        attribute. In ``auto_discover`` mode, forwarded unchanged to every
-        discovered match, each stamping its own ``source_id`` (see
+        attribute. ``'all'`` names every column the join writes, for a
+        join whose cells must each be traceable to it (the property
+        spine's supplements join). In ``auto_discover`` mode, forwarded
+        unchanged to every discovered match, each stamping its own
+        ``source_id`` (see
         :func:`~openplaces.recipe.source_id_from_recipe_id`) as the token.
     supplements_only : bool, optional
         ``auto_discover`` mode only. Join only the discovered recipes that

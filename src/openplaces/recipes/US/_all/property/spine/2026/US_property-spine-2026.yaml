@@ -62,11 +62,18 @@ pipeline:
   # Parcels and footprints get them in curate, aggregated from
   # properties, not by copying them here (AGENTS.md, "Entity model and
   # stage roles").
+  # Every cell a supplement fills or overwrites names it in that
+  # column's `{column}_source` (track_provenance: all), because the
+  # row's `source` still names the roll. An empty sidecar means the
+  # row's `source` supplied the cell: the one convention of this spine,
+  # which assign_entity_ids keeps when it merges rows and curate's
+  # aggregate_from_entities reads.
   - step: link_by_id
     auto_discover: true
     entity_type: property
     supplements_only: true
     count_as: false
+    track_provenance: all
 
   # Index the spine by stable property ids, `{admin3}_{account number}`,
   # and merge the rows of different sources that carry the same one (a
@@ -74,7 +81,8 @@ pipeline:
   # account number is the column a source's recipe names in `entity_id`,
   # else the first raw assessor id column it carries. After the
   # supplements join above, which picks a roll's rows by their single
-  # `source` label; a merged row carries several, joined by `+`.
+  # `source` label; a merged row carries several, joined by `+`, and
+  # each of its cells keeps the label of the row that supplied it.
   - step: assign_entity_ids
 
   # Standardize each unit's own address independently -- the whole point of
