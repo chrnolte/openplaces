@@ -304,6 +304,68 @@ def test_a_link_table_replaces_the_key_join(monkeypatch):
     assert out.loc['pd', 'year_built'] == 1970
 
 
+def test_units_give_a_column_the_roll_does_not_state(monkeypatch):
+    """A roll describing lot A states its floor area but no year built;
+    the split's unit rows state both. The area stays the roll's alone,
+    and the year comes from the units, the only rows stating one.
+    Fabricated ids and values."""
+    rows = pd.DataFrame(
+        {
+            'living_area_sqft': [800.0, 900.0, 810.0, 910.0],
+            'year_built': [None, None, 1991.0, 1986.0],
+        },
+        index=pd.Index(['r1', 'r2', 'u1', 'u2'], name='property_id'),
+    )
+    links = pd.DataFrame(
+        {
+            'property_id': ['r1', 'r2', 'u1', 'u2'],
+            'parcel_id': ['pa'] * 4,
+            'link_method': ['stacked_units_crosswalk'] * 2 + ['stacked_units'] * 2,
+            'link_source': ['roll', 'roll', 'layer:units', 'layer:units'],
+            'share': pd.array([None] * 4, dtype='Float64'),
+            'share_basis': [None] * 4,
+        }
+    )
+    from pathlib import Path
+
+    from openplaces.geo import link as geo_link
+    from openplaces.io.harmonizer import entity_links
+
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+    monkeypatch.setattr(geo_link, 'get_link_owner_recipe_id', lambda recipe: 'owner')
+    monkeypatch.setattr(
+        geo_link, 'get_entity_link_path', lambda a, b, admin_id=None: Path('link')
+    )
+    monkeypatch.setattr(entity_links, 'read_entity_link', lambda path: links)
+
+    curated = pd.DataFrame(
+        {'parcel_id_local': ['A']}, index=pd.Index(['pa'], name='parcel_id')
+    )
+    state = aggregation.aggregate_from_entities(
+        _state(curated),
+        'US_property-spine-2026',
+        columns={'living_area_sqft': 'sum', 'year_built': 'min'},
+        key=None,
+        count_as='n_properties',
+    )
+    out = state.curated
+    assert out.loc['pa', 'living_area_sqft'] == 1700.0
+    assert out.loc['pa', 'year_built'] == 1986.0
+    # The units count once they give the lot a value.
+    assert out.loc['pa', 'n_properties'] == 4.0
+
+
 def test_a_curated_entity_on_the_finer_side_gathers_its_parcels(monkeypatch):
     """Curated sales take their parcels' values through the
     transaction-to-parcel table: a one-parcel sale its parcel's, a deed

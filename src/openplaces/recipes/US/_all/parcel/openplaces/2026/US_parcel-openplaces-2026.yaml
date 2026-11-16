@@ -93,6 +93,11 @@ pipeline:
       # OTHER_VAL); impute_land_value subtracts it before reading the
       # rest of a total as land.
       other_value: sum
+      # Land area as the roll states it, kept beside the geometry's
+      # own area as a check on it. A unit's row states the lot's land
+      # or its own share of it: the largest stated area is the lot's
+      # in the first case and a lower bound in the second.
+      land_area_sqft: max
       n_stories: max
       n_bedrooms: sum
       n_bathrooms: sum

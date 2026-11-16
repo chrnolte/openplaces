@@ -534,14 +534,23 @@ that calls stages by hand has to follow it, and **a parcel geospine built
 before one of its county's rolls was ingested silently lacks that roll's
 values until it is rerun**.
 
-The parcel geospine's
+The parcel geospine copies one explicit list of parcel-level columns
+(values, `tax_year`, use labels and codes, `building_style`,
+`n_dwellings`, address, city, postal code) from every table whose rows
+are properties: the standalone rolls of its
 `link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
-copies an explicit list of parcel-level columns (values, use codes,
-`building_style`, `n_dwellings`, address) and nothing else since
-2026-09-12; property-level attributes reach curated parcels through
-`aggregate_from_entities` (curate, `aggregation.py`). A county whose
-geospine predates that still carries the old wider copy until its next
-geometry rerun, which is why the curate step fills only what is empty.
+pass, and the property layers bundled in a parcel recipe (MassGIS's
+`L3_ASSESS`, the stacked-units layer every parcel ingest recipe gets),
+which the three `entity_type: parcel` passes reach and limit through
+`layer_columns: {property: [...]}`. A parcel table's own rows keep the
+registry default, since some counties state building attributes only
+there (Maryland, Pennsylvania and Florida parcel layers). What a
+property states about itself (year built, stories, rooms, bedrooms,
+floor area) reaches curated parcels through `aggregate_from_entities`
+(curate, `aggregation.py`), with the rule the parcel curate declares
+per column. That step fills only empty cells, so a geospine built
+before 2026-11-15 still decides those cells on multi-property lots
+with the registry's mean until its next geometry rerun.
 
 The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),

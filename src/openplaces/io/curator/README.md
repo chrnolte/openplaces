@@ -93,11 +93,16 @@ Steps are organized by the nature of the transformation:
   `gross_floor_area_sqft` their sums, read from
   `US_property-spine-2026` by `parcel_id_local` with the registry's rule
   or a per-column override, filling only what the parcel's own layer
-  left empty. It exists because the parcel geospine's property
-  `link_by_id` no longer copies property-level attributes (its explicit
-  `columns:` list stops at parcel-level values, use codes and address):
-  a copy made in the geometry phase was a second, lossy home for them and
-  tied every fix to a geometry rerun. Measured on Victoria County, TX,
+  left empty. It is the only route for property-level attributes: the
+  parcel geospine copies from a roll, and from a property layer bundled
+  in a parcel recipe, one explicit list that stops at parcel-level
+  values, use codes and address, because a copy made in the geometry
+  phase was a second, lossy home for them (a mean of a lot's units'
+  stories) and tied every fix to a geometry rerun. On a lot that a roll
+  and the units split off the parcel layer both describe, the units'
+  rows are left out of a column wherever the roll's rows state it, so
+  nothing is summed twice, and give the lot its value where only they
+  state it. Measured on Victoria County, TX,
   2026-09-12: the curate-side reduction reproduces the old copy's
   coverage exactly (63.9% `year_built` and floor area, the PACS segment
   sum now named `gross_floor_area_sqft`), so a county
