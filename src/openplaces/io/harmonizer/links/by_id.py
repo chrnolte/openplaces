@@ -465,6 +465,7 @@ def _link_auto_discovered(
     track_provenance: list[str] | None,
     fill_only: bool,
     roll_values: dict | None = None,
+    layer_columns: dict[str, list[str]] | None = None,
 ) -> HarmonizeState:
     """The `auto_discover` branch of `link_by_id`: one aggregate join per
     discovered source of *entity_type*, each through `link_by_id` itself.
@@ -511,6 +512,12 @@ def _link_auto_discovered(
             for c in get_attributes(match['layer'] or entity_type).index
             if c not in _LINK_KEY_COLUMNS
         ]
+        # A bundled layer whose rows are another entity (a parcel
+        # recipe's property layer) takes the list the caller gave for
+        # that entity type: its rows describe that entity, so the
+        # registry default would copy them onto this one.
+        if match['layer'] is not None and match['layer'] in (layer_columns or {}):
+            match_columns = list(layer_columns[match['layer']])
         protect_columns: set[str] | None = None
         if match['layer'] is None and match['recipe_id'] in spine_source_ids:
             keep_overlap = {c for c in match_columns if c in spine_keep_columns}
@@ -960,6 +967,7 @@ def link_by_id(
     ref_address_key: dict | None = None,
     spine_address_key: dict | None = None,
     roll_values: dict | None = None,
+    layer_columns: dict[str, list[str]] | None = None,
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
     _unit_lot_pairs: pd.DataFrame | None = None,
@@ -1181,6 +1189,19 @@ def link_by_id(
           values that sources scoped coarser than the roll supplied
           are emptied on keyed spine rows the roll does not carry, and
           their ``_source`` reads ``not_on_roll``.
+    layer_columns : dict of {str: list of str}, optional
+        ``auto_discover`` mode only. The columns to copy from a
+        discovered ``additional_layers`` table, keyed by that layer's
+        entity type (e.g. ``{'property': [...]}``). It replaces both
+        *columns* and the registry default for such a layer, and
+        leaves every other match as it was. A layer's rows describe
+        the entity it names: the registry default for a property layer
+        lists the attributes a property states about itself (year
+        built, stories, rooms), and the aggregate join would reduce
+        them onto the spine with a rule meant for another use (a mean
+        of the units' stories on a lot). Naming the columns per layer
+        type keeps a parcel table's own row on the registry default,
+        where a county's only building attributes may sit.
     """
     roll_values = parse_roll_values(roll_values)
     if roll_values and mode != 'aggregate' and not auto_discover:
@@ -1203,7 +1224,10 @@ def link_by_id(
             track_provenance=track_provenance,
             fill_only=fill_only,
             roll_values=roll_values,
+            layer_columns=layer_columns,
         )
+    if layer_columns:
+        raise ValueError('link_by_id: layer_columns applies to auto_discover only.')
 
     if recipe_id is None:
         warnings.warn('link_by_id: no recipe_id and auto_discover is False; skipping.')

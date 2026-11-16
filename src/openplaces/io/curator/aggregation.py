@@ -89,10 +89,13 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     - links found on a key shared by very many rows on both sides
       (`*_shared_key`) are left out, because summing over them is the
       harm that label records;
-    - on a lot that any source other than the ingest-time split
-      describes, the split's own rows (`<source>:units`) are left out,
-      so a tax roll and the units split off the parcel layer are not
-      summed twice. A row both describe is one merged row and stays;
+    - on a lot where a source other than the ingest-time split states
+      a column, the split's own rows (`<source>:units`) are left out of
+      that column, so a tax roll and the units split off the parcel
+      layer are not summed twice; where only the units state it, they
+      give the lot its value. A units row that gives no column on such
+      a lot is left out altogether (and from a count). A row both
+      describe is one merged row and stays;
     - a property on several lots contributes its `share` of every
       summed column to each.
 
@@ -157,13 +160,25 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     tokens = links['link_source'].fillna('').str.split('+')
     only_units = tokens.map(
         lambda parts: all(p.endswith(STACKED_UNITS_LABEL_SUFFIX) for p in parts)
-    )
-    described = set(links.loc[~only_units, own_id])
-    links = links[~(only_units & links[own_id].isin(described))]
+    ).to_numpy(dtype=bool)
 
     reference_lookup = values.copy()
     reference_lookup.index = pd.Index(reference.index).astype('string')
     rows = reference_lookup.loc[links[other_id].astype('string')].reset_index(drop=True)
+    lot = links[own_id].astype('string').reset_index(drop=True)
+    # Units are left out column by column: on a lot where another
+    # source's rows state the column, never where only the units do.
+    # A roll that describes a lot without a year built must not take
+    # away the year its units state. Measured 2026-11-15 on US-NC-TYR:
+    # 157 lots kept a year built only through this rule.
+    units = pd.Series(only_units)
+    for column in functions:
+        described = lot[~units & rows[column].notna()]
+        rows[column] = rows[column].mask(units & lot.isin(set(described)))
+    gives_nothing = rows[list(functions)].isna().all(axis=1)
+    left_out = units & lot.isin(set(lot[~units])) & gives_nothing
+    links = links[~left_out.to_numpy()]
+    rows = rows[~left_out].reset_index(drop=True)
     share = links['share'].astype('Float64').reset_index(drop=True)
     for column, function in functions.items():
         if function == 'sum' and share.notna().any():
