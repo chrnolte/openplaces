@@ -152,7 +152,9 @@ def consolidate_condo_cluster_footprints(
     The condominium signal is the parcel curate's own land-use keyword
     ruleset (*ruleset* beside *ruleset_recipe_id*), applied to the
     parcel reference's *text_columns* joined, so that one maintained
-    list decides what a condominium label is in both stages; it matches
+    list decides what a condominium label is in both stages. Where the
+    parcel layer carries a use code, its recipe's remap crosswalk
+    supplies the text first, as it does for the parcel spine. It matches
     "CONDO" and not abbreviations such as "CNDO". Among the labeled
     groups it agreed with a broader keyword on every group.
 
@@ -233,10 +235,20 @@ def consolidate_condo_cluster_footprints(
     if pairs.empty:
         return state
 
-    present = [c for c in text_columns if c in lots.columns]
+    # The parcel spine reads a code-only layer (Florida's DOR use code)
+    # through the recipe's remap crosswalk; this step runs before that
+    # join, so it applies the same crosswalk here. Otherwise the rule
+    # sees no use text in such units and only its lot-count branch
+    # fires (pass B, 2026-11-15: US-FL-LA 5 kept whole, 13 expected).
+    from openplaces.io.harmonizer.links.discovery import remap_frame
+
+    attributes = remap_frame(
+        pd.DataFrame(lots.drop(columns=lots.geometry.name)), recipe_id, state.admin_id
+    )
+    present = [c for c in text_columns if c in attributes.columns]
     if present:
         label = (
-            lots[present]
+            attributes[present]
             .astype('string')
             .fillna('')
             .agg(' | '.join, axis=1)

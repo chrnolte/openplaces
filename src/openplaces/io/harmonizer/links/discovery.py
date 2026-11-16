@@ -282,15 +282,56 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     """
     if state.spine is None:
         return state
+    state.spine = remap_frame(
+        state.spine, recipe_id, state.admin_id, verbose=state.verbose, copy=False
+    )
+    return state
+
+
+def remap_frame(
+    frame: pd.DataFrame,
+    recipe_id: str,
+    admin_id: AdminId | str | None = None,
+    *,
+    verbose: bool = False,
+    copy: bool = True,
+) -> pd.DataFrame:
+    """Apply *recipe_id*'s ``*-remap.csv`` crosswalks to any table.
+
+    The rule of :func:`_apply_remap_csvs` (longest key, admin scope,
+    gap-fill) on a table other than the spine. A step that reads a
+    reference before the spine has joined it, such as the footprint
+    geospine's condominium test on the parcel layer, uses this to see
+    the same vocabulary the parcel spine will carry, rather than the
+    source's raw codes.
+
+    Parameters
+    ----------
+    frame : DataFrame
+        The table, holding the source columns the crosswalks name.
+    recipe_id : str
+        The recipe the crosswalks sit beside.
+    admin_id : AdminId or str, optional
+        The unit, for crosswalk rows scoped by ``admin_id``.
+    verbose : bool, optional
+        Print how many codes each crosswalk matched.
+    copy : bool, optional
+        Write into a copy (default) or into *frame* itself.
+
+    Returns
+    -------
+    DataFrame
+        *frame* with each crosswalk's output columns filled where empty.
+    """
     from openplaces.path import recipe_path
     from openplaces.recipe import get_recipe_by_id  # noqa: F811, PLC0415
 
     recipe = get_recipe_by_id(recipe_id)
     recipe_dir = recipe_path(recipe['admin_id'], recipe['entity'], as_dir=True)
     if not recipe_dir.exists():
-        return state
+        return frame
 
-    spine = state.spine
+    spine = frame.copy() if copy else frame
     prefix = f'{recipe_id}_'
     for csv_path in sorted(recipe_dir.glob(f'{prefix}*-remap.csv')):
         stem = csv_path.stem
@@ -302,7 +343,7 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
         table = pd.read_csv(csv_path, dtype=str)
         key_col = table.columns[0]
         if 'admin_id' in table.columns:
-            admin = str(state.admin_id) if state.admin_id is not None else ''
+            admin = str(admin_id) if admin_id is not None else ''
             scope = table['admin_id'].fillna('')
             applies = (scope == '') | scope.map(
                 lambda s: bool(s) and (admin == s or admin.startswith(s + '-'))
@@ -326,12 +367,10 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
             # already resolved. Same rule as the value columns
             # joined beside it.
             _write_prioritized(spine, target, codes.map(table[target]))
-        if state.verbose:
+        if verbose:
             matched = codes.isin(table.index).sum()
             print(
                 f'  link_by_id: applied {csv_path.name} '
                 f'({matched:,d}/{len(spine):,d} {column!r} matched)'
             )
-
-    state.spine = spine
-    return state
+    return spine

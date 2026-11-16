@@ -147,6 +147,23 @@ def test_a_kept_footprint_gains_links_and_loses_none():
     assert state.spine.loc['f1', 'geometry_source'] == 'obm'
 
 
+@pytest.mark.parametrize(('code', 'whole'), [('004', True), ('001', False)])
+def test_a_use_code_is_read_through_the_recipes_crosswalk(code, whole):
+    # A layer with codes only (Florida's DOR use code, 004 condominium,
+    # 001 single family): the crosswalk beside the recipe gives the text.
+    florida = 'US-FL_parcel-floridagio-2026'
+    state = _state([(9, 'unused')])
+    ref = state.references.pop(PARCEL).drop(columns='use_group')
+    ref['use_group_code'] = code
+    state.references[florida] = ref
+    state.crosswalks[florida] = state.crosswalks.pop(PARCEL)
+    state.reference_types = {florida: 'parcel'}
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+    assert _kept(state) == (['f0'] if whole else [])
+    # The step reads the crosswalk; it writes no use column on the layer.
+    assert 'use_group' not in state.references[florida].columns
+
+
 def test_a_stray_lot_does_not_count(monkeypatch):
     state = _state([(9, 'Condominium')])
     ref = state.references[PARCEL]
