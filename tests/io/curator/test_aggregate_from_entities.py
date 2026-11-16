@@ -620,6 +620,50 @@ def test_the_massachusetts_patch_counts_condominium_units():
     assert condo['columns'] == {'n_dwellings': 'sum'}
 
 
+def test_a_lot_counts_the_stories_of_its_tallest_property(monkeypatch):
+    """The parcel recipe's property reduction, as the recipe states it:
+    the geospine's mean over a lot's units (2.333) gives way to the
+    tallest unit's count, and a lot no property states a count for
+    keeps its value and its provenance. Fabricated ids and values."""
+    from openplaces.recipe import get_recipe_by_id
+
+    recipe = get_recipe_by_id('US_parcel-openplaces-2026')
+    step = next(s for s in recipe['pipeline'] if s['step'] == 'aggregate_from_entities')
+    params = {k: v for k, v in step.items() if k != 'step'}
+    rows = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L1', 'L1', 'L2', 'L3'],
+            'n_stories': [2.0, 2.0, 3.0, None, 1.5],
+            'source': ['rolla', 'rolla', 'rollb', 'rolla', 'rolla'],
+        }
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'get_entities',
+        lambda recipe_id, admin_id, columns=None, missing='raise': rows[
+            [c for c in columns if c in rows.columns]
+        ],
+    )
+    monkeypatch.setattr(
+        aggregation,
+        'describe_recipe',
+        lambda recipe_id, admin_id: pd.DataFrame(index=rows.columns),
+    )
+    curated = pd.DataFrame(
+        {
+            'parcel_id_local': ['L1', 'L2', 'L3', 'L4'],
+            'n_stories': [7.0 / 3.0, 2.5, None, 4.0],
+            'n_stories_source': ['layer', 'layer', None, 'layer'],
+        }
+    )
+    out = aggregation.aggregate_from_entities(_state(curated), **params).curated
+    assert out['n_stories'].tolist() == [3.0, 2.5, 1.5, 4.0]
+    # The replaced and the filled value name the rows they came from;
+    # the kept values keep their own.
+    sources = out['n_stories_source'].tolist()
+    assert sources == ['rolla+rollb', 'layer', 'rolla', 'layer']
+
+
 def test_the_sidecar_names_the_rows_the_value_came_from(classed_properties):
     curated = pd.DataFrame({'parcel_id_local': ['p1', 'p2', 'p3']})
     state = aggregation.aggregate_from_entities(

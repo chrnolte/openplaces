@@ -1515,8 +1515,9 @@ def impute_land_value(
     pooled 0.123 to 0.100, with no erased structure values.
 
     A per-unit choice, rather than one global rule, is also the pattern
-    :func:`~openplaces.io.curator.reconcilers.adopt_stories_by_floor_area_fit`
-    already uses. It is a two-way comparison of medians between two
+    :func:`~openplaces.io.curator.estimators.stories.decide_stories` (its
+    roll gap fill) already uses. It is a two-way comparison of medians
+    between two
     deterministic estimators, with no trained model, no record linking
     and no neighbor geometry.
     """

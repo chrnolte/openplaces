@@ -66,12 +66,18 @@ pipeline:
   # property title, an exemption, business personal property) stays as
   # it is: filling it would be imputation, which openplaces does not do
   # for structure values (maintainer, 2026-09-22).
+  # n_stories is the other (prefer): a lot's count is its tallest
+  # property's, replacing the geospine's value wherever a property
+  # states one. The geospine's link pass writes the mean of a lot's
+  # units (2.333 for units of 2, 2 and 3 stories), which is no story
+  # count. A lot no property states a count for keeps its value.
   - step: aggregate_from_entities
     recipe_id: US_property-spine-2026
     # A standalone roll keys on the local parcel id; a roll bundled with
     # its parcel layer (MassGIS L3_ASSESS) on the state-wide one.
     key: [parcel_id_local, parcel_id_admin2]
     recover: [improvement_value]
+    prefer: [n_stories]
     columns:
       year_built: min
       living_area_sqft: sum
@@ -738,8 +744,12 @@ pipeline:
     conflict_column: land_use_class_conflict
     report: land-use-evidence-conflicts.csv
 
-  # Derive stories from FEMA LiDAR height.
+  # Derive stories from FEMA LiDAR height, at the building curate's
+  # 3.5 m per story (the height includes the roof); one floor height
+  # for both (plans/n-stories-one-deciding-step.md).
+  # Measured 2026-11-14 on US: building LiDAR equals roll count 80.9% at 3.5 m, 75.9% at 3.05 m.
   - step: derive_stories_from_height
+    floor_height_m: 3.5
 
   # Calculate parcel lot area (ha) based on parcel geometry.
   - step: derive_metrics
