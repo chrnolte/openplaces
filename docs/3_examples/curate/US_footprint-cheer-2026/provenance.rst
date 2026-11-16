@@ -70,9 +70,10 @@ Sources
        they carry)
    * - ``obm``, ``microsoft``, ``microsoftglobal``
      - Footprint layers (``geometry_source`` only)
-   * - ``condo_cluster.parcel.<source>``
-     - A footprint drawn for a stacked condominium building from the
-       parcels of its units (``geometry_source`` only)
+   * - ``condo_cluster.<layer>``
+     - A footprint kept whole as one condominium building over the
+       parcels of its units; ``<layer>`` names the footprint layer it
+       was drawn in (``geometry_source`` only)
 
 Fills and withholding
 ---------------------

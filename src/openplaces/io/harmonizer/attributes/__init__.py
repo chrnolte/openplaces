@@ -8,7 +8,7 @@ one module per concern since 2026-09-29 (until then a single
 - priority: classify_footprint_priority
 - use_classes: derive_use_classes
 - morphology: summarize_footprint_morphology
-- shared_land, condo_clusters: the group detections
+- shared_land: detect_shared_land_groups
 - property_counts: estimate_property_counts
 - dwelling_address: attribute_dwelling_address
 - _shared: suffix helpers, reference column lists, reverse_occ_units
@@ -32,11 +32,6 @@ from openplaces.io.harmonizer.attributes._shared import (  # noqa: F401
     _point_suffix,
     _resolve_suffix,
     reverse_occ_units,
-)
-from openplaces.io.harmonizer.attributes.condo_clusters import (  # noqa: F401
-    _NON_CONDO_USE_SUBGROUP_TERMS,
-    _cluster_condo_parcels,
-    detect_condo_building_clusters,
 )
 from openplaces.io.harmonizer.attributes.dwelling_address import (  # noqa: F401
     attribute_dwelling_address,

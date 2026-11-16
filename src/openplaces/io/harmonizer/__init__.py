@@ -158,9 +158,10 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
 
     The ordered config hashes of every step up to and including the
     checkpointed one, plus the size/mtime of every geospine output the
-    covered steps load: the entity_recipe, and the geospine a
-    `load_geospine` step names under `links_recipe_id` (the building
-    spine re-keys the footprint geospine's link sidecars). A change to
+    covered steps load: the entity_recipe, the geospine a
+    `load_geospine` step names under `links_recipe_id`, and the recipe a
+    `link_entities_by_id` step links against (the building spine's
+    footprint-to-building table reads the footprint geospine). A change to
     any covered step config or to a loaded input invalidates the
     checkpoint, a change to a later step does not. Until 2026-10-17 only
     the entity_recipe was stamped, so a footprint geospine rerun on its
@@ -190,6 +191,15 @@ def _checkpoint_chain(recipe, pipeline, upto, admin_id):
         step_cfg.get('links_recipe_id')
         for step_cfg in pipeline[: upto + 1]
         if isinstance(step_cfg, dict) and step_cfg.get('step') == 'load_geospine'
+    ]
+    # A link table written from another spine before the checkpoint
+    # (the building spine's footprint-to-building table, read from the
+    # footprint geospine since the building geospine owns its parcel
+    # overlay) goes stale with that spine, so its output is stamped too.
+    upstream_ids += [
+        step_cfg.get('recipe_id')
+        for step_cfg in pipeline[: upto + 1]
+        if isinstance(step_cfg, dict) and step_cfg.get('step') == 'link_entities_by_id'
     ]
     sources = []
     for upstream_id in upstream_ids:

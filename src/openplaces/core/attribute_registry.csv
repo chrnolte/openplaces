@@ -20,7 +20,7 @@ improvement_value_taxable,Assessed improvement value actually subject to taxatio
 land_value_prior_year,"The roll's own land value for the tax year before its tax_year (e.g. HCAD prior_land_val); read by link_by_id's roll_values rule to fill a parcel the current year has not yet valued; not copied onto parcels",USD,float,sum,,property,ingest
 improvement_value_prior_year,"The roll's own improvement value for the tax year before its tax_year (e.g. HCAD prior_bld_val); see land_value_prior_year",USD,float,sum,,property,ingest
 total_value_prior_year,"The roll's own total value for the tax year before its tax_year (e.g. HCAD prior_tot_mkt_val); see land_value_prior_year",USD,float,sum,,property,ingest
-structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,ingest
+structure_value,"Building value net of land. The canonical column is the parcel's improvement value shared among its buildings. It is missing where the roll states none, and its source column marks an estimate. A source-suffixed variant is that source's own figure, such as NSI's depreciated replacement cost in structure_value_building_nsi, and is never mixed into the canonical column",USD,float,sum,22,building,ingest
 year_built,Year building was built,,float,mean,30,,ingest,0
 address,Street address,,string,join_nonnull,40,,ingest
 address_conflict,Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree,,string,first,41,,curate
@@ -66,6 +66,7 @@ n_parcels_per_footprint,Number of parcels the footprint overlaps,,float,first,,f
 shared_wall_m,"Longest run of the footprint's boundary lying on or inside another footprint of at least 20 m2, found by strict intersection (no buffer, no distance tolerance); 0 where no such footprint touches it, missing on a synthetic geometry. A party wall of a drawn rowhouse; read by the Manufactured Home decision's guard",m,float,max,,footprint,curate
 envelope_id,"Open Location Code of the envelope a footprint piece was cut from, where a building crossing a unit line was reconciled to one envelope and cut at the line; the pieces of one building share it",,string,first,,footprint,harmonize
 n_parcels_per_building,Number of parcels the building overlaps; the building spine's name for n_parcels_per_footprint,,float,first,,building,harmonize
+building_geometry,"What the building's polygon is: 'outline', a footprint outline left whole, or 'parcel_piece', the part of an outline on one parcel where the building geospine cut the outline at the parcel lines (split_outlines_at_parcel_lines); footprint_id names the outline either way",,categorical,first,,building,harmonize
 n_buildings_per_footprint,"Number of buildings the footprint holds, by the footprint-to-building link: one while each building is one footprint, several where one footprint draws a row of townhomes",,float,sum,,footprint,curate
 n_small_elongated_buildings_per_parcel,Number of small elongated (manufactured-home-shaped) buildings on the parcel,,float,first,,parcel,harmonize
 n_primary_buildings_per_parcel,Number of non-accessory buildings on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
@@ -211,7 +212,8 @@ polygon_type,"The cadastre's own polygon type (MassGIS POLY_TYPE: FEE, TAX, ROW,
 spine_resolution,"Why resolve_spine took this footprint from a later source over the earlier ones it overlaps (fragment replaced); missing where the source ranking decided",,categorical,first,,,harmonize
 geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,harmonize
 source_date,Source last-update date,,datetime,first,,,ingest
-priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
+priority_on_parcel,Building priority on its dominant parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
+parcel_id_secondary,"The parcels on which the building is secondary (pipe-joined; missing where there are none): it takes no share of those parcels' improvement value or dwellings, and keeps its share of the parcels where it is primary",,string,first,,building,harmonize,
 area_m2,Footprint area,m2,float,sum,,,curate
 area_ha,Parcel lot area,ha,float,sum,,,harmonize
 area_ac,Parcel lot area,ac,float,sum,,,curate
@@ -447,6 +449,8 @@ replacement_cost,"Replacement cost new of the building on NSI's basis (national 
 structure_value_zero_reason,"Why structure_value is 0, set only there: secondary (a shed or garage valued with the main house), personal_property (a manufactured home off the real-property roll), exempt, included_elsewhere (another building of the lot holds its roll value), not_on_roll (a house the footprint and NSI or the roll's record show on a lot the roll calls vacant, often removed since the footprint was drawn) or no_value (the roll's statement about the building)",,categorical,first,22.4,building,curate,
 improvement_value_parcel_whole,"The parcel's whole recorded improvement value, before it is shared among the parcel's buildings",USD,float,first,,building,curate,
 land_value_parcel_whole,"The parcel's whole recorded land value, as the roll states it for the lot",USD,float,first,,building,curate,
+improvement_value_imputed_parcel_whole,"The parcel's whole improvement value as structure_value is apportioned from it (the roll's figure, or its total less an estimated land value), before it is shared among the parcel's buildings",USD,float,first,,building,curate,
+land_value_imputed_parcel_whole,"The parcel's whole land value as land_value is apportioned from it (the roll's figure or an estimate), for the lot",USD,float,first,,building,curate,
 section_keyword_class,"Number of sections (single-wide 1, double-wide 2, triple-wide 3) that the assessor's own use description states for a manufactured home, where it states one",,string,first,,building,curate,
 habitable_size_ratio,"Footprint area divided by a size typical of a home in the county (half the mean area of NSI's manufactured homes there, at least 25 m2): at 1.0 or above, large enough to be lived in rather than a shed",,float,first,,building,curate,
 use_group_combined_labeled,"The roll's use description as text, without the raw use codes some rolls give instead; the column the assessor-keyword rules read",,string,join_nonnull,,,curate,

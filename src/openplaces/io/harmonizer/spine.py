@@ -51,9 +51,10 @@ def in_unit_extent(gdf, admin_id, margin_deg=STRAY_MARGIN_DEG) -> np.ndarray:
     delivery gate's own bbox logic. Every input a spine turns into rows
     passes this test: the sources `resolve_spine` reads
     (`_drop_out_of_unit_rows`) and the parcels the footprint geospine
-    turns into outlines (`infer_spine_additions`,
-    `consolidate_condo_cluster_footprints`). A parcel the parcel
-    geospine drops as a stray must not come back as an outline.
+    turns into outlines (`infer_spine_additions`) or links a kept
+    footprint to (`consolidate_condo_cluster_footprints`). A parcel the
+    parcel geospine drops as a stray must not come back as an outline
+    or a link.
 
     Every row counts as in the unit when the rows cannot be placed
     against it: no geometry, no CRS (synthetic fixtures, or a source
@@ -1020,9 +1021,12 @@ def adopt_source_entity_id(
     this recipe's own `{entity_type}_id`. The values are unchanged: while
     the relation is one to one the building's id equals its footprint's,
     which is what makes the projection back onto footprints a join and
-    not a lookup. A row that later has no source of its own (a point
-    building with no outline, a townhome split into several buildings)
-    is minted by the step that adds it, not here.
+    not a lookup. A row that later has no source of its own is minted by
+    the step that adds it, not here: a townhome row or duplex cut into
+    one building per parcel piece takes its piece's centroid code
+    (`split_outlines_at_parcel_lines`), keeping the outline's id in
+    *source_id_column*, and a point building with no outline will take
+    its own.
 
     Parameters
     ----------
@@ -1599,7 +1603,12 @@ def _join_largest_overlap(
     if overlay.empty:
         return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
 
-    overlay = overlay.sort_values('area_intersection_m2', ascending=False)
+    # A tiling has no nested polygons, so the parcel tie rule
+    # (dominant_parcel) does not apply; an exact tie goes to the lower
+    # id so that row order never decides.
+    overlay = overlay.sort_values(
+        ['area_intersection_m2', '_ref_value'], ascending=[False, True]
+    )
     keep = ~overlay.index.get_level_values(spine_id_name).duplicated()
     n_dropped = int((~keep).sum())
     if n_dropped and verbose:

@@ -16,6 +16,7 @@ from openplaces.io.harmonizer import (
     HarmonizeState,
     _rename_right_index,
 )
+from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps, tie_breakers
 from openplaces.io.harmonizer.links.sidecars import (
     _link_fingerprint,
     _load_point_link_sidecar,
@@ -589,10 +590,21 @@ def _link_spatial_point(
                     pts_parcel, poly_ref_id_col, '_pt_parcel'
                 )
 
+                # The footprint's dominant parcel, chosen as the
+                # spine's parcel_id is (dominant_parcel); until
+                # 2026-11-10 it was the crosswalk's first row, the
+                # lowest parcel id of a multi-parcel footprint.
+                fp_links = state.crosswalks[overlay_ids[0]].reset_index()
+                fp_links = fp_links[fp_links[poly_ref_id_col].notna()]
+                tie_value, tie_area = tie_breakers(poly_ref)
                 fp_parcel = (
-                    state.crosswalks[overlay_ids[0]]
-                    .reset_index()[[spine_id_col, poly_ref_id_col]]
-                    .drop_duplicates(spine_id_col)
+                    dominant_overlaps(
+                        fp_links,
+                        spine_id_col=spine_id_col,
+                        ref_id_col=poly_ref_id_col,
+                        improvement_value=tie_value,
+                        ref_area=tie_area,
+                    )
                     .set_index(spine_id_col)[poly_ref_id_col]
                     .rename('_fp_parcel')
                 )

@@ -9,6 +9,8 @@ outlines as a source, dropped them by the stray rule. `load_geospine`
 then refused the pair ("466 rows there are new"). Now the parcel steps
 apply the rule (`spine.in_unit_extent`) the parcel geospine applies, and
 `resolve_spine` does not test a spine product's rows a second time.
+(`consolidate_condo_cluster_footprints` applies the same rule; its own
+test file covers it.)
 
 All geometry is fabricated: a unit drawn as the unit square, parcels
 inside it and parcels two degrees east of it.
@@ -26,7 +28,6 @@ from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import links as links_mod
 from openplaces.recipe import get_recipe_by_id
-from tests.links_patching import patch_links
 
 FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
 BUILDING_GEOSPINE = 'US_building-geospine-2026'
@@ -114,49 +115,6 @@ def test_a_stray_parcel_is_not_inferred_as_an_outline():
     state = links_mod.infer_spine_additions(_inference_state(), entity_type='parcel')
     inferred = state.metadata[f'inferred_from_{PARCEL}']
     assert set(inferred['parcel_id']) == {'p20'}
-
-
-def _condo_parcels(x0):
-    return gpd.GeoDataFrame(
-        {
-            'geo_id': ['U1', 'U2'],
-            'land_value': [0.0, 0.0],
-            'improvement_value': [300_000.0, 250_000.0],
-            'geometry': [
-                box(x0, 0, x0 + 0.0001, 0.0001),
-                box(x0 + 0.0001, 0, x0 + 0.0002, 0.0001),
-            ],
-        },
-        crs='epsg:4326',
-    )
-
-
-@pytest.mark.parametrize(('x0', 'n_clusters'), [(0.5, 1), (STRAY_X, 0)])
-def test_a_stray_condo_cluster_is_not_consolidated(
-    data_root, monkeypatch, x0, n_clusters
-):
-    patch_links(monkeypatch, 'get_entities', lambda *a, **k: _condo_parcels(x0))
-    state = HarmonizeState(
-        recipe=get_recipe_by_id(FOOTPRINT_GEOSPINE),
-        admin_id=AdminId(UNIT),
-        verbose=False,
-        timer=None,
-        spine=gpd.GeoDataFrame(
-            geometry=[box(0.1, 0.1, 0.1001, 0.1001)],
-            index=pd.Index(['f_other'], name='footprint_id'),
-            crs='epsg:4326',
-        ),
-    )
-    state = links_mod._link_spatial_overlay(
-        state,
-        PARCEL,
-        'parcel',
-        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
-        save_link=False,
-    )
-    state = links_mod.consolidate_condo_cluster_footprints(state)
-    source = state.spine.get('geometry_source', pd.Series(dtype=object))
-    assert int(source.astype(str).str.startswith('condo_cluster.').sum()) == n_clusters
 
 
 def test_building_geospine_keeps_every_row_of_the_footprint_geospine(monkeypatch):

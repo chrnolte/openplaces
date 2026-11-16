@@ -384,12 +384,24 @@ pipeline:
     columns:
       improvement_value: improvement_value_parcel_whole
       land_value: land_value_parcel_whole
+      # The figures structure_value is apportioned from, undivided: the
+      # no_improvement_value signal reads its share against them.
+      improvement_value_imputed: improvement_value_imputed_parcel_whole
+      land_value_imputed: land_value_imputed_parcel_whole
 
   # Store the pipe-separated list of all overlapping parcels (dominant first),
   # loaded from the persisted spatial overlay link sidecar.
   - step: collect_link_ids
     entity_type: parcel
     column: parcel_id_all
+
+  # Only lots the parcel curate kept: it drops slivers under 1 m2 (its
+  # filter_numeric_at_least on area_ha), which the harmonized building
+  # and the overlay can still name (transition review 3.5). A building
+  # whose dominant lot was dropped keeps no parcel_id.
+  - step: keep_curated_ids
+    recipe_id: US_parcel-openplaces-2026
+    columns: [parcel_id, parcel_id_all]
 
   # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
   # roof_shape is a direct, non-reconciled canonical column, so it keeps a
@@ -507,17 +519,14 @@ pipeline:
     output: county_fips
     admin_id_column: admin3_id
 
-  # Decide, per admin unit (town), whether the local parcel data has usable
-  # improvement values for most of its buildings. A well-covered town keeps
-  # its apportioned parcel value everywhere (even for its few individually
-  # missing buildings); a poorly-covered town uses the NSI-modeled value
-  # everywhere instead (even where a parcel value happens to be present).
-  # Blending the two sources building-by-building within one town is what
-  # caused errors -- this is a per-town switch, not a per-building pick.
-  - step: select_value_source_by_admin_unit
-    output: structure_value
-    parcel_column: structure_value
-    other_column: structure_value_building_nsi
+  # structure_value is the roll's figure only, as apportioned above:
+  # where a town's roll has none, it stays missing and the delivery's
+  # imputation fills it. NSI's estimates stay in their own columns
+  # (structure_value_building_nsi, depreciated_replacement_cost). Until
+  # 2026-11-14 a step here switched a town whose buildings were mostly
+  # unvalued to NSI, and those cells shipped
+  # in the non-imputed bundles (maintainer's ruling, plans/architecture-
+  # review-diagnosis-and-first-principles.md, sections 6 and 8).
 
   # Suppress Overture dwelling counts on parcels that have been curated
   # as vacant (trusting the multi-source parcel land-use classification).
@@ -544,7 +553,7 @@ pipeline:
 
   # Reconcile remaining per-row values from competing sources:
   # - land_value is pre-written by apportionment and needs no reconciliation.
-  # - structure_value was already decided per admin unit above, not here.
+  # - structure_value is the apportioned roll value, not reconciled.
   # - n_dwellings: the roll's count, apportioned above, ahead of
   #   Overture's address points and NSI. One Overture point per building
   #   counted 1 dwelling on a building its roll gives 5 or 30, so the
@@ -609,15 +618,13 @@ pipeline:
   # Infer: derive new features from the reconciled evidence.
   - step: derive_metrics
 
-  # A consolidated condo-cluster footprint smaller than any building is
-  # not the building its summed unit values describe: where the cluster's
-  # "unit" parcels are slivers (median 5 m2), the geospine falls back to
-  # their union, and every unit's improvement value lands on it. Measured
-  # 2026-09-20 on the shipped bundles: 68 TX and 5 NC such footprints,
-  # up to $1.0bn per m2. The value is unknown at this geometry, so it is
-  # withdrawn rather than shipped; the geometry fix (a minimum unit area
-  # in the cluster detection) belongs to the next geospine rerun. After
-  # derive_metrics, which computes both area_m2 and the ratio.
+  # A condo-cluster footprint smaller than any building is not the
+  # building its summed unit values describe. Measured 2026-09-20 on the
+  # shipped bundles: 68 TX and 5 NC such footprints, up to $1.0bn per
+  # m2, all outlines the geospine then built from sliver unit parcels.
+  # Since 2026-11-11 a cluster footprint is always a real outline over 9
+  # or more lots, so this guard should find none; it stays as a check.
+  # After derive_metrics, which computes both area_m2 and the ratio.
   - step: suppress_where
     phase_override: reads area_m2 and the ratio derive_metrics computes
     column: [structure_value, structure_value_per_area]
@@ -1341,18 +1348,58 @@ pipeline:
           # footprint and one agreeing source suffices; that is the 08-25
           # behavior the survey measured, and it is stated here rather
           # than hidden in a share option.
+          #
+          # Both readings are taken on the figure structure_value carries
+          # (the parcel's improvement_value_imputed, apportioned by the
+          # same rule), wherever it has one, and on the roll's own
+          # improvement value only where it has none. A county patch that
+          # derives the improvement from the total (Northampton NC,
+          # improvement_from_total) leaves the roll's figure at 0 on every
+          # parcel, and the signal then fired on 95.8% of its main
+          # buildings. Measured 2026-11-14 on US-NC-NOR: firing on main buildings 95.8% to 16.7% (neighbors HER 10.2%, BER 15.3%).
+          # Where structure_value is missing (Halifax and Sampson, whose
+          # rolls carry no value) the roll's 0 still fires, as before; on
+          # HAL, SAM, BEA, HER, BER, WAR, BRU, NHA and DUR the firing
+          # share is unchanged to within 0.1 point (maintainer's ruling,
+          # plans/architecture-review-diagnosis-and-first-principles.md,
+          # section 8).
           - type: any_of
             label: no_improvement_value
             indicators:
-              - type: value_share_below
-                value: improvement_value_parcel
-                total: [improvement_value_parcel_whole, land_value_parcel_whole]
-                max_ratio: *mh_value_share_max
-                include_zero: true
               - type: all_of
                 indicators:
-                  - {type: numeric_at_most, column: improvement_value_parcel, max: 0}
-                  - {type: not_null, column: parcel_id}
+                  - {type: not_null, column: structure_value}
+                  - type: any_of
+                    indicators:
+                      - type: value_share_below
+                        value: structure_value
+                        total:
+                          - improvement_value_imputed_parcel_whole
+                          - land_value_imputed_parcel_whole
+                        max_ratio: *mh_value_share_max
+                        include_zero: true
+                      - type: all_of
+                        indicators:
+                          - {type: numeric_at_most, column: structure_value, max: 0}
+                          - {type: not_null, column: parcel_id}
+              - type: all_of
+                indicators:
+                  - {type: is_null, column: structure_value}
+                  - type: any_of
+                    indicators:
+                      - type: value_share_below
+                        value: improvement_value_parcel
+                        total:
+                          - improvement_value_parcel_whole
+                          - land_value_parcel_whole
+                        max_ratio: *mh_value_share_max
+                        include_zero: true
+                      - type: all_of
+                        indicators:
+                          - type: numeric_at_most
+                            column: improvement_value_parcel
+                            max: 0
+                          - {type: not_null, column: parcel_id}
           # The parcel lane's park classification, restricted to its rule
           # route. That route carries a hard require on
           # n_small_elongated_buildings_per_parcel >= 4 -- footprint

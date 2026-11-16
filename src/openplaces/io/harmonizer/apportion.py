@@ -20,14 +20,49 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps
+
 __all__ = [
     'APPORTIONED_VALUE_COLUMNS',
     'PROPORTIONAL_SPLIT_COLUMNS',
     'WHOLE_VALUE_COLUMNS',
     'NegativeReferenceValueError',
     'ValueOverAllocationError',
+    'SECONDARY_PAIR_SEP',
     'apportion_reference_values',
+    'secondary_pairs_from',
 ]
+
+#: Separator of the parcel ids in a ``{entity}_id_secondary`` column
+#: (classify_footprint_priority), the same as in ``parcel_id_all``.
+SECONDARY_PAIR_SEP = '|'
+
+
+def secondary_pairs_from(column: pd.Series | None) -> set[tuple]:
+    """The (spine id, parcel id) pairs a ``{entity}_id_secondary`` column lists.
+
+    Parameters
+    ----------
+    column : pandas.Series or None
+        Indexed by spine id; each value the parcel ids on which that
+        entity is secondary, joined by `SECONDARY_PAIR_SEP`, or missing.
+
+    Returns
+    -------
+    set of tuple
+        Empty where *column* is None or holds no ids.
+    """
+    if column is None:
+        return set()
+    listed = column.dropna().astype(str)
+    listed = listed[listed != '']
+    return {
+        (spine_id, parcel_id)
+        for spine_id, ids in listed.items()
+        for parcel_id in ids.split(SECONDARY_PAIR_SEP)
+        if parcel_id
+    }
+
 
 # Reference columns this module knows how to apportion; anything else is the
 # caller's business (e.g. the registry-driven generic aggregation in
@@ -81,11 +116,14 @@ def apportion_reference_values(
     ref_id_col: str = 'parcel_id',
     area_col: str = 'area_intersection_m2',
     priority: pd.Series | None = None,
+    secondary_pairs: set | None = None,
     dwelling_linked_ids: set | None = None,
     volume_weight: pd.Series | None = None,
     equal_area_ref_ids: set | None = None,
     ref_built_area: pd.Series | None = None,
     built_area_min_coverage: float = 0.2,
+    tie_improvement_value: pd.Series | None = None,
+    tie_ref_area: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Apportion reference values to spine entities over an n:m link.
 
@@ -148,6 +186,13 @@ def apportion_reference_values(
         ``priority_on_parcel``-style role per spine id (``'primary'`` /
         ``'secondary'`` / ``'unknown'``). Drives the secondary and
         principal-only rules above.
+    secondary_pairs : set of tuple, optional
+        (spine id, reference id) pairs on which the entity is secondary
+        although its *priority* is not, a building primary on its own
+        lot that reaches onto a lot where another building holds the
+        role (`secondary_pairs_from`). Such a pair takes the secondary
+        rule of the proportional columns and of ``n_dwellings``, and is
+        excluded from the whole-value fallback, on that reference only.
     dwelling_linked_ids : set, optional
         Spine ids with dwelling-point evidence. Within references where at
         least one linked entity has such evidence, entities without it get a
@@ -190,6 +235,12 @@ def apportion_reference_values(
         (basements, half stories and attics enter the floor area), so a
         moderate gap is noise; only a mapped area far below the stated
         one shows a building the spine lacks.
+    tie_improvement_value, tie_ref_area : pandas.Series, optional
+        Improvement value and area per reference id, read only to break
+        a tie between two equal overlaps when choosing the dominant
+        reference (`dominant_parcel.rank_overlaps`). Without
+        *tie_improvement_value*, the `improvement_value` column of
+        *ref_values* is used where present.
 
     Returns
     -------
@@ -273,6 +324,11 @@ def apportion_reference_values(
         )
     else:
         is_secondary_pair = np.zeros(len(pairs), dtype=bool)
+    if secondary_pairs:
+        listed = pd.MultiIndex.from_arrays(
+            [spine_ids.astype(str), ref_ids.astype(str)]
+        ).isin([(str(s), str(r)) for s, r in secondary_pairs])
+        is_secondary_pair = is_secondary_pair | listed
     # An entity exempt by equal_area_ref_ids keeps its share on every
     # reference it touches, as the per-entity mask below always did.
     secondary_pair = pd.Series(
@@ -362,11 +418,16 @@ def apportion_reference_values(
     whole_allocations: dict[str, pd.DataFrame] = {}
     whole_value_cols = [c for c in WHOLE_VALUE_COLUMNS if c in value_cols]
     if whole_value_cols or 'address' in value_cols:
-        dominant = (
-            attrs.sort_values(area_col, ascending=False)
-            .drop_duplicates(spine_id_col)
-            .set_index(spine_id_col)
-        )
+        if tie_improvement_value is None and 'improvement_value' in ref_values:
+            tie_improvement_value = ref_values['improvement_value']
+        dominant = dominant_overlaps(
+            attrs,
+            spine_id_col=spine_id_col,
+            ref_id_col=ref_id_col,
+            area_col=area_col,
+            improvement_value=tie_improvement_value,
+            ref_area=tie_ref_area,
+        ).set_index(spine_id_col)
         if 'address' in value_cols:
             out['address'] = dominant['address']
         if whole_value_cols:

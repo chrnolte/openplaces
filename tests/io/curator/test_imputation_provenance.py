@@ -24,7 +24,6 @@ from openplaces.io.curator import CurateState
 from openplaces.io.curator.evidence import apportion_curated_values
 from openplaces.io.curator.imputers import impute_from_group_statistic
 from openplaces.io.curator.provenance import is_imputed, mark_imputed, record_sources
-from openplaces.io.curator.reconcilers import select_value_source_by_admin_unit
 from tests.links_patching import patch_links
 
 
@@ -230,90 +229,6 @@ class TestApportionmentPropagation:
 
         assert out.loc['F1', 'structure_value'] == 100000.0
         assert 'structure_value_source' not in out.columns
-
-
-class TestSelectorPreservesIncomingProvenance:
-    """The last step before delivery, which used to flatten to `parcel`."""
-
-    @staticmethod
-    def _call(df, **kwargs):
-        return select_value_source_by_admin_unit(
-            _state(df, AdminId('US', 'MA', 'MI')),
-            output='structure_value',
-            parcel_column='structure_value',
-            other_column='structure_value_building_nsi',
-            **kwargs,
-        ).curated
-
-    def test_per_row_token_survives_the_output_sharing_its_input_name(self):
-        # `output` and `parcel_column` are the same column in the shipping
-        # recipe, so they share one sidecar: writing the flat token first
-        # would destroy exactly what has to be carried forward.
-        df = pd.DataFrame(
-            {
-                'admin4_id': ['A'] * 4,
-                'structure_value': [100.0, 100.0, 100.0, 100.0],
-                'structure_value_source': [
-                    'improvement_value',
-                    'improvement_value',
-                    '_is_residential+imputed',
-                    '_is_residential+imputed',
-                ],
-                'structure_value_building_nsi': [999.0] * 4,
-                'priority_on_parcel': ['primary'] * 4,
-            }
-        )
-        out = self._call(df, min_group_size=1)
-
-        assert list(out['structure_value_source']) == [
-            'improvement_value',
-            'improvement_value',
-            '_is_residential+imputed',
-            '_is_residential+imputed',
-        ]
-        assert list(is_imputed(out['structure_value_source'])) == [
-            False,
-            False,
-            True,
-            True,
-        ]
-
-    def test_flat_token_remains_the_fallback_for_an_input_without_provenance(self):
-        df = pd.DataFrame(
-            {
-                'admin4_id': ['A'] * 4,
-                'structure_value': [100.0] * 4,
-                'structure_value_building_nsi': [999.0] * 4,
-                'priority_on_parcel': ['primary'] * 4,
-            }
-        )
-        out = self._call(df, min_group_size=1)
-        assert (out['structure_value_source'] == 'parcel').all()
-
-    def test_a_modeled_dataset_value_is_named_not_marked(self):
-        # Policy, not mechanics: the marker means openplaces filled this
-        # cell. An NSI structure value is FEMA-modeled, but it is still a
-        # value read from a dataset, and `nsi` already names exactly what
-        # produced it -- so it stays plain `nsi`. Marking it would flip
-        # every row of every low-coverage town and cost the marker its
-        # ability to point at what openplaces itself computed.
-        #
-        # This also covers the mechanical half: a town that switched to NSI
-        # discards the parcel value entirely, so the parcel lane's
-        # provenance must not linger on the rows.
-        df = pd.DataFrame(
-            {
-                'admin4_id': ['B'] * 8,
-                'structure_value': [100.0] * 2 + [None] * 6,
-                'structure_value_source': ['_is_residential+imputed'] * 2 + [None] * 6,
-                'structure_value_building_nsi': [999.0] * 8,
-                'priority_on_parcel': ['primary'] * 8,
-            }
-        )
-        out = self._call(df, min_group_size=1)
-        assert (out['structure_value'] == 999.0).all()
-        assert (out['structure_value_source'] == 'nsi').all()
-        assert not is_imputed(out['structure_value_source']).any()
 
 
 class TestGroupStatisticImputer:

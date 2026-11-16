@@ -34,8 +34,10 @@ wins):
 
 There is no `unassessed` reason: a 0 on a lot whose land is also 0, or
 whose total contradicts it, no longer reaches `structure_value` as 0
-(`land_value.py`), and a unit the roll leaves unvalued takes its values
-from NSI (`select_value_source_by_admin_unit`).
+(`land_value.py`), and a building the roll leaves unvalued has a
+missing `structure_value`, not a 0, which the delivery's imputation
+fills. Until 2026-11-14 a town whose roll left most buildings unvalued
+took NSI's estimate instead.
 
 The occupancy vote must never read this column: `personal_property`
 is derived from the occupancy class, and a vote reading it would

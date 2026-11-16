@@ -14,7 +14,9 @@ from openplaces.io.curator import CurateState, _register
 from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
+    secondary_pairs_from,
 )
+from openplaces.io.harmonizer.dominant_parcel import rank_overlaps, tie_breakers
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 
@@ -167,7 +169,17 @@ def _apportioned_sources(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[list(sides.values())]
     )
-    ranked = pairs.sort_values('area_intersection_m2', ascending=False)
+    # Ranked as apportion_reference_values ranks them, so the token
+    # names the reference whose value the entity took.
+    tie_value, tie_area = tie_breakers(
+        ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+    )
+    ranked = rank_overlaps(
+        pairs,
+        spine_id_col=spine_id_col,
+        improvement_value=tie_value,
+        ref_area=tie_area,
+    )
     dominant = ranked.drop_duplicates(spine_id_col).set_index(spine_id_col)['parcel_id']
 
     out = {}
@@ -679,6 +691,26 @@ def _promote_on_complexes(priority, pairs, id_col, complex_refs, min_m2):
     return priority.astype(object).mask(promote, 'primary')
 
 
+def _secondary_pairs_off_complexes(
+    secondary_pairs, pairs, id_col, complex_refs, min_m2
+):
+    """*secondary_pairs* less those a complex lot reads as primary.
+
+    The pair-level counterpart of `_promote_on_complexes`: a building
+    secondary on a reference in *complex_refs* that it overlaps by at
+    least *min_m2* square meters keeps its share there.
+    """
+    if not secondary_pairs or not complex_refs:
+        return secondary_pairs
+    area = pd.to_numeric(pairs['area_intersection_m2'], errors='coerce')
+    large = pairs['parcel_id'].isin(complex_refs) & area.ge(min_m2)
+    lifted = {
+        (str(i), str(r))
+        for i, r in zip(pairs.loc[large, id_col], pairs.loc[large, 'parcel_id'])
+    }
+    return {p for p in secondary_pairs if (str(p[0]), str(p[1])) not in lifted}
+
+
 @_register('apportion_curated_values', phase='gather')
 def apportion_curated_values(
     state: CurateState,
@@ -994,12 +1026,27 @@ def apportion_curated_values(
                 ignore_index=True,
             )
 
+    # The curated parcel's improvement value and area break a tie
+    # between equal overlaps (dominant_parcel), whether or not this
+    # step apportions them.
+    tie_value, tie_area = tie_breakers(
+        ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).set_index(ref_key)
+    )
     result = apportion_reference_values(
         pairs,
         ref_values,
         spine_id_col=id_col,
         priority=_promote_on_complexes(
             curated.get(priority_column), pairs, id_col, complex_refs, complex_min_m2
+        ),
+        # The parcels on which a building is secondary while primary on
+        # its own (classify_footprint_priority): no share of those only.
+        secondary_pairs=_secondary_pairs_off_complexes(
+            secondary_pairs_from(curated.get(f'{entity_type}_id_secondary')),
+            pairs,
+            id_col,
+            complex_refs,
+            complex_min_m2,
         ),
         dwelling_linked_ids=(
             set(curated.index[curated[dwelling_column] > 0])
@@ -1013,6 +1060,8 @@ def apportion_curated_values(
             if floor_weight
             else None
         ),
+        tie_improvement_value=tie_value,
+        tie_ref_area=tie_area,
     )
 
     from openplaces.io.curator.provenance import record_sources
@@ -1135,7 +1184,11 @@ def collect_link_ids(
     if not include_below_threshold and 'link' in links.columns:
         links = links[links['link'].notna()]
     if 'area_intersection_m2' in links.columns:
-        links = links.sort_values('area_intersection_m2', ascending=False)
+        # This step reads no reference values, so a tie on overlap is
+        # listed by id (dominant_parcel without its value and area
+        # keys): stable across runs, though in a tie the first id need
+        # not be the entity's own parcel_id.
+        links = rank_overlaps(links, spine_id_col=id_col, ref_id_col=ref_key)
 
     collected = links.groupby(id_col)[ref_key].agg(
         lambda s: '|'.join(s.dropna().astype(str).unique())
@@ -1158,6 +1211,91 @@ def collect_link_ids(
             f'{int(curated[column].notna().sum()):,}/{len(curated):,} rows '
             f'({n_multi:,} multi-reference).'
         )
+    state.curated = curated
+    return state
+
+
+@_register('keep_curated_ids', phase='gather')
+def keep_curated_ids(
+    state: CurateState,
+    recipe_id: str,
+    columns: tuple[str, ...] | list[str] = ('parcel_id', 'parcel_id_all'),
+    ref_key: str = 'parcel_id',
+) -> CurateState:
+    """Keep only ids that name a row of another curated output.
+
+    The parcel curate drops some harmonized parcels (slivers under
+    1 m2, `filter_numeric_at_least` on ``area_ha``), but a building or
+    footprint built from the harmonized links can still name one in its
+    ``parcel_id`` or ``parcel_id_all``, an id no curated parcel carries.
+    This step removes such ids: a single id becomes missing, a
+    pipe-separated list keeps the ids that remain, in order, and becomes
+    missing when none do. An ``_all`` column is again left missing where
+    it would repeat its base column, as `collect_link_ids` leaves it.
+
+    A dropped dominant parcel is not replaced by the next one in the
+    list: the values were apportioned from the curated parcels, so the
+    dropped parcel contributed nothing, and choosing another dominant
+    parcel is the harmonizer's decision, not the curate's. The link
+    tables are left as written (no link is removed); a reader joining
+    them to the curated parcels finds no row for the dropped id.
+
+    Parameters
+    ----------
+    recipe_id : str
+        A stage ``curate`` recipe whose output holds the ids that count.
+    columns : sequence of str, optional
+        Columns to clean (default ``parcel_id`` and ``parcel_id_all``);
+        those absent are skipped.
+    ref_key : str, optional
+        Id column (or index) of the referenced output (default
+        ``parcel_id``).
+    """
+    ref_recipe = get_recipe_by_id(recipe_id)
+    if ref_recipe.get('stage') != 'curate':
+        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
+    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
+    if ref_key not in ref.columns and ref.index.name == ref_key:
+        ref = ref.reset_index()
+    if ref_key not in ref.columns:
+        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    known = set(ref[ref_key].dropna().astype(str))
+
+    curated = state.curated
+    removed = {}
+    for column in columns:
+        if column not in curated.columns:
+            continue
+        ids = curated[column].astype('string')
+        listed = ids.dropna()
+        if listed.empty:
+            continue
+        kept = listed.str.split('|').map(
+            lambda parts: '|'.join(p for p in parts if p in known)
+        )
+        changed = kept != listed
+        removed[column] = int(changed.sum())
+        if changed.any():
+            # Only changed rows are written, so the column keeps its dtype.
+            curated[column] = curated[column].mask(
+                curated.index.isin(changed.index[changed]),
+                kept.where(kept != '').reindex(curated.index),
+            )
+
+    for column in columns:
+        base = column.removesuffix('_all')
+        if base == column or column not in curated.columns:
+            continue
+        if base not in curated.columns:
+            continue
+        same = (
+            curated[column].astype('string') == curated[base].astype('string')
+        ).fillna(False)
+        curated[column] = curated[column].mask(same)
+
+    if state.verbose:
+        detail = ', '.join(f'{c} {n:,}' for c, n in removed.items())
+        print(f'  keep_curated_ids: rows changed: {detail or "none"}.')
     state.curated = curated
     return state
 

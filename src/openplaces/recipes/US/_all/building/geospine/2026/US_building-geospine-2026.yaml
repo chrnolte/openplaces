@@ -14,24 +14,29 @@
 # `footprint_id` and indexes the spine by `building_id`, which takes
 # the footprint id's value (adopt_source_entity_id), so the two ids are
 # equal while the relation is one to one; a building that is not one
-# outline gets its id from the step that adds it. It then links the NSI
-# and dwelling points to the buildings and owns those link tables. The
-# footprint-to-building link table is written by the attribute recipe
-# (US_building-spine-2026), which also runs every attribute step that
-# used to run on the footprint spine (slice b2), against these point
-# links and the footprint geospine's parcel overlay re-keyed to
-# building ids.
+# outline gets its id from the step that adds it. Since b3 step 2
+# (plans/buildings-from-parcel-pieces.md) an outline over several lots
+# whose other pieces show a structure of their own (a townhome row, a
+# side-by-side duplex) is cut into one building per parcel piece
+# (split_outlines_at_parcel_lines), each piece with its own id and the
+# outline's id kept in `footprint_id`; `building_geometry` says which
+# rows are pieces. It then links the NSI and dwelling points to the
+# buildings and owns those link tables and the parcel overlay re-keyed
+# to the buildings. The footprint-to-building link table is written by
+# the attribute recipe (US_building-spine-2026), which also runs every
+# attribute step that used to run on the footprint spine (slice b2),
+# against these links.
 #
 # What it does not do yet, by slice: point sources without an outline
 # (NSI buildings the footprint layers miss) become rows in b3, as do
-# townhome splits and condo-tower merges. Until then US_footprint-spine-
-# 2026 is a projection of the building spine and the footprint curate
-# is untouched, so this recipe changes no shipped number.
+# condo-tower merges and the count case (an uncut outline over which
+# the points say several buildings stand). The footprint curate folds
+# the pieces back onto their outline.
 
 description: >-
-  Building geometry spine, one building per footprint of the footprint
-  geospine, keeping each footprint's id and the geographic ids, with
-  persisted NSI and dwelling link tables.
+  Building geometry spine: footprint outlines, cut into one building per
+  parcel piece where evidence shows one, with persisted parcel, NSI and
+  dwelling links.
 
 stage: harmonize
 admin_id: US
@@ -88,12 +93,10 @@ pipeline:
 
   # The rows arrived indexed by footprint_id. Keep that on the row and
   # index the spine by building_id; the values are the same while one
-  # footprint is one building.
+  # footprint is one building, and stay so on every outline the split
+  # below leaves whole.
   - step: adopt_source_entity_id
     source_id_column: footprint_id
-
-  # Centroid and area of the building's own outline.
-  - step: derive_geometry_attributes
 
   # NSI and dwelling points link to the building through its own
   # polygon (decided 2026-10-04), so the two point joins run here and
@@ -101,13 +104,49 @@ pipeline:
   # overlay for its same-parcel pass, its cross-parcel filter and the
   # parcel id it attaches; the overlay stays on the footprint geospine,
   # whose outline steps need it, and is restored here re-keyed to
-  # building ids rather than computed a second time. The thresholds
-  # are the ones the footprint geospine ran with, so while one building
-  # is one outline the joins return what they returned there
+  # building ids rather than computed a second time, then cut with the
+  # outlines (the split below). The thresholds are the ones the
+  # footprint geospine ran with, so on an outline left whole the joins
+  # return what they returned there
   # (plans/building-spine-consumers-and-footprint-projection.md).
   - step: load_links
     links_recipe_id: US_footprint-geospine-2026
     links_key: footprint_id
+
+  # One building per parcel piece (plans/buildings-from-parcel-pieces.md,
+  # decided 2026-11-06): an outline the overlay above keeps on two or
+  # more parcels is cut at the lot lines, and a non-dominant piece
+  # stays a building of its own only when a point lies in it, its lot
+  # records a structure and it is not round; otherwise it folds into
+  # the dominant piece. The overlay's trimming thresholds are read from
+  # the footprint geospine. The cut overlay, re-keyed at the
+  # (footprint, parcel) pair, is written beside this recipe's output,
+  # where the building spine and the curate readers find it.
+  # lot_values_from names the recipe whose link_by_id passes give a lot
+  # its improvement value and structure flag; only its configuration is
+  # read (it runs after this recipe).
+  - step: split_outlines_at_parcel_lines
+    entity_type: parcel
+    save_link: true
+    lot_values_from: US_parcel-geospine-2026
+    points:
+      - recipe_id: US_building-nsi-2026
+      - recipe_id: dwelling-overture-2025
+    keep_piece:
+      # 5,000, not 0: below it the labeled pieces were part of the
+      # main building, a garage or a token value on a public lot
+      # (third labeling round, 2026-11-06).
+      improvement_value_min: 5000
+      # Where the lot has no value: NC OneMap's struct field.
+      structure_flag_values: ['Y', 'TRUE']
+      # Above it, in the thirteen test units, only cooperative
+      # mobile-home shares drawn as circles inside a home (Lake County
+      # FL); the next roundest island piece reaches 0.79.
+      compactness_max: 0.95
+
+  # Centroid and area of the building's own polygon, the piece where
+  # the split cut the outline.
+  - step: derive_geometry_attributes
 
   - step: link_to_reference
     recipe_id: US_building-nsi-2026

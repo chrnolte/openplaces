@@ -1,15 +1,15 @@
 # Recipe: parcel geospine (geometry phase of the parcel spine).
 #
 # The geometry half of what used to be one US_parcel-spine-2026 pipeline:
-# spine resolution, geographic-id assignment, the shared-land / condo-cluster
-# detections, the dwelling/NSI point joins, the FEMA overlay, and the
+# spine resolution, geographic-id assignment, the shared-land detection,
+# the dwelling/NSI point joins, the FEMA overlay, and the
 # footprint-morphology summary. Every link product is persisted as an n:m
 # sidecar beside this recipe's output (save_link is default-on), for the
 # attribute recipe (US_parcel-spine-2026, entity_recipe -> here) to restore
 # via load_geospine.
 #
 # The tax-roll link_by_id joins ride HERE, not in the attribute recipe,
-# because detect_shared_land_groups and detect_condo_building_clusters read
+# because detect_shared_land_groups reads
 # land_value / improvement_value / use_subgroup -- in counties whose values
 # arrive only via a separate roll table, the join is those columns' only
 # route (the plan's rule: a cheap step stays in the geometry recipe iff a
@@ -319,16 +319,6 @@ pipeline:
   # estimate_property_counts (attribute recipe), which never overwrites a
   # property_source this step already set.
   - step: detect_shared_land_groups
-
-  # Vertically-stacked condo buildings platted as many tiny per-unit
-  # parcels (observed on the same 4400 Sample Dr complex in Carteret County
-  # that motivated the footprint-side consolidation in
-  # US_footprint-geospine-2026 -- see consolidate_condo_cluster_footprints
-  # there). A distinct signal from detect_shared_land_groups above (unit
-  # parcel size, not just a near-zero-value hub): reusing that step's own
-  # max_group_size would re-admit the WATER/ROW placeholder-parcel false
-  # positives it excludes by design.
-  - step: detect_condo_building_clusters
 
   # Townhouse and condominium lots and the common land they touch,
   # where no roll states a plat key (plans/lot-value-sharing-among-

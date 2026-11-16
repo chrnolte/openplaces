@@ -124,7 +124,11 @@ def attribute_dwelling_address(
     per_fp['_pid'] = per_fp[on].astype('string')
     per_fp = per_fp.dropna(subset=['_pid'])
     if overlap_column in per_fp.columns:
-        per_fp = per_fp.sort_values(overlap_column, ascending=False)
+        # Footprint id order first, so an exact tie on overlap goes to
+        # the lower id rather than to row order.
+        per_fp = per_fp.sort_index(kind='stable').sort_values(
+            overlap_column, ascending=False, kind='stable'
+        )
     per_fp = per_fp.drop_duplicates(subset='_pid', keep='first').set_index('_pid')
 
     key = (

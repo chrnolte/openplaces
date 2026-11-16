@@ -7,6 +7,7 @@ single 4,259-line module):
 - points: the point join (dwellings, NSI, address points)
 - by_id: link_by_id, the exact-key join and its guards
 - address_ranges, additions, condo_clusters, overlaps: one step each
+- parcel_pieces: outlines cut into one building per parcel piece
 - discovery, sidecars, _shared: what the steps share
 
 Every top-level name, private ones included, is re-exported here because
@@ -36,18 +37,17 @@ from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     condo_clusters,
     discovery,
     overlaps,
+    parcel_pieces,
     points,
     roll_values,
     sidecars,
     spatial,
 )
 from openplaces.io.harmonizer.links._shared import (  # noqa: F401
-    _COVERAGE_SCORE_EPS,
     _CROSSWALK_COLS,
     _LINK_INDEX_KEY,
     _LINK_KEY_COLUMNS,
     _LINK_METADATA_KEY,
-    _REAL_FOOTPRINT_TOUCH_TOLERANCE_M,
     DEFAULT_LINK_KEY,
     PARCEL_ID_LOCAL_KEYS,
 )
@@ -80,7 +80,10 @@ from openplaces.io.harmonizer.links.combine import (  # noqa: F401
     _write_prioritized,
 )
 from openplaces.io.harmonizer.links.condo_clusters import (  # noqa: F401
+    CLUSTER_LINK,
+    CLUSTER_SOURCE_PREFIX,
     consolidate_condo_cluster_footprints,
+    lots_under_footprints,
 )
 from openplaces.io.harmonizer.links.discovery import (  # noqa: F401
     _apply_remap_csvs,
@@ -90,6 +93,12 @@ from openplaces.io.harmonizer.links.discovery import (  # noqa: F401
 )
 from openplaces.io.harmonizer.links.overlaps import (  # noqa: F401
     resolve_overlaps,
+)
+from openplaces.io.harmonizer.links.parcel_pieces import (  # noqa: F401
+    BUILDING_GEOMETRY_COLUMN,
+    cut_sidecar_path,
+    split_context,
+    split_outlines_at_parcel_lines,
 )
 from openplaces.io.harmonizer.links.points import (  # noqa: F401
     _POINT_QUALITY_ORDER,
@@ -128,7 +137,6 @@ from openplaces.io.harmonizer.links.spatial import (  # noqa: F401
     _link_spatial_overlay,
     _prepare_reference,
     _resolve_reference_recipe,
-    _superseded_by_consolidation,
     link_to_reference,
     overlay_step_config,
     reference_rows,

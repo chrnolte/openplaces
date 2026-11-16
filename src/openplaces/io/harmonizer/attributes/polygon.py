@@ -12,6 +12,7 @@ from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
+    secondary_pairs_from,
 )
 from openplaces.io.harmonizer.attributes._shared import (
     _POLYGON_REF_COLS,
@@ -19,6 +20,7 @@ from openplaces.io.harmonizer.attributes._shared import (
     _dominant_by_area,
     _resolve_suffix,
 )
+from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps, tie_breakers
 from openplaces.recipe import resolve_attribute_name
 
 
@@ -121,6 +123,12 @@ def _attribute_polygon_reference(
         if stories_col is not None:
             volume_weight = spine[stories_col]
 
+    # The values that break a tie between two equal overlaps, read
+    # from the reference whether or not the recipe attributes them, so
+    # the dominant parcel below and the one apportion_reference_values
+    # chooses for land value and address are the same parcel.
+    tie_value, tie_area = tie_breakers(ref_polys)
+
     # Value apportionment (improvement_value, n_dwellings, year_built,
     # land_value, address — overlap-fraction shares, dwelling-linked
     # suppression, primary-only and secondary rules) is delegated to the
@@ -133,8 +141,11 @@ def _attribute_polygon_reference(
         ref_polys[[c for c in avail_cols if c in APPORTIONED_VALUE_COLUMNS]],
         spine_id_col=spine_id_col,
         priority=spine.get('priority_on_parcel'),
+        secondary_pairs=secondary_pairs_from(spine.get(f'{ref_label}_id_secondary')),
         dwelling_linked_ids=dwelling_linked_ids,
         volume_weight=volume_weight,
+        tie_improvement_value=tie_value,
+        tie_ref_area=tie_area,
     )
 
     # Categorical/numeric attribution and the relational counts below read the
@@ -185,11 +196,12 @@ def _attribute_polygon_reference(
         parcel_area_stats, on='parcel_id'
     )
     footprint_parcel_areas['_n_col'] = footprint_parcel_areas['n_fp']
-    primary_footprints = (
-        footprint_parcel_areas.sort_values('area_intersection_m2', ascending=False)
-        .drop_duplicates(spine_id_col)
-        .set_index(spine_id_col)
-    )
+    primary_footprints = dominant_overlaps(
+        footprint_parcel_areas,
+        spine_id_col=spine_id_col,
+        improvement_value=tie_value,
+        ref_area=tie_area,
+    ).set_index(spine_id_col)
     spine[n_spine_per_ref_col] = (
         primary_footprints['_n_col'].reindex(spine.index).fillna(0).astype('int64')
     )
@@ -248,9 +260,26 @@ def _attribute_polygon_reference(
         and c in footprint_ref_attrs.columns
         and not pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
     ]
+    # Where two values cover equal areas, the value goes to the one the
+    # dominant parcel carries, so a building's land-use label and its
+    # parcel_id never come from the two sides of one tie.
+    dominant_rows = (
+        dominant_overlaps(
+            footprint_ref_attrs.reset_index(),
+            spine_id_col=spine_id_col,
+            improvement_value=tie_value,
+            ref_area=tie_area,
+        ).set_index(spine_id_col)
+        if categorical_cols
+        else None
+    )
     for col in dict.fromkeys(categorical_cols):
         dominant, joined = _dominant_by_area(
-            footprint_ref_attrs, spine_id_col, col, 'area_intersection_m2'
+            footprint_ref_attrs,
+            spine_id_col,
+            col,
+            'area_intersection_m2',
+            preferred=dominant_rows[col],
         )
         out_col = _attributed_name(col, suffix, reserved_cols)
         spine[out_col] = dominant

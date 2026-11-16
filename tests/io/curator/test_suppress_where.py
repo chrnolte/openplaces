@@ -113,5 +113,27 @@ def test_the_footprint_recipe_guards_sliver_clusters_after_the_ratio_exists():
         if s['step'] == 'suppress_where' and 'structure_value' in str(s.get('column'))
     )
     assert names.index('derive_metrics') < guard
-    assert names.index('select_value_source_by_admin_unit') < guard
+    assert names.index('apportion_curated_values') < guard
     assert 'structure_value_per_area' in steps[guard]['column']
+
+
+def test_structure_value_is_the_roll_figure_only():
+    """No step of the building curate writes NSI into structure_value.
+
+    The maintainer's ruling of 2026-11-14 (plans/architecture-review-
+    diagnosis-and-first-principles.md, section 8): a town whose roll has
+    no value keeps structure_value missing for the imputation to fill;
+    NSI's estimates stay in their own columns.
+    """
+    steps = get_recipe_by_id('US_building-openplaces-2026')['pipeline']
+    for step in steps:
+        if step['step'] == 'reconcile_values':
+            assert 'structure_value' not in step.get('priority', {})
+    writers = [
+        s
+        for s in steps
+        if s['step'] == 'apportion_curated_values'
+        and 'structure_value' in s['columns'].values()
+    ]
+    assert len(writers) == 1
+    assert writers[0]['columns']['improvement_value_imputed'] == 'structure_value'
