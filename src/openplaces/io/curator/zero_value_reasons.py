@@ -199,7 +199,21 @@ def structure_value_zero_reasons(
     return out
 
 
-@_register('derive_structure_value_zero_reason', phase='infer')
+@_register(
+    'derive_structure_value_zero_reason',
+    phase='infer',
+    reads=[
+        'structure_value',
+        'occupancy_type',
+        'land_use_class_parcel',
+        'use_group_combined_parcel',
+        'improvement_value_exempt',
+        'priority_on_parcel',
+        'area_m2',
+    ],
+    writes=['structure_value_zero_reason'],
+    decides=['structure_value_zero_reason'],
+)
 def derive_structure_value_zero_reason(state: CurateState, **params) -> CurateState:
     """Write `structure_value_zero_reason` on buildings valued at 0.
 

@@ -426,7 +426,51 @@ def _row_ranks(reference: pd.DataFrame, order: dict) -> np.ndarray:
     return ranks
 
 
-@_register('aggregate_from_entities', phase='gather')
+def _reduced_columns(arguments) -> list[str]:
+    """The reference columns `aggregate_from_entities` reduces, or
+    `*` for `columns: all` (every column of the reference)."""
+    columns = arguments.get('columns')
+    if columns == 'all':
+        return ['*']
+    if isinstance(columns, dict):
+        return [c for c in columns if isinstance(c, str)]
+    if isinstance(columns, list):
+        return [c for c in columns if isinstance(c, str)]
+    return []
+
+
+def _aggregated_writes(arguments) -> list[str]:
+    """The columns `aggregate_from_entities` writes, for its declaration.
+
+    `columns: all` writes every column of the reference it does not
+    keep, so it declares `*`.
+    """
+    rename = arguments.get('rename') or {}
+    written = [rename.get(c, c) for c in _reduced_columns(arguments)]
+    names = [*written, *(source_column(c) for c in written if c != '*')]
+    if arguments.get('count_as'):
+        names.append(arguments['count_as'])
+    return names
+
+
+def _aggregation_reads(arguments) -> list[str]:
+    """The curated columns `aggregate_from_entities` joins on."""
+    key = arguments.get('key')
+    keys = [key] if isinstance(key, str) else list(key or ())
+    return [k for k in keys if isinstance(k, str)]
+
+
+# Aggregating carries a value; it does not decide one, so nothing is
+# declared under decides (plans/account-values-one-deciding-step.md,
+# V1). The recover rule, which writes only onto a missing or
+# non-positive cell, chooses between two values but is still a sum.
+@_register(
+    'aggregate_from_entities',
+    phase='gather',
+    reads=[_aggregation_reads],
+    writes=[_aggregated_writes],
+    reads_from={'recipe_id': [_reduced_columns]},
+)
 def aggregate_from_entities(
     state: CurateState,
     recipe_id: str,

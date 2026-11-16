@@ -621,7 +621,20 @@ def _buffer_reject_ids(
     return pd.Index(near.index.unique())
 
 
-@_register('resolve_spine', phase='geometry')
+# A source layer's values are copied, not chosen, so nothing is
+# declared under decides; which layer's row a polygon keeps is a
+# geometry rule no column declaration can name.
+@_register(
+    'resolve_spine',
+    phase='geometry',
+    writes=[
+        'geometry',
+        'geometry_source',
+        'spine_resolution',
+        '{keep_columns}',
+        '{track_provenance}_source',
+    ],
+)
 def resolve_spine(
     state: HarmonizeState,
     sources: list[dict] | None = None,

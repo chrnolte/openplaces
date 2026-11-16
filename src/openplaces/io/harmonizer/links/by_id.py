@@ -956,7 +956,81 @@ def _aggregate_reference_column(
     return new_vals
 
 
-@_register('link_by_id')
+def _suffixed(names, arguments) -> list[str]:
+    suffix = arguments.get('suffix')
+    return [f'{n}{suffix}' if suffix else n for n in names]
+
+
+def _linked_columns(arguments) -> list[str]:
+    """The attribute columns `link_by_id` writes, before any suffix.
+
+    An explicit *columns* names them (a mapping by its values). Without
+    one, a discovery writes the registry's attributes of *entity_type*
+    and, for a bundled layer, its list under *layer_columns*. A bundled
+    layer of another type that *layer_columns* does not list writes its
+    own type's attributes, which only the discovered recipes name, so
+    the declaration does not list them.
+    """
+    if arguments.get('mode') == 'count':
+        return []
+    columns = arguments.get('columns')
+    if isinstance(columns, dict):
+        return [c for c in columns.values() if isinstance(c, str)]
+    if isinstance(columns, list):
+        return [c for c in columns if isinstance(c, str)]
+    if not arguments.get('auto_discover'):
+        return []
+    entity_type = arguments.get('entity_type') or 'parcel'
+    names = [c for c in get_attributes(entity_type).index if c not in _LINK_KEY_COLUMNS]
+    for listed in (arguments.get('layer_columns') or {}).values():
+        names.extend(c for c in listed or () if isinstance(c, str))
+    return list(dict.fromkeys(names))
+
+
+def _link_writes(arguments) -> list[str]:
+    """The columns `link_by_id` writes, for its declaration."""
+    written = _suffixed(_linked_columns(arguments), arguments)
+    tracked = arguments.get('track_provenance')
+    if tracked == 'all':
+        tracked = written
+    elif isinstance(tracked, str):
+        tracked = [tracked]
+    names = [*written, *(f'{c}{_PROVENANCE_SUFFIX}' for c in tracked or ())]
+    count_as = arguments.get('count_as')
+    if arguments.get('mode') == 'count':
+        names.append(count_as or 'n_transactions')
+        if arguments.get('flag_as'):
+            names.append(arguments['flag_as'])
+    elif count_as is not False:
+        names.append(count_as or 'n_records_per_key')
+    roll = arguments.get('roll_values') or {}
+    prior = roll.get('prior_year') if isinstance(roll, dict) else None
+    names.extend(_suffixed((prior or {}).values(), arguments))
+    return list(dict.fromkeys(n for n in names if isinstance(n, str)))
+
+
+def _roll_decides(arguments) -> list[str]:
+    """The roll's value columns, which a pass with *roll_values* decides.
+
+    Such a pass chooses which year's figure a lot keeps, fills from the
+    prior year and blanks a value the roll does not carry
+    (`roll_values`). The earlier passes of the same recipe copy layer
+    values and only write, so the lot's value has one declared decider
+    per recipe (plans/account-values-one-deciding-step.md, V1).
+    """
+    roll = arguments.get('roll_values')
+    if not isinstance(roll, dict):
+        return []
+    values = [v for v in roll.get('values') or () if isinstance(v, str)]
+    return _suffixed(values, arguments)
+
+
+@_register(
+    'link_by_id',
+    reads=['{spine_key}'],
+    writes=[_link_writes, _roll_decides],
+    decides=[_roll_decides],
+)
 def link_by_id(
     state: HarmonizeState,
     recipe_id: str | None = None,
