@@ -254,7 +254,8 @@ process_by:
 
 columns:
   parcel_id_admin3: COUNTY_PIN
-  parcel_id: STATE_PIN
+  # Statewide PIN; the index, parcel_id, is the ingester's own.
+  parcel_id_admin2: STATE_PIN
   address_number: ANUMBER
   address_street_name: ST_NAME
   address_street_type: ST_POS_TYP
@@ -302,6 +303,19 @@ transformations:
     operation: concat
     inputs: [parcel_id_admin3]
     output: parcel_id_assessor
+
+  # ANUMBER is numeric in the shapefile; the registry's
+  # address_number is text ('123', not 123.0), and a missing number
+  # stays missing.
+  - type: string
+    operation: concat
+    inputs: [address_number]
+    output: address_number
+  - type: unary
+    operation: null_if_equal
+    input: address_number
+    args: {value: ""}
+    output: address_number
 
   # Source's own documented sentinels: 0 = "No value", -9999 = "No
   # data or null value" (see header note above).

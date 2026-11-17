@@ -12,7 +12,7 @@ square.
 import geopandas as gpd
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import Polygon, box
 
 import openplaces.io.harmonizer.spine as spine_mod
 from openplaces.config import cfg
@@ -114,6 +114,20 @@ def test_lots_count_where_half_their_area_lies_under_the_footprint():
     pairs = links_mod.lots_under_footprints(footprint, lots, 0.5)
     assert sorted(pairs['lot']) == ['a', 'b']
     assert pairs['share'].round(6).tolist() == [1.0, 1.0]
+
+
+def test_an_invalid_outline_is_repaired_not_fatal():
+    # A bowtie whose two triangles each cover half of lot a.
+    s = SIDE
+    bowtie = Polygon([(0, 0), (s, s), (s, 0), (0, s), (0, 0)])
+    assert not bowtie.is_valid
+    lots = gpd.GeoSeries(
+        [box(0, 0, s, s), box(s, 0, 2 * s, s)], index=['a', 'b'], crs='epsg:4326'
+    )
+    footprint = gpd.GeoSeries([bowtie], index=['f'], crs='epsg:4326')
+    pairs = links_mod.lots_under_footprints(footprint, lots, 0.4)
+    assert pairs['lot'].tolist() == ['a']
+    assert round(float(pairs['share'].iloc[0]), 3) == 0.5
 
 
 @pytest.mark.parametrize(

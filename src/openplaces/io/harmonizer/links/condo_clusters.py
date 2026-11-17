@@ -85,8 +85,14 @@ def lots_under_footprints(
     if footprints.empty or lots.empty:
         return pd.DataFrame(columns=columns)
     crs_m = local_metric_crs(gpd.GeoSeries(footprints.values, crs=footprints.crs))
+    # Repair after projecting, on both sides: an outline or a lot can
+    # be invalid as delivered or turn invalid in reprojection, and one
+    # invalid polygon aborts the whole array intersection (a GEOS
+    # TopologyException on Franklin County, OH, 2026-11-17).
     shapes = gpd.GeoSeries(footprints.values, crs=footprints.crs).to_crs(crs_m)
-    parcels = gpd.GeoSeries(shapely.make_valid(lots.values), crs=lots.crs).to_crs(crs_m)
+    shapes = gpd.GeoSeries(shapely.make_valid(shapes.values), crs=crs_m)
+    parcels = gpd.GeoSeries(lots.values, crs=lots.crs).to_crs(crs_m)
+    parcels = gpd.GeoSeries(shapely.make_valid(parcels.values), crs=crs_m)
     left, right = parcels.sindex.query(shapes.values, predicate='intersects')
     if len(left) == 0:
         return pd.DataFrame(columns=columns)
