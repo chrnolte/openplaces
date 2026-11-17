@@ -78,8 +78,9 @@
 # all-digit, county-unique key with no delimiters to collapse.
 # `StateParcelID` (`"{5-digit fips}-{LocalParcelID, zero-padded}"`,
 # e.g. format `99999-9999999999999999`, digits fabricated) adds no
-# information beyond FIPS + LocalParcelID and is mapped to the
-# generic `parcel_id` field as a ready-made statewide-unique string.
+# information beyond FIPS + LocalParcelID and is mapped to
+# `parcel_id_admin2` as a ready-made statewide-unique string (the
+# index, `parcel_id`, is the ingester's own geometry-derived id).
 #
 # NOTE on `County` as the process_by key: OGRIP's `County` field is
 # the plain county name (e.g. "Van Wert", "Vinton"), not a FIPS code.
@@ -263,17 +264,22 @@ entity:
     redistribution_restricted: null
   version: "2026"
 
-uncompressed_file_name: "OhioStatewideParcels.geojson"
+uncompressed_file_name: "ohio_parcels_{admin3_id_admin1}.geojson"
 
-# Bulk export is broken (see header); page the live layer instead.
-# One shared statewide service filtered by an in-data column (not
-# one FeatureServer per county), so no `{admin_key}` templating is
-# needed -- `process_by.admin_id_column` below does the chunking,
-# same as it would for a bulk file.
+# Bulk export is broken (see header); page the live layer instead,
+# one county per download (`where County = '<name>'`, the name taken
+# from the crosswalk below). Paging the whole 6.3M-row layer at once
+# failed on 2026-11-16: every query from offset 3,212,000 on answered
+# "Unable to perform query", in two attempts.
 scraper_options:
   layer_url: "https://services2.arcgis.com/MlJ0G8iWUyC7jAmu/arcgis/rest/services/OhioStatewidePacels_full_view/FeatureServer/0"
   where: "1=1"
   out_fields: "*"
+  where_admin_column: County
+  admin_key_crosswalk: "US-OH_parcel-ogrip-2026_admin3-crosswalk"
+
+download_by:
+  admin_level: 3
 
 process_by:
   admin_level: 3
@@ -283,7 +289,7 @@ process_by:
 
 columns:
   parcel_id_admin3: LocalParcelID
-  parcel_id: StateParcelID
+  parcel_id_admin2: StateParcelID
   use_group_code: StateLUC
   address: SitusAddressAll
   owner_city: MailCity
