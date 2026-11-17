@@ -119,6 +119,7 @@ def consolidate_condo_cluster_footprints(
     min_condo_share: float = 0.5,
     min_condo_lots: int = 9,
     min_lots: int = 33,
+    condo_lots_to_largest_overlap: bool = False,
 ) -> HarmonizeState:
     """Keep a footprint whole where its lots are condominium units.
 
@@ -174,6 +175,19 @@ def consolidate_condo_cluster_footprints(
     polygons or supersedes links (the maintainer, 2026-11-11: no
     outline without a real footprint).
 
+    Where a county draws its condominium unit parcels a few meters off
+    the buildings, *condo_lots_to_largest_overlap* also links a unit
+    parcel classed *condo_class* that lies less than *min_lot_share*
+    under any footprint, when the footprint covering most of it is one
+    kept whole. Overlap stays strict: a unit parcel that no footprint
+    touches gets no link, and the lots that decide which footprints stay
+    whole are counted as before. Moving the outlines onto the parcels
+    was measured and rejected: the best rigid shift per footprint varied
+    in direction from site to site, and NC DPS outlines sat as far off
+    the parcels as OpenBuildingMap's, so the parcels and not one
+    footprint layer are displaced.
+    Measured 2026-11-16 on US-NC-CAR: 227 condo lots under half gain a link.
+
     Parameters
     ----------
     entity_type : str, optional
@@ -197,6 +211,10 @@ def consolidate_condo_cluster_footprints(
         Lots needed with the condominium signal (default 9).
     min_lots : int, optional
         Lots needed without it (default 33).
+    condo_lots_to_largest_overlap : bool, optional
+        Also link each *condo_class* lot to the footprint kept whole that
+        covers the largest share of it, however small (default False; a
+        county patch recipe turns it on).
     """
     if state.spine is None:
         return state
@@ -227,9 +245,12 @@ def consolidate_condo_cluster_footprints(
     source = source.astype('string').fillna('')
     # Outlines only: a dotted source was derived from parcels.
     outline = ~source.str.contains('.', regex=False)
-    pairs = lots_under_footprints(
-        spine.geometry[outline.to_numpy()], lots.geometry, min_lot_share
+    every = lots_under_footprints(
+        spine.geometry[outline.to_numpy()],
+        lots.geometry,
+        0.0 if condo_lots_to_largest_overlap else min_lot_share,
     )
+    pairs = every[every['share'] >= min_lot_share].copy()
     if state.timer:
         state.timer.mark('Condo clusters: lots under footprints', n_pairs=len(pairs))
     if pairs.empty:
@@ -275,6 +296,10 @@ def consolidate_condo_cluster_footprints(
     # Links added only where the pair has none: nothing written is
     # removed, and a pair is never recorded twice.
     members = pairs[pairs['footprint'].isin(whole)]
+    if condo_lots_to_largest_overlap:
+        members = pd.concat(
+            [members, _largest_overlap_condo_pairs(every, members, whole, is_condo)]
+        )
     added = pd.DataFrame(
         {
             spine_id_col: members['footprint'].to_numpy(),
@@ -301,6 +326,22 @@ def consolidate_condo_cluster_footprints(
     if state.timer:
         state.timer.mark('Condo clusters: mark footprints and add links')
     return state
+
+
+def _largest_overlap_condo_pairs(
+    every: pd.DataFrame, members: pd.DataFrame, whole: pd.Index, is_condo: pd.Series
+) -> pd.DataFrame:
+    """Condo lots whose largest overlap is a footprint kept whole, not yet members.
+
+    *every* holds all intersecting pairs with their shares. A lot that
+    no footprint covers by a positive area is not in the result; a lot
+    already among *members* is not repeated.
+    """
+    overlap = every[every['share'] > 0]
+    overlap = overlap[is_condo.reindex(overlap['lot']).fillna(False).to_numpy()]
+    largest = overlap.sort_values('share', kind='stable').groupby('lot').tail(1)
+    largest = largest[largest['footprint'].isin(whole)]
+    return largest[~largest['lot'].isin(members['lot'])]
 
 
 def _append_to_sidecar(

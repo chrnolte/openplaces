@@ -164,6 +164,52 @@ def test_a_use_code_is_read_through_the_recipes_crosswalk(code, whole):
     assert 'use_group' not in state.references[florida].columns
 
 
+def _with_displaced_lots():
+    """A kept condo row (f1, y from 10 to 11 sides) and lots drawn off it.
+
+    - x: condo, 30% under f1 and under nothing else;
+    - z: condo, 20% under f1 and 40% under a small footprint f9;
+    - w: single family, 30% under f1.
+    """
+    state = _state([(3, 'Townhome'), (9, 'Condominium')])
+    y0 = 10 * SIDE
+    extra = gpd.GeoDataFrame(
+        {'use_group': ['Condominium', 'Condominium', 'Single Family']},
+        geometry=[
+            box(9 * SIDE - 0.3 * SIDE, y0, 9.7 * SIDE, y0 + SIDE),
+            box(0, y0 - 0.8 * SIDE, SIDE, y0 + 0.2 * SIDE),
+            box(2 * SIDE, y0 - 0.7 * SIDE, 3 * SIDE, y0 + 0.3 * SIDE),
+        ],
+        index=pd.Index(['x', 'z', 'w'], name='parcel_id'),
+        crs='epsg:4326',
+    )
+    state.references[PARCEL] = pd.concat([state.references[PARCEL], extra])
+    small = gpd.GeoDataFrame(
+        {'geometry_source': ['obm']},
+        geometry=[box(0, y0 - 0.8 * SIDE, SIDE, y0 - 0.4 * SIDE)],
+        index=pd.Index(['f9'], name='footprint_id'),
+        crs='epsg:4326',
+    )
+    state.spine = pd.concat([state.spine, small])
+    return state
+
+
+@pytest.mark.parametrize('on', [False, True])
+def test_a_displaced_condo_lot_links_to_the_building_covering_most_of_it(on):
+    state = links_mod.consolidate_condo_cluster_footprints(
+        _with_displaced_lots(), condo_lots_to_largest_overlap=on
+    )
+    assert _kept(state) == ['f1']
+    links = state.crosswalks[PARCEL]
+    cluster = links[links['link'] == links_mod.CLUSTER_LINK]
+    lots = set(cluster.index.get_level_values('parcel_id'))
+    row = {f'g1_{i}' for i in range(1, 9)}
+    # Only x: z lies mostly under f9, w is not a condo unit.
+    assert lots == (row | {'x'} if on else row)
+    if on:
+        assert cluster.loc[('f1', 'x'), 'area_intersection_m2'] > 0
+
+
 def test_a_trimmed_pair_in_the_sidecar_takes_the_cluster_label():
     # The sidecar holds every raw overlay pair; one the overlay's trim
     # dropped is there with a null label, which the curates read as no

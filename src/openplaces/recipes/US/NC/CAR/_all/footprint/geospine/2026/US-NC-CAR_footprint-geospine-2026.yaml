@@ -1,0 +1,37 @@
+# Patch: Carteret's condominium unit parcels link to the building that
+# covers most of them, even under half.
+#
+# Carteret draws a condominium as one parcel per unit, shaped like the
+# building but placed a few meters off it. At the 149 footprints the
+# condo rule keeps whole, the rigid shift that best fits each outline
+# onto its unit parcels was 2.9 m at the median and up to 22 m, in no
+# common direction; NC DPS outlines sat as far off as OpenBuildingMap's
+# (2.75 m), and the two layers agreed with each other better than with
+# the parcels at 130 of 148 sites. So the parcels, not a footprint
+# layer, are displaced, and a unit parcel can fall under half covered
+# by its own building and reach no building at all.
+#
+# condo_lots_to_largest_overlap links such a parcel (classed
+# Condominium) to the footprint kept whole that covers most of it.
+# Overlap stays strict, with no distance, and the lots that decide which
+# footprints stay whole are counted as nationally (half or more).
+#
+# Measured 2026-11-16 on US-NC-CAR (footprint geospine dry run): the
+# 149 footprints kept whole link 3,981 lots, 227 more than without this
+# patch. On the earlier pass B, 223 of those 227 had no labeled link
+# to any footprint (plans/buildings-from-parcel-pieces.md, section 6.9).
+
+admin_id: US-NC-CAR
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - set: consolidate_condo_cluster_footprints
+    params:
+      condo_lots_to_largest_overlap: true
