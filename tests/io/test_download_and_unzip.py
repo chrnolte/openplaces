@@ -142,6 +142,27 @@ def test_needs_7z_is_false_for_a_plain_deflate_zip(tmp_path):
     assert _needs_7z(path) is False
 
 
+def test_backslash_member_names_extract_as_folders(tmp_path):
+    # Florida DOR's 2002 roll stores '2002F\NAL_...csv'. zipfile turns
+    # '\' into '/' when it reads such a name on Windows only; on Linux
+    # and macOS the file used to land with a backslash in its name.
+    # Setting filename after construction keeps the '\' as stored.
+    from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+
+    path = tmp_path / '2002F.zip'
+    with ZipFile(path, 'w', ZIP_DEFLATED) as archive:
+        for name in ('NAL_2002_11Alachua_F.csv', 'NAL_2002_47Leon_F.csv'):
+            info = ZipInfo('placeholder')
+            info.filename = '2002F\\' + name
+            archive.writestr(info, 'id\n1\n')
+
+    out_dir = unzip(path, tmp_path / 'out')
+    assert sorted(p.name for p in out_dir.iterdir()) == [
+        'NAL_2002_11Alachua_F.csv',
+        'NAL_2002_47Leon_F.csv',
+    ]
+
+
 def test_uppercase_bz2_is_decompressed(tmp_path):
     path = tmp_path / 'PARCELS.CSV.BZ2'
     path.write_bytes(bz2.compress(b'id,value\n1,2\n'))

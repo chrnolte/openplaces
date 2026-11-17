@@ -208,13 +208,19 @@ def _unzip_standard(in_path, out_dir, members):
     """
     written = []
     with ZipFile(in_path, 'r') as z:
-        all_members = z.namelist()
+        # Some archives made on Windows store '\' as the separator
+        # (Florida DOR's 2002 roll: '2002F\NAL_2002_11Alachua_F.csv').
+        # Windows reads it as a folder; Linux and macOS would write one
+        # file with a backslash in its name. Paths use '/' throughout;
+        # the stored name is kept only to read the member.
+        names = {m: m.replace('\\', '/') for m in z.namelist()}
+        all_members = list(names.values())
         member_list = [
             m
-            for m in all_members
-            if m.endswith('/')
-            or Path(m).suffix.lower() in _NESTED_ARCHIVE_SUFFIXES
-            or _member_selected(m, members)
+            for m in names
+            if names[m].endswith('/')
+            or Path(names[m]).suffix.lower() in _NESTED_ARCHIVE_SUFFIXES
+            or _member_selected(names[m], members)
         ]
 
         # Computed over every member, so a pattern selecting a single
@@ -225,7 +231,8 @@ def _unzip_standard(in_path, out_dir, members):
         with tqdm(
             total=total_size, unit='B', unit_scale=True, desc='Extracting'
         ) as pbar:
-            for member in member_list:
+            for stored in member_list:
+                member = names[stored]
                 if strip_prefix and member == strip_prefix.rstrip('/'):
                     continue
                 if strip_prefix and member.startswith(strip_prefix):
@@ -240,7 +247,7 @@ def _unzip_standard(in_path, out_dir, members):
                         target.mkdir(parents=True, exist_ok=True)
                 else:
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    with z.open(member) as src, open(target, 'wb') as dst:
+                    with z.open(stored) as src, open(target, 'wb') as dst:
                         while chunk := src.read(8192):
                             dst.write(chunk)
                             pbar.update(len(chunk))
