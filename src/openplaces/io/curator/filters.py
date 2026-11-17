@@ -9,7 +9,9 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('exclude_by_value', phase='standardize')
+# A row filter decides which entities exist, which no column
+# declaration can say; it declares the column it tests.
+@_register('exclude_by_value', phase='standardize', reads=['{column}'])
 def exclude_by_value(state: CurateState, column: str, values: list) -> CurateState:
     """Drop rows whose *column* value is in *values*.
 
@@ -70,7 +72,7 @@ def keep_by_value(state: CurateState, column: str, values: list) -> CurateState:
     return state
 
 
-@_register('filter_numeric_at_least', phase='standardize')
+@_register('filter_numeric_at_least', phase='standardize', reads=['{column}'])
 def filter_numeric_at_least(state: CurateState, column: str, min: float) -> CurateState:
     """Keep rows where *column*, read as numeric, is at least *min*.
 

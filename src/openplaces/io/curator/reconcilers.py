@@ -169,7 +169,24 @@ def _resolve_admin_group(
     return joined[id_col].reindex(curated.index)
 
 
-@_register('suppress_where', phase='reconcile')
+# Emptying a cell is a decision about it, but the column is decided by
+# the step that wrote it (in the building curate,
+# apportion_curated_values), and a recipe declares one decider per
+# column, so this gate declares only that it writes
+# (plans/account-values-one-deciding-step.md, V1).
+@_register(
+    'suppress_where',
+    phase='reconcile',
+    reads=[
+        '{condition_column}',
+        lambda args: [
+            i['column']
+            for i in args.get('indicators') or ()
+            if isinstance(i, dict) and isinstance(i.get('column'), str)
+        ],
+    ],
+    writes=['{column}', '{column}_source'],
+)
 def suppress_where(
     state: CurateState,
     column: str | list[str],
@@ -328,7 +345,13 @@ def apply_reviewed_corrections(
     return state
 
 
-@_register('null_out_of_range', phase='reconcile')
+@_register(
+    'null_out_of_range',
+    phase='reconcile',
+    reads=['{columns}'],
+    writes=['{columns}', '{columns}_source'],
+    decides=['{columns}'],
+)
 def null_out_of_range(
     state: CurateState,
     columns: str | list[str],

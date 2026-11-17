@@ -1145,7 +1145,30 @@ def _impute_open_only(state: CurateState, curated, columns, settings) -> pd.Seri
     return pd.concat(estimated).reindex(curated.index, fill_value=False)
 
 
-@_register('impute_land_value', phase='infer')
+@_register(
+    'impute_land_value',
+    phase='infer',
+    reads=[
+        '{land_value_column}',
+        '{improvement_value_column}',
+        '{total_value_column}',
+        '{other_value_column}',
+        '{footprint_area_column}',
+        '{parcel_area_column}',
+        '{land_use_column}',
+        '{peer_group_column}',
+        '{street_column}',
+        '{city_column}',
+        '{floor_area_columns}',
+    ],
+    writes=[
+        '{output_land_value}',
+        '{output_improvement_value}',
+        '{output_land_value}_source',
+        '{output_improvement_value}_source',
+    ],
+    decides=['{output_land_value}', '{output_improvement_value}'],
+)
 def impute_land_value(
     state: CurateState,
     land_value_column: str = 'land_value',

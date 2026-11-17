@@ -25,7 +25,13 @@ def _field(obj, name):
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
 
 
-@_register('link_curated_entity', phase='gather')
+@_register(
+    'link_curated_entity',
+    phase='gather',
+    reads=['{entity_key}'],
+    writes=['{columns:values}'],
+    reads_from={'recipe_id': ['{columns:keys}', '{ref_key}']},
+)
 def link_curated_entity(
     state: CurateState,
     recipe_id: str,
@@ -711,7 +717,31 @@ def _secondary_pairs_off_complexes(
     return {p for p in secondary_pairs if (str(p[0]), str(p[1])) not in lifted}
 
 
-@_register('apportion_curated_values', phase='gather')
+# The per-building heights of floor_weight come from the recipe its
+# nested recipe_id names; reads_from takes a top-level parameter only,
+# so that read is not declared.
+@_register(
+    'apportion_curated_values',
+    phase='gather',
+    reads=[
+        '{priority_column}',
+        '{dwelling_column}',
+        '{entity_key}',
+        '{entity_type}_id_secondary',
+        'geometry_source',
+    ],
+    writes=['{columns:values}', '{columns:values}_source'],
+    decides=['{columns:values}'],
+    reads_from={
+        'recipe_id': [
+            '{columns:keys}',
+            '{ref_key}',
+            '{land_use_column}',
+            '{floor_area_columns}',
+            '{stories_column}',
+        ]
+    },
+)
 def apportion_curated_values(
     state: CurateState,
     recipe_id: str,

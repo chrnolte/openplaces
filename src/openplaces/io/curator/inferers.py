@@ -11,7 +11,17 @@ from openplaces.io.curator import CurateState, _register
 from openplaces.io.sale_records import nominal_price_floor
 
 
-@_register('derive_metrics', phase='infer')
+@_register(
+    'derive_metrics',
+    phase='infer',
+    reads=['total_value', 'improvement_value*', 'structure_value*'],
+    writes=[
+        'area_m2',
+        'total_value_per_area',
+        'improvement_value*_per_area',
+        'structure_value*_per_area',
+    ],
+)
 def derive_metrics(state: CurateState) -> CurateState:
     """Compute polygon area and per-area value ratios.
 

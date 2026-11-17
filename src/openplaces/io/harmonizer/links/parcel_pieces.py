@@ -989,7 +989,16 @@ def split_overlay(
     return new_spine, new_flat, stats
 
 
-@_register('split_outlines_at_parcel_lines', phase='geometry')
+# The lot values are replayed from the configuration of the recipe
+# lot_values_from names, never read from its output, but they are that
+# recipe's columns. Which pieces become buildings is a row decision
+# no column declaration can name.
+@_register(
+    'split_outlines_at_parcel_lines',
+    phase='geometry',
+    writes=['geometry', BUILDING_GEOMETRY_COLUMN],
+    reads_from={'lot_values_from': [IMPROVEMENT_VALUE_COLUMN, STRUCTURE_FLAG_COLUMN]},
+)
 def split_outlines_at_parcel_lines(
     state: HarmonizeState,
     entity_type: str = 'parcel',
