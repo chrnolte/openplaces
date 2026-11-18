@@ -82,7 +82,8 @@ def test_structure_value_chain_declares_its_deciding_steps():
             'improvement_value',
             'total_value',
         },
-        ('US_parcel-openplaces-2026', 'null_out_of_range'): {
+        # V3: one step decides the account values on a lot.
+        ('US_parcel-openplaces-2026', 'divide_account_values'): {
             'land_value',
             'improvement_value',
             'total_value',
@@ -120,6 +121,23 @@ def test_structure_value_is_decided_once_in_the_building_curate():
     assert [
         use.step for use in lineage.writers('improvement_value_imputed', parcel)
     ] == ['impute_land_value']
+
+
+def test_one_step_decides_the_account_values_on_a_lot():
+    # plans/account-values-one-deciding-step.md, V3: in the parcel
+    # curate divide_account_values is the only decider of the values
+    # it divides; the other writers carry, fill or gate.
+    parcel_id = 'US_parcel-openplaces-2026'
+    parcel = [use for use in lineage.all_steps() if use.recipe_id == parcel_id]
+    for column in (
+        'land_value',
+        'improvement_value',
+        'total_value',
+        'other_value',
+        'n_dwellings',
+    ):
+        deciders = [use.step for use in parcel if column in use.decides]
+        assert deciders == ['divide_account_values'], column
 
 
 def test_the_value_curates_add_no_undeclared_step_unseen():

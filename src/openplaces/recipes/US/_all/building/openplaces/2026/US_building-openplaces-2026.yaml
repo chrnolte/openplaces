@@ -850,6 +850,7 @@ pipeline:
   # 2026-09-17 and mostly lowered counts (Boston 18,404 down, 8,017 up)
   # with no independent floor area to arbitrate. Runs before the
   # occupancy votes, which read n_stories.
+  # Same lanes as divide_account_values in US_parcel-openplaces-2026.
   - step: decide_stories
     evidence: [n_stories_building_nsi, n_stories_footprint_fema,
                n_stories_building_cheer]

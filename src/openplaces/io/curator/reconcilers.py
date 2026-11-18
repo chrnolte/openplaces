@@ -345,12 +345,15 @@ def apply_reviewed_corrections(
     return state
 
 
+# A gate, declared as writing: it empties a value it finds invalid and
+# chooses none. In the parcel curate divide_account_values decides the
+# value columns it gates (plans/account-values-one-deciding-step.md),
+# as suppress_where gates structure_value after its decider.
 @_register(
     'null_out_of_range',
     phase='reconcile',
     reads=['{columns}'],
     writes=['{columns}', '{columns}_source'],
-    decides=['{columns}'],
 )
 def null_out_of_range(
     state: CurateState,

@@ -89,6 +89,69 @@ def _linked_recipe_id(recipe_id: str) -> str:
     return recipe_id
 
 
+def read_curate_link(state, recipe_id):
+    """The link table between the curated entity and *recipe_id*'s rows.
+
+    Returns the table as stored and its path, or (None, None) where the
+    unit has no resolvable link (a curate recipe with no geospine, a
+    reference outside ENTITY_LINK_ORDER).
+    """
+    from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
+    from openplaces.io.harmonizer.entity_links import read_entity_link
+
+    try:
+        owner = get_link_owner_recipe_id(state.recipe)
+        linked_id = _linked_recipe_id(recipe_id)
+        # A link table is named after the spine on that side (the
+        # transaction-to-parcel table names US_parcel-spine-2026) or,
+        # where link_entities_by_id wrote it, after the recipe that
+        # mints the rows, its geospine (the footprint-to-building table
+        # names US_building-geospine-2026). The spine's name is tried
+        # first, so every link read before the geospine name was
+        # accepted resolves as it did.
+        path = None
+        for name in dict.fromkeys([linked_id, get_link_owner_recipe_id(linked_id)]):
+            path = get_entity_link_path(name, owner, state.admin_id)
+            if path.exists():
+                break
+        links = read_entity_link(path)
+    except Exception:
+        return None, None
+    if links is None or links.empty:
+        return None, None
+    return links, path
+
+
+def units_only_links(links: pd.DataFrame) -> np.ndarray:
+    """True for links found only by the ingest-time stacked-units split.
+
+    A link's `link_source` joins its sources by `+`; a link every part
+    of which is a `<source>:units` label was found through a unit row
+    split off the parcel layer, never through a roll.
+    """
+    tokens = links['link_source'].fillna('').astype(str).str.split('+')
+    return tokens.map(
+        lambda parts: all(p.endswith(STACKED_UNITS_LABEL_SUFFIX) for p in parts)
+    ).to_numpy(dtype=bool)
+
+
+def mask_units_rows(rows: pd.DataFrame, lot: pd.Series, units, columns) -> pd.Series:
+    """Leave the units' rows out where a roll's rows describe the lot.
+
+    Column by column: on a lot where a row other than a units row
+    states a column, the units rows' value of that column is masked in
+    *rows* (in place). Returns, per row, whether it is left out
+    altogether: a units row that gives no column on such a lot.
+    """
+    units = pd.Series(np.asarray(units, dtype=bool), index=rows.index)
+    lot = pd.Series(np.asarray(lot), index=rows.index)
+    for column in columns:
+        described = lot[~units & rows[column].notna()]
+        rows[column] = rows[column].mask(units & lot.isin(set(described)))
+    gives_nothing = rows[list(columns)].isna().all(axis=1)
+    return units & lot.isin(set(lot[~units])) & gives_nothing
+
+
 def _rows_by_link(state, recipe_id, reference, values, functions):
     """Arrange the reference's values by the link table, when there is one.
 
@@ -114,35 +177,12 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     Returns None when there is no valid link or it shares no ids with
     the two tables, and the caller joins on the key column as before.
     """
-    from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
-    from openplaces.io.harmonizer.entity_links import (
-        SHARED_KEY_SUFFIX,
-        read_entity_link,
-    )
-    from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
+    from openplaces.io.harmonizer.entity_links import SHARED_KEY_SUFFIX
 
-    try:
-        owner = get_link_owner_recipe_id(state.recipe)
-        linked_id = _linked_recipe_id(recipe_id)
-        # A link table is named after the spine on that side (the
-        # transaction-to-parcel table names US_parcel-spine-2026) or,
-        # where link_entities_by_id wrote it, after the recipe that
-        # mints the rows, its geospine (the footprint-to-building table
-        # names US_building-geospine-2026). The spine's name is tried
-        # first, so every link read before the geospine name was
-        # accepted resolves as it did.
-        path = None
-        for name in dict.fromkeys([linked_id, get_link_owner_recipe_id(linked_id)]):
-            path = get_entity_link_path(name, owner, state.admin_id)
-            if path.exists():
-                break
-        links = read_entity_link(path)
-    except Exception:
-        # No resolvable link for this recipe and unit (a curate recipe
-        # with no geospine, a reference outside ENTITY_LINK_ORDER): the
-        # key join below is the documented behavior.
-        return None
-    if links is None or links.empty:
+    # No resolvable link for this recipe and unit: the key join of the
+    # caller is the documented behavior.
+    links, path = read_curate_link(state, recipe_id)
+    if links is None:
         return None
     finer_id, coarser_id = links.columns[0], links.columns[1]
     # Which side the curated entity is: the property-to-parcel table
@@ -169,10 +209,7 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
         )
         return None
     links = links[~links['link_method'].str.endswith(SHARED_KEY_SUFFIX, na=False)]
-    tokens = links['link_source'].fillna('').str.split('+')
-    only_units = tokens.map(
-        lambda parts: all(p.endswith(STACKED_UNITS_LABEL_SUFFIX) for p in parts)
-    ).to_numpy(dtype=bool)
+    only_units = units_only_links(links)
 
     reference_lookup = values.copy()
     reference_lookup.index = pd.Index(reference.index).astype('string')
@@ -183,12 +220,7 @@ def _rows_by_link(state, recipe_id, reference, values, functions):
     # A roll that describes a lot without a year built must not take
     # away the year its units state. Measured 2026-11-15 on US-NC-TYR:
     # 157 lots kept a year built only through this rule.
-    units = pd.Series(only_units)
-    for column in functions:
-        described = lot[~units & rows[column].notna()]
-        rows[column] = rows[column].mask(units & lot.isin(set(described)))
-    gives_nothing = rows[list(functions)].isna().all(axis=1)
-    left_out = units & lot.isin(set(lot[~units])) & gives_nothing
+    left_out = mask_units_rows(rows, lot, only_units, list(functions))
     links = links[~left_out.to_numpy()]
     rows = rows[~left_out].reset_index(drop=True)
     share = links['share'].astype('Float64').reset_index(drop=True)

@@ -86,8 +86,10 @@ entity:
 
 patches: US_parcel-openplaces-2026
 pipeline_patch:
-  - insert_after: aggregate_from_entities
-    occurrence: 1
+  # After the national step that decides n_dwellings by dividing each
+  # account over its lots: this count replaces it on a lot with a 102
+  # unit, and the national division stands everywhere else.
+  - insert_after: divide_account_values
     step:
       step: aggregate_from_entities
       recipe_id: US_property-spine-2026
