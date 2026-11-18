@@ -26,15 +26,12 @@
 # release. Targeting this recipe by id still ingests it. Removing the
 # key is the switch.
 #
-# Differences from the May release (US-FL_parcel-floridagio-2026):
-# - the zip unpacks to Cadastral_Statewide.gdb, not CADASTRAL_DOR.gdb;
-# - the sale-change fields are S_CHNG_CD1 and S_CHNG_CD2, not
-#   SAL_CHNG_CD1 and SAL_CHNG_CD2.
-# Not verified against the file (no copy of the November geodatabase
-# on the workstation on 2026-11-17): the layer name, kept here as
-# CADASTRAL_DOR, and every other field name, kept as in the May
-# release. Check both with pyogrio.list_layers / read_info before the
-# first ingest.
+# Differences from the May release (US-FL_parcel-floridagio-2026): the
+# zip unpacks to Cadastral_Statewide.gdb, not CADASTRAL_DOR.gdb.
+# Checked 2026-11-18 with pyogrio on both zips: one layer,
+# CADASTRAL_DOR, with the same 120 fields in each release. The
+# sale-change fields are S_CHNG_CD1 and S_CHNG_CD2 in both (the DOR
+# roll CSV calls them SAL_CHNG_CD1 and SAL_CHNG_CD2).
 #
 # The download URL serves only the current release, under the same
 # name for every release. The zip is therefore saved under a name that
@@ -162,7 +159,6 @@ columns:
   last_sale_book: OR_BOOK1
   last_sale_page: OR_PAGE1
   last_sale_clerk_instrument: CLERK_NO1
-  # Renamed in this release (SAL_CHNG_CD1 in May)
   last_sale_change_code: S_CHNG_CD1
   last_sale_2_multi_parcel: M_PAR_SAL2
   last_sale_2_qualification_code: QUAL_CD2
@@ -173,7 +169,6 @@ columns:
   last_sale_2_book: OR_BOOK2
   last_sale_2_page: OR_PAGE2
   last_sale_2_clerk_instrument: CLERK_NO2
-  # Renamed in this release (SAL_CHNG_CD2 in May)
   last_sale_2_change_code: S_CHNG_CD2
 
 transformations:

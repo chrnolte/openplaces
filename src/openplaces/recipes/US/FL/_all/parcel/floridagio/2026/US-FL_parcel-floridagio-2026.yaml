@@ -104,7 +104,7 @@ columns:
   last_sale_book: OR_BOOK1
   last_sale_page: OR_PAGE1
   last_sale_clerk_instrument: CLERK_NO1
-  last_sale_change_code: SAL_CHNG_CD1
+  last_sale_change_code: S_CHNG_CD1
   last_sale_2_multi_parcel: M_PAR_SAL2
   last_sale_2_qualification_code: QUAL_CD2
   last_sale_2_vacant: VI_CD2
@@ -114,7 +114,7 @@ columns:
   last_sale_2_book: OR_BOOK2
   last_sale_2_page: OR_PAGE2
   last_sale_2_clerk_instrument: CLERK_NO2
-  last_sale_2_change_code: SAL_CHNG_CD2
+  last_sale_2_change_code: S_CHNG_CD2
 
 transformations:
   # Florida DOR's assessment-roll edit guide (2026) defines the calculated
