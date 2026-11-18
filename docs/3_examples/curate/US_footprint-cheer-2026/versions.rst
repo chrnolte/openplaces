@@ -5,10 +5,12 @@
 Versions
 ========
 
-A bundle's version is the imputation version in its filled cells'
-``_source`` (``building-imputation-v0.8+open+imputed``) and in its
-licence notice. Changes to the inventory itself (sources, votes, value
-rules) ship with the next imputation version.
+A bundle's version is its build date (``2026-11-18``), recorded in the
+``manifest.json`` inside the bundle and in ``versions/index.json``
+beside it, which lists every version of the bundle. The imputation
+version names the model that filled a cell: it is in the filled cells'
+``_source`` (``building-imputation-v0.8+open+imputed``) and in the
+licence notice. The sections below follow the imputation version.
 
 v0.8 (from 2026-10-28)
 ~~~~~~~~~~~~~~~~~~~~~~
