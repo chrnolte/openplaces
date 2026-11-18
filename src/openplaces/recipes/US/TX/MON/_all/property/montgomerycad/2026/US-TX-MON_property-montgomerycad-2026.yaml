@@ -103,7 +103,9 @@ entity:
     # redistribution clause; openplaces accepted nothing. Whether the
     # export pages show it too is for a person to confirm.
     license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
-    redistribution_restricted: null
+    # No terms found: withheld from bundles until they are cleared
+    # (maintainer, 2026-11-18).
+    redistribution_restricted: true
     portal_url: "https://mcad-tx.org/appraisal-data-exports"
   version: 2026
 

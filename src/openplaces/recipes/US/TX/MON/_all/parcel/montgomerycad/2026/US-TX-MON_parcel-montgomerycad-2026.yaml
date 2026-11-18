@@ -68,7 +68,9 @@ entity:
     # ("for general reference purposes only", no liability), with no
     # resale or redistribution clause. openplaces accepted nothing.
     license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
-    redistribution_restricted: null
+    # No terms found: withheld from bundles until they are cleared
+    # (maintainer, 2026-11-18).
+    redistribution_restricted: true
     portal_url: "https://mcad-tx.org/gis-data"
   version: 2026
 

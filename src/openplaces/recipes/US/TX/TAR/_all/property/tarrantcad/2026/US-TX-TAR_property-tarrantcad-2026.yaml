@@ -118,7 +118,9 @@ entity:
     # no LICENSE.txt. Recorded as unknown, which is not a finding that
     # the data is unrestricted.
     license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
-    redistribution_restricted: null
+    # No terms found: withheld from bundles until they are cleared
+    # (maintainer, 2026-11-18).
+    redistribution_restricted: true
     portal_url: "https://www.tad.org/resources/data-downloads"
   version: 2026
 

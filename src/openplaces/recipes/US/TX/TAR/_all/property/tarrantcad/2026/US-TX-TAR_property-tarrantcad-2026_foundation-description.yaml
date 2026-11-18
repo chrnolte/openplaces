@@ -35,7 +35,7 @@ entity:
     source_id: tarrantcad
     # Same download as the roll; see its terms note.
     license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
-    redistribution_restricted: null
+    redistribution_restricted: true
     portal_url: "https://www.tad.org/resources/data-downloads"
   version: 2026
 

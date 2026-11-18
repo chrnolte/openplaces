@@ -45,7 +45,7 @@ entity:
     source_id: montgomerycad
     # Same download as the roll; see its terms note.
     license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
-    redistribution_restricted: null
+    redistribution_restricted: true
     portal_url: "https://mcad-tx.org/appraisal-data-exports"
   version: 2026
 
