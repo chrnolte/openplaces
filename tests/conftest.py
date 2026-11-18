@@ -23,6 +23,9 @@ def _isolate_data_root() -> None:
         dirs[name] = _ISOLATED_ROOT / 'data' / name
     dirs['heap'] = _ISOLATED_ROOT / 'data/cache/_heap'
     dirs['logs'] = _ISOLATED_ROOT / 'data/cache/_logs'
+    # A configured archive root is the user's real one: a re-export in
+    # a test would move its fixture bundle there.
+    dirs.pop('archive', None)
     cfg.config['directories'] = dirs
 
 
@@ -46,6 +49,11 @@ def mock_data_root(tmp_path, monkeypatch):
         dirs[name] = tmp_path / 'data' / name
     dirs['heap'] = tmp_path / 'data/cache/_heap'
     dirs['logs'] = tmp_path / 'data/cache/_logs'
+    # The archive a re-export moves the replaced bundle to: the folder
+    # under the data root, as on the maintainer's machine, never the
+    # user's configured one.
+    dirs.pop('archive', None)
+    (tmp_path / 'archive').mkdir(exist_ok=True)
     monkeypatch.setitem(cfg.config, 'directories', dirs)
     # Ensure subprocess / snakemake environmental overrides are clean
     monkeypatch.delenv('SNAKEMAKE', raising=False)

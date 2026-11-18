@@ -486,7 +486,11 @@ for node in dag.nodes():
         f' {node.recipe_id}{_admin_arg}{_reprocess}{_job_io}{EXCLUDE_ARG}'
     )
     _outputs = [_flagged, *_extra]
-    if _record:
+    # A deliver job's outputs are update() too: Snakemake deleted the
+    # shipped bundle before export_delivery ran, which moves that bundle
+    # to the archive as a version before writing the new one
+    # (io/delivery/versions.py), so the old version was lost unarchived.
+    if _record or node.stage == 'deliver':
         _outputs = [update(p) for p in _outputs]
 
     rule:

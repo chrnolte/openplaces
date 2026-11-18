@@ -109,6 +109,73 @@ load, and `io.tables` refuses any table write into the share bucket
 `export_delivery` enters only around its writes of redacted frames. Team
 folders get no exemption: a team bundle still withholds uncleared sources.
 
+**A re-export keeps the bundle it replaces, as a dated version**
+(`versions.py`; maintainer's rulings, 2026-11-15 to 2026-11-17). The
+current bundle keeps its fixed path, so readers and the orchestrator
+are unchanged, and carries a `manifest.json` beside its files: the
+version, the build time, the commit (and whether the checkout had
+uncommitted changes), the package version, the recipe id, the
+imputation model token if any, the region and unit, and each file's
+name, bytes, rows and SHA-256. A version is named by the day the
+export ran (`2026-11-17`); a second export that day is `2026-11-17b`,
+then `c`. The imputation token keeps naming the model
+(`building-imputation-v0.9`), since a filled cell's provenance names
+the model that filled it, not the bundle.
+
+In the share bucket, before the new files move into place, the bundle
+already there is moved to the archive under `versions/<its version>/`,
+at its own folder's path mirrored below the archive root by bucket
+name (`<archive>/share/US/NC/.../cheer-eastern-nc/versions/2026-11-03/`),
+with its manifest. If that move fails, the moved files go back, the
+staged files are removed and `ArchiveError` is raised: the share folder
+holds the old bundle, whole. The archive root is the user config's
+`directories: archive:`, else the `archive` folder under the data root
+when it exists (the folder `scripts/storage/snapshot.py` copies were
+made into by hand). With neither, an export over an existing bundle is
+refused before any work, unless `replace_unarchived=True`, which
+replaces it as before and keeps its index row with no location. Only
+the bundle's own files (`delivery_paths`) and its manifest move:
+sidecars other tools put beside it (admin outlines, the QGIS project,
+`accuracies/`) stay, since the new bundle's map still reads them. A
+bundle written to another bucket (the cache, for `publish_imputed.py`)
+gets a manifest and no versions.
+
+`versions/index.json` beside the bundle (one per region and recipe,
+and one per team twin in `team/versions/`) lists every version: the
+manifest's fields plus `status` (`current`, `superseded`, `withdrawn`),
+`location` (`share`, `archive`, `drive`) and `path` (relative to that
+location's root). `versions/VERSIONS.md` is generated from it.
+`withdraw_version(recipe, version, region=...)` marks a version that
+must not be handed out again (a later fix withholds values it still
+contains); its row stays, it stays withdrawn when a later export
+archives it, and nothing is moved or deleted. The manifest and index
+are part of a bundle in the sense of the share rule below: they hold
+file names, sizes, row counts and checksums, never a value, so no
+personal or restricted column can reach them, and they are written as
+JSON and Markdown, which the table guard does not cover.
+
+The orchestrator declares only the bundle files as a deliver job's
+outputs, so the manifest and `versions/` never make a job look missing
+or stale. Those outputs are `update()` in the Snakefile: Snakemake
+deletes a job's existing outputs before running it, which removed the
+bundle before `export_delivery` could archive it. Snakemake now keeps
+them, backs them up under `.snakemake` for the run (a copy the size of
+the bundle) and restores them if the job fails.
+
+`python -m openplaces.io.delivery.backfill --dry-run` lists what it
+would enter for bundles shipped before versions: each bundle in the
+share bucket as `current` under the date of its canonical file's
+modification time, with its imputation token's version (`v0.8`) as the
+note, and each archived copy as `superseded` under its own file time,
+with the folder it was filed under (`v0.6`, `pre-2026-11-03`) as the
+note. A copy belongs to the share bundle of the same file stem whose
+folder its archive folder lies in, mirrored, and to that bundle's team
+twin when filed under `team/`; anything else is reported as
+unclassified and entered nowhere. Archived files are described from
+their directory entries only (they are online-only, and reading one
+downloads it), so their checksums and row counts stay empty. Without
+`--dry-run` it writes the indexes and moves no file.
+
 **It withholds what restricted sources supplied, and ships the rest.** A
 source recording `redistribution_restricted: true` or a `usage_requirement`
 may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,

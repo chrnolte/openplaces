@@ -42,6 +42,7 @@ from openplaces.io import (
     read_parquet,
     to_parquet,
 )
+from openplaces.io.delivery import versions
 from openplaces.io.delivery.freshness import StaleOutputError as StaleOutputError
 from openplaces.io.delivery.freshness import refuse_stale
 from openplaces.io.delivery.redaction import (
@@ -62,6 +63,7 @@ from openplaces.io.delivery.terms import (
     share_alike_inputs,
     value_source_cells,
 )
+from openplaces.io.delivery.versions import ArchiveError as ArchiveError
 from openplaces.io.readers import get_admin, get_dataset
 from openplaces.io.tables import redacted_share_writes
 from openplaces.path import recipe_path
@@ -364,6 +366,37 @@ def unlock_delivery(recipe, **kwargs) -> None:
     """
     for path in delivery_paths(recipe, **kwargs).values():
         _unlock(path)
+
+
+def withdraw_version(recipe, version, note=None, **kwargs) -> dict:
+    """Mark a version of a bundle as withdrawn in its index.
+
+    A withdrawn version must not be handed out again: a later fix
+    withholds values it still contains, say. Its row stays in
+    `versions/index.json`, so the record of what was shipped is kept,
+    and no file is moved or deleted here.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    version : str
+        The version to withdraw (`2026-11-03`).
+    note : str, optional
+        Why, appended to the version's note.
+    **kwargs
+        Forwarded to `delivery_paths` (admin_id, admin_level, output_dir,
+        region), which locate the index.
+
+    Returns
+    -------
+    dict
+        The withdrawn version's index row.
+    """
+    canonical = delivery_paths(recipe, **kwargs)['canonical']
+    return versions.set_status(
+        versions.versions_dir(canonical), version, 'withdrawn', note
+    )
 
 
 def _lock(path: Path) -> None:
@@ -1628,6 +1661,7 @@ def export_delivery(
     verbose=False,
     allow_stale=False,
     graph=None,
+    replace_unarchived=False,
 ):
     """Write a curated entity's region-wide output as a four-file bundle.
 
@@ -1646,6 +1680,17 @@ def export_delivery(
     files came from the new curation while the evidence file and licence
     notice were left over from the last ship, and the five no longer
     shared one index.
+
+    A bundle carries a `manifest.json` (its version, build time, commit,
+    recipe, imputation model token, and each file's size, row count and
+    SHA-256). In the share bucket, a bundle already at the path is first
+    moved to the archive, under `versions/<its version>/` at the
+    bundle's path mirrored below the archive root, and the export
+    refuses to replace it when that fails; `versions/index.json` and
+    `versions/VERSIONS.md` beside the bundle list every version
+    (`openplaces.io.delivery.versions`). A version is named by the day
+    the export ran, `2026-11-17`, with a letter for a second export that
+    day (`2026-11-17b`).
 
     Every parameter but *recipe* falls back to the recipe's own
     ``share: delivery:`` block, so a fully declared recipe delivers with
@@ -1688,6 +1733,11 @@ def export_delivery(
         check walks; `openplaces.flow.freshness.delivery_graph(recipe_id,
         region)` builds it. It is passed in because the graph is built
         above this module. Required unless *allow_stale* is True.
+    replace_unarchived : bool, optional
+        Replace a bundle in the share bucket without an archive copy
+        when no archive root is configured (`versions.archive_root`).
+        Off by default, so a version is never lost silently; the index
+        keeps the replaced version's row, with no location.
 
     Returns
     -------
@@ -1710,6 +1760,11 @@ def export_delivery(
         share-alike licences of more than one family (ODbL and CC BY-SA,
         say), naming each source, its licence and its shares. Nothing is
         written. `check_share_alike` reports the same without exporting.
+    ArchiveError
+        When a bundle in the share bucket would be replaced and cannot be
+        archived (no archive root, and *replace_unarchived* is False;
+        or the move fails). Raised before any work when there is no
+        archive root. The bundle is left as it was.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -1719,6 +1774,17 @@ def export_delivery(
     paths = delivery_paths(recipe, admin_id, admin_level, output_dir, region)
     if admin_id is None:
         admin_id = delivery_admin_id(recipe, admin_level, region)
+    # Only the share bucket keeps versions: it is what leaves the
+    # build. A bundle exported to the cache (to be published by hand)
+    # is a working copy, replaced freely, with a manifest only.
+    bucket = (
+        output_dir or delivery_spec(recipe, region).get('output_dir') or DELIVERY_DIR
+    )
+    versioned = bucket == DELIVERY_DIR
+    archive = versions.archive_root() if versioned else None
+    if versioned:
+        # Checked before the work of a large export, not after it.
+        versions.refuse_unarchivable(paths, archive, replace_unarchived)
 
     if delivery_spec(recipe, region).get('whole_unit'):
         _require_whole_unit(
@@ -2042,9 +2108,56 @@ def export_delivery(
     terms['imputation'] = imputation
     staged['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
 
+    # What the bundle says about itself, from the staged files, so the
+    # checksums are of exactly the bytes that are moved into place. It
+    # names files, sizes, row counts and checksums only, no values.
+    built = versions.timestamp()
+    region_id = delivery_spec(recipe, region).get('region_id')
+    manifest = versions.build_manifest(
+        version=built[:10],
+        built=built,
+        files=[
+            versions.file_entry(staged[role], name=path.name)
+            for role, path in paths.items()
+        ],
+        recipe_id=recipe.get('recipe_id'),
+        region=region_id,
+        admin_id=admin_id,
+        audience=sources['audience'],
+        imputation=impute.get('version') if impute else None,
+        **versions.code_identity(),
+    )
+
     # Every file exists; only now does the shipped bundle change.
-    for role, path in paths.items():
-        os.replace(staged[role], path)
+    if versioned:
+        from openplaces.config import cfg
+
+        versions.replace_bundle(
+            paths,
+            staged,
+            manifest,
+            bucket=bucket,
+            bucket_root=Path(cfg.get_dir(bucket)),
+            root=archive,
+            replace_unarchived=replace_unarchived,
+            meta={
+                'bundle': paths['canonical'].stem,
+                'recipe_id': recipe.get('recipe_id'),
+                'region': region_id,
+                'admin_id': admin_id,
+            },
+            verbose=verbose,
+        )
+    else:
+        previous = versions.read_manifest(paths['canonical'].parent)
+        taken = [previous['version']] if previous else []
+        day, _ = versions.parse_version(built[:10])
+        for role, path in paths.items():
+            os.replace(staged[role], path)
+        versions.write_manifest(
+            paths['canonical'].parent,
+            {**manifest, 'version': versions.next_version(day, taken)},
+        )
     for path in paths.values():
         _lock(path)
     if keep_imputation is not None:
