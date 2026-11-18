@@ -132,6 +132,27 @@ Steps are organized by the nature of the transformation:
   its cell's own `{column}_source` where one is set (a supplement, a
   merged row's other source) and its `source` otherwise, reduced to
   source ids. A written cell no row labels loses the label it held.
+- `account_values.py` — `divide_account_values` (gather), **the one
+  step that decides a lot's account values** (land, improvement,
+  other, total, dwellings) in the parcel curate. Each roll account is
+  divided over the lots its links reach, shared-key links included:
+  land and other value by lot area (the link `share` renormalized over
+  the curated lots), improvement and dwellings by the floor area of the
+  building pieces standing on each lot (overlay pairs, each piece
+  counted for the lot it stands on, area times stories, pieces under
+  10 m2 ignored; a condominium cluster outline only where no other
+  drawn piece stands on the account's lots; a parcel-shaped stand-in
+  never weighs), by lot area where no lot has any; a stated total in
+  proportion to each lot's parts,
+  the sum of the parts where none is stated (marked imputed). A value
+  the account does not state, which the parcel layer repeats on each
+  of its lots, is taken once and divided over the lots where the
+  layer states it (`layer_columns`). It replaces every cell a stating
+  account reaches, so the parcel geospine's whole copies do not
+  survive; `aggregate_from_entities` still fills these columns on a
+  unit without a link table. Story counts are `decide_stories`'
+  evidence without its roll fill, which reads this curate. Writes a
+  conservation report per unit (`account-values-conservation.csv`).
 - `common_land.py` — `apportion_common_land` (gather), the plat's
   common land as an area: it reads the parcel spine's `plat key` link
   table and writes `common_land_share_ha` on each lot (the common area

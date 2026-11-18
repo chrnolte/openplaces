@@ -116,6 +116,61 @@ pipeline:
       n_residential_buildings: sum
       has_homestead_exemption: max
 
+  # The one step that decides a lot's account values
+  # (plans/account-values-one-deciding-step.md). Each roll account is
+  # divided over the lots it is drawn on: land and other value by lot
+  # area, improvement and dwellings by the floor area of the building
+  # pieces on each lot (by lot area where none has any), a stated
+  # total in proportion to each lot's parts. It replaces every cell an
+  # account stating the column reaches, so the parcel geospine's whole
+  # copies of an account's value on each of its lots, and the link-
+  # share sums the step above fills into empty cells, do not survive on
+  # a lot any account decides. The step above still fills these columns
+  # where a unit has no property-to-parcel link table (it joins on the
+  # key), which is the only place its value columns now act.
+  # Shared-key links are read as any other (maintainer, ruling 4,
+  # 2026-11-17).
+  # layer_columns: on a total-only roll over a statewide layer that
+  # repeats an account's land and improvement on each of its lots, the
+  # layer's figure is taken once per account and divided (ruling 5).
+  # The test is in the data (the account states no value, the layer
+  # states the same one on every lot of it), never in a place.
+  # Building weights (maintainer, 2026-11-18): each building piece
+  # counts for the lot it stands on, area times stories, as the
+  # maintainer's labels follow the parcel lines; pieces under 10 m2
+  # are overlay noise. A condominium cluster outline weighs only where
+  # no other drawn piece stands on the account's lots.
+  # Measured 2026-11-18 on US-TX-BRA: pieces against a whole-building threshold change 876 of 29,463 accounts on 2+ lots.
+  # Stories: decide_stories' evidence without its roll fill, which
+  # reads this curate (estimators.stories).
+  - step: divide_account_values
+    recipe_id: US_property-spine-2026
+    building_recipe_id: US_building-spine-2026
+    by_area: [land_value, other_value]
+    by_floor_area: [improvement_value, n_dwellings]
+    total: total_value
+    layer_columns: [land_value, improvement_value]
+    min_piece_m2: 10
+    cluster_sources: [condo_cluster]
+    # Same lanes as decide_stories in US_building-openplaces-2026.
+    stories:
+      floor_height_m: 3.5
+      valid_range: [1, 110]
+      evidence:
+        - column: n_stories_building_nsi
+        - recipe_id: US_footprint_footprint-fema-2023
+          entity_recipe: US_footprint-spine-2026
+          key: footprint_id
+          height_column: height_footprint_fema
+        - recipe_id: US-NC_footprint_building-cheer-v0
+          entity_recipe: US_footprint-spine-2026
+          key: footprint_id
+          column: n_stories_building_cheer
+        - recipe_id: US-TX_footprint_building-cheer-v0
+          entity_recipe: US_footprint-spine-2026
+          key: footprint_id
+          column: n_stories_building_cheer
+
   # Foundation and construction type, translated per property from each
   # source's own words by US_property-openplaces-2026 (see
   # plans/curate-translation-tables.md). `agree`: a parcel states a
