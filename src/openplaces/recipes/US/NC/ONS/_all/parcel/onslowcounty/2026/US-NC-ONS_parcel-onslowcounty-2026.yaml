@@ -70,6 +70,21 @@ entity:
     download_url: "https://hub.arcgis.com/api/v3/datasets/d97999079b1d47d086489dc4e50a6328_0/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"
 
+# This layer's values are older than NC OneMap's: on the lots it draws,
+# NC OneMap's stated values replace its own (links/own_layer.py,
+# plans/lot-keeps-own-layer-values.md). Evidence in `notes`.
+values_outdated: true
+
+notes: >-
+  values_outdated, measured 2026-11-18 against the NC OneMap ingest of
+  2026-10-26 (statewide file downloaded 2026-02-06, source_date
+  2025-12-04 for this county) and this layer as downloaded 2026-09-21.
+  VALUEYEAR (tax_year) is 2022 on 99.9% of rows. YEARBUILT reaches 2023
+  here and no row states 2024 or later, against 2,383 such rows in NC
+  OneMap. SALEDATE stops in early 2024 (99.9th percentile). On the
+  92,383 lots keyed in both, 1,771 carry an improvement value only in NC
+  OneMap and 243 only here. Recheck when either layer is re-ingested.
+
 uncompressed_file_name: "onslow_parcels.geojson"
 
 columns:

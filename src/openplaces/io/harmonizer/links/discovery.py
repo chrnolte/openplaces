@@ -19,6 +19,10 @@ from openplaces.io.harmonizer import (
 from openplaces.io.harmonizer.links.combine import (
     _write_prioritized,
 )
+from openplaces.io.harmonizer.links.own_layer import (
+    VALUES_OUTDATED_KEY,
+    values_outdated,
+)
 from openplaces.recipe import (
     STACKED_UNITS_LAYER_KEY,
     get_supplements_key,
@@ -119,6 +123,9 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     carry it), validated against its roll by
     :func:`~openplaces.recipe.get_supplements_key`, which raises on a
     column either table does not produce.
+
+    A standalone match carries the recipe's ``values_outdated``
+    declaration (:mod:`~openplaces.io.harmonizer.links.own_layer`).
     """
     # Imported at call time on purpose: the supplements tests patch
     # `openplaces.recipe.get_recipe_by_id` with fabricated recipes, and a
@@ -138,6 +145,9 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                 'aggregation_function': recipe.get('aggregation_function'),
                 'supplements': recipe.get('supplements'),
                 'supplements_key': supplements_key,
+                # Read by own_layer_rule: the recipe's own word that
+                # a coarser parcel layer's values are newer.
+                VALUES_OUTDATED_KEY: values_outdated(recipe),
             }
         )
         for layer_spec in recipe.get('additional_layers') or []:

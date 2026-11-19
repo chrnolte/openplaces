@@ -33,6 +33,7 @@ from openplaces.io.harmonizer.links._shared import (
     PARCEL_ID_LOCAL_KEYS,
 )
 from openplaces.io.harmonizer.links.combine import (
+    RowRule,
     _write_prioritized,
 )
 from openplaces.io.harmonizer.links.discovery import (
@@ -40,9 +41,11 @@ from openplaces.io.harmonizer.links.discovery import (
     _discover_link_sources,
     _select_supplements,
 )
+from openplaces.io.harmonizer.links.own_layer import own_layer_rule
 from openplaces.io.harmonizer.links.property_values import (
     PROPERTY_WRITES_KEY,
     note_write,
+    replay_on_held,
     snapshot,
 )
 from openplaces.io.harmonizer.links.roll_values import (
@@ -594,6 +597,16 @@ def _link_auto_discovered(
                 )
 
                 unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
+        # A parcel layer's values stand on the lots it draws; another
+        # parcel layer only fills there (links/own_layer.py). A lossy
+        # key fills everywhere, so a fill_only pass needs no rule.
+        row_rule = (
+            None
+            if fill_only or supplements_only or state.spine is None
+            else own_layer_rule(
+                state.spine, match, matches, spine_source_ids, entity_type
+            )
+        )
         state = link_by_id(
             state,
             recipe_id=match['recipe_id'],
@@ -613,6 +626,7 @@ def _link_auto_discovered(
             # value columns, so the rules find nothing to apply to.
             roll_values=roll_values,
             _protect_own_columns=protect_columns,
+            _row_rule=row_rule,
             _supplement_of=match['supplements'] if keyed else None,
             _unit_lot_pairs=unit_lot_pairs,
             # Only rolls: a transaction table carries tax_year too (the
@@ -739,6 +753,7 @@ def _link_aggregate(
     track_provenance: list[str] | None,
     fill_only: bool,
     protect_own_columns: set[str] | None,
+    row_rule: RowRule | None = None,
     roll_values: dict | None = None,
     property_rows: bool = False,
 ) -> None:
@@ -775,7 +790,10 @@ def _link_aggregate(
     Every cell a write changes is noted (`property_values.note_write`):
     where *property_rows* says the reference's rows are properties, the
     cell is held by a property and `withhold_property_values` can take
-    the write back at the end of the parcel geospine.
+    the write back at the end of the parcel geospine. Any other write
+    is also replayed on what a held cell would return to
+    (`property_values.replay_on_held`), so a parcel table that only
+    fills still decides a cell a property's copy occupied.
     """
     records = state.metadata.get(PROPERTY_WRITES_KEY) or {}
     pairs = [
@@ -829,24 +847,33 @@ def _link_aggregate(
         # needs noting; other writes skip the comparison.
         noted = property_rows or name in records
         before = snapshot(spine, name) if noted else None
-        _write_prioritized(
-            spine,
-            name,
-            current[out_name],
-            # A lossy key must only fill what a precise one left.
-            majority_coverage=float('inf') if fill_only else 0.5,
-            # The recipe's own name, not an upstream sidecar, unlike
-            # the 'attributes' branch. Two reasons, and they agree:
-            # this is the auto-discovered path, so `recipe_id` is
-            # already the county source that supplied the value and
-            # there is nothing more original to reach; and a value
-            # here may be an aggregate over several reference rows,
-            # which can disagree about their own provenance, so one
-            # token per spine row would be a guess.
-            provenance_token=token if out_name in provenance_cols else None,
-        )
+
+        def write(target, name=name, values=current[out_name], out_name=out_name):
+            _write_prioritized(
+                target,
+                name,
+                values,
+                # A lossy key must only fill what a precise one left.
+                majority_coverage=float('inf') if fill_only else 0.5,
+                # The recipe's own name, not an upstream sidecar, unlike
+                # the 'attributes' branch. Two reasons, and they agree:
+                # this is the auto-discovered path, so `recipe_id` is
+                # already the county source that supplied the value
+                # and there is nothing more original to reach; and a
+                # value here may be an aggregate over several reference
+                # rows, which can disagree about their own provenance,
+                # so one token per spine row would be a guess.
+                provenance_token=token if out_name in provenance_cols else None,
+                row_rule=row_rule,
+            )
+
+        write(spine)
         if noted:
             note_write(state, spine, name, before, property_rows)
+            if not property_rows:
+                # A parcel table's value on a cell a property holds
+                # decides what the cell returns to (replay_on_held).
+                replay_on_held(state, name, write)
             records = state.metadata.get(PROPERTY_WRITES_KEY) or {}
     if roll_values and roll_values['not_on_roll'] and written_by_roll is not None:
         blank_names = [
@@ -1083,6 +1110,7 @@ def link_by_id(
     roll_values: dict | None = None,
     layer_columns: dict[str, list[str]] | None = None,
     _protect_own_columns: set[str] | None = None,
+    _row_rule: RowRule | None = None,
     _supplement_of: str | None = None,
     _unit_lot_pairs: pd.DataFrame | None = None,
     _latest_vintage: bool = False,
@@ -1102,6 +1130,14 @@ def link_by_id(
     order, this makes the most admin-specific source the default winner for
     each column, without letting a sparse more-specific source blank out a
     more complete less-specific one.
+
+    In *auto_discover* mode one exception decides before coverage: a
+    lot drawn by a parcel layer keeps that layer's values, and another
+    parcel layer only fills its empty cells, unless the drawing layer's
+    recipe declares ``values_outdated: true``
+    (:mod:`~openplaces.io.harmonizer.links.own_layer`). A roll or a
+    property layer keeps the coverage rule. An empty string counts as
+    missing in every mode.
 
     Parameters
     ----------
@@ -1520,6 +1556,7 @@ def link_by_id(
             track_provenance=track_provenance,
             fill_only=fill_only,
             protect_own_columns=_protect_own_columns,
+            row_rule=_row_rule,
             roll_values=roll_values,
             # A property spine taking its rolls' detail tables states
             # properties about themselves; nothing is copied across.

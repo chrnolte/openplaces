@@ -77,6 +77,20 @@ entity:
     download_url: "https://hub.arcgis.com/api/v3/datasets/4b978f79c0124c7f899768d3eb459cd0_0/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"
 
+# No values_outdated here: the layer is newer than NC OneMap's (see
+# `notes`), so its values stand on the lots it draws.
+notes: >-
+  values_outdated left unset, measured 2026-11-18 against the NC OneMap
+  ingest of 2026-10-26 (statewide file downloaded 2026-02-06,
+  source_date 2025-12-09 for this county) and this layer as downloaded
+  2026-09-21. The layer has no tax-year column. YearBuilt states 2025
+  or later on 1,343 rows against none in NC OneMap, and SalesMonthYear
+  holds 6,381 sales from 2025 on, through mid-2026. On the 78,909 lots
+  keyed in both, improvement sums agree within 1% (median ratio 1.00);
+  3,070 lots carry an improvement value only in NC OneMap and 1,017 only
+  here, the one sign pointing the other way. Recheck when either layer
+  is re-ingested.
+
 uncompressed_file_name: "pitt_parcels.geojson"
 
 columns:

@@ -5,9 +5,11 @@ source supplied.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import geopandas as gpd
 import pandas as pd
-from pandas.api.types import is_datetime64_any_dtype
+from pandas.api.types import is_datetime64_any_dtype, is_object_dtype
 
 
 def _align_for_combine(existing, incoming):
@@ -59,12 +61,62 @@ def _align_for_combine(existing, incoming):
     return existing, incoming
 
 
+class RowRule(NamedTuple):
+    """Rows where a write overwrites or only fills, whatever its coverage.
+
+    Built per reference by
+    :func:`~openplaces.io.harmonizer.links.own_layer.own_layer_rule`.
+    A row in neither mask follows the coverage rule.
+
+    Parameters
+    ----------
+    overwrite : pandas.Series of bool
+        Rows where every value the reference states replaces the cell.
+    fill : pandas.Series of bool
+        Rows where the reference only fills an empty cell.
+    """
+
+    overwrite: pd.Series
+    fill: pd.Series
+
+
+def _blank_as_missing(values: pd.Series) -> pd.Series:
+    """*values* with empty and whitespace-only strings made missing.
+
+    A source that writes an empty string states nothing, but pandas
+    counts it as a value: a statewide layer's empty `use_group`
+    replaced a county's label on every lot it covered (measured
+    2026-11-18 on US-NC-ONS: 92,350 lots). Only text columns are
+    touched; a category column loses only its blank categories.
+    """
+    if isinstance(values.dtype, pd.CategoricalDtype):
+        blank_categories = [
+            c for c in values.cat.categories if isinstance(c, str) and not c.strip()
+        ]
+        if not blank_categories:
+            return values
+        return values.cat.remove_categories(blank_categories)
+    if isinstance(values.dtype, pd.StringDtype):
+        blank = values.str.strip().eq('').fillna(False).astype(bool)
+    elif is_object_dtype(values.dtype):
+        blank = values.map(
+            lambda v: isinstance(v, str) and not v.strip(), na_action='ignore'
+        )
+        blank = blank.fillna(False).astype(bool)
+    else:
+        return values
+    if not blank.any():
+        return values
+    return values.mask(blank)
+
+
 def _write_prioritized(
     spine: gpd.GeoDataFrame,
     name: str,
     new_vals: pd.Series,
     majority_coverage: float = 0.5,
     provenance_token: str | None = None,
+    row_rule: RowRule | None = None,
 ) -> None:
     """Write *new_vals* into ``spine[name]``, applying the recency/coverage rule.
 
@@ -75,8 +127,15 @@ def _write_prioritized(
     column's gaps, so a sparse more-specific source can't blank out a more
     complete less-specific one.
 
+    An empty or whitespace-only string counts as missing on both sides:
+    it never overwrites a value, and a later source may fill it.
+
     Parameters
     ----------
+    row_rule : RowRule, optional
+        Rows that overwrite or only fill whatever the coverage. The
+        coverage is still measured over every row, so the rows outside
+        both masks behave as without a rule.
     provenance_token : str, optional
         When given, also updates the ``{name}_source`` categorical sidecar
         (via :func:`openplaces.io.harmonizer._record_source`) for exactly
@@ -98,6 +157,7 @@ def _write_prioritized(
         else:
             _record_source(spine, name, mask, provenance_token)
 
+    new_vals = _blank_as_missing(new_vals)
     if name not in spine.columns:
         spine[name] = new_vals
         if provenance_token is not None:
@@ -106,16 +166,26 @@ def _write_prioritized(
 
     before = spine[name].copy() if provenance_token is not None else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
-    existing, incoming = _align_for_combine(spine[name], new_vals)
+    existing, incoming = _align_for_combine(_blank_as_missing(spine[name]), new_vals)
     overwrite = coverage >= majority_coverage
-    if overwrite:
-        spine[name] = incoming.combine_first(existing)
+    replaced = incoming.combine_first(existing)
+    filled = existing.combine_first(incoming)
+    if row_rule is None:
+        spine[name] = replaced if overwrite else filled
     else:
-        spine[name] = existing.combine_first(incoming)
+        # Per row: the rule's masks decide, the coverage rule the rest.
+        overwrite = row_rule.overwrite | (overwrite & ~row_rule.fill)
+        spine[name] = replaced.where(overwrite, filled)
 
     if provenance_token is None:
         return
     after = spine[name]
+    if row_rule is not None:
+        # The two cases below, each on the rows written its way.
+        by_overwrite = incoming.notna() & after.notna() & overwrite
+        by_fill = after.notna() & (before.isna() | (before != after)) & ~overwrite
+        _mark(by_overwrite | by_fill)
+        return
     if overwrite:
         # The label names the source the value was taken from, not
         # the first source that happened to state it. On an overwrite
