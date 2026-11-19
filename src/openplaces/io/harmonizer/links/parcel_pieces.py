@@ -791,7 +791,11 @@ def _relabel_moved_rows(flat, cut, moved, spine_id_col, min_fraction, area_min_m
 
 
 def lot_structure_evidence(
-    state: HarmonizeState, lots: pd.DataFrame, reference_id: str, values_recipe: dict
+    state: HarmonizeState,
+    lots: pd.DataFrame,
+    reference_id: str,
+    values_recipe: dict,
+    columns: tuple = (IMPROVEMENT_VALUE_COLUMN, STRUCTURE_FLAG_COLUMN),
 ) -> pd.DataFrame:
     """A lot's improvement value and structure flag, as the parcel spine
     states them, before the parcel geospine exists.
@@ -821,12 +825,14 @@ def lot_structure_evidence(
         The reference recipe the lots came from.
     values_recipe : dict
         The recipe whose passes are run, patched for the unit.
+    columns : tuple of str
+        The lot columns to return (default `improvement_value` and
+        `has_structure`).
 
     Returns
     -------
     DataFrame
-        `improvement_value` and `has_structure` per lot id (missing
-        where no source states one).
+        *columns* per lot id (missing where no source states one).
     """
     resolve, passes = _lot_value_steps(values_recipe)
     keep_columns = list((resolve or {}).get('keep_columns') or [])
@@ -855,7 +861,7 @@ def lot_structure_evidence(
         for step in passes:
             params = {k: v for k, v in step.items() if k not in ('step', 'checkpoint')}
             shim = link_by_id(shim, **params)
-    return shim.spine.reindex(columns=[IMPROVEMENT_VALUE_COLUMN, STRUCTURE_FLAG_COLUMN])
+    return shim.spine.reindex(columns=list(columns))
 
 
 def _load_points(specs, admin_id) -> list[gpd.GeoSeries]:

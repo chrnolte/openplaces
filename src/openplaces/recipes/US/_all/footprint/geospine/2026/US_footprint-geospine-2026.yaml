@@ -120,9 +120,17 @@ pipeline:
   - step: infer_spine_additions
     entity_type: parcel
     lot_values_from: US_parcel-geospine-2026
+    # Land uses whose assessed improvements are not a building (paving,
+    # docks, landscaping): measured on the 2026-11-18 fallback map, open
+    # space (US-TX-JEF), boat slips (US-NC-NHA) and parking lots
+    # (US-NC-DUR) came out as outlines on the value gate alone.
+    exclude_use_pattern: 'open.?space|\bslips?\b|parking'
     thresholds:
       n_per_group_min: 0.2
       value_per_ha_quantile: 0.05
+      # A lot larger than nearly every lot that carries a real footprint
+      # is a site, not a building's shape (maintainer, 2026-11-18).
+      lot_area_quantile_max: 0.95
 
   - step: resolve_overlaps
 

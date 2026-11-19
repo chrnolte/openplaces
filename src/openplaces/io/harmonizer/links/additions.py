@@ -21,6 +21,9 @@ from openplaces.recipe import (
     source_id_from_recipe_id,
 )
 
+#: In-memory column holding a lot's replayed land use (never written).
+LOT_USE_COLUMN = '_use_group_lot'
+
 
 def _positive_value_density(values: pd.Series) -> pd.Series:
     """Coerce a value-per-hectare column to numeric, keeping only real ones.
@@ -73,11 +76,20 @@ def _values_from_lot_recipe(
     values_recipe, _ = apply_recipe_patches(
         get_recipe_by_id(lot_values_from), state.admin_id
     )
-    evidence = lot_structure_evidence(state, raw, recipe_id, values_recipe)
+    evidence = lot_structure_evidence(
+        state,
+        raw,
+        recipe_id,
+        values_recipe,
+        columns=(IMPROVEMENT_VALUE_COLUMN, 'use_group'),
+    )
     replayed = pd.to_numeric(
         evidence[IMPROVEMENT_VALUE_COLUMN].reindex(ref_polys.index), errors='coerce'
     )
     ref_polys = ref_polys.copy()
+    # The lot's land use as the parcel spine will state it, for
+    # exclude_use_pattern: many cadastral layers carry none of their own.
+    ref_polys[LOT_USE_COLUMN] = evidence['use_group'].reindex(ref_polys.index)
     own = (
         pd.to_numeric(ref_polys['improvement_value'], errors='coerce')
         if 'improvement_value' in ref_polys.columns
@@ -104,6 +116,52 @@ def _values_from_lot_recipe(
     return ref_polys
 
 
+def _excluded_lots(
+    ref_polys: pd.DataFrame,
+    candidates: pd.Index,
+    group_col: str | None,
+    with_footprint: pd.Index,
+    area_quantile_max: float | None,
+    use_pattern: str | None,
+    verbose: bool,
+) -> pd.Series:
+    """Candidates never made an outline: a land use that improves land
+    without a building (*use_pattern*), or a lot larger than the
+    *area_quantile_max* quantile of the lots that carry a real footprint.
+    """
+    out = pd.Series(False, index=candidates)
+    if use_pattern:
+        text = pd.Series('', index=candidates, dtype='string')
+        for col in (group_col, LOT_USE_COLUMN):
+            if col and col in ref_polys.columns:
+                text = (
+                    text
+                    + ' '
+                    + ref_polys[col].reindex(candidates).astype('string').fillna('')
+                )
+        by_use = text.str.contains(use_pattern, case=False, regex=True).fillna(False)
+        out |= by_use.astype(bool)
+        if verbose:
+            print(f'  Infer: {int(by_use.sum()):,d} candidates excluded by land use')
+    area_col = next(
+        (c for c in ('area_ha', 'area_ha_geometry') if c in ref_polys.columns), None
+    )
+    if area_quantile_max is not None and area_col is not None:
+        area = pd.to_numeric(ref_polys[area_col], errors='coerce')
+        cap = area[ref_polys.index.isin(with_footprint)].quantile(
+            float(area_quantile_max)
+        )
+        if pd.notna(cap):
+            by_area = area.reindex(candidates).gt(cap).fillna(False)
+            out |= by_area
+            if verbose:
+                print(
+                    f'  Infer: {int(by_area.sum()):,d} candidates over '
+                    f'{cap:,.2f} ha excluded'
+                )
+    return out
+
+
 # The lot values are replayed from the configuration of the recipe
 # lot_values_from names, never read from its output (that recipe runs
 # later); they are that recipe's column.
@@ -119,6 +177,7 @@ def infer_spine_additions(
     recipe_id: str | None = None,
     thresholds: dict | None = None,
     lot_values_from: str | None = None,
+    exclude_use_pattern: str | None = None,
 ) -> HarmonizeState:
     """Add spine entries inferred from a reference crosswalk.
 
@@ -152,6 +211,20 @@ def infer_spine_additions(
         reference carries no group column.
         ``value_per_ha_quantile`` (float, default 0.05) — quantile of
         improvement_value_per_ha used as the lower inference bound.
+        ``group_gate_value_per_m2`` (float, optional) - a candidate with at
+        least this improvement value per square meter passes the group
+        gate whatever its group; for a county whose use codes lag new
+        construction (set in its patch recipe).
+        ``lot_area_quantile_max`` (float, optional) - a candidate larger
+        than this quantile of the lot areas that carry a real footprint
+        is not made one outline: on a lot that large the parcel's shape
+        says nothing about the building's.
+    exclude_use_pattern : str, optional
+        Regular expression, case-insensitive, over the lot's land use (the
+        reference's group and the one the parcel spine states): a match
+        is never made an outline. For land uses that carry assessed
+        improvements without a building, such as open space, boat slips
+        and parking.
     lot_values_from : str, optional
         The recipe whose `link_by_id` passes give a lot its improvement
         value (`US_parcel-geospine-2026`). When set, both gates read the
@@ -378,7 +451,30 @@ def infer_spine_additions(
     # spells the absence.
     val_col_ok = candidate_per_ha.notna() & candidate_per_ha.gt(threshold)
 
-    mask_inferred = n_col_ok & val_col_ok
+    # A lot whose use code lags its construction (a county that codes a
+    # new subdivision's lots "VAC RES" until reappraisal) sits in a group
+    # with few footprints and fails the group gate though the roll values
+    # a house on it. Enough improvement per square meter passes the group
+    # gate instead; the value gate still applies. Off unless a recipe
+    # sets it, because a group's rate is what holds back vacant land in
+    # counties whose codes are current.
+    bypass = thresholds.get('group_gate_value_per_m2')
+    if bypass is not None:
+        n_col_ok = n_col_ok | candidate_per_ha.div(10_000).ge(float(bypass)).fillna(
+            False
+        )
+
+    exclude = _excluded_lots(
+        ref_polys,
+        ref_candidates.index,
+        group_col,
+        parcel_ids_with_footprint,
+        thresholds.get('lot_area_quantile_max'),
+        exclude_use_pattern,
+        state.verbose,
+    )
+
+    mask_inferred = n_col_ok & val_col_ok & ~exclude
     ref_inferred = ref_candidates[mask_inferred]
 
     footprints_from_ref = add_openlocationcode_index(

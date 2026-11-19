@@ -1,0 +1,37 @@
+# Patch: Durham's new houses on lots still coded vacant get a fallback
+# outline.
+#
+# Durham's use codes lag construction: a new subdivision's lots stay
+# "VAC RES/ LOT-SML TRA", "VAC RES/ DEVELOPER" and the like after the
+# roll values the house. Those groups carry few footprints (0.09 to
+# 0.16 per lot), so infer_spine_additions' group gate (0.2) refused
+# the lot even where no footprint layer has the house yet. On NC
+# OneMap's Durham layer of 2026-05-13, 752 of 918 such lots were still
+# coded vacant, so a fresher layer alone does not fix it.
+#
+# group_gate_value_per_m2 lets a lot through the group gate on its
+# improvement value per square meter; the value gate and the national
+# exclusions still apply. 200 per m2 is under the 1st percentile of
+# Durham lots whose building a real footprint covers (370) and above
+# the parking lot the maintainer found among the refused lots (9 per
+# m2); parking is also excluded by land use nationally.
+# plans/buildings-from-parcel-pieces.md, sections 6.10 and 6.11.
+
+admin_id: US-NC-DUR
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - set: infer_spine_additions
+    params:
+      thresholds:
+        n_per_group_min: 0.2
+        value_per_ha_quantile: 0.05
+        lot_area_quantile_max: 0.95
+        group_gate_value_per_m2: 200

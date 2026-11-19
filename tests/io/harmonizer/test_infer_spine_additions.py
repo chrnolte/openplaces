@@ -158,18 +158,24 @@ def test_zero_area_parcel_is_not_inferred_from_an_infinite_density():
     assert _infer(ref, linked, with_use_group=False) == {'p21'}
 
 
-def _roll_values(monkeypatch, values):
-    """Make the replayed parcel geospine passes return *values* per lot."""
+def _roll_values(monkeypatch, values, uses=None):
+    """Make the replayed parcel geospine passes return *values* (and
+    *uses*, a land use per lot) per lot."""
     import openplaces.io.harmonizer.links.parcel_pieces as pieces
     import openplaces.io.harmonizer.links.spatial as spatial
 
     def rows(recipe_id, admin_id, kept_by=None, verbose=False):
         return pd.DataFrame({'geo_id': list(values)}), None
 
-    def evidence(state, lots, reference_id, values_recipe):
-        return pd.DataFrame(
-            {'improvement_value': pd.Series(values), 'has_structure': np.nan}
+    def evidence(state, lots, reference_id, values_recipe, columns=()):
+        frame = pd.DataFrame(
+            {
+                'improvement_value': pd.Series(values),
+                'has_structure': np.nan,
+                'use_group': pd.Series(uses or {}, dtype='object'),
+            }
         ).rename_axis('parcel_id')
+        return frame.reindex(columns=list(columns))
 
     monkeypatch.setattr(spatial, 'reference_rows', rows)
     monkeypatch.setattr(pieces, 'lot_structure_evidence', evidence)
@@ -225,3 +231,56 @@ def test_a_lot_the_replay_values_lower_keeps_the_references(
         'p20',
         'p21',
     }
+
+
+def _inferred(state):
+    inferred = state.metadata.get(f'inferred_from_{PARCEL}')
+    return set() if inferred is None else set(inferred['parcel_id'])
+
+
+@pytest.mark.parametrize('bypass', [False, True])
+def test_a_valued_lot_in_a_group_without_footprints_passes_on_value_per_m2(bypass):
+    # 'VAC' has no linked lot, so its footprint rate is 0 and the group
+    # gate refuses both candidates; with the bypass set between their
+    # values per m2, the denser one passes and the other stays out.
+    ref, linked = _parcels([150_000, 120_000], candidate_groups=['VAC', 'VAC'])
+    per_m2 = ref['improvement_value_per_ha'] / 10_000
+    thresholds = {'n_per_group_min': 0.2, 'value_per_ha_quantile': 0.05}
+    if bypass:
+        thresholds['group_gate_value_per_m2'] = (per_m2['p20'] + per_m2['p21']) / 2
+    state = infer_spine_additions(
+        _state(ref, linked, with_use_group=True),
+        entity_type='parcel',
+        thresholds=thresholds,
+    )
+    assert _inferred(state) == ({'p20'} if bypass else set())
+
+
+def test_a_land_use_matching_the_pattern_is_never_an_outline(monkeypatch):
+    # The cadastral layer states no land use; the parcel spine's replay
+    # names one candidate parking and another boat slips.
+    ref, linked, roll = _cadastre_without_values([150_000, 150_000, 150_000])
+    _roll_values(
+        monkeypatch,
+        roll.to_dict(),
+        uses={'p20': 'COM PARKING LOT', 'p21': 'Slip Only', 'p22': 'RES'},
+    )
+    state = infer_spine_additions(
+        _state(ref, linked, with_use_group=False),
+        entity_type='parcel',
+        lot_values_from='US_parcel-geospine-2026',
+        exclude_use_pattern=r'open.?space|\bslips?\b|parking',
+    )
+    assert _inferred(state) == {'p22'}
+
+
+def test_a_lot_larger_than_the_footprint_lots_is_not_one_outline():
+    ref, linked = _parcels([150_000, 150_000])
+    ref['area_ha'] = 1.0
+    ref.loc['p21', 'area_ha'] = 5.0
+    state = infer_spine_additions(
+        _state(ref, linked, with_use_group=False),
+        entity_type='parcel',
+        thresholds={'lot_area_quantile_max': 0.95},
+    )
+    assert _inferred(state) == {'p20'}
