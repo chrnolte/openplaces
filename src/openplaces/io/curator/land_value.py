@@ -808,6 +808,7 @@ def _write_outputs(
     output_improvement_value: str,
     improvement_from_total: bool = False,
     open_estimate: bool = False,
+    stated_zero_column: str | None = None,
 ) -> pd.Series:
     """Write the two coalesced outputs and their provenance; return the
     mask of rows this step estimated. With *open_estimate*, every
@@ -853,6 +854,16 @@ def _write_outputs(
         inputs.total_value - land_value.fillna(0) - inputs.other_value
     ).where(inputs.recorded_total)
     total_agrees = ~inputs.recorded_total | (beyond_land <= _ZERO_IMPROVEMENT_TOLERANCE)
+    # A 0 the account division put on a lot, every account reaching it
+    # having placed its stated improvement on its other lots, is the
+    # roll's statement for this lot (divide_account_values,
+    # on_other_lots). The total test cannot confirm it where the total
+    # and the land are not one statement: on a total-only roll the lot
+    # holds the roll's total by area beside the parcel layer's land.
+    # Measured 2026-11-17 on US-TX-HRD: 518 buildings' 0 went missing without it.
+    if stated_zero_column and stated_zero_column in curated.columns:
+        placed = curated[stated_zero_column].astype('boolean').fillna(False)
+        total_agrees = total_agrees | placed.astype(bool)
     stated_zero = zero & (land_value > 0) & total_agrees
     # Where the total exceeds land and other value, the remainder may be
     # the structure's value: the same arithmetic as recorded land
@@ -972,6 +983,7 @@ def _impute_frame(
     output_land_value,
     output_improvement_value,
     improvement_from_total,
+    stated_zero_column,
     rate_exponent,
     floor_area_columns,
     density_bins,
@@ -1097,6 +1109,7 @@ def _impute_frame(
         output_improvement_value=output_improvement_value,
         improvement_from_total=improvement_from_total,
         open_estimate=open_estimate,
+        stated_zero_column=stated_zero_column,
     )
 
     return has_estimate
@@ -1160,6 +1173,7 @@ def _impute_open_only(state: CurateState, curated, columns, settings) -> pd.Seri
         '{street_column}',
         '{city_column}',
         '{floor_area_columns}',
+        '{stated_zero_column}',
     ],
     writes=[
         '{output_land_value}',
@@ -1205,6 +1219,7 @@ def impute_land_value(
     choice_min_donors: int = 100,
     open_only: bool = False,
     improvement_from_total: bool = False,
+    stated_zero_column: str | None = None,
 ) -> CurateState:
     """Estimate a land value for parcels the source data left at 0/NaN.
 
@@ -1395,6 +1410,12 @@ def impute_land_value(
         Measured 2026-10-31 on US: 29,645 of 47,255 remainders under 20%.
         Set it in a county's patch recipe once that county's remainder
         is shown to be the structure.
+    stated_zero_column : str, optional
+        Boolean column marking lots whose 0 improvement is where the
+        roll's accounts put it, all of their stated improvement on
+        their other lots (`divide_account_values`' *on_other_lots*). On
+        such a lot a 0 stays a stated 0 whatever the total test says,
+        provided land is valued (default none: the total test alone).
     estimator : {'rate', 'land_share', 'hybrid'}, optional
         How a land value is estimated (default ``'rate'``, everything
         described above). ``'hybrid'`` keeps the rate and switches a
@@ -1616,6 +1637,7 @@ def impute_land_value(
         output_land_value=output_land_value,
         output_improvement_value=output_improvement_value,
         improvement_from_total=improvement_from_total,
+        stated_zero_column=stated_zero_column,
         rate_exponent=rate_exponent,
         floor_area_columns=floor_area_columns,
         density_bins=density_bins,

@@ -381,6 +381,35 @@ def test_a_stated_zero_stays_zero_and_missing_stays_missing(run):
     assert out['other_value'].isna().all()
 
 
+def test_a_lot_whose_improvement_went_to_the_other_lot_is_marked(run):
+    # V3 deviation 5: the account's improvement stands on a1, so a2's
+    # 0 is where the roll put it, and the step says so.
+    accounts = _accounts({'A': {'land_value': 100.0, 'improvement_value': 300.0}})
+    links = _links(
+        [
+            ('A', 'a1', 0.5, 'parcel_id_local', 'roll'),
+            ('A', 'a2', 0.5, 'parcel_id_local', 'roll'),
+        ]
+    )
+    lots = _lots({'a1': (0.1, {}), 'a2': (0.1, {}), 'free': (0.1, {})})
+    buildings = _buildings([('b1', 100.0, 1.0, 'obm')])
+    overlaps = _overlaps([('b1', 'a1', 100.0)])
+    out = run(
+        accounts,
+        links,
+        lots,
+        overlaps,
+        buildings,
+        on_other_lots={'improvement_value': 'improvement_value_on_other_lots'},
+    )
+    assert out.loc['a2', 'improvement_value'] == 0.0
+    assert out['improvement_value_on_other_lots'].to_dict() == {
+        'a1': False,
+        'a2': True,
+        'free': False,
+    }
+
+
 def test_a_total_only_account_takes_the_layers_repeated_parts_once(run):
     # Ruling 5: the roll states a total only; the statewide layer
     # repeats the account's land and improvement on each of its two

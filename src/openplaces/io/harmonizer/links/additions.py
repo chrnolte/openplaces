@@ -116,6 +116,193 @@ def _values_from_lot_recipe(
     return ref_polys
 
 
+#: Two polygons' improvement values within this many dollars read as one
+#: value the layer repeats (the parcel curate's `divide_account_values`
+#: uses the same tolerance for the same test).
+REPEATED_VALUE_TOLERANCE = 1.0
+
+
+#: The keys a lot's improvement value can reach it by: the parcel
+#: geospine's link passes join on the standardized key (passes 1 and 4,
+#: the rolls) and on the two punctuation-free keys (passes 2 and 3).
+ACCOUNT_KEY_COLUMNS = ('parcel_id_local', 'parcel_id_alnum', 'parcel_id_alnum_pin')
+
+
+def account_value_density(
+    ref_polys: pd.DataFrame,
+    key_columns: tuple[str, ...] = ACCOUNT_KEY_COLUMNS,
+    value_column: str = 'improvement_value',
+    tolerance: float = REPEATED_VALUE_TOLERANCE,
+) -> pd.Series:
+    """Improvement value per hectare, a repeated account value counted once.
+
+    One roll account is often several polygons, and its whole
+    improvement then sits on each: a statewide layer joined to its roll
+    by the account key states it on every polygon (Florida's, Texas's),
+    and the parcel geospine's link passes, which `lot_values_from`
+    replays, write a roll account's value onto every lot naming its
+    key. Per polygon, that value over the polygon's own area reads as a
+    dense improvement on every lot of the account, and each lot without
+    an outline would get a stand-in building. Where polygons sharing a
+    key all state the same positive value (within *tolerance*), the
+    value is the account's, and its density is that value over the
+    summed area of those polygons: the improvement as it would sit on
+    the account's land if spread over it. Each key a pass can join on
+    is tried (*key_columns*, those present), and a polygon takes the
+    largest such group it belongs to, so an account counts once over
+    its lots' combined area whichever pass reached them. A polygon of
+    an account drawn once keeps its own value over its own area, so a
+    single-lot account that states an improvement keeps its stand-in.
+
+    Why not a dominant lot or a share by area: this is the gate that
+    asks whether a lot shows a building's value at all, before any
+    building exists, and an account's improvement stands somewhere on
+    its land. Divided over all of it, a plat of hundreds of forest lots
+    sharing one timber account reads as the forest it is. A polygon
+    whose layer states no value is not given one (design limit L25):
+    the sum runs over the polygons stating the repeated value only.
+    Measured 2026-11-18 on US-FL-SJ: 4,298 of 28,141 stand-ins go, none single-lot.
+    Measured 2026-11-18 on US-TX-BRA: 3,782 of 30,220 stand-ins go, none single-lot.
+
+    Parameters
+    ----------
+    ref_polys : pandas.DataFrame
+        The prepared parcel reference, one row per polygon, with an
+        area column (`area_ha` or `area_ha_geometry`).
+    key_columns : tuple of str
+        The account keys to group by; a punctuation-free key absent
+        from *ref_polys* is derived as the link pass derives it.
+    value_column : str
+        The improvement value.
+    tolerance : float
+        Largest spread of the values on one key that still reads as one
+        repeated value.
+
+    Returns
+    -------
+    pandas.Series
+        Value per hectare per polygon, aligned to *ref_polys*: the
+        reference's own `improvement_value_per_ha` where the value or
+        the area is not there to divide.
+    """
+    density = (
+        pd.to_numeric(ref_polys['improvement_value_per_ha'], errors='coerce')
+        if 'improvement_value_per_ha' in ref_polys.columns
+        else pd.Series(np.nan, index=ref_polys.index)
+    )
+    area = _area_ha(ref_polys)
+    if area is None or value_column not in ref_polys.columns:
+        return density
+    value = pd.to_numeric(ref_polys[value_column], errors='coerce')
+    if 'improvement_value_per_ha' not in ref_polys.columns:
+        density = value / area
+    divisor = area.copy()
+    for key, repeated in _repeated_groups(
+        ref_polys, key_columns, value_column, tolerance
+    ):
+        summed = area.where(repeated).groupby(key.where(repeated)).transform('sum')
+        divisor = divisor.where(~repeated, np.fmax(divisor, summed))
+    counted_once = divisor.gt(area)
+    return density.where(~counted_once, value / divisor)
+
+
+def _area_ha(ref_polys: pd.DataFrame) -> pd.Series | None:
+    """A polygon's area in hectares, or None where no area column exists."""
+    column = next(
+        (c for c in ('area_ha', 'area_ha_geometry') if c in ref_polys.columns), None
+    )
+    if column is None:
+        return None
+    return pd.to_numeric(ref_polys[column], errors='coerce')
+
+
+def _repeated_groups(
+    ref_polys: pd.DataFrame,
+    key_columns: tuple[str, ...],
+    value_column: str,
+    tolerance: float,
+):
+    """Per account key, the key and the polygons repeating one value on it.
+
+    Yields `(key, repeated)` for each of *key_columns* the reference
+    carries (a punctuation-free key is derived as `link_by_id` derives
+    it): *repeated* is True on a polygon whose key 2 or more polygons
+    share, all stating the same positive value within *tolerance*. That
+    is one account's value written on each of its lots, which is how
+    `account_value_density` and the rule on accounts with a drawn
+    outline (`beside_drawn_account`) read an account.
+    """
+    from openplaces.geo.ids import PARCEL_ID_ALNUM_KEYS, add_parcel_id_alnum
+    from openplaces.io.harmonizer.links.by_id import _placeholder_key_mask
+
+    area = _area_ha(ref_polys)
+    if area is None or value_column not in ref_polys.columns:
+        return
+    value = pd.to_numeric(ref_polys[value_column], errors='coerce')
+    for key_column in key_columns:
+        if key_column in ref_polys.columns:
+            key = ref_polys[key_column]
+        elif key_column in PARCEL_ID_ALNUM_KEYS:
+            # Derived as link_by_id derives it; a reference without the
+            # id columns has no such key.
+            try:
+                key = add_parcel_id_alnum(ref_polys.copy(), key=key_column)[key_column]
+            except (KeyError, ValueError, TypeError):
+                continue
+        else:
+            continue
+        key = key.astype('string')
+        stating = value.gt(0) & ~_placeholder_key_mask(key) & area.gt(0)
+        grouped = value.where(stating).groupby(key.where(stating))
+        n = grouped.transform('count')
+        spread = grouped.transform('max') - grouped.transform('min')
+        repeated = (stating & n.ge(2) & spread.le(tolerance)).fillna(False)
+        if repeated.any():
+            yield key, repeated.astype(bool)
+
+
+def beside_drawn_account(
+    ref_polys: pd.DataFrame,
+    with_footprint: pd.Index,
+    key_columns: tuple[str, ...] = ACCOUNT_KEY_COLUMNS,
+    value_column: str = 'improvement_value',
+    tolerance: float = REPEATED_VALUE_TOLERANCE,
+) -> pd.Series:
+    """True on a polygon of an account that has a drawn outline elsewhere.
+
+    An account is read as `account_value_density` reads it: polygons
+    sharing an account key and repeating one value. Where any polygon
+    of such an account carries a drawn footprint, the account's
+    building is drawn, and a stand-in on its other polygons would be a
+    second building made from the same value. The maintainer's labels
+    of 2026-11-18 read five of seven such stand-ins as no building.
+    Measured 2026-11-18 on US-TX-BRA: 12,786 stand-ins on 8,117 such accounts.
+
+    Parameters
+    ----------
+    ref_polys : pandas.DataFrame
+        The prepared parcel reference, one row per polygon.
+    with_footprint : pandas.Index
+        Polygon ids that carry a drawn footprint.
+    key_columns, value_column, tolerance
+        As in `account_value_density`.
+
+    Returns
+    -------
+    pandas.Series
+        Boolean, aligned to *ref_polys*.
+    """
+    drawn = pd.Series(ref_polys.index.isin(with_footprint), index=ref_polys.index)
+    beside = pd.Series(False, index=ref_polys.index)
+    for key, repeated in _repeated_groups(
+        ref_polys, key_columns, value_column, tolerance
+    ):
+        group = key.where(repeated)
+        has_drawn = (drawn & repeated).groupby(group).transform('any')
+        beside |= (repeated & has_drawn.reindex(ref_polys.index)).fillna(False)
+    return beside & ~drawn
+
+
 def _excluded_lots(
     ref_polys: pd.DataFrame,
     candidates: pd.Index,
@@ -178,6 +365,7 @@ def infer_spine_additions(
     thresholds: dict | None = None,
     lot_values_from: str | None = None,
     exclude_use_pattern: str | None = None,
+    skip_beside_drawn_account: bool = True,
 ) -> HarmonizeState:
     """Add spine entries inferred from a reference crosswalk.
 
@@ -189,6 +377,10 @@ def infer_spine_additions(
     hectare, above half its land-use group's *value_per_ha_quantile* and
     never below the reference-wide floor at that same quantile (measured
     only over parcels that do carry a real footprint and a positive value).
+    A value the layer repeats on every polygon of one account counts once
+    over the account's summed area (`account_value_density`), so a plat
+    of lots sharing one account's improvement is not read as a building
+    on each lot.
     A reference with no land-use group column at all is held to the
     reference-wide floor alone, and one where no footprint-carrying parcel
     reports a positive value is skipped with a warning rather than inferred
@@ -230,6 +422,13 @@ def infer_spine_additions(
         value (`US_parcel-geospine-2026`). When set, both gates read the
         larger of the reference layer's own value, which a cadastral
         layer often lacks, and the one the parcel spine will state.
+    skip_beside_drawn_account : bool, optional
+        Make no outline on a polygon of an account that has a drawn
+        footprint on another of its polygons (`beside_drawn_account`;
+        default True). A condominium cluster outline does not count as
+        the account's drawn footprint. False keeps the value gates alone. An account
+        with no drawn footprint keeps one outline per polygon that
+        passes the gates, each later valued with its own lot's share.
     """
     if state.spine is None:
         return state
@@ -434,8 +633,12 @@ def infer_spine_additions(
     # unseen group, or one whose linked parcels all report 0) falls back to
     # the floor rather than to no gate -- note clip(lower=NaN) is a silent
     # no-op in pandas, so that NaN has to be filled explicitly.
+    # The candidate's own density, with an account value its layer
+    # repeats on several polygons counted once over the account's land
+    # (account_value_density). The threshold above stays calibrated on
+    # each polygon's stated density, as before.
     candidate_per_ha = _positive_value_density(
-        ref_candidates['improvement_value_per_ha']
+        account_value_density(ref_polys).reindex(ref_candidates.index)
     )
     if imp_val_q_col in ref_candidates.columns:
         threshold = (
@@ -473,6 +676,41 @@ def infer_spine_additions(
         exclude_use_pattern,
         state.verbose,
     )
+
+    if skip_beside_drawn_account:
+        # A condominium cluster outline is not the account's drawn
+        # building here: it carries no overlap area of its own in the
+        # building overlay, so the parcel curate's divide_account_values
+        # cannot weigh the account's lots by it and divides by lot area,
+        # where a stand-in is what receives a lot's share.
+        # Measured 2026-11-18 on US-TX-BRA: 1,233 of 1,354 valued lots kept.
+        from openplaces.io.harmonizer.links.condo_clusters import (
+            CLUSTER_SOURCE_PREFIX,
+        )
+
+        source = (
+            state.spine['geometry_source']
+            if ('geometry_source' in state.spine.columns)
+            else pd.Series(pd.NA, index=state.spine.index)
+        )
+        cluster_ids = set(
+            state.spine.index[
+                source.astype('string').str.startswith(CLUSTER_SOURCE_PREFIX, na=False)
+            ]
+        )
+        pairs = crosswalk.index.to_frame(index=False)
+        drawn_lots = pd.Index(
+            pairs.loc[~pairs.iloc[:, 0].isin(cluster_ids), 'parcel_id'].unique()
+        )
+        beside = beside_drawn_account(ref_polys, drawn_lots).reindex(
+            ref_candidates.index, fill_value=False
+        )
+        if state.verbose:
+            print(
+                f'  Infer: {int((beside & n_col_ok & val_col_ok).sum()):,d} '
+                'candidates of accounts drawn on another lot left out'
+            )
+        exclude = exclude | beside
 
     mask_inferred = n_col_ok & val_col_ok & ~exclude
     ref_inferred = ref_candidates[mask_inferred]

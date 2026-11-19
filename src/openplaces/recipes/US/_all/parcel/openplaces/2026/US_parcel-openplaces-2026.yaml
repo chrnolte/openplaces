@@ -77,8 +77,15 @@ pipeline:
     # its parcel layer (MassGIS L3_ASSESS) on the state-wide one.
     key: [parcel_id_local, parcel_id_admin2]
     recover: [improvement_value]
-    prefer: [n_stories]
+    # building_style (prefer, distinct): a lot's style is every style
+    # its properties state, once each. The parcel geospine no longer
+    # copies a roll's or a property layer's style onto the lot
+    # (withhold_property_values, 2026-11-18); prefer makes a geospine
+    # written before that curate the same, and a parcel layer's own
+    # style stays where no property states one.
+    prefer: [n_stories, building_style]
     columns:
+      building_style: distinct
       year_built: min
       living_area_sqft: sum
       gross_floor_area_sqft: sum
@@ -152,6 +159,13 @@ pipeline:
     layer_columns: [land_value, improvement_value]
     min_piece_m2: 10
     cluster_sources: [condo_cluster]
+    # A lot whose 0 improvement is where its accounts put it (all of a
+    # stated improvement on their other lots) is marked, so that
+    # impute_land_value keeps that 0 as a stated 0 below. On a
+    # total-only roll its total (the roll's, by area) and its land (the
+    # layer's) cannot confirm it.
+    on_other_lots:
+      improvement_value: improvement_value_on_other_lots
     # Same lanes as decide_stories in US_building-openplaces-2026.
     stories:
       floor_height_m: 3.5
@@ -852,6 +866,10 @@ pipeline:
     # exponent alone only in Florida. Correcting the functional form
     # does the work the per-unit choice was reaching for.
     # See plans/structure-value-per-area-outliers.md, "Layers 1 and 2".
+    # A 0 the account division placed (divide_account_values above) is
+    # a stated 0 whatever the total test says
+    # (plans/account-values-one-deciding-step.md, V3 deviation 5).
+    stated_zero_column: improvement_value_on_other_lots
 
   - step: cast_categoricals
 
@@ -887,6 +905,12 @@ pipeline:
       - footprint_area_m2_dominant
       - footprint_area_m2_primary
       - land_use_vacancy_score
+      # The geospine's lot dwelling count before a roll's count left
+      # the lot, kept for the parcel spine's estimate_property_counts
+      # only; divide_account_values decides n_dwellings.
+      - n_dwellings_preliminary
+      # Read by impute_land_value only (a stated 0 the division placed).
+      - improvement_value_on_other_lots
 
 
 share:

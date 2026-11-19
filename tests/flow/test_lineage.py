@@ -140,6 +140,28 @@ def test_one_step_decides_the_account_values_on_a_lot():
         assert deciders == ['divide_account_values'], column
 
 
+def test_the_parcel_geospine_takes_property_values_back_last():
+    # plans/account-values-one-deciding-step.md, V4: the link passes
+    # copy a roll's values in memory, and withhold_property_values,
+    # the geospine's last writer of them, returns each lot to the
+    # parcel layer's own statement. It decides nothing.
+    geospine_id = 'US_parcel-geospine-2026'
+    geospine = [use for use in lineage.all_steps() if use.recipe_id == geospine_id]
+    for column in (
+        'land_value',
+        'improvement_value',
+        'total_value',
+        'n_dwellings',
+        'tax_year',
+        'building_style',
+    ):
+        found = lineage.writers(column, geospine)
+        assert found[-1].step == 'withhold_property_values', column
+        assert column not in found[-1].decides
+    last = [use for use in geospine if use.step == 'withhold_property_values']
+    assert 'n_dwellings_preliminary' in last[0].writes
+
+
 def test_the_value_curates_add_no_undeclared_step_unseen():
     # Lineage cannot see what an undeclared step writes, so a new step
     # in the two curates that decide structure_value fails here until

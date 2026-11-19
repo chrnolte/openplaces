@@ -40,6 +40,11 @@ from openplaces.io.harmonizer.links.discovery import (
     _discover_link_sources,
     _select_supplements,
 )
+from openplaces.io.harmonizer.links.property_values import (
+    PROPERTY_WRITES_KEY,
+    note_write,
+    snapshot,
+)
 from openplaces.io.harmonizer.links.roll_values import (
     apply_roll_values,
     blank_values_not_on_roll,
@@ -614,6 +619,9 @@ def _link_auto_discovered(
             # SDF's assessment year), and every one of its years holds
             # different sales.
             _latest_vintage=entity_type == 'property',
+            # Rows that are properties: a roll, or a property layer
+            # bundled in a parcel recipe (withhold_property_values).
+            _property_rows=entity_type == 'property' or match['layer'] == 'property',
         )
         state = _apply_remap_csvs(state, match['recipe_id'])
     return state
@@ -732,6 +740,7 @@ def _link_aggregate(
     fill_only: bool,
     protect_own_columns: set[str] | None,
     roll_values: dict | None = None,
+    property_rows: bool = False,
 ) -> None:
     """`link_by_id` mode 'aggregate': a 1:many reference reduced per key
     by each column's registry rule, plus a per-key record count.
@@ -762,7 +771,13 @@ def _link_aggregate(
     column only where the roll wrote a value, the roll's prior-year
     columns where it states no current value, and, when asked, a
     coarser source's values emptied on rows the roll does not carry.
+
+    Every cell a write changes is noted (`property_values.note_write`):
+    where *property_rows* says the reference's rows are properties, the
+    cell is held by a property and `withhold_property_values` can take
+    the write back at the end of the parcel geospine.
     """
+    records = state.metadata.get(PROPERTY_WRITES_KEY) or {}
     pairs = [
         (c, o)
         for c, o in _columns_as_pairs(columns)
@@ -810,6 +825,10 @@ def _link_aggregate(
         written_by_roll = apply_roll_values(roll_values, current, prior)
     for _col, out_name in pairs:
         name = f'{out_name}{suffix}' if suffix else out_name
+        # Only a property's write, or a later write to a cell one holds,
+        # needs noting; other writes skip the comparison.
+        noted = property_rows or name in records
+        before = snapshot(spine, name) if noted else None
         _write_prioritized(
             spine,
             name,
@@ -826,20 +845,29 @@ def _link_aggregate(
             # token per spine row would be a guess.
             provenance_token=token if out_name in provenance_cols else None,
         )
+        if noted:
+            note_write(state, spine, name, before, property_rows)
+            records = state.metadata.get(PROPERTY_WRITES_KEY) or {}
     if roll_values and roll_values['not_on_roll'] and written_by_roll is not None:
+        blank_names = [
+            f'{v}{suffix}' if suffix else v
+            for v in roll_values['values']
+            if v in current
+        ]
+        blank_before = {n: snapshot(spine, n) for n in blank_names if n in records}
         blank_values_not_on_roll(
             state,
             spine,
             skey,
             rkey,
             recipe_id=recipe_id,
-            names=[
-                f'{v}{suffix}' if suffix else v
-                for v in roll_values['values']
-                if v in current
-            ],
+            names=blank_names,
             min_coverage=roll_values['min_coverage'],
         )
+        # An emptied value is the roll rule's statement, not a copy:
+        # a cell it empties is held by no property.
+        for name, before in blank_before.items():
+            note_write(state, spine, name, before, from_properties=False)
     # count_as=False asks for the attributes alone: a spine receiving
     # a detail table's columns has no use for a count of its rows,
     # and an unneeded column is redundancy in harmonize.
@@ -1058,6 +1086,7 @@ def link_by_id(
     _supplement_of: str | None = None,
     _unit_lot_pairs: pd.DataFrame | None = None,
     _latest_vintage: bool = False,
+    _property_rows: bool = False,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1492,6 +1521,9 @@ def link_by_id(
             fill_only=fill_only,
             protect_own_columns=_protect_own_columns,
             roll_values=roll_values,
+            # A property spine taking its rolls' detail tables states
+            # properties about themselves; nothing is copied across.
+            property_rows=_property_rows and spine_entity_type != 'property',
         )
     else:
         raise ValueError(

@@ -96,11 +96,13 @@ pipeline:
     # resolve_spine/link_by_id docs for track_provenance.
     #
     # n_dwellings is tracked here and on every link_by_id pass below
-    # (since 2026-10-22). It stays on the parcel spine rather than
-    # reaching curate from the property spine only, because
-    # estimate_property_counts (US_parcel-spine-2026) reads it during
-    # harmonize; without a `_source` the curated, delivered count
-    # named no source, and a sum over a panel's years went unnoticed.
+    # (since 2026-10-22): without a `_source` the curated, delivered
+    # count named no source, and a sum over a panel's years went
+    # unnoticed. The parcel layer's own count stays on the lot; a roll's
+    # or a property layer's leaves at withhold_property_values (last
+    # step), which keeps the count it had before as
+    # n_dwellings_preliminary for estimate_property_counts
+    # (US_parcel-spine-2026).
     track_provenance:
       - use_group
       - improvement_value
@@ -421,3 +423,32 @@ pipeline:
     elongated_aspect_min: 2.0
     'on': parcel_id
     min_overlap_m2: 10
+
+  # A roll account's values, and a bundled property layer's, do not
+  # stay on the lots (plans/account-values-one-deciding-step.md, V4),
+  # nor do their tax year and structure style.
+  # The link passes above wrote them in memory, where the shared-land
+  # groups and the common-area links read them, and the building
+  # geospine's cut replays those passes unchanged; here every cell a
+  # table of properties wrote returns to what the parcel layer itself
+  # states, or to missing. The parcel curate's divide_account_values
+  # then gives a lot its share of each account from the property
+  # spine, the only step that does. A parcel layer's own value stays,
+  # and so does a value not_on_roll emptied. Last in the pipeline so
+  # that no link sidecar above goes stale and a parcel spine can still
+  # be rebuilt on a geospine written before this step existed.
+  # n_dwellings is kept as n_dwellings_preliminary for the parcel
+  # spine's estimate_property_counts; the parcel curate drops it.
+  - step: withhold_property_values
+    # tax_year and building_style joined 2026-11-18 (maintainer): the
+    # roll's year describes values that no longer stay on the lot, and
+    # the parcel curate reduces the style from the property spine.
+    columns:
+      - land_value
+      - improvement_value
+      - total_value
+      - n_dwellings
+      - tax_year
+      - building_style
+    preliminary:
+      - n_dwellings
