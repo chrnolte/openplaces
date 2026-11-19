@@ -39,6 +39,7 @@ from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     condo_clusters,
     discovery,
     overlaps,
+    own_layer,
     parcel_pieces,
     points,
     property_values,
@@ -79,7 +80,9 @@ from openplaces.io.harmonizer.links.by_id import (  # noqa: F401
     link_by_id,
 )
 from openplaces.io.harmonizer.links.combine import (  # noqa: F401
+    RowRule,
     _align_for_combine,
+    _blank_as_missing,
     _write_prioritized,
 )
 from openplaces.io.harmonizer.links.condo_clusters import (  # noqa: F401
@@ -96,6 +99,11 @@ from openplaces.io.harmonizer.links.discovery import (  # noqa: F401
 )
 from openplaces.io.harmonizer.links.overlaps import (  # noqa: F401
     resolve_overlaps,
+)
+from openplaces.io.harmonizer.links.own_layer import (  # noqa: F401
+    VALUES_OUTDATED_KEY,
+    own_layer_rule,
+    values_outdated,
 )
 from openplaces.io.harmonizer.links.parcel_pieces import (  # noqa: F401
     BUILDING_GEOMETRY_COLUMN,

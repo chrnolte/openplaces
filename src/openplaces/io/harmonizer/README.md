@@ -559,6 +559,22 @@ per column. That step fills only empty cells, so a geospine built
 before 2026-11-15 still decides those cells on multi-property lots
 with the registry's mean until its next geometry rerun.
 
+**A lot keeps the values of the parcel layer that draws it**
+(maintainer, 2026-11-18; `links/own_layer.py`). Where two parcel layers
+cover a unit (a county's own layer under a statewide one), the
+`entity_type: parcel` pass on the standardized key writes every column
+a layer states onto the lots that layer draws (its label in
+`geometry_source`), and another parcel layer only fills their empty
+cells, whatever its coverage. The two lossier passes after it only
+fill, as before. One
+lot therefore never takes improvement from one layer and total from the
+other. A roll and a bundled property layer keep the coverage rule: they
+describe properties, and a roll covering half the lots replaces a
+statewide layer's values (US-TX-HAR). A county whose own layer is older
+declares `values_outdated: true` in its parcel ingest recipe; on its
+lots another parcel layer's stated values then replace its own. In every
+write an empty or whitespace-only string counts as missing.
+
 **A property's values do not stay on the lot.** The passes write a
 roll's or a property layer's land, improvement and total value and
 dwelling count onto the lots in memory, where the shared-land groups,
@@ -568,7 +584,9 @@ the common-area contiguity links and the building geospine's cut
 cell whose last write came from rows that are properties to what it
 held before the first such write: the parcel layer's own statement,
 or missing. `link_by_id` notes those writes as it makes them
-(`note_write`). A parcel layer's own value stays, and so does a value
+(`note_write`). A later parcel table's write is replayed on what such
+a cell returns to (`replay_on_held`), so a layer that may only fill
+there still decides it once the copy leaves. A parcel layer's own value stays, and so does a value
 `not_on_roll` emptied. The parcel curate's `divide_account_values`
 then gives each lot its share of every account from the property
 spine and the link table, the only step that does
@@ -626,6 +644,7 @@ The step sub-modules:
   join), `sidecars.py` (fingerprints and sidecar files), `by_id.py`
   (`link_by_id`), `discovery.py` (auto-discovered sources and remap
   sidecars), `combine.py` (prioritized writes onto the spine),
+  `own_layer.py` (a lot keeps its drawing layer's values),
   `roll_values.py` (an assessment roll's values, tax year and label kept
   together; prior-year fill; a coarser source's values emptied where a
   covering roll omits the account), `property_values.py` (a property's

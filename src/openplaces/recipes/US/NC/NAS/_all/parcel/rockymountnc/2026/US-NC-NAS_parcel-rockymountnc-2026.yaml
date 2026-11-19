@@ -64,6 +64,23 @@ entity:
     download_url: "https://hub.arcgis.com/api/v3/datasets/a6969e35769a489085c3fc503d57705f_16/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"
 
+# This layer's values are older than NC OneMap's: on the lots it draws,
+# NC OneMap's stated values replace its own (links/own_layer.py,
+# plans/lot-keeps-own-layer-values.md). Evidence in `notes`.
+values_outdated: true
+
+notes: >-
+  values_outdated, measured 2026-11-18 against the NC OneMap ingest of
+  2026-10-26 (statewide file downloaded 2026-02-06, source_date
+  2025-12-04 for this county) and this layer as downloaded 2026-09-21.
+  ASMNT_YR (tax_year) is 2025 on 99.2% of rows, yet R_YR_BUILT states
+  2025 or later on no row against 269 in NC OneMap, and SALEDATE holds
+  no sale from 2025 on against 3,315 in NC OneMap. On the 53,195 lots
+  keyed in both, TOT_B_VAL sums to 0.63 times NC OneMap's improvement
+  (median ratio 0.63), and 1,266 lots carry an improvement value only in
+  NC OneMap against 177 only here. Recheck when either layer is
+  re-ingested.
+
 uncompressed_file_name: "nash_parcels.geojson"
 
 columns:

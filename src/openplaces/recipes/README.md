@@ -84,6 +84,26 @@ placeholder ids once thought to be Carteret's turned out to occur in
 nine counties, Vilas WI among them (measured 2026-09-29), so they stay
 in the national recipe.
 
+## A county layer older than the statewide one: `values_outdated`
+
+Where a county's own parcel layer and a statewide one cover the same
+lots, each lot keeps the values of the layer that draws its outline,
+and the other layer only fills empty cells (`io/harmonizer/README.md`).
+When the county's layer states older values than the statewide one,
+say so in the county's own parcel ingest recipe:
+
+```yaml
+values_outdated: true
+```
+
+On the lots that layer draws, the other parcel layer's stated values
+then replace its own, and its own values fill what the other leaves
+empty. The key is accepted on a parcel recipe only. Write the evidence
+in the recipe's `notes` as schema and aggregates (which column dates
+the rows, which tax year it states, how the two layers' totals
+compare, and the file vintages compared), never record values, and
+recheck it when either layer is re-ingested.
+
 ## `source_id`
 
 Name the **publisher**, not the geography, and default to `{county}county`
