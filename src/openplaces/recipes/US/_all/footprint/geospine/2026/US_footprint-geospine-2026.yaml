@@ -113,8 +113,13 @@ pipeline:
   - step: consolidate_condo_cluster_footprints
     entity_type: parcel
 
+  # The gates read a lot's improvement value as the parcel spine will
+  # state it (the parcel geospine's link_by_id passes, replayed): many
+  # cadastral layers carry none of their own, and a unit whose layer
+  # has none got no fallback at all.
   - step: infer_spine_additions
     entity_type: parcel
+    lot_values_from: US_parcel-geospine-2026
     thresholds:
       n_per_group_min: 0.2
       value_per_ha_quantile: 0.05

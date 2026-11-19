@@ -37,12 +37,88 @@ def _positive_value_density(values: pd.Series) -> pd.Series:
     return numeric.where(numeric > 0)
 
 
-@_register('infer_spine_additions', phase='geometry')
+def _values_from_lot_recipe(
+    state: HarmonizeState, ref_polys: pd.DataFrame, recipe_id: str, lot_values_from: str
+) -> pd.DataFrame:
+    """*ref_polys* with each lot's improvement value the larger of its
+    own and the one the parcel spine states, and its value per hectare
+    recomputed from that.
+
+    The reference rows the overlay linked are often a cadastral layer
+    with no value of its own: the parcel geospine joins the roll onto
+    its lots by id, after this recipe has run. Where the reference
+    carries no value at all (New Hanover's county layer, MassGIS) the
+    step made no fallback anywhere in the unit.
+
+    Measured 2026-11-18 on US-NC-NHA: 0 fallback outlines before, 2,495 after.
+
+    The values are replayed with :func:`lot_structure_evidence`, as the
+    building geospine's split step does, rather than read from the
+    parcel geospine's output, which is built later and would make the
+    two geospines depend on each other. The larger value is kept, not
+    the replayed one alone, because the parcel spine's pick can be worse
+    than the reference's: on US-NC-CAR it states 0 from the statewide
+    layer for 236 lots the county's own layer values as houses.
+    """
+    from openplaces.io.harmonizer.links.parcel_pieces import (
+        IMPROVEMENT_VALUE_COLUMN,
+        lot_structure_evidence,
+    )
+    from openplaces.io.harmonizer.links.spatial import reference_rows
+    from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
+
+    raw, _ = reference_rows(recipe_id, state.admin_id)
+    if raw is None or len(raw) == 0:
+        return ref_polys
+    values_recipe, _ = apply_recipe_patches(
+        get_recipe_by_id(lot_values_from), state.admin_id
+    )
+    evidence = lot_structure_evidence(state, raw, recipe_id, values_recipe)
+    replayed = pd.to_numeric(
+        evidence[IMPROVEMENT_VALUE_COLUMN].reindex(ref_polys.index), errors='coerce'
+    )
+    ref_polys = ref_polys.copy()
+    own = (
+        pd.to_numeric(ref_polys['improvement_value'], errors='coerce')
+        if 'improvement_value' in ref_polys.columns
+        else pd.Series(np.nan, index=ref_polys.index)
+    )
+    # The larger of the two: a lot shows a building where either source
+    # values one. The parcel spine's own pick can be a stale 0 from a
+    # lower-ranked statewide layer where the county's layer values the
+    # house, and the reference's own can be missing or 0 where the roll
+    # values it.
+    ref_polys['improvement_value'] = pd.concat([replayed, own], axis=1).max(axis=1)
+    area_ha_col = next(
+        (c for c in ('area_ha', 'area_ha_geometry') if c in ref_polys.columns), None
+    )
+    if area_ha_col is not None:
+        ref_polys['improvement_value_per_ha'] = (
+            ref_polys['improvement_value'] / ref_polys[area_ha_col]
+        )
+    if state.verbose:
+        print(
+            f'  Infer: improvement value from {lot_values_from} on '
+            f'{int(replayed.notna().sum()):,d} of {len(ref_polys):,d} lots'
+        )
+    return ref_polys
+
+
+# The lot values are replayed from the configuration of the recipe
+# lot_values_from names, never read from its output (that recipe runs
+# later); they are that recipe's column.
+@_register(
+    'infer_spine_additions',
+    phase='geometry',
+    writes=['geometry', 'geometry_source', 'geometry_source_id'],
+    reads_from={'lot_values_from': ['improvement_value']},
+)
 def infer_spine_additions(
     state: HarmonizeState,
     entity_type: str | None = None,
     recipe_id: str | None = None,
     thresholds: dict | None = None,
+    lot_values_from: str | None = None,
 ) -> HarmonizeState:
     """Add spine entries inferred from a reference crosswalk.
 
@@ -76,6 +152,11 @@ def infer_spine_additions(
         reference carries no group column.
         ``value_per_ha_quantile`` (float, default 0.05) — quantile of
         improvement_value_per_ha used as the lower inference bound.
+    lot_values_from : str, optional
+        The recipe whose `link_by_id` passes give a lot its improvement
+        value (`US_parcel-geospine-2026`). When set, both gates read the
+        larger of the reference layer's own value, which a cadastral
+        layer often lacks, and the one the parcel spine will state.
     """
     if state.spine is None:
         return state
@@ -106,6 +187,11 @@ def infer_spine_additions(
             f'{recipe_id!r} not found in state.'
         )
         return state
+
+    if lot_values_from:
+        ref_polys = _values_from_lot_recipe(
+            state, ref_polys, recipe_id, lot_values_from
+        )
 
     if 'improvement_value_per_ha' not in ref_polys.columns:
         if state.verbose:

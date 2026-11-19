@@ -156,3 +156,72 @@ def test_zero_area_parcel_is_not_inferred_from_an_infinite_density():
     ref, linked = _parcels([150_000, 150_000])
     ref.loc['p20', 'improvement_value_per_ha'] = np.inf
     assert _infer(ref, linked, with_use_group=False) == {'p21'}
+
+
+def _roll_values(monkeypatch, values):
+    """Make the replayed parcel geospine passes return *values* per lot."""
+    import openplaces.io.harmonizer.links.parcel_pieces as pieces
+    import openplaces.io.harmonizer.links.spatial as spatial
+
+    def rows(recipe_id, admin_id, kept_by=None, verbose=False):
+        return pd.DataFrame({'geo_id': list(values)}), None
+
+    def evidence(state, lots, reference_id, values_recipe):
+        return pd.DataFrame(
+            {'improvement_value': pd.Series(values), 'has_structure': np.nan}
+        ).rename_axis('parcel_id')
+
+    monkeypatch.setattr(spatial, 'reference_rows', rows)
+    monkeypatch.setattr(pieces, 'lot_structure_evidence', evidence)
+
+
+def _cadastre_without_values(candidate_values):
+    """The fixture's parcels as a cadastral layer: area, no value."""
+    ref, linked = _parcels(candidate_values)
+    roll = ref['improvement_value'].copy()
+    ref['area_ha'] = ref['improvement_value'] / ref['improvement_value_per_ha']
+    ref['area_ha'] = ref['area_ha'].fillna(ref['area_ha'].median())
+    ref = ref.drop(columns=['improvement_value', 'improvement_value_per_ha'])
+    return ref, linked, roll
+
+
+@pytest.mark.parametrize('replay', [False, True])
+def test_a_reference_without_values_reads_the_roll_through_the_parcel_passes(
+    monkeypatch, replay
+):
+    # A cadastral layer states no value; the roll the parcel geospine
+    # joins by id does. Without the replay the step has nothing to gate
+    # on and makes no fallback in the unit.
+    ref, linked, roll = _cadastre_without_values([150_000, 0, 5_000])
+    _roll_values(monkeypatch, roll.to_dict())
+    state = _state(ref, linked, with_use_group=True)
+    state = infer_spine_additions(
+        state,
+        entity_type='parcel',
+        lot_values_from='US_parcel-geospine-2026' if replay else None,
+    )
+    inferred = state.metadata.get(f'inferred_from_{PARCEL}')
+    got = set() if inferred is None else set(inferred['parcel_id'])
+    assert got == ({'p20'} if replay else set())
+
+
+@pytest.mark.parametrize('replayed_value', [np.nan, 0.0])
+def test_a_lot_the_replay_values_lower_keeps_the_references(
+    monkeypatch, replayed_value
+):
+    # The parcel spine can pick a stale 0 from a lower-ranked layer
+    # where the reference values the house; missing is kept likewise.
+    ref, linked, roll = _cadastre_without_values([150_000, 150_000])
+    ref['improvement_value'] = roll
+    replayed = roll.copy()
+    replayed['p21'] = replayed_value
+    _roll_values(monkeypatch, replayed.to_dict())
+    state = infer_spine_additions(
+        _state(ref, linked, with_use_group=False),
+        entity_type='parcel',
+        lot_values_from='US_parcel-geospine-2026',
+    )
+    assert set(state.metadata[f'inferred_from_{PARCEL}']['parcel_id']) == {
+        'p20',
+        'p21',
+    }
