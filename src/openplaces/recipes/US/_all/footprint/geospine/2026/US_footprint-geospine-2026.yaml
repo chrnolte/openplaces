@@ -125,6 +125,14 @@ pipeline:
     # space (US-TX-JEF), boat slips (US-NC-NHA) and parking lots
     # (US-NC-DUR) came out as outlines on the value gate alone.
     exclude_use_pattern: 'open.?space|\bslips?\b|parking'
+    # One roll account drawn as several lots states its value on each
+    # (plans/account-values-one-deciding-step.md, V4): the value gate
+    # counts it once over the account's lots, and where the account's
+    # building is drawn on one of them, its other lots get no outline
+    # (maintainer's labels of 2026-11-18: five of seven no building).
+    # An account with no drawn building keeps one outline per lot that
+    # passes, each valued later with its own lot's area share.
+    skip_beside_drawn_account: true
     thresholds:
       n_per_group_min: 0.2
       value_per_ha_quantile: 0.05

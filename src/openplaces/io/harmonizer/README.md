@@ -214,7 +214,14 @@ its fingerprint matches, skipping every pass below):
 Add spine entries from parcel-only coverage (no linked footprint, high improvement value).
 
 Thresholds: `n_per_group_min` (mean footprints/parcel ≥ this), `value_per_ha_quantile`
-(improvement_value_per_ha ≥ this quantile).
+(improvement_value_per_ha ≥ this quantile). A candidate's density counts an
+account value its layer repeats on several polygons of one key once, over the
+key's summed area (`account_value_density`), so a plat of lots sharing one
+account's improvement gets no stand-in on each lot; the calibration still reads
+each polygon's own density. With `skip_beside_drawn_account` (on in the
+footprint geospine) a lot of an account whose building is drawn on another of
+its lots gets no stand-in; an account with no drawn building keeps one stand-in
+per lot that passes, each valued in curate with its own lot's share.
 
 Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{source_id}'`),
 `metadata['inferred_from_{recipe_id}']`.
@@ -552,6 +559,27 @@ per column. That step fills only empty cells, so a geospine built
 before 2026-11-15 still decides those cells on multi-property lots
 with the registry's mean until its next geometry rerun.
 
+**A property's values do not stay on the lot.** The passes write a
+roll's or a property layer's land, improvement and total value and
+dwelling count onto the lots in memory, where the shared-land groups,
+the common-area contiguity links and the building geospine's cut
+(which replays the passes) read them. The geospine's last step,
+`withhold_property_values` (`links/property_values.py`), returns every
+cell whose last write came from rows that are properties to what it
+held before the first such write: the parcel layer's own statement,
+or missing. `link_by_id` notes those writes as it makes them
+(`note_write`). A parcel layer's own value stays, and so does a value
+`not_on_roll` emptied. The parcel curate's `divide_account_values`
+then gives each lot its share of every account from the property
+spine and the link table, the only step that does
+(plans/account-values-one-deciding-step.md, V4). The dwelling count
+before the step stays as `n_dwellings_preliminary`, which
+`estimate_property_counts` reads and the parcel curate drops. Use
+labels and codes, `building_style`, `tax_year` and the address parts
+are still copied (a separate package). A geospine written before the
+step still holds the copies; the parcel curate replaces them on every
+lot an account links to, so it curates the same values.
+
 The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
   and assign each row's containing polygon id from a space-partitioning
@@ -600,7 +628,9 @@ The step sub-modules:
   sidecars), `combine.py` (prioritized writes onto the spine),
   `roll_values.py` (an assessment roll's values, tax year and label kept
   together; prior-year fill; a coarser source's values emptied where a
-  covering roll omits the account), `parcel_pieces.py`
+  covering roll omits the account), `property_values.py` (a property's
+  values taken back off the lots, `withhold_property_values`),
+  `parcel_pieces.py`
   (`split_outlines_at_parcel_lines`), `address_ranges.py`, `additions.py` (`infer_spine_additions`),
   `condo_clusters.py`, `overlaps.py` (`resolve_overlaps`) and `_shared.py`
   (constants). The package file re-exports every name, private ones

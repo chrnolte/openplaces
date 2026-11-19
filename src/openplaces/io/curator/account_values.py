@@ -501,11 +501,52 @@ def _building_reads(arguments) -> list[str]:
     return ['geometry_source', *_story_columns(arguments.get('stories'))]
 
 
+def _elsewhere_columns(arguments) -> list[str]:
+    return [c for c in (arguments.get('on_other_lots') or {}).values() if c]
+
+
+def on_other_lots_flag(contributions: pd.DataFrame, column: str) -> pd.Series:
+    """Per lot, whether its 0 in *column* is where the accounts put it.
+
+    True on a lot where every account reaching it contributes 0 of
+    *column* while putting a positive amount on another of its lots:
+    the roll states the value and the division placed all of it
+    elsewhere, so the lot's 0 is the accounts' statement, not a gap.
+    A lot an account states 0 for (all lots 0) is not marked: whether
+    that 0 is a statement is the reader's own test.
+
+    Parameters
+    ----------
+    contributions : pandas.DataFrame
+        `divide`'s output (`account`, `lot` and the column).
+    column : str
+        The divided column (`improvement_value`).
+
+    Returns
+    -------
+    pandas.Series
+        Boolean per lot (index: lot ids of *contributions*).
+    """
+    value = pd.to_numeric(contributions[column], errors='coerce')
+    account_total = value.groupby(contributions[ACCOUNT]).transform('sum')
+    # An account that states nothing of the column decides nothing on
+    # the lot and takes no part in the test.
+    states = value.notna()
+    placed_elsewhere = value.eq(0) & account_total.gt(0)
+    lot = contributions[LOT]
+    every = (placed_elsewhere | ~states).groupby(lot).all()
+    return every & states.groupby(lot).any()
+
+
 @_register(
     'divide_account_values',
     phase='gather',
     reads=['{area_column}', '{layer_columns}', '{layer_columns}_source'],
-    writes=[_value_columns, lambda a: [source_column(c) for c in _value_columns(a)]],
+    writes=[
+        _value_columns,
+        lambda a: [source_column(c) for c in _value_columns(a)],
+        _elsewhere_columns,
+    ],
     decides=[_value_columns],
     reads_from={
         'recipe_id': [
@@ -529,6 +570,7 @@ def divide_account_values(
     stories: dict | None = None,
     area_column: str = 'area_ha',
     report: str | None = REPORT_FILENAME,
+    on_other_lots: dict[str, str] | None = None,
 ) -> CurateState:
     """Decide each lot's account values by dividing every account over its lots.
 
@@ -614,6 +656,16 @@ def divide_account_values(
         Lot area in hectares (default `area_ha`).
     report : str or None
         Report file name; None writes none.
+    on_other_lots : dict of {str: str}, optional
+        Divided column to the flag column written beside it: True on a
+        lot whose 0 in that column is where its accounts put it, all of
+        a stated positive value going to the account's other lots
+        (`on_other_lots_flag`). The parcel curate names
+        `improvement_value: improvement_value_on_other_lots`, which
+        `impute_land_value` reads so that such a 0 stays a stated 0 on
+        a total-only roll, where the lot's total (the roll's, by area)
+        and its land (the layer's) are not one statement and so cannot
+        confirm it. Default none.
     """
     curated = state.curated
     by_area = [c for c in by_area]
@@ -741,6 +793,13 @@ def divide_account_values(
         token = pd.Series(pd.NA, index=curated.index, dtype=object)
         token.iloc[rows] = tokens[column].reindex(lots).to_numpy()
         record_sources(curated, column, token, mask=mask, clear_missing=True)
+    for column, flag in (on_other_lots or {}).items():
+        if not flag or column not in contributions.columns:
+            continue
+        elsewhere = on_other_lots_flag(contributions, column)
+        marked = pd.Series(False, index=curated.index)
+        marked.iloc[position.reindex(elsewhere.index[elsewhere]).to_numpy()] = True
+        curated[flag] = marked
     state.curated = curated
 
     _report(

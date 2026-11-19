@@ -17,6 +17,7 @@ def estimate_property_counts(
     source_column: str = 'property_source',
     dwelling_column: str = 'n_dwellings',
     footprint_dwelling_column: str = 'max_dwellings_per_building',
+    preliminary_dwelling_column: str | None = 'n_dwellings_preliminary',
 ) -> HarmonizeState:
     """Fill in ``property_source``/``n_properties_per_parcel`` where still unset.
 
@@ -54,6 +55,15 @@ def estimate_property_counts(
     footprint_dwelling_column : str, optional
         Confirmed dwelling count on a single footprint on the parcel (default
         ``'max_dwellings_per_building'``).
+    preliminary_dwelling_column : str or None, optional
+        The lot's dwelling count as the parcel geospine's link passes
+        left it, before `withhold_property_values` took a roll's or a
+        property layer's count back off the lot (default
+        ``'n_dwellings_preliminary'``). Read in place of
+        *dwelling_column* wherever the spine carries it, so the estimate
+        sees the same evidence as before the counts left the lot; a
+        geospine written before that step has no such column, and its
+        *dwelling_column* still holds the copied count.
     """
     if state.spine is None:
         return state
@@ -80,6 +90,8 @@ def estimate_property_counts(
     has_real_source = unset & (count.fillna(0) > 0)
     source = source.mask(has_real_source, 'source')
 
+    if preliminary_dwelling_column and preliminary_dwelling_column in spine.columns:
+        dwelling_column = preliminary_dwelling_column
     n_dwellings = (
         pd.to_numeric(spine[dwelling_column], errors='coerce').fillna(0)
         if dwelling_column in spine.columns

@@ -8,6 +8,8 @@ single 4,259-line module):
 - by_id: link_by_id, the exact-key join and its guards
 - address_ranges, additions, condo_clusters, overlaps: one step each
 - parcel_pieces: outlines cut into one building per parcel piece
+- property_values: a property's values taken back off the lots
+  (withhold_property_values)
 - discovery, sidecars, _shared: what the steps share
 
 Every top-level name, private ones included, is re-exported here because
@@ -39,6 +41,7 @@ from openplaces.io.harmonizer.links import (  # noqa: E402,F401
     overlaps,
     parcel_pieces,
     points,
+    property_values,
     roll_values,
     sidecars,
     spatial,
@@ -110,6 +113,12 @@ from openplaces.io.harmonizer.links.points import (  # noqa: F401
     _point_quality_sort,
     _point_step_config,
     flag_duplicate_points,
+)
+from openplaces.io.harmonizer.links.property_values import (  # noqa: F401
+    PRELIMINARY_SUFFIX,
+    PROPERTY_WRITES_KEY,
+    note_write,
+    withhold_property_values,
 )
 from openplaces.io.harmonizer.links.roll_values import (  # noqa: F401
     NOT_ON_ROLL_MIN_COVERAGE,
