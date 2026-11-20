@@ -22,11 +22,22 @@
 # null key drops them rather than erroring. `simple` recovers all
 # 16,109 rows at 15,752 distinct keys -- exactly the raw PIN's own
 # distinct count, so the conversion adds no duplicates.
+#
+# Values, measured 2026-11-19 on US-NC-HER (15,955 valued rows):
+# COST_TOTAL_VALUE = TOTAL_LAND_ASSESSED + TOTAL_BLDG_ASSESSED on all
+# of them, so it is the market total. TOTAL_PROP_VALUE is the taxable
+# figure: COST_TOTAL_VALUE less TOTAL_DEFERRED_VALUE and OTHER_EXMPT
+# on 15,934. LAND_USE_VALUE = TOTAL_LAND_ASSESSED less
+# TOTAL_DEFERRED_VALUE plus HISTORIC_VALUE_DEFERRED on all rows: the
+# land's present-use value, equal to the market land outside the
+# program. land_value takes the market land, total_value the market
+# total, and current_use_value LAND_USE_VALUE only where it differs
+# from the market land. No use-basis or taxable total is carried.
 
 description: >-
-  Hertford County, NC parcel roll (assessed land/building/total values,
-  heated area, owner, situs, most recent sale) from the county's ArcGIS
-  parcel layer. No year built is available from this source.
+  Hertford County, NC parcel roll (market and present-use land values,
+  total value, heated area, owner, situs, most recent sale) from the
+  county's ArcGIS parcel layer. No year built is available from this source.
 
 admin_id: US-NC-HER
 
@@ -61,7 +72,8 @@ columns:
   last_sale_price: PKG_SALE_PRICE
   land_value: TOTAL_LAND_ASSESSED
   improvement_value: TOTAL_BLDG_ASSESSED
-  total_value: TOTAL_PROP_VALUE
+  total_value: COST_TOTAL_VALUE
+  current_use_value: LAND_USE_VALUE
   living_area_sqft: HEATED_AREA
   # LAND_CLASS is the county land-use class (RES / FRM / MAN-HOU / COM /
   # FRST / WTRF), 97% populated. Without it this county reached curate
@@ -77,6 +89,25 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # current_use_value only where it differs from the market land: the
+  # gap is emptied where it is 0, so adding the land back leaves the
+  # cell missing on rows outside the present-use program.
+  - type: binary
+    operation: subtract
+    inputs: [current_use_value, land_value]
+    output: _use_gap
+  - type: unary
+    operation: null_if_equal
+    input: _use_gap
+    args: {value: 0}
+    output: _use_gap
+  - type: binary
+    operation: add
+    inputs: [_use_gap, land_value]
+    output: current_use_value
+
+drop_columns:
+  - _use_gap
 
 columns_to_categorical:
   - use_group

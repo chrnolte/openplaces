@@ -192,7 +192,7 @@ tax_value_gross,Gross property tax amount billed before credits/reductions (a ta
 tax_value_net,Net property tax amount billed after credits/reductions (a tax bill amount not an assessed value),USD,float,sum,,,ingest
 market_value,Market (just) value,USD,float,sum,,parcel,ingest
 special_feature_value,Assessed value of special features,USD,float,sum,,parcel,ingest
-current_use_value,Current-use (present-use) assessed value,USD,float,sum,,parcel,ingest
+current_use_value,"The land's value under a current-use (present-use) assessment program: farm, forest or horticultural land valued at its use rather than at market. The market-basis land value stays in land_value; no use-basis total is carried",USD,float,sum,,parcel,ingest
 personal_property_value,Assessed value of taxable personal property,USD,float,sum,,parcel,
 classified_market_value,Classified (present-use) market value,USD,float,sum,,parcel,
 last_sale_price,Price of the most recent recorded sale,USD,float,first,,parcel,ingest

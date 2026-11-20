@@ -109,10 +109,17 @@ columns:
   last_sale_date: SALE_DATE
   last_sale_price: SALE_PRICE
   last_sale_qualification_code: SALE_QUAL
+  # Values are on the market basis. DEFER_VAL is the amount a
+  # present-use program defers, not the land's use value, and is not
+  # mapped. Measured 2026-11-19 on US-NC-CUR: TOT_VAL = LAND_VAL +
+  # BLDG_VAL on all 27,805 valued rows; DEFER_VAL is above 0 on 1,105
+  # and never exceeds LAND_VAL (median 0.87 of it). In layers whose
+  # land is the use value (Gates, Onslow) the deferred amount exceeds
+  # the land on most program rows. The use value would be LAND_VAL
+  # less DEFER_VAL; it is not derived here.
   land_value: LAND_VAL
   improvement_value: BLDG_VAL
   total_value: TOT_VAL
-  current_use_value: DEFER_VAL
 
 transformations:
   - type: string

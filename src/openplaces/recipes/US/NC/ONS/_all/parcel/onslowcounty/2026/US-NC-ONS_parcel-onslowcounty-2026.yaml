@@ -27,8 +27,17 @@
 # Field names are truncated to 10 characters throughout (PHYSICALAD,
 # FINALFULLL, ...), the signature of a shapefile round-trip. The value
 # fields come in two families: FINALFULL* / TAXMARKETV are the county
-# assessment, MUNIS* the municipal-tax view of the same parcels. The
-# county family is mapped; the municipal one is left alone.
+# assessment, MUNIS* the municipal-tax view of the same parcels.
+#
+# Values, measured 2026-11-19 on US-NC-ONS (92,945 rows): FINALFULLL
+# is the land's present-use value on the 1,500 rows with DEFERREDVA
+# above 0 (DEFERREDVA exceeds it on 1,280 of them) and the market land
+# elsewhere. MUNISLAND = FINALFULLL + DEFERREDVA, and TAXMARKETV =
+# MUNISLAND + FINALFULLB, on every row; TOTALTAXAB = TAXMARKETV less
+# DEFERREDVA. So MUNISLAND is the market land and goes to land_value;
+# TAXMARKETV stays the market total; FINALFULLL goes to
+# current_use_value only where it differs from the market land.
+# MUNISBLDG differs from FINALFULLB on most rows and is not mapped.
 #
 # Join key: PARID ('000999'), which matches NC OneMap's own
 # parcel_id_local for this county on 99.8% of sampled rows under the
@@ -161,9 +170,10 @@ columns:
   renovation_year: REMODELED
   last_sale_date: SALEDATE
   last_sale_price: SALEPRICE
-  land_value: FINALFULLL
+  land_value: MUNISLAND
   improvement_value: FINALFULLB
   total_value: TAXMARKETV
+  current_use_value: FINALFULLL
 
 transformations:
   - type: string
@@ -200,9 +210,26 @@ transformations:
     input: gross_floor_area_sqft
     args: {value: 0}
     output: gross_floor_area_sqft
+  # current_use_value only where it differs from the market land: the
+  # gap is emptied where it is 0, so adding the land back leaves the
+  # cell missing on rows outside the present-use program.
+  - type: binary
+    operation: subtract
+    inputs: [current_use_value, land_value]
+    output: _use_gap
+  - type: unary
+    operation: null_if_equal
+    input: _use_gap
+    args: {value: 0}
+    output: _use_gap
+  - type: binary
+    operation: add
+    inputs: [_use_gap, land_value]
+    output: current_use_value
 
 drop_columns:
   - half_bathroom_equivalent
+  - _use_gap
 
 columns_to_categorical:
   - heating_type

@@ -47,9 +47,14 @@ scraper_options:
 # $2,992,500 with a median of $38,400, it correlates 0.850 with TAX_VAL, and
 # its median ratio to TAX_VAL is 0.31. It was previously mapped to
 # `use_group_code`, which fed dollar amounts into the land-use lane; the
-# apparent 98.7% coverage that made it look real was whitespace. There is no
-# registry attribute for present-use-value, so it is left unmapped rather
-# than renamed into an invented one.
+# apparent 98.7% coverage that made it look real was whitespace. It is
+# mapped to current_use_value, the land's value under a present-use
+# program. Measured 2026-11-19 on US-NC-PES: 1,931 rows carry it, as
+# text with thousands separators, so it is parsed as currency; it never
+# exceeds TAX_VAL. The layer has no land field, so whether it is the
+# use value or the deferred amount cannot be checked against an
+# identity here; the field name says use value. Whether TAX_VAL is a
+# market or a use-basis total is likewise unknown.
 #
 # This layer publishes no land-use column at all: DESCR and desc_ are free
 # text (949 distinct over 15,044 rows), not a category.
@@ -60,6 +65,7 @@ columns:
   owner_name: NAME
   last_sale_date: DATE_SOLD
   total_value: TAX_VAL
+  current_use_value: LAND_USE_V
 
 transformations:
   - type: string
@@ -68,6 +74,11 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # LAND_USE_V is text ('9,999'); blank where no program applies.
+  - type: unary
+    operation: parse_currency
+    input: current_use_value
+    output: current_use_value
 
   # DATE_SOLD is a lossy MYYYY/MMYYYY concatenation with no zero-padding and
   # no day (e.g. "62022" = month 6, year 2022; "0" = blank/unset). Zero-pad

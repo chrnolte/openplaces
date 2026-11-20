@@ -100,6 +100,12 @@ columns:
   last_sale_date: DateSold
   last_sale_year: DeedYear
   last_sale_price: SalesAmt
+  # Values: land, improvement and total are the fair-market (FMV)
+  # family; LandLUVCur is the land's present-use value. Measured
+  # 2026-11-19 on US-NC-LEN: TotalFMVCu = LandFMVCur + ImproveFMV on
+  # all 36,115 valued rows; LandLUVCur equals LandFMVCur except on
+  # 3,475 rows, the rows LandUseCur marks Y. current_use_value is kept
+  # only where it differs from the market land.
   land_value: LandFMVCur
   improvement_value: ImproveFMV
   total_value: TotalFMVCu
@@ -112,6 +118,22 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # current_use_value only where it differs from the market land: the
+  # gap is emptied where it is 0, so adding the land back leaves the
+  # cell missing on rows outside the present-use program.
+  - type: binary
+    operation: subtract
+    inputs: [current_use_value, land_value]
+    output: _use_gap
+  - type: unary
+    operation: null_if_equal
+    input: _use_gap
+    args: {value: 0}
+    output: _use_gap
+  - type: binary
+    operation: add
+    inputs: [_use_gap, land_value]
+    output: current_use_value
 
   # DateSold uses the literal string '0' rather than null for "no
   # recorded sale" on ~27% of rows. Nothing casts this column to a
@@ -130,6 +152,9 @@ transformations:
     input: living_area_sqft
     args: {value: 0}
     output: living_area_sqft
+
+drop_columns:
+  - _use_gap
 
 columns_to_categorical:
   - use_group
