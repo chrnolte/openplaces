@@ -173,9 +173,20 @@ pipeline:
   # their `_source` names that source, and an untracked total would
   # have kept a statewide figure beside an emptied land and
   # improvement value.
+  #
+  # value_group (2026-11-19, maintainer): on a lot a parcel layer
+  # draws, land, improvement and total value and their tax year come
+  # from one layer. Another parcel layer fills them only where the
+  # drawing layer states none of the values, and then all of them;
+  # other columns still fill cell by cell (io/harmonizer/links/
+  # own_layer.py). The lossy passes below fill the group the same way.
+  # The roll pass reuses the list for roll_values.
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+    value_group: &value_group
+      values: &account_value_columns [land_value, improvement_value, total_value]
+      year: tax_year
     layer_columns:
       property: &parcel_level_columns
         - land_value
@@ -227,6 +238,7 @@ pipeline:
     spine_key: parcel_id_alnum
     ref_key: parcel_id_alnum
     fill_only: true
+    value_group: *value_group
     layer_columns:
       property: *parcel_level_columns
     track_provenance:
@@ -250,6 +262,7 @@ pipeline:
     spine_key: parcel_id_alnum
     ref_key: parcel_id_alnum_pin
     fill_only: true
+    value_group: *value_group
     layer_columns:
       property: *parcel_level_columns
     track_provenance:
@@ -313,7 +326,7 @@ pipeline:
       - total_value
       - n_dwellings
     roll_values:
-      values: [land_value, improvement_value, total_value]
+      values: *account_value_columns
       year: tax_year
       prior_year:
         land_value: land_value_prior_year

@@ -103,6 +103,8 @@ from openplaces.io.harmonizer.links.overlaps import (  # noqa: F401
 from openplaces.io.harmonizer.links.own_layer import (  # noqa: F401
     VALUES_OUTDATED_KEY,
     own_layer_rule,
+    parse_value_group,
+    value_group_writes,
     values_outdated,
 )
 from openplaces.io.harmonizer.links.parcel_pieces import (  # noqa: F401

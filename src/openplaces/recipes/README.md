@@ -88,7 +88,10 @@ in the national recipe.
 
 Where a county's own parcel layer and a statewide one cover the same
 lots, each lot keeps the values of the layer that draws its outline,
-and the other layer only fills empty cells (`io/harmonizer/README.md`).
+and the other layer only fills empty cells (`io/harmonizer/README.md`);
+the value columns (land, improvement, total and their tax year) it
+fills only together, on a lot where the drawing layer states none of
+them.
 When the county's layer states older values than the statewide one,
 say so in the county's own parcel ingest recipe:
 

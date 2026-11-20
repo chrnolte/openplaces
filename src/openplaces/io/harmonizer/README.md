@@ -566,9 +566,18 @@ cover a unit (a county's own layer under a statewide one), the
 a layer states onto the lots that layer draws (its label in
 `geometry_source`), and another parcel layer only fills their empty
 cells, whatever its coverage. The two lossier passes after it only
-fill, as before. One
-lot therefore never takes improvement from one layer and total from the
-other. A roll and a bundled property layer keep the coverage rule: they
+fill. The value columns go together (maintainer, 2026-11-19): the
+passes name them in `value_group` (land, improvement and total value,
+with `tax_year` following them), and on a lot a parcel layer draws
+the group comes from one layer. The layer that overwrites there takes
+the whole group where it states any of the values, leaving empty what
+it does not state; a layer that only fills takes the whole group where
+the lot states none of the values, none of it where another source
+states one, and fills the gaps where the lot holds only its own values
+(a lossier pass never empties what a precise one wrote). Other columns
+fill cell by cell. One lot therefore never takes
+improvement from one layer and land or total from the other. A roll
+and a bundled property layer keep the coverage rule: they
 describe properties, and a roll covering half the lots replaces a
 statewide layer's values (US-TX-HAR). A county whose own layer is older
 declares `values_outdated: true` in its parcel ingest recipe; on its

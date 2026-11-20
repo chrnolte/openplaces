@@ -74,10 +74,26 @@ class RowRule(NamedTuple):
         Rows where every value the reference states replaces the cell.
     fill : pandas.Series of bool
         Rows where the reference only fills an empty cell.
+    values : tuple of str
+        Value columns a lot takes from one layer or not at all (the
+        step's ``value_group``); empty for no group.
+    year : str, optional
+        The column holding the tax year of *values*, which follows them.
+    keep : pandas.Series of bool, optional
+        Set per column by
+        :func:`~openplaces.io.harmonizer.links.own_layer.value_group_writes`:
+        rows where the cell stays as it is, whatever the reference states.
+    exact : pandas.Series of bool, optional
+        Set the same way: rows where the cell takes the reference's
+        statement as it is, a missing one included.
     """
 
     overwrite: pd.Series
     fill: pd.Series
+    values: tuple[str, ...] = ()
+    year: str | None = None
+    keep: pd.Series | None = None
+    exact: pd.Series | None = None
 
 
 def _blank_as_missing(values: pd.Series) -> pd.Series:
@@ -135,7 +151,9 @@ def _write_prioritized(
     row_rule : RowRule, optional
         Rows that overwrite or only fill whatever the coverage. The
         coverage is still measured over every row, so the rows outside
-        both masks behave as without a rule.
+        both masks behave as without a rule. Its *keep* rows are left
+        as they are, and its *exact* rows take *new_vals* as it is,
+        missing included (a cell emptied there loses its `_source`).
     provenance_token : str, optional
         When given, also updates the ``{name}_source`` categorical sidecar
         (via :func:`openplaces.io.harmonizer._record_source`) for exactly
@@ -148,7 +166,11 @@ def _write_prioritized(
         ``track_provenance``) rather than every joined attribute, to
         avoid a provenance-sidecar column explosion.
     """
-    from openplaces.io.harmonizer import _record_source, _record_sources
+    from openplaces.io.harmonizer import (
+        _PROVENANCE_SUFFIX,
+        _record_source,
+        _record_sources,
+    )
 
     def _mark(mask) -> None:
         """Record provenance, per row where the caller supplied it."""
@@ -159,6 +181,9 @@ def _write_prioritized(
 
     new_vals = _blank_as_missing(new_vals)
     if name not in spine.columns:
+        if row_rule is not None and row_rule.keep is not None:
+            # A kept cell stays as it is: empty, on a new column.
+            new_vals = new_vals.mask(row_rule.keep)
         spine[name] = new_vals
         if provenance_token is not None:
             _mark(new_vals.notna())
@@ -175,7 +200,19 @@ def _write_prioritized(
     else:
         # Per row: the rule's masks decide, the coverage rule the rest.
         overwrite = row_rule.overwrite | (overwrite & ~row_rule.fill)
-        spine[name] = replaced.where(overwrite, filled)
+        result = replaced.where(overwrite, filled)
+        if row_rule.keep is not None:
+            result = result.where(~row_rule.keep, existing)
+            overwrite = overwrite & ~row_rule.keep
+        if row_rule.exact is not None:
+            result = result.where(~row_rule.exact, incoming)
+            overwrite = overwrite | row_rule.exact
+            # A cell emptied this way names no source any more.
+            side = f'{name}{_PROVENANCE_SUFFIX}'
+            emptied = row_rule.exact & result.isna()
+            if side in spine.columns and (emptied & spine[side].notna()).any():
+                spine[side] = spine[side].astype(object).mask(emptied)
+        spine[name] = result
 
     if provenance_token is None:
         return
