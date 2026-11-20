@@ -55,10 +55,15 @@
 #
 # NOTE on values: the layer publishes both an assessed family
 # (Land/Improve/TotalASVCur) and a fair-market family
-# (Land/Improve/TotalFMVCur). The fair-market split is mapped to
-# land_value/improvement_value and its total to market_value; the
-# assessed total becomes `value`, matching how the other NC recipes use
-# that column.
+# (Land/Improve/TotalFMVCur), plus LandLUVCur, the land's present-use
+# value. Measured 2026-11-19 on US-NC-WIL: both totals equal their
+# land plus improvement on all 43,395 valued rows; LandLUVCur is above
+# 0 on 4,003 rows (LandCurrentUseY_N Y) and 0 elsewhere, and on those
+# rows LandASVCur equals it. So the assessed family is the present-use
+# (taxable) basis. The fair-market family goes to land_value,
+# improvement_value and total_value; LandLUVCur goes to
+# current_use_value with its 0 emptied, so it is stated only on the
+# program's rows. No use-basis total is carried.
 #
 # Building features, MEASURED 2026-09-13 in memory (residential =
 # ParcelDescrCode2 R, 38,110 rows; per PIN after deduplication the
@@ -80,8 +85,8 @@
 # 77% of rows and is not a unit count.
 
 description: >-
-  Wilson County, NC parcel roll (market and assessed values, year built, floor
-  area, owner, situs, most recent sale) from the county's ArcGIS parcel layer.
+  Wilson County, NC parcel roll (market and present-use values, year built,
+  floor area, owner, situs, most recent sale) from the county's ArcGIS layer.
 
 admin_id: US-NC-WIL
 
@@ -147,8 +152,7 @@ columns:
   last_sale_qualification_code: QualifyCodeDesc
   land_value: LandFMVCur
   improvement_value: ImproveFMVCur
-  market_value: TotalFMVCurrent
-  total_value: TotalASVCurrent
+  total_value: TotalFMVCurrent
   current_use_value: LandLUVCur
 
 transformations:
@@ -158,6 +162,12 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # LandLUVCur is 0 outside the present-use program.
+  - type: unary
+    operation: null_if_equal
+    input: current_use_value
+    args: {value: 0}
+    output: current_use_value
   # Sum each room count over the three improvements; min_count keeps a
   # parcel null when no improvement records the count.
   - type: aggregate

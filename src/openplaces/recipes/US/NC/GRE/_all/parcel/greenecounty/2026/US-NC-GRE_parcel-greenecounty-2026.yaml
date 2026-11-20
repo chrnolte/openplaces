@@ -11,11 +11,23 @@
 # `CURRENT_BLDG_VALUE` are the real, populated fields (995/1000 and
 # 657/1000 sampled records) and are used instead. No year_built field
 # exists anywhere in this layer's very wide (180+ field) schema.
+#
+# Values: CURRENT_LAND_VALUE is the market land; AG_LAND_VALUE is the
+# land's present-use value, above 0 only on the program's rows.
+# TOTAL_ASSESSED (and CURRENT_TOTAL_VALUE) is the use-basis total:
+# measured 2026-11-19 on US-NC-GRE, it equals AG_LAND_VALUE +
+# CURRENT_BLDG_VALUE on 2,768 of the 2,771 rows with AG_LAND_VALUE
+# above 0, and CURRENT_LAND_VALUE + CURRENT_BLDG_VALUE on 9,864 of the
+# other 9,872 valued rows. COST_TOTAL_VALUE equals CURRENT_LAND_VALUE
+# + CURRENT_BLDG_VALUE on 12,639 of 12,643 valued rows, so it is the
+# market total and goes to total_value. AG_LAND_VALUE goes to
+# current_use_value with its 0 emptied. No use-basis total is
+# carried.
 
 description: >-
-  Greene County, NC parcel roll (assessed land/building/total values,
-  owner, situs, deed reference) from the county's ArcGIS parcel layer. No
-  year built is available from this source.
+  Greene County, NC parcel roll (market and present-use land values, total
+  value, owner, situs, deed reference) from the county's ArcGIS parcel
+  layer. No year built is available from this source.
 
 admin_id: US-NC-GRE
 
@@ -54,7 +66,8 @@ columns:
   last_sale_date: DEED_DATE
   land_value: CURRENT_LAND_VALUE
   improvement_value: CURRENT_BLDG_VALUE
-  total_value: TOTAL_ASSESSED
+  total_value: COST_TOTAL_VALUE
+  current_use_value: AG_LAND_VALUE
   subdivision: SUBDIVISION
 
 transformations:
@@ -64,6 +77,12 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # AG_LAND_VALUE is 0 outside the present-use program.
+  - type: unary
+    operation: null_if_equal
+    input: current_use_value
+    args: {value: 0}
+    output: current_use_value
 
 columns_to_categorical:
   - owner_admin2_id_admin1

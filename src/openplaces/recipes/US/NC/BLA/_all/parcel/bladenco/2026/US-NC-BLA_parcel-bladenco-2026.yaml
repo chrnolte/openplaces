@@ -15,11 +15,26 @@
 # exactly 0, vs. 11,580 genuine non-zero years -- nulled generically at
 # ingest instead of masquerading as a real construction year
 # (attribute_registry.csv's year_built null_placeholder).
+#
+# Values: the layer carries an assessed family (LandASVCur, ImproveASV,
+# TotalASVCu), a fair-market family (LandFMVCur, ImprovFMVC) and the
+# land's present-use value (LandLUVCur), plus a revaluation family
+# (LandFMVRev, ImprovFMVR, LandLUVRev) that is not mapped. Measured
+# 2026-11-19 on US-NC-BLA, all 33,335 rows: TotalASVCu = LandASVCur +
+# ImproveASV, and TotalFMVRe = LandFMVCur + ImprovFMVC, so TotalFMVRe
+# is the fair-market total despite its truncated name (TotalFMV_1 is
+# the revaluation total). LandLUVCur differs from LandFMVCur on 4,001
+# rows; there LandASVCur follows LandLUVCur, elsewhere LandFMVCur, to
+# within a few dollars of rounding. So the assessed family is the
+# present-use (taxable) basis. The fair-market family goes to
+# land_value, improvement_value and total_value; LandLUVCur goes to
+# current_use_value only where it differs from the market land. No
+# use-basis total is carried.
 
 description: >-
-  Bladen County, NC parcel tax roll (assessed land/building/total values,
-  year built, owner, situs, most recent sale) from the county's ArcGIS
-  parcel layer.
+  Bladen County, NC parcel tax roll (market and present-use values, year
+  built, owner, situs, most recent sale) from the county's ArcGIS parcel
+  layer.
 
 admin_id: US-NC-BLA
 
@@ -61,9 +76,10 @@ columns:
   address: PhysStreet
   tax_district: TaxDistric
   tax_neighborhood_code: NeighbCode
-  land_value: LandASVCur
-  improvement_value: ImproveASV
-  total_value: TotalASVCu
+  land_value: LandFMVCur
+  improvement_value: ImprovFMVC
+  total_value: TotalFMVRe
+  current_use_value: LandLUVCur
   last_sale_price: SalesAmoun
   last_sale_doc_type: SalesInstr
   last_sale_year: DeedYear
@@ -85,6 +101,25 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # current_use_value only where it differs from the market land: the
+  # gap is emptied where it is 0, so adding the land back leaves the
+  # cell missing on rows outside the present-use program.
+  - type: binary
+    operation: subtract
+    inputs: [current_use_value, land_value]
+    output: _use_gap
+  - type: unary
+    operation: null_if_equal
+    input: _use_gap
+    args: {value: 0}
+    output: _use_gap
+  - type: binary
+    operation: add
+    inputs: [_use_gap, land_value]
+    output: current_use_value
+
+drop_columns:
+  - _use_gap
 
 columns_to_categorical:
   - tax_district

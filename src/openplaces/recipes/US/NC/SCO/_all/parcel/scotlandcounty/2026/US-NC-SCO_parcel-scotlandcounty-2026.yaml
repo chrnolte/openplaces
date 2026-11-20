@@ -16,7 +16,7 @@
 # included as a bonus.
 
 description: >-
-  Scotland County, NC parcel roll (assessed land/building/total values,
+  Scotland County, NC parcel roll (market land/building/total values,
   owner, situs, deed reference) from the county's ArcGIS parcel layer. No
   year built is available from this source.
 
@@ -54,9 +54,18 @@ columns:
   owner_admin2_id_admin1: State
   owner_postal_code: ZipCode
   last_sale_doc_type: SaleInstru
+  # Values, measured 2026-11-19 on US-NC-SCO: MarketValu = MarketLand
+  # + BuildingVa + ObxfValue on 21,878 of 21,982 rows, so it is the
+  # market total. AssessedVa is not a total: it is 0 on 20,536 of the
+  # 20,549 rows with no DeferredVa, and on the 1,463 rows with one its
+  # ratio to MarketLand has the same distribution as DeferredVa's. It
+  # is not mapped, nor is DeferredVa (a deferred amount, not a use
+  # value). ObxfValue (outbuildings and extra features) is the part of
+  # the total that is neither land nor building.
   land_value: MarketLand
   improvement_value: BuildingVa
-  total_value: AssessedVa
+  special_feature_value: ObxfValue
+  total_value: MarketValu
 
 transformations:
   - type: string
