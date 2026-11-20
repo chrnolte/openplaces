@@ -10,6 +10,7 @@ from shapely.geometry import box
 import openplaces.io.harmonizer.neighbors as neighbors
 import openplaces.io.harmonizer.spine as spine_module
 from openplaces.core.constants import ENVELOPE_ID_COLUMN
+from openplaces.geo.ids import get_openlocationcodes
 from openplaces.recipe.dependencies import DepEdge
 
 # Two units meeting at longitude -71.0.
@@ -84,6 +85,43 @@ def test_two_outlines_sharing_an_id_are_cut_and_dropped_one_by_one(two_units):
     # Of the two outlines named S, only the one wholly in BBB leaves.
     assert list(a.index[a.index == 'S']) == ['S']
     assert a.loc[['S']].geometry.iloc[0].equals(sliver)
+
+
+def test_two_envelopes_leaving_the_same_piece_keep_it_once(two_units):
+    # One building drawn by this unit's source and, longer across the
+    # line, by a neighbor's: on this side the pieces are one polygon.
+    short = box(-71.0003, 42.005, -70.99985, 42.0052)
+    long = box(-71.0003, 42.005, -70.9997, 42.0052)
+    a = spine_module._cut_at_unit_lines(
+        _spine([('S', short), ('L', long)]), 'US-XX-AAA'
+    )
+    pieces = a[a[ENVELOPE_ID_COLUMN].notna()]
+    assert len(pieces) == 1 and pieces.index.is_unique
+    # The larger envelope names the kept piece.
+    expected = get_openlocationcodes(
+        gpd.GeoDataFrame(geometry=[long], crs='EPSG:4326'), handle_duplicates=False
+    ).iloc[0]
+    assert pieces[ENVELOPE_ID_COLUMN].iloc[0] == expected
+
+
+def test_a_near_copy_of_a_piece_is_kept_once(two_units):
+    # The same building drawn twice, one vertex a few centimeters off:
+    # one centroid and one extent, so no code tells the pieces apart.
+    house = box(-71.0003, 42.005, -70.99985, 42.0052)
+    nudged = shapely.Polygon(
+        [
+            (-71.0003, 42.005),
+            (-70.99985, 42.005),
+            (-70.99985, 42.0052),
+            (-71.0003, 42.0052),
+            (-71.0003, 42.0051),
+            (-71.0002995, 42.00505),
+        ]
+    )
+    a = spine_module._cut_at_unit_lines(
+        _spine([('H', house), ('N', nudged)]), 'US-XX-AAA'
+    )
+    assert int(a[ENVELOPE_ID_COLUMN].notna().sum()) == 1
 
 
 def test_neighbor_inputs_are_the_shared_spine_sources(monkeypatch):

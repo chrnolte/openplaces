@@ -256,6 +256,38 @@ def _drop_copies_of(gdf, outlines, pair_share=0.5):
     return gdf[keep]
 
 
+def _repeated_pieces(pieces, envelope_area, envelope_ids, min_iou=0.999):
+    """Which cut *pieces* repeat a kept one (the same building).
+
+    Two pieces are copies when their intersection over union reaches
+    *min_iou*: the same building drawn twice need not match vertex for
+    vertex. Measured 2026-11-20 on US-TX-COL: two pieces 782.42 and
+    782.37 m2, one centroid and one extent to the centimeter, so no
+    geometric code told them apart. Of a group, the piece of the
+    largest envelope stays, then of the lowest envelope code.
+    """
+    geoms = pieces.to_numpy()
+    repeat = np.zeros(len(geoms), dtype=bool)
+    left, right = shapely.STRtree(geoms).query(geoms, predicate='intersects')
+    ordered = left < right
+    left, right = left[ordered], right[ordered]
+    a, b = geoms[left], geoms[right]
+    union = shapely.area(shapely.union(a, b))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        iou = shapely.area(shapely.intersection(a, b)) / union
+    pairs = iou >= min_iou
+    if not pairs.any():
+        return repeat
+    codes = envelope_ids.to_numpy().astype(str)
+    order = np.lexsort((codes, -np.asarray(envelope_area)))
+    rank = np.empty(len(geoms), dtype=int)
+    rank[order] = np.arange(len(geoms))
+    for a, b in zip(left[pairs], right[pairs]):
+        # The lower-ranked copy goes; a chain of copies keeps its best.
+        repeat[b if rank[a] < rank[b] else a] = True
+    return repeat
+
+
 def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     """Keep this unit's piece of every outline crossing into a neighbor.
 
@@ -271,6 +303,14 @@ def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     building that crosses the line by a sliver stays whole in the unit
     holding most of it, and the unit holding the sliver drops it. Both
     units apply the same test to the same envelope, so they agree.
+
+    Two envelopes that differ only beyond the line can leave the same
+    piece, or one within float noise of it (one building drawn by this
+    unit's source and, longer, by a neighbor's). The piece is one
+    building in this unit and is kept once, from the larger envelope
+    (then the lower envelope code): a copy has no geometry to tell it
+    apart, and a sequence number may not (design limit L3). Measured
+    2026-11-20 on US-TX-COL: 3 of 298 pieces repeated another.
 
     A cut piece takes its own centroid's code as its id, lengthened on
     a collision (`geo.ids.distinct_centroid_codes`, never a sequence
@@ -306,12 +346,18 @@ def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     rows = np.flatnonzero(near)
     keep = np.ones(len(spine), dtype=bool)
     keep[rows[inside < floor]] = False
-    cut = rows[(outside >= floor) & (inside >= floor)]
+    crossing = (outside >= floor) & (inside >= floor)
+    cut = rows[crossing]
     if len(cut) == 0:
         return spine[keep]
     envelopes = gpd.GeoDataFrame(geometry=spine.geometry.iloc[cut], crs=spine.crs)
     envelope_ids = get_openlocationcodes(envelopes, handle_duplicates=False)
     pieces = envelopes.geometry.difference(others.iloc[0])
+    repeat = _repeated_pieces(pieces, area[crossing], envelope_ids)
+    if repeat.any():
+        keep[cut[repeat]] = False
+        cut, pieces = cut[~repeat], pieces[~repeat]
+        envelope_ids = envelope_ids[~repeat]
     is_cut = np.zeros(len(spine), dtype=bool)
     is_cut[cut] = True
     taken = set(spine.index[keep & ~is_cut].astype(str))

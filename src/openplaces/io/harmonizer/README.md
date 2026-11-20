@@ -636,8 +636,12 @@ The step sub-modules:
   per building on both sides of the line, and the unit keeps its piece:
   the envelope less the neighbors' polygons. Under 10 m2 or 5% nothing is
   cut, the building staying whole on the side holding most of it. A piece
-  takes its centroid's code as its id (`geo.ids.distinct_centroid_codes`)
-  and `envelope_id` names the envelope, which both units compute alike.
+  takes its centroid's code as its id (`geo.ids.distinct_centroid_codes`;
+  a piece sharing its centroid with another takes a bounding-box corner's
+  code) and `envelope_id` names the envelope, which both units compute
+  alike. Two envelopes that leave the same piece (they differ only
+  beyond the line, or by float noise: intersection over union 0.999)
+  keep it once, from the larger envelope.
   Each unit's parcels then value their own piece in curate, as any
   outline. Measured 2026-10-18 on boston-inner-core: outline pairs drawn
   in two towns 48 to 0, outlines crossing into a neighbor 178 to 0, 232
