@@ -61,6 +61,12 @@ def test_townhouse_lots_touching_common_land_are_linked():
     assert links['share'].isna().all()
 
 
+def test_a_unit_with_no_parcels_yields_no_links():
+    links = contiguity_common_area_links(_parcels().iloc[:0], COMMON, UNIT)
+    assert links.empty
+    assert list(links.columns) == ['parcel_id', COMMON_AREA_ID, *LINK_COLUMNS_TAIL]
+
+
 def test_single_family_open_space_and_roads_stay_unlinked():
     houses = _parcels(lot_label='Residential | Single Family')
     road = _parcels(common_label='Exempt | Right-of-Way')

@@ -53,6 +53,12 @@ from openplaces.timing import get_timer
 #: in-memory HarmonizeState.metadata does not survive the recipe split.
 HARMONIZE_METADATA_KEY = 'openplaces:harmonize'
 
+#: HarmonizeState.metadata key a step sets, with no spine, when the
+#: unit has nothing to build from (`load_geospine` on a geospine
+#: without rows). The run skips the remaining steps and saves the
+#: empty table.
+NOTHING_TO_BUILD_KEY = 'nothing_to_build'
+
 #: Footer key on an attribute checkpoint stamping the side files (link
 #: sidecars, link tables) the steps before it wrote.
 CHECKPOINT_WRITES_KEY = 'openplaces:checkpoint_writes'
@@ -926,6 +932,8 @@ class Harmonizer:
                 # its own work.
                 if state.timer:
                     state.timer.mark(f'step {step_index:02d} {step_name}')
+                if state.spine is None and state.metadata.get(NOTHING_TO_BUILD_KEY):
+                    break
                 if not spine_checked and state.spine is not None:
                     require_unique_index(
                         state.spine,

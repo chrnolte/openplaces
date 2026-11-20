@@ -947,6 +947,10 @@ def contiguity_common_area_links(
     present = [c for c in label_columns if c in parcels.columns]
     if not present or area_column not in parcels.columns:
         return empty
+    # A unit whose sources load no rows: the row-wise join below
+    # returns a frame, not a series, on zero rows.
+    if parcels.empty:
+        return empty
     label = (
         parcels[present].astype('string').fillna('').agg(' | '.join, axis=1).str.lower()
     )
