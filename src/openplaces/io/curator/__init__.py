@@ -343,6 +343,15 @@ class Curator:
         require_unique_index(curated, label)
         filled_ids = _filled_id_columns(curated)
         curated = _coerce_registry_numerics(curated)
+        if len(curated) == 0:
+            # The harmonize stage saved an empty table for a unit with
+            # nothing to build from, and such a table has no columns.
+            # It is saved as it is: no step has an entity to work on,
+            # and none has to guard against a column that is absent.
+            warnings.warn(
+                f'{label}: the entity table has no rows; saved an empty table.'
+            )
+            pipeline = []
         state = CurateState(
             recipe=recipe,
             entity_recipe=self.entity_recipe,

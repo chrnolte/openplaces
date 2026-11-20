@@ -17,6 +17,7 @@ never from a new spatial computation.
 from __future__ import annotations
 
 import json
+import warnings
 
 import pandas as pd
 
@@ -26,6 +27,7 @@ from openplaces.io import to_parquet
 from openplaces.io.aggregate import read_file_metadata
 from openplaces.io.harmonizer import (
     HARMONIZE_METADATA_KEY,
+    NOTHING_TO_BUILD_KEY,
     HarmonizeState,
     _register,
 )
@@ -157,6 +159,19 @@ def load_geospine(
     spine = get_entities(geospine, state.admin_id, geom=True, missing='raise')
     if state.verbose:
         print(f'  Load (geospine): {len(spine):,d} {geospine_id} entities')
+
+    if len(spine) == 0:
+        # A unit whose sources load nothing: no row to attribute and no
+        # link to restore. The run stops here and saves the empty table
+        # it saves for a pipeline that resolved no spine, instead of
+        # every later step guarding against a frame without rows.
+        warnings.warn(
+            f'load_geospine: {geospine_id} has no rows for {state.admin_id}; '
+            'nothing to build.'
+        )
+        state.spine = None
+        state.metadata[NOTHING_TO_BUILD_KEY] = geospine_id
+        return state
 
     _restore_handoff_metadata(state, geospine)
 
