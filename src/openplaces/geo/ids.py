@@ -283,6 +283,15 @@ def distinct_centroid_codes(gdf: gpd.GeoDataFrame, taken: set) -> pd.Series:
     15 characters). A collision is broken by geometry, never by a
     sequence number (design limit L3).
 
+    Two different polygons can share a centroid to the centimeter: a
+    piece that wraps around another (an outline less a lot in its
+    middle) has the inner piece's centroid when the shape is
+    symmetric. Those still clashing at 15 characters take the 15
+    character code of their bounding box's south-west corner, then of
+    its north-east corner, which differ wherever the extents do. Only
+    polygons with the same centroid and the same extent are left, in
+    practice the same polygon twice, and those raise.
+
     Parameters
     ----------
     gdf : GeoDataFrame
@@ -298,7 +307,8 @@ def distinct_centroid_codes(gdf: gpd.GeoDataFrame, taken: set) -> pd.Series:
     Raises
     ------
     ValueError
-        If a code still collides at 15 characters.
+        If a code still collides after the corner codes, naming the
+        clashing rows.
     """
     ids = get_openlocationcodes(gdf, handle_duplicates=False).astype(object)
     for length in (13, 15):
@@ -308,9 +318,35 @@ def distinct_centroid_codes(gdf: gpd.GeoDataFrame, taken: set) -> pd.Series:
         ids[clash] = get_openlocationcodes(
             gdf[clash.to_numpy()], codelength=length, handle_duplicates=False
         ).astype(object)
-    if ids.isin(taken).any() or ids.duplicated().any():
-        raise ValueError('distinct_centroid_codes: a code stays ambiguous.')
+    # A corner code is a point code like the others, so it is checked
+    # against the taken ids and the new codes again.
+    for corner in ('south-west', 'north-east'):
+        clash = ids.isin(taken) | ids.duplicated(keep=False)
+        if not clash.any():
+            break
+        ids[clash] = _corner_codes(gdf[clash.to_numpy()], corner)
+    clash = ids.isin(taken) | ids.duplicated(keep=False)
+    if clash.any():
+        rows = ', '.join(map(str, gdf.index[clash.to_numpy()][:10]))
+        raise ValueError(
+            f'distinct_centroid_codes: {int(clash.sum())} rows keep an ambiguous '
+            f'code (same centroid and extent, or already taken): {rows}'
+        )
     return ids
+
+
+def _corner_codes(gdf: gpd.GeoDataFrame, corner: str) -> pd.Series:
+    """15-character codes of a bounding-box corner, in WGS84."""
+    frame = gdf
+    if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+        frame = gdf.to_crs(4326)
+    bounds = frame.geometry.bounds
+    lng, lat = ('minx', 'miny') if corner == 'south-west' else ('maxx', 'maxy')
+    codes = [
+        olc.encode(la, lo, codeLength=15)
+        for la, lo in zip(bounds[lat].to_numpy(), bounds[lng].to_numpy())
+    ]
+    return pd.Series(codes, index=gdf.index, dtype=object)
 
 
 def add_openlocationcode_index(
