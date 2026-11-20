@@ -1,0 +1,44 @@
+# Patch: in Hyde County the lot keeps its own row's total value.
+#
+# Why Hyde's and not everyone's: Hyde County's own parcel layer
+# (US-NC-HYD_parcel-hydecounty-2026) states a total for each lot row
+# (TOTAL_ASSESSED: land + building + other improvements), also on rows
+# that share their parcel_id_local with other rows, and those rows
+# state different figures. The id join withholds a sum from lots that
+# share a key, so without this patch those lots took their total from
+# NC OneMap only, and under the value group (land, improvement and
+# total from one layer) they take none.
+# Measured 2026-11-19 on US-NC-HYD: 4,168 of 7,696 layer rows share a key, on 1,807 keys.
+# Measured 2026-11-19 on US-NC-HYD: on 5 of those 1,807 keys every row repeats one total.
+# Measured 2026-11-19 on US-NC-HYD: 2,062 lots lose their total under the value group alone.
+#
+# Not national: in other units a parcel layer repeats one account's
+# total on each lot of the account (TxGIO in Brazoria: all 29,895
+# shared keys; the Onslow and Vilas layers on most of theirs), and
+# keeping it there would copy the account onto every lot
+# (plans/findings/architecture-review/own-layer-columns-together-and-use-value.md).
+# The patch is scoped to the unit, so NC OneMap's own rows on the lots
+# it draws in Hyde keep their total too.
+
+description: >-
+  Hyde County NC parcel geospine patch: resolve_spine keeps each
+  lot row's own total value beside its land and improvement value.
+
+stage: harmonize
+admin_id: US-NC-HYD
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_parcel-geospine-2026
+
+pipeline_patch:
+  - extend: resolve_spine
+    key: keep_columns
+    values: [total_value]
+  - extend: resolve_spine
+    key: track_provenance
+    values: [total_value]

@@ -41,7 +41,11 @@ from openplaces.io.harmonizer.links.discovery import (
     _discover_link_sources,
     _select_supplements,
 )
-from openplaces.io.harmonizer.links.own_layer import own_layer_rule
+from openplaces.io.harmonizer.links.own_layer import (
+    own_layer_rule,
+    parse_value_group,
+    value_group_writes,
+)
 from openplaces.io.harmonizer.links.property_values import (
     PROPERTY_WRITES_KEY,
     note_write,
@@ -486,6 +490,7 @@ def _link_auto_discovered(
     fill_only: bool,
     roll_values: dict | None = None,
     layer_columns: dict[str, list[str]] | None = None,
+    value_group: dict | None = None,
 ) -> HarmonizeState:
     """The `auto_discover` branch of `link_by_id`: one aggregate join per
     discovered source of *entity_type*, each through `link_by_id` itself.
@@ -599,12 +604,19 @@ def _link_auto_discovered(
                 unit_lot_pairs = load_unit_lot_pairs(state.admin_id)
         # A parcel layer's values stand on the lots it draws; another
         # parcel layer only fills there (links/own_layer.py). A lossy
-        # key fills everywhere, so a fill_only pass needs no rule.
+        # key fills everywhere, so a fill_only pass needs a rule only
+        # to fill a value group together.
         row_rule = (
             None
-            if fill_only or supplements_only or state.spine is None
+            if supplements_only or state.spine is None
             else own_layer_rule(
-                state.spine, match, matches, spine_source_ids, entity_type
+                state.spine,
+                match,
+                matches,
+                spine_source_ids,
+                entity_type,
+                value_group=value_group,
+                fill_only=fill_only,
             )
         )
         state = link_by_id(
@@ -841,14 +853,50 @@ def _link_aggregate(
             if prior_col in ref_valid.columns and out_name in current
         }
         written_by_roll = apply_roll_values(roll_values, current, prior)
-    for _col, out_name in pairs:
+    # The value columns go together on the lots a parcel layer draws
+    # (own_layer.value_group_writes); every other column is written
+    # cell by cell with the reference's rule.
+    group = (
+        value_group_writes(
+            spine,
+            row_rule,
+            current,
+            source_id_from_recipe_id(recipe_id),
+            suffix=suffix,
+            protected=(
+                set(protect_own_columns or ())
+                if own_geometry_mask is not None
+                else set()
+            ),
+            held=records,
+        )
+        if row_rule is not None and 'geometry_source' in spine.columns
+        else {}
+    )
+    writes = {out_name: (current[out_name], row_rule) for _col, out_name in pairs}
+    writes.update(group)
+    for out_name, (values, rule) in writes.items():
         name = f'{out_name}{suffix}' if suffix else out_name
         # Only a property's write, or a later write to a cell one holds,
         # needs noting; other writes skip the comparison.
         noted = property_rows or name in records
         before = snapshot(spine, name) if noted else None
+        live_rule = rule
+        if noted and rule is not None and rule.exact is not None:
+            # A property's copy stays in memory until
+            # withhold_property_values; the replay below decides what
+            # the cell returns to.
+            held = records[name]['held'].reindex(spine.index).fillna(False)
+            live_rule = rule._replace(exact=rule.exact & ~held.astype(bool))
 
-        def write(target, name=name, values=current[out_name], out_name=out_name):
+        def write(
+            target,
+            name=name,
+            values=values,
+            out_name=out_name,
+            rule=rule,
+            live_rule=live_rule,
+        ):
             _write_prioritized(
                 target,
                 name,
@@ -864,7 +912,7 @@ def _link_aggregate(
                 # rows, which can disagree about their own provenance,
                 # so one token per spine row would be a guess.
                 provenance_token=token if out_name in provenance_cols else None,
-                row_rule=row_rule,
+                row_rule=live_rule if target is spine else rule,
             )
 
         write(spine)
@@ -1109,6 +1157,7 @@ def link_by_id(
     spine_address_key: dict | None = None,
     roll_values: dict | None = None,
     layer_columns: dict[str, list[str]] | None = None,
+    value_group: dict | None = None,
     _protect_own_columns: set[str] | None = None,
     _row_rule: RowRule | None = None,
     _supplement_of: str | None = None,
@@ -1356,12 +1405,24 @@ def link_by_id(
         of the units' stories on a lot). Naming the columns per layer
         type keeps a parcel table's own row on the registry default,
         where a county's only building attributes may sit.
+    value_group : dict, optional
+        ``auto_discover`` mode only. ``values`` (the value columns) and
+        ``year`` (their tax year column, optional), which a lot drawn
+        by a parcel layer takes from one layer or not at all: the
+        layer that overwrites there takes the whole group where it
+        states any of the values, and a layer that only fills takes it
+        only where no other source states any of them (see
+        :func:`~openplaces.io.harmonizer.links.own_layer.value_group_writes`).
+        Other columns are written cell by cell.
     """
     roll_values = parse_roll_values(roll_values)
     if roll_values and mode != 'aggregate' and not auto_discover:
         raise ValueError(
             f"link_by_id: roll_values applies to mode 'aggregate', not {mode!r}."
         )
+    value_group = parse_value_group(value_group)
+    if value_group and not auto_discover:
+        raise ValueError('link_by_id: value_group applies to auto_discover only.')
     if auto_discover:
         return _link_auto_discovered(
             state,
@@ -1379,6 +1440,7 @@ def link_by_id(
             fill_only=fill_only,
             roll_values=roll_values,
             layer_columns=layer_columns,
+            value_group=value_group,
         )
     if layer_columns:
         raise ValueError('link_by_id: layer_columns applies to auto_discover only.')
