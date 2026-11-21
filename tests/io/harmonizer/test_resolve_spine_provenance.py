@@ -6,6 +6,7 @@ non-overlapping `to_add` source's rows.
 
 import geopandas as gpd
 import pandas as pd
+import pytest
 from shapely.geometry import box
 
 import openplaces.io.harmonizer.spine as spine_mod
@@ -85,3 +86,74 @@ def test_two_non_overlapping_sources_each_seed_their_own_rows(monkeypatch):
     )
     assert by_local_id == {'p1': 'bladenco', 'p2': 'nconemap'}
     assert state.spine['geometry_source'].tolist() == ['bladenco', 'nconemap']
+
+
+# The parcel geospine's lists. The sidecars once followed a set of
+# names, so their order changed with the process's hash seed (Fort
+# Bend, 2026-11-21: land_value_source and improvement_value_source
+# swapped places between two runs of the same code on the same data).
+KEEP = [
+    'parcel_id_local',
+    'use_group',
+    'improvement_value',
+    'land_value',
+    'year_built',
+    'n_dwellings',
+]
+TRACKED = ['use_group', 'improvement_value', 'land_value', 'year_built', 'n_dwellings']
+
+
+@pytest.mark.parametrize('tracked', [TRACKED, TRACKED[::-1]])
+def test_sidecars_follow_the_order_track_provenance_names(monkeypatch, tracked):
+    first = gpd.GeoDataFrame(
+        {
+            'parcel_id_local': ['p1'],
+            'use_group': ['residential'],
+            'improvement_value': [1.0],
+            'year_built': [1964.0],
+        },
+        geometry=[box(0, 0, 10, 10)],
+        crs='EPSG:4326',
+        index=pd.Index(['A'], name='parcel_id'),
+    )
+    # The second source alone brings land_value and n_dwellings, so
+    # their sidecars arrive through the rows it adds.
+    second = gpd.GeoDataFrame(
+        {
+            'parcel_id_local': ['p2'],
+            'land_value': [2.0],
+            'n_dwellings': [1.0],
+            'year_built': [1998.0],
+        },
+        geometry=[box(100, 100, 110, 110)],
+        crs='EPSG:4326',
+        index=pd.Index(['B'], name='parcel_id'),
+    )
+    sources = {'first': first, 'second': second}
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
+    monkeypatch.setattr(
+        spine_mod, 'get_entities', lambda recipe_id, *a, **k: sources[recipe_id]
+    )
+    state = HarmonizeState(
+        recipe={'admin_id': 'US-ZZ-AAA'},
+        admin_id='US-ZZ-AAA',
+        verbose=False,
+        timer=None,
+    )
+    state = spine_mod.resolve_spine(
+        state,
+        sources=[
+            {'recipe_id': 'first', 'label': 'first'},
+            {'recipe_id': 'second', 'label': 'second'},
+        ],
+        keep_columns=KEEP,
+        track_provenance=[*tracked, 'not_kept'],
+    )
+    in_first = [c for c in tracked if c in first.columns]
+    in_second = [c for c in tracked if c not in first.columns]
+    sidecars = [c for c in state.spine.columns if c.endswith('_source')]
+    assert sidecars == [
+        'geometry_source',
+        *(f'{c}_source' for c in in_first),
+        *(f'{c}_source' for c in in_second),
+    ]

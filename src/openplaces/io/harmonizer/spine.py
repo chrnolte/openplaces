@@ -836,10 +836,19 @@ def resolve_spine(
     # source attributes (e.g. parcel_id_local) onto the spine for non-footprint
     # entities; absent columns are ignored.
     keep_columns = keep_columns or []
-    track_cols = set(track_provenance or []) & set(keep_columns)
+    # A list in the order *track_provenance* names them, never a set:
+    # each `{col}_source` is appended to the frame as it is first
+    # recorded, so iterating a set of names made the saved column order
+    # follow the process's string hash seed.
+    track_cols = list(
+        dict.fromkeys(c for c in track_provenance or [] if c in keep_columns)
+    )
 
     def _spine_cols(gdf):
         return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
+
+    def _tracked_in(gdf):
+        return [c for c in track_cols if c in gdf.columns]
 
     # loaded[0] is the highest-priority source by admin specificity that
     # actually loaded (not necessarily resolved[0]: a geometry-less
@@ -852,7 +861,7 @@ def resolve_spine(
         _spine_cols(source_gdfs[first_recipe_id])
     ].copy()
     _stamp_geometry_source(spine, first_label, keep_columns)
-    for col in track_cols & set(spine.columns):
+    for col in _tracked_in(spine):
         _record_source(spine, col, spine[col].notna(), first_label)
 
     lots = _load_lots(state) if evidence_resolution else None
@@ -873,7 +882,7 @@ def resolve_spine(
                 forced = candidate.loc[taken.index, _spine_cols(candidate)].copy()
                 forced['spine_resolution'] = taken.to_numpy()
                 _stamp_geometry_source(forced, label, keep_columns)
-                for col in track_cols & set(forced.columns):
+                for col in _tracked_in(forced):
                     _record_source(forced, col, forced[col].notna(), label)
                 candidate = candidate.drop(index=taken.index)
                 if state.verbose:
@@ -928,7 +937,7 @@ def resolve_spine(
             n_elong_dropped = 0
 
         _stamp_geometry_source(to_add, label, keep_columns)
-        for col in track_cols & set(to_add.columns):
+        for col in _tracked_in(to_add):
             _record_source(to_add, col, to_add[col].notna(), label)
         if candidate.index.name != spine.index.name:
             warnings.warn(
