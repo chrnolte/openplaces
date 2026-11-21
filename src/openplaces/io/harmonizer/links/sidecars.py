@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 
 from openplaces.core.schema import AdminId
@@ -280,6 +281,47 @@ def _load_link_sidecar(
     if verbose:
         print(f'  Link (overlay): reloaded link sidecar {sidecar_path.name}')
     return overlay
+
+
+#: The value columns of an identity overlay as `_link_spatial_overlay`
+#: computes it (`overlay_polygons` with iou and the suffixes '_spine'
+#: and '_ref'), in that order.
+OVERLAY_VALUE_COLUMNS = ('area_spine_m2', 'area_ref_m2', 'iou', 'area_intersection_m2')
+
+
+def empty_overlay(spine_index: pd.Index) -> pd.DataFrame:
+    """An identity overlay without rows, shaped as a computed one.
+
+    Indexed by (*spine_index*'s name, 'parcel_id') with the float
+    columns of `OVERLAY_VALUE_COLUMNS`, so the sidecar written from it
+    has the columns and dtypes of one written from an overlay with
+    pairs.
+
+    Parameters
+    ----------
+    spine_index : pandas.Index
+        The spine's index; its name and dtype become the first level,
+        an object dtype as text.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The overlay, with no rows.
+    """
+    # Text, not object: an object column without rows is written with
+    # the Arrow null type and reads back as object, where a column of
+    # ids reads back as text.
+    spine_ids = spine_index[:0]
+    if spine_ids.dtype == object:
+        spine_ids = spine_ids.astype('str')
+    index = pd.MultiIndex.from_arrays(
+        [spine_ids, pd.Index([], dtype='str')],
+        names=[spine_index.name or 'index', 'parcel_id'],
+    )
+    return pd.DataFrame(
+        {column: np.array([], dtype='float64') for column in OVERLAY_VALUE_COLUMNS},
+        index=index,
+    )
 
 
 def _write_link_sidecar(

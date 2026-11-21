@@ -995,6 +995,53 @@ def split_overlay(
     return new_spine, new_flat, stats
 
 
+def _write_empty_cut_sidecar(
+    state: HarmonizeState, reference_id: str, step_cfg: dict
+) -> None:
+    """Write the cut sidecar without rows, for a unit without an overlay.
+
+    No overlay was restored. Where the other geospine wrote its overlay
+    sidecar without rows (it read the reference for the unit and found
+    none), there is nothing to cut and no pair to re-key, and the cut
+    sidecar is written without rows, with that sidecar's columns
+    re-keyed as a cut re-keys them: the building's parcel links were
+    looked for and none found. Where that sidecar is missing (the
+    reference was not built) nothing is written, so a curate reader
+    refuses the missing file; a source sidecar with rows is left alone
+    too, since its cut could not be empty.
+    """
+    context = split_context(state.recipe, state.step_index, step_cfg, state.admin_id)
+    source_path = get_entity_link_path(
+        get_recipe_id(context.links_recipe), reference_id, state.admin_id
+    )
+    if not source_path.exists():
+        return
+    flat = pd.read_parquet(source_path)
+    if len(flat):
+        return
+    spine_id_col = state.spine.index.name
+    new_flat = rekey_at_pairs(
+        flat,
+        gpd.GeoDataFrame(),
+        gpd.GeoSeries(),
+        context.links_key,
+        spine_id_col,
+        pd.Series(dtype=object),
+        context.min_fraction,
+        context.area_min_m2,
+    )
+    # The re-keyed ids are an object column, which without rows would
+    # be written with the Arrow null type (see empty_overlay).
+    new_flat[spine_id_col] = new_flat[spine_id_col].astype('str')
+    _write_cut_sidecar(
+        cut_sidecar_path(state.recipe, reference_id, state.admin_id),
+        new_flat,
+        _link_fingerprint(state, reference_id, context.fingerprint_config),
+        get_recipe_id(context.links_recipe),
+        verbose=state.verbose,
+    )
+
+
 # The lot values are replayed from the configuration of the recipe
 # lot_values_from names, never read from its output, but they are that
 # recipe's columns. Which pieces become buildings is a row decision
@@ -1053,15 +1100,6 @@ def split_outlines_at_parcel_lines(
             'whose link_by_id passes give a lot its values.'
         )
     reference_id, _ = _resolve_reference_recipe(None, entity_type, state.admin_id)
-    if reference_id is None or reference_id not in state.crosswalks:
-        # No overlay was restored (a unit without parcels): every
-        # building is its outline.
-        state.spine = split_spine(spine, gpd.GeoDataFrame(), '')
-        if state.verbose:
-            print(
-                f'  Split: no {entity_type} overlay for {state.admin_id}; nothing cut.'
-            )
-        return state
     pipeline = state.recipe.get('pipeline') or []
     step_cfg = (
         pipeline[state.step_index]
@@ -1075,6 +1113,17 @@ def split_outlines_at_parcel_lines(
             'save_link': save_link,
         }
     )
+    if reference_id is None or reference_id not in state.crosswalks:
+        # No overlay was restored (a unit without parcels): every
+        # building is its outline.
+        state.spine = split_spine(spine, gpd.GeoDataFrame(), '')
+        if save_link and reference_id is not None:
+            _write_empty_cut_sidecar(state, reference_id, step_cfg)
+        if state.verbose:
+            print(
+                f'  Split: no {entity_type} overlay for {state.admin_id}; nothing cut.'
+            )
+        return state
     context = split_context(state.recipe, state.step_index, step_cfg, state.admin_id)
     source_path = get_entity_link_path(
         get_recipe_id(context.links_recipe), reference_id, state.admin_id

@@ -1348,11 +1348,13 @@ class RecipeDAG:
             ref_id, _ = _resolve_reference_recipe(
                 step.get('recipe_id'), step.get('entity_type'), node_admin
             )
-            # A reference no job in this graph produces cannot yield a
-            # sidecar: the harmonize step soft-skips it and writes none,
-            # so declaring one would make Snakemake discard a finished
-            # spine as incomplete (observed 2026-08-28 for a county
-            # Overture does not cover). Pruning (exclude_recipe_ids) is
+            # A reference no job in this graph produces is not relied on
+            # for a sidecar: an overlay link writes one without rows
+            # only for a reference saved for the unit without rows, and
+            # none for a reference never saved, so declaring one could
+            # make Snakemake discard a finished spine as incomplete
+            # (observed 2026-08-28 for a county Overture does not
+            # cover). Pruning (exclude_recipe_ids) is
             # one way that happens; a reference scoped to another
             # region, named by a national spine, is the other, and
             # testing the graph rather than the list covers both.

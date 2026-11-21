@@ -768,19 +768,105 @@ def test_a_stale_cut_overlay_fails_closed(wired, monkeypatch):
         )
 
 
-def test_a_unit_without_a_parcel_overlay_marks_every_row_an_outline(monkeypatch):
-    monkeypatch.setattr(
-        pp, '_resolve_reference_recipe', lambda *a: (REFERENCE, 'parcel')
+def test_a_unit_without_a_parcel_overlay_marks_every_row_an_outline(wired):
+    spine, _, _, flat, paths = wired
+    # The footprint geospine found no parcel in the unit and wrote its
+    # overlay sidecar without rows.
+    flat.iloc[:0].to_parquet(
+        paths[('US_footprint-geospine-2026', REFERENCE)], index=False
     )
-    spine, *_ = _row_of_four()
     state = HarmonizeState(
         recipe=BUILDING_GEOSPINE, admin_id='US-XX-YY', verbose=False, timer=None
     )
     state.spine = spine
+    state.step_index = 3
     state = pp.split_outlines_at_parcel_lines(
         state, **{k: v for k, v in SPLIT_CFG.items() if k != 'step'}
     )
     assert state.spine[pp.BUILDING_GEOMETRY_COLUMN].tolist() == [pp.OUTLINE]
+    assert REFERENCE not in state.crosswalks
+
+
+def test_an_unbuilt_parcel_overlay_writes_no_cut_sidecar(wired):
+    spine, _, _, _, paths = wired
+    # The footprint geospine wrote no overlay sidecar: the reference
+    # was not built, which is not the same as built without rows.
+    paths[('US_footprint-geospine-2026', REFERENCE)].unlink()
+    state = HarmonizeState(
+        recipe=BUILDING_GEOSPINE, admin_id='US-XX-YY', verbose=False, timer=None
+    )
+    state.spine = spine
+    state.step_index = 3
+    pp.split_outlines_at_parcel_lines(
+        state, **{k: v for k, v in SPLIT_CFG.items() if k != 'step'}
+    )
+    assert not paths[('US_building-geospine-2026', REFERENCE)].exists()
+
+
+def test_a_unit_without_a_parcel_overlay_writes_the_cut_sidecar_empty(
+    wired, monkeypatch
+):
+    from openplaces.io.curator import CurateState, evidence
+
+    spine, lots, _, flat, paths = wired
+    params = {k: v for k, v in SPLIT_CFG.items() if k != 'step'}
+    cut_path = paths[('US_building-geospine-2026', REFERENCE)]
+    pp.split_outlines_at_parcel_lines(_geospine_state(spine, lots, flat), **params)
+    full = pd.read_parquet(cut_path)
+
+    flat.iloc[:0].to_parquet(
+        paths[('US_footprint-geospine-2026', REFERENCE)], index=False
+    )
+    state = HarmonizeState(
+        recipe=BUILDING_GEOSPINE, admin_id='US-XX-YY', verbose=False, timer=None
+    )
+    state.spine = spine
+    state.step_index = 3
+    pp.split_outlines_at_parcel_lines(state, **params)
+    empty = pd.read_parquet(cut_path)
+    assert len(empty) == 0
+    assert list(empty.columns) == list(full.columns)
+    assert dict(empty.dtypes) == dict(full.dtypes)
+
+    # The building spine restores it as a unit without parcels.
+    monkeypatch.setattr(
+        load_module,
+        '_resolve_reference_recipe',
+        lambda recipe_id, entity_type, admin_id: (REFERENCE, entity_type),
+    )
+    monkeypatch.setattr(load_module, '_link_fingerprint', lambda *a, **k: FINGERPRINT)
+    monkeypatch.setattr(
+        load_module, 'reference_rows', lambda rid, admin, kept_by=None: (None, None)
+    )
+    restored = HarmonizeState(
+        recipe={'entity': Entity('building', 'spine', '2026')},
+        admin_id='US-XX-YY',
+        verbose=False,
+        timer=None,
+    )
+    restored.spine = state.spine
+    restored = load_module._restore_parcel_pieces(
+        restored, BUILDING_GEOSPINE, 3, SPLIT_CFG, 'building_id'
+    )
+    assert REFERENCE not in restored.crosswalks
+
+    # And the curate collects no parcel ids from it, without raising.
+    monkeypatch.setattr(evidence, 'get_entity_link_path', lambda *a: cut_path)
+    monkeypatch.setattr(evidence, 'get_link_owner_recipe_id', lambda r: 'owner')
+    curated = pd.DataFrame(
+        {'parcel_id': [None] * len(state.spine)},
+        index=pd.Index(state.spine.index, name='building_id'),
+    )
+    curate = CurateState(
+        recipe={'recipe_id': 'US_building-test-2026'},
+        entity_recipe={},
+        admin_id='US-XX-YY',
+        verbose=False,
+        timer=None,
+        curated=curated,
+    )
+    curate = evidence.collect_link_ids(curate, link_recipe_id=REFERENCE)
+    assert curate.curated['parcel_id_all'].isna().all()
 
 
 # Recipes
