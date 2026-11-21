@@ -40,6 +40,15 @@ from openplaces.recipe import (
 NEIGHBOR_READS_ENV = 'OPENPLACES_NEIGHBOR_READS'
 
 
+class UnitGeometryMissingError(RuntimeError):
+    """A unit is listed in the admin layer without a polygon.
+
+    Raised instead of answering that the unit has no neighbors, and not
+    caught by the callers that treat an unknown unit as one without
+    neighbors.
+    """
+
+
 def neighbor_reads_enabled() -> bool:
     """False when the environment turns neighbor reads off."""
     value = os.environ.get(NEIGHBOR_READS_ENV, '1').strip().lower()
@@ -67,6 +76,15 @@ def unit_polygons(admin_id) -> tuple:
     unit = AdminId(str(admin_id))
     units = _level_units(str(unit.truncate_to_level(1)), unit.get_level())
     own = units.geometry[str(unit)]
+    if own is None or own.is_empty:
+        # The country table lists the unit before its state's admin
+        # layer is built. Answering "no neighbor" here would let the
+        # planner schedule other inputs than a later run reads.
+        raise UnitGeometryMissingError(
+            f'{unit} has no polygon in the admin layer of level '
+            f'{unit.get_level()}. Build the admin layer of '
+            f'{unit.truncate_to_level(2)} first.'
+        )
     touching = units[units.intersects(own) & (units.index != str(unit))]
     return own, touching
 
