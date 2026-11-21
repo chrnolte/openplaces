@@ -23,6 +23,7 @@ from openplaces.recipe.loading import (
 from openplaces.recipe.naming import (
     version_sort_key,
 )
+from openplaces.recipe.output import get_process_admin_level
 
 
 class DepEdge(NamedTuple):
@@ -162,9 +163,10 @@ def get_recipe_dependencies(
       recipe itself, for the same reason
     - a 'discover_sources' step (the admin geometry recipes): every
       admin source recipe at the recipe's admin_level whose scope
-      covers the unit or lies within it, every source with no unit
+      covers the unit or lies within it
       (:func:`openplaces.recipe.find_admin_source_recipes`, the
-      listing the step reads)
+      listing the step reads); without a unit, every source for a
+      recipe run globally and an unresolved edge for one run per unit
 
     Parameters
     ----------
@@ -434,8 +436,16 @@ def get_recipe_dependencies(
         if step_name == 'discover_sources':
             # The admin geometry step reads every admin source covering
             # a unit it harmonizes, through the listing it uses itself,
-            # so each source's ingest is scheduled before it. With no
-            # unit the run is global and reads them all.
+            # so each source's ingest is scheduled before it. A recipe
+            # run per unit has no sources without one, the contract of
+            # every auto-discovered edge: listing the whole world there
+            # made a unit-less walk (bundle_terms without admin ids)
+            # reach every country's admin sources. A recipe run globally
+            # (no process_by) reads them all, so without a unit it lists
+            # all of them.
+            if admin_str is None and get_process_admin_level(recipe) > 0:
+                _add(None, 'auto_discover', step=step_name, resolved=False)
+                continue
             for src in find_admin_source_recipes(
                 recipe.get('admin_level', 1),
                 admin_str,

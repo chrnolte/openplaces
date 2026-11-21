@@ -68,7 +68,7 @@ SOURCES = [
 HARMONIZE_RECIPE = {
     'recipe_id': 'admin-merged-2026_admin3',
     'stage': 'harmonize',
-    'admin_id': None,
+    'admin_id': AdminId(),
     'admin_level': 3,
     'pipeline': [
         {'step': 'discover_sources'},
@@ -152,6 +152,16 @@ class TestDependencyEdges:
         assert set(_upstream(None)) == {
             s['recipe_id'] for s in SOURCES if not s['restricted']
         }
+
+    def test_a_per_unit_run_without_a_unit_is_unresolved(self, scanned):
+        per_unit = {**HARMONIZE_RECIPE, 'process_by': {'admin_level': 2}}
+        edges = get_recipe_dependencies(per_unit)
+
+        assert [(e.upstream_recipe_id, e.resolved) for e in edges] == [(None, False)]
+        assert {
+            e.upstream_recipe_id
+            for e in get_recipe_dependencies(per_unit, admin_id='XB')
+        } == {'XB_admin-national-2026_admin3', 'admin-worldwide-2026_admin3'}
 
     def test_an_excluded_source_is_pruned(self, scanned):
         edges = get_recipe_dependencies(

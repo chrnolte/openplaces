@@ -602,6 +602,15 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
+            if not isinstance(upstream, dict):
+                # A dependency that loads as a table, not a recipe: the
+                # committed admin spine (admin-spine-2026_admin{N}.csv)
+                # an admin_id_crosswalk names. It is a file of the
+                # recipe roots the notice names by version and commit,
+                # and declares no Source and no input of its own, so it
+                # adds no entry and nothing to walk. RecipeDAG reads it
+                # in place under the same rule.
+                continue
 
             entity = upstream.get('entity') or upstream.get('dataset') or {}
             upstream_entity = str(
