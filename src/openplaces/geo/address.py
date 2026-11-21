@@ -35,12 +35,33 @@ from pathlib import Path
 import usaddress
 from rapidfuzz import fuzz
 
+#: Distinct strings `clean_text` remembers. Its result depends on the
+#: string alone, and one county's addresses repeat the same street,
+#: city and state words millions of times; 65,536 entries of
+#: address-length text hold a few tens of MB, whatever the unit.
+#: Measured 2026-11-21 on US-TX-GAL: 4.3 million calls for 161,012 rows
+CLEAN_TEXT_CACHE_SIZE = 65_536
+
 
 def clean_text(text: str) -> str:
     """Normalize casing, unicode accents, punctuation, and whitespace."""
     if not isinstance(text, str):
         return ''
+    # Only an exact str is remembered: a subclass compares equal to a
+    # str of the same characters and would be served that str's entry.
+    if type(text) is str:
+        return _clean_str(text)
+    return _clean_uncached(text)
 
+
+@lru_cache(maxsize=CLEAN_TEXT_CACHE_SIZE)
+def _clean_str(text: str) -> str:
+    """`clean_text` of a str, remembered (see CLEAN_TEXT_CACHE_SIZE)."""
+    return _clean_uncached(text)
+
+
+def _clean_uncached(text: str) -> str:
+    """The normalization `clean_text` applies to a string."""
     # Unicode normalization (NFKD decomposes characters, e.g. é -> e + accent),
     # then strip the non-spacing (accent) marks
     text = unicodedata.normalize('NFKD', text)
@@ -734,6 +755,27 @@ def parse_address(
     )
 
 
+def parse_address_components(
+    addr_str: str,
+    backend: str = 'auto',
+    admin1_id: str | None = None,
+) -> dict[str, str | None]:
+    """The components `parse_address` returns, without its rendered lines.
+
+    Equal to ``parse_address(addr_str, backend, admin1_id).components``
+    for every input. A caller that normalizes the components itself
+    reads nothing else, and the normalized and formatted lines
+    `parse_address` also builds cost a third of a county's address
+    reconciliation.
+    """
+    raw = addr_str if isinstance(addr_str, str) else ''
+    resolved, _ = _resolve_backend(backend, admin1_id)
+    if resolved == 'none' or not raw.strip():
+        return dict.fromkeys(ADDRESS_COMPONENTS)
+    values, _ = _parse_cached(raw.strip(), admin1_id or DEFAULT_ADMIN1_ID)
+    return dict(zip(ADDRESS_COMPONENTS, values, strict=True))
+
+
 def parse_address_string(addr_str: str) -> dict[str, str | None]:
     """Parse a one-line US address into components via `parse_address`.
 
@@ -883,7 +925,7 @@ def harmonize_address_case(
     layout (``address_formats.csv``), e.g. the default '1200 Seagrass Ln,
     Coastal City, NC 28500' and DE's 'Hauptstrasse 12, 80331 Munich'.
     """
-    return _assemble(
+    return assemble_formatted_components(
         format_address_components(
             address_street,
             address_number,
@@ -895,3 +937,15 @@ def harmonize_address_case(
         ),
         admin1_id,
     )
+
+
+def assemble_formatted_components(
+    components: dict[str, str], admin1_id: str | None = None
+) -> str:
+    """One address line from `format_address_components`' result.
+
+    The second half of :func:`harmonize_address_case`, for a caller that
+    keeps the formatted components as well as the line, so the
+    components are formatted once.
+    """
+    return _assemble(components, admin1_id)

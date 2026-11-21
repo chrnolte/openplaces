@@ -22,6 +22,7 @@ from openplaces.io.harmonizer.attributes._shared import (
 )
 from openplaces.io.harmonizer.dominant_parcel import dominant_overlaps, tie_breakers
 from openplaces.recipe import resolve_attribute_name
+from openplaces.table import join_distinct_text, reduce_groups
 
 
 def _attribute_polygon_reference(
@@ -179,12 +180,12 @@ def _attribute_polygon_reference(
     # overlay sidecar with its own threshold options) even where the name
     # coincides -- the two run on different recipes' outputs and are never
     # compared directly.
-    spine[f'{ref_label}_id_all'] = (
-        footprint_ref_attrs.reset_index()
-        .groupby(spine_id_col)['parcel_id']
-        .agg(lambda s: '|'.join(s.dropna().astype(str).unique()))
-        .reindex(spine.index)
-    )
+    # The shared reducer on array slices: a pandas Series per spine row
+    # cost a third of the step on a county of 300,000 buildings.
+    linked = footprint_ref_attrs.reset_index()
+    spine[f'{ref_label}_id_all'] = reduce_groups(
+        linked['parcel_id'], linked[spine_id_col], join_distinct_text
+    ).reindex(spine.index)
 
     footprint_parcel_areas = footprint_ref_attrs.reset_index()[
         [spine_id_col, 'parcel_id', 'area_intersection_m2']

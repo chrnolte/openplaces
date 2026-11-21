@@ -62,6 +62,7 @@ from openplaces.recipe import (
     resolve_attribute_name,
     source_id_from_recipe_id,
 )
+from openplaces.table import ARRAY_REDUCERS, reduce_groups
 
 _REF_ADDRESS_COLUMNS = (
     ('street_column', 'address_street'),
@@ -1022,6 +1023,11 @@ def _aggregate_reference_column(
         # row failed to parse must not read as zero baths.
         # min_count=1 matches transform._aggregate_cols.
         agg_series = grouped_col.sum(min_count=1)
+    elif any(func is reducer for reducer in ARRAY_REDUCERS):
+        # A join through pandas costs a Series per key, most of the
+        # pass on a roll of a hundred thousand keys; the shared reducer
+        # gives the same values and dtype on array slices.
+        agg_series = reduce_groups(col_series, ref_valid[ref_key], func, sort=False)
     else:
         agg_series = grouped_col.agg(func)
     mapper = agg_series.to_dict() if agg_series.empty else agg_series

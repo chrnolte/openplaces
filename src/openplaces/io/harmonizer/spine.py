@@ -386,7 +386,27 @@ def get_oriented_dims(geom) -> tuple[float, float, float]:
     """
     if geom is None or geom.is_empty:
         return 0.0, 0.0, 0.0
-    obb = geom.minimum_rotated_rectangle
+    return _rectangle_dims(geom.minimum_rotated_rectangle)
+
+
+def get_oriented_dims_of(geoms) -> list[tuple[float, float, float]]:
+    """`get_oriented_dims` of every geometry in *geoms*, in order.
+
+    The rectangles come from one vectorized `shapely.oriented_envelope`
+    call, the function `minimum_rotated_rectangle` calls per geometry;
+    lengths and angles are then measured exactly as for one geometry,
+    so every tuple equals `get_oriented_dims` of its geometry.
+    """
+    geoms = np.asarray(geoms, dtype=object)
+    rectangles = shapely.oriented_envelope(geoms)
+    return [
+        (0.0, 0.0, 0.0) if geom is None or geom.is_empty else _rectangle_dims(rectangle)
+        for geom, rectangle in zip(geoms, rectangles, strict=True)
+    ]
+
+
+def _rectangle_dims(obb) -> tuple[float, float, float]:
+    """`(angle_deg % 180, length, width)` of a bounding rectangle."""
     if obb is None or obb.is_empty or not hasattr(obb, 'exterior'):
         # A degenerate polygon (a point, or a zero-area sliver) has a
         # rectangle that is not itself a polygon, so it has no corners

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from contextvars import ContextVar
 
 import numpy as np
 import pandas as pd
@@ -179,23 +180,41 @@ _RATIO_TRANSFORMS = {
     'asinh': np.arcsinh,
 }
 
+#: The geometry's measured rectangles, kept by one derive_indicators
+#: call for all of its shape specs (None outside such a call).
+_SHAPE_DIMS: ContextVar[dict | None] = ContextVar('shape_dims', default=None)
+
 
 def _derive_shape_metric(state: CurateState, spec: dict) -> pd.Series | None:
     """Measure a minimum-bounding-rectangle dimension of each geometry."""
     from openplaces.geo.polygon import local_metric_crs
-    from openplaces.io.harmonizer.spine import get_oriented_dims
+    from openplaces.io.harmonizer.spine import get_oriented_dims_of
 
     curated = state.curated
     if 'geometry' not in curated.columns or curated.empty:
         return None
 
-    # get_oriented_dims measures raw coordinates, so the geometry must be
-    # metric first -- on lon/lat degrees the x axis is compressed by
-    # cos(latitude) and every dimension (aspect ratio included) is skewed.
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        geometry = curated.geometry.to_crs(local_metric_crs(curated))
-    dims = geometry.map(get_oriented_dims)
+    # Every shape spec of one derive_indicators call measures the same
+    # geometry, so the rectangles are measured once per call (the cache
+    # derive_indicators sets and removes) instead of once per spec.
+    cache = _SHAPE_DIMS.get()
+    dims = cache.get('dims') if cache is not None else None
+    if dims is None:
+        # get_oriented_dims measures raw coordinates, so the geometry
+        # must be metric first: on lon/lat degrees the x axis is
+        # compressed by cos(latitude) and every dimension (aspect ratio
+        # included) is skewed.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            geometry = curated.geometry.to_crs(local_metric_crs(curated))
+        dims = pd.Series(
+            get_oriented_dims_of(geometry.array),
+            index=geometry.index,
+            dtype=object,
+            name=geometry.name,
+        )
+        if cache is not None:
+            cache['dims'] = dims
     length = dims.map(lambda d: d[1])
     width = dims.map(lambda d: d[2])
 
@@ -634,23 +653,31 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     """
     curated = state.curated
     written = []
-    for spec in indicators:
-        kind = spec['type']
-        if kind not in _INDICATOR_DERIVATIONS:
-            raise ValueError(
-                f'Unknown indicator derivation type: {kind!r}. Expected one of '
-                f'{", ".join(sorted(_INDICATOR_DERIVATIONS))}.'
-            )
-        derived = _INDICATOR_DERIVATIONS[kind](state, spec)
-        if derived is None:
-            continue
-        if spec.get('fill_only') and spec['output'] in curated.columns:
-            # A second source's contribution to one output: a unit
-            # holding both kinds of record keeps what the first wrote.
-            existing = curated[spec['output']]
-            derived = existing.where(existing.notna(), derived)
-        curated[spec['output']] = derived
-        written.append(spec['output'])
+    # The geometry is not changed by any derivation, so its rectangles
+    # are measured once for all shape specs of this call; the cache is
+    # dropped when the call ends, as a later step may move geometry.
+    token = _SHAPE_DIMS.set({})
+    try:
+        for spec in indicators:
+            kind = spec['type']
+            if kind not in _INDICATOR_DERIVATIONS:
+                raise ValueError(
+                    f'Unknown indicator derivation type: {kind!r}. Expected one '
+                    f'of {", ".join(sorted(_INDICATOR_DERIVATIONS))}.'
+                )
+            derived = _INDICATOR_DERIVATIONS[kind](state, spec)
+            if derived is None:
+                continue
+            if spec.get('fill_only') and spec['output'] in curated.columns:
+                # A second source's contribution to one output: a unit
+                # holding both kinds of record keeps what the first
+                # wrote.
+                existing = curated[spec['output']]
+                derived = existing.where(existing.notna(), derived)
+            curated[spec['output']] = derived
+            written.append(spec['output'])
+    finally:
+        _SHAPE_DIMS.reset(token)
 
     state.curated = curated
     if state.verbose:
