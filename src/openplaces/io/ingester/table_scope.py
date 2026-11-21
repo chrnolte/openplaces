@@ -191,14 +191,29 @@ class _TableScopeMixin:
         else:
             join_column = admin_id_column_source
 
-        admin_id_filter = admin_id_filter.join(
-            self.download_partition['admin_id_crosswalk'],
-            on=join_column,
-        )
+        crosswalk = self.download_partition['admin_id_crosswalk']
+        admin_id_filter = admin_id_filter.join(crosswalk, on=join_column)
+        assigned = admin_id_filter[f'admin{admin_level_to_process}_id']
 
-        self.download_partition['table_fids'][self.table_name] = admin_id_filter[
-            f'admin{admin_level_to_process}_id'
-        ]
+        if len(assigned) and assigned.isna().all():
+            # Not one row names a unit the crosswalk knows: the source
+            # codes another admin level than process_by's (a county
+            # FIPS against New England's level-3 towns). Every unit's
+            # file would be saved without rows, and the gap would only
+            # surface downstream as missing data.
+            found = admin_id_filter[join_column].dropna().astype(str).unique()
+            expected = crosswalk.index.astype(str)
+            raise ValueError(
+                f'None of the {len(assigned):,} rows of '
+                f'{self.download_partition["admin_id_to_download"]} match '
+                f'process_by.admin_id_crosswalk: {join_column} holds codes '
+                f'like {list(found[:3])}, the crosswalk codes like '
+                f'{list(expected[:3])} at admin level '
+                f'{admin_level_to_process}. Map the column to that level, '
+                'or chunk the source spatially (process_by.use_spatial_mask).'
+            )
+
+        self.download_partition['table_fids'][self.table_name] = assigned
 
     # Admin geometry loading (cached in download_partition)
 
