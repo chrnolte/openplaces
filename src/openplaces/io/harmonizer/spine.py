@@ -583,7 +583,12 @@ def _overlap_share_reject_ids(spine, candidate, share_max: float) -> pd.Index:
 
 
 def _stale_neighborhood_reject_ids(
-    spine, candidate, radius_m: float, min_neighbors: int, agreement_min: float
+    spine,
+    candidate,
+    radius_m: float,
+    min_neighbors: int,
+    agreement_min: float,
+    observed_min: int | None = None,
 ) -> pd.Index:
     """Candidates clear of the spine where their source disagrees locally.
 
@@ -600,7 +605,23 @@ def _stale_neighborhood_reject_ids(
     distance removed whose local agreement was under 0.5 (against OBM and
     NC DPS, the outline itself counted), one was drawn by an independent
     source.
+
+    The accepted layers must have observed the block: at least
+    *observed_min* accepted outlines (default *min_neighbors*) within
+    *radius_m* of the candidate. A block where they draw nothing is a
+    gap in their coverage (a missing image tile, cloud) as often as an
+    empty block, and there the candidate source is the only observation,
+    so it is kept. Disagreement means the accepted layers draw the block
+    differently, not that they do not draw it. The cost: a block
+    demolished to bare ground keeps its old candidate outlines, which no
+    rule can tell from a coverage gap with these layers alone. An
+    accepted count rather than a coverage map: the layers publish no
+    footprint of where they looked, and the count needs no new input.
+    Measured 2026-11-20 on US-TX-JEF: 4,304 outlines dropped without it, 76 with it.
+    Measured 2026-11-20 on US-NC-NHA: 93 of 283 outlines it keeps match NC DPS.
     """
+    if observed_min is None:
+        observed_min = min_neighbors
     if spine.empty or len(candidate) <= min_neighbors:
         return candidate.index[:0]
     cand = candidate.geometry.to_crs('epsg:6933')
@@ -628,6 +649,9 @@ def _stale_neighborhood_reject_ids(
         .groupby('zone')['matched']
         .agg(['size', 'mean'])
     )
+    oa, _, _ = _positional_pairs(zones, accepted)
+    observed = np.bincount(oa, minlength=len(zones)) >= observed_min
+    counts = counts[observed[counts.index.to_numpy()]]
     stale = counts[(counts['size'] >= min_neighbors) & (counts['mean'] < agreement_min)]
     return candidate.index[clear[stale.index.to_numpy()]]
 
@@ -952,6 +976,7 @@ def resolve_spine(
                     radius_m=float(thresholds.get('stale_radius_m', 50.0)),
                     min_neighbors=int(thresholds.get('stale_min_neighbors', 4)),
                     agreement_min=float(thresholds.get('stale_agreement_min', 0.5)),
+                    observed_min=thresholds.get('stale_observed_min'),
                 )
             )
 

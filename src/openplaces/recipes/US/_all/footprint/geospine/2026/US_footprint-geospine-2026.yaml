@@ -83,11 +83,16 @@ pipeline:
       # Microsoft's imagery predates OBM's and the state layers'. A
       # Microsoft outline clear of every accepted outline is left out
       # where most of Microsoft's other outlines within 50 m match none:
-      # there its picture predates demolition and rebuilding.
+      # there its picture predates demolition and rebuilding. Only where
+      # the accepted layers drew at least 4 outlines within 50 m: a block
+      # where they draw nothing is a gap in their coverage (a missing
+      # tile, cloud) as often as an empty block, and the Microsoft outline
+      # is then the only observation (US-TX-JEF, maintainer, 2026-11-20).
       stale_check_labels: [microsoft]
       stale_radius_m: 50.0
       stale_min_neighbors: 4
       stale_agreement_min: 0.5
+      stale_observed_min: 4
 
   - step: link_to_reference
     entity_type: parcel
