@@ -582,80 +582,6 @@ def _overlap_share_reject_ids(spine, candidate, share_max: float) -> pd.Index:
     return candidate.index[covered.index.to_numpy()[(share > share_max).to_numpy()]]
 
 
-def _stale_neighborhood_reject_ids(
-    spine,
-    candidate,
-    radius_m: float,
-    min_neighbors: int,
-    agreement_min: float,
-    observed_min: int | None = None,
-) -> pd.Index:
-    """Candidates clear of the spine where their source disagrees locally.
-
-    A candidate overlapping no accepted outline is either a building the
-    accepted sources missed or a building that is no longer there. The
-    source's own other outlines nearby tell the two apart: where most of
-    them match an accepted outline (overlap of half the smaller or more),
-    the source agrees with the accepted layers there and the candidate is
-    kept; where at least *min_neighbors* of them lie within *radius_m* and
-    fewer than *agreement_min* match, the source's picture of that block
-    predates the accepted layers' (demolition, rebuilding) and the
-    candidate is left out. The candidate itself is not counted. Measured
-    2026-10-18 on US-NC-NHA: of 158 Microsoft outlines the old keep-out
-    distance removed whose local agreement was under 0.5 (against OBM and
-    NC DPS, the outline itself counted), one was drawn by an independent
-    source.
-
-    The accepted layers must have observed the block: at least
-    *observed_min* accepted outlines (default *min_neighbors*) within
-    *radius_m* of the candidate. A block where they draw nothing is a
-    gap in their coverage (a missing image tile, cloud) as often as an
-    empty block, and there the candidate source is the only observation,
-    so it is kept. Disagreement means the accepted layers draw the block
-    differently, not that they do not draw it. The cost: a block
-    demolished to bare ground keeps its old candidate outlines, which no
-    rule can tell from a coverage gap with these layers alone. An
-    accepted count rather than a coverage map: the layers publish no
-    footprint of where they looked, and the count needs no new input.
-    Measured 2026-11-20 on US-TX-JEF: 4,304 outlines dropped without it, 76 with it.
-    Measured 2026-11-20 on US-NC-NHA: 93 of 283 outlines it keeps match NC DPS.
-    """
-    if observed_min is None:
-        observed_min = min_neighbors
-    if spine.empty or len(candidate) <= min_neighbors:
-        return candidate.index[:0]
-    cand = candidate.geometry.to_crs('epsg:6933')
-    accepted = spine.geometry.to_crs('epsg:6933')
-    ia, ib, inter = _positional_pairs(cand, accepted)
-    touches = np.zeros(len(cand), dtype=bool)
-    matched = np.zeros(len(cand), dtype=bool)
-    if len(ia):
-        touches[ia[inter > 1.0]] = True
-        small = np.minimum(cand.area.to_numpy()[ia], accepted.area.to_numpy()[ib])
-        matched[ia[inter >= 0.5 * small]] = True
-    clear = np.flatnonzero(~touches)
-    if not len(clear):
-        return candidate.index[:0]
-    zones = gpd.GeoSeries(cand.to_numpy()[clear], crs=cand.crs).centroid.buffer(
-        radius_m
-    )
-    za, zb, _ = _positional_pairs(zones, cand)
-    others = clear[za] != zb
-    za, zb = za[others], zb[others]
-    if not len(za):
-        return candidate.index[:0]
-    counts = (
-        pd.DataFrame({'zone': za, 'matched': matched[zb]})
-        .groupby('zone')['matched']
-        .agg(['size', 'mean'])
-    )
-    oa, _, _ = _positional_pairs(zones, accepted)
-    observed = np.bincount(oa, minlength=len(zones)) >= observed_min
-    counts = counts[observed[counts.index.to_numpy()]]
-    stale = counts[(counts['size'] >= min_neighbors) & (counts['mean'] < agreement_min)]
-    return candidate.index[clear[stale.index.to_numpy()]]
-
-
 def _buffer_reject_ids(
     spine: gpd.GeoDataFrame,
     candidate: gpd.GeoDataFrame,
@@ -966,17 +892,6 @@ def resolve_spine(
             near_ids = near_ids.union(
                 _overlap_share_reject_ids(
                     spine, candidate, float(thresholds['overlap_share_max'])
-                )
-            )
-        if label in (thresholds.get('stale_check_labels') or ()):
-            near_ids = near_ids.union(
-                _stale_neighborhood_reject_ids(
-                    spine,
-                    candidate,
-                    radius_m=float(thresholds.get('stale_radius_m', 50.0)),
-                    min_neighbors=int(thresholds.get('stale_min_neighbors', 4)),
-                    agreement_min=float(thresholds.get('stale_agreement_min', 0.5)),
-                    observed_min=thresholds.get('stale_observed_min'),
                 )
             )
 

@@ -80,19 +80,15 @@ pipeline:
       # buildings nearby (plans/footprint-keep-out-zone.md; maintainer,
       # 2026-10-18).
       overlap_share_max: 0.1
-      # Microsoft's imagery predates OBM's and the state layers'. A
-      # Microsoft outline clear of every accepted outline is left out
-      # where most of Microsoft's other outlines within 50 m match none:
-      # there its picture predates demolition and rebuilding. Only where
-      # the accepted layers drew at least 4 outlines within 50 m: a block
-      # where they draw nothing is a gap in their coverage (a missing
-      # tile, cloud) as often as an empty block, and the Microsoft outline
-      # is then the only observation (US-TX-JEF, maintainer, 2026-11-20).
-      stale_check_labels: [microsoft]
-      stale_radius_m: 50.0
-      stale_min_neighbors: 4
-      stale_agreement_min: 0.5
-      stale_observed_min: 4
+      # A Microsoft outline clear of every accepted outline enters as it
+      # is, whatever Microsoft's other outlines around it match: local
+      # disagreement with OBM does not tell a demolished building from a
+      # standing one, and a block where OBM draws nothing is a gap in its
+      # coverage (a missing tile, cloud) where Microsoft is the only
+      # observation. Measured 2026-11-20 on 803 units in 24 states
+      # against FEMA USA Structures: it draws 78% of the Microsoft
+      # outlines in OBM gaps and 43% of the others clear of OBM
+      # (plans/source-coverage-and-absence-rules.md, section 7).
 
   - step: link_to_reference
     entity_type: parcel
