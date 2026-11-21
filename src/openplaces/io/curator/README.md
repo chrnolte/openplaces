@@ -381,5 +381,18 @@ every downstream curate inherits it silently (the census tract and
 block-group ids of 70 Massachusetts towns, 2026-11-05). Dropping the
 column is not refused; that is a recipe's explicit choice.
 
+**A unit built with none of an entity reads as having none of it.**
+Harmonize saves a placeholder for a unit with nothing to build from (no
+rows, no column but `_join_id`), and the curate of it saves one too,
+running no step (`io.readers.is_placeholder_output`). A later curate
+reading it as a reference (`read_curated_reference`, behind
+`link_curated_entity`, `apportion_curated_values` and
+`keep_curated_ids`) gets a frame without rows whose one column is the
+id, so every join matches nothing; `get_entities` returns it without
+rows, with an empty geometry column when geometry was asked for, and
+`export_delivery` pools the region without it. A reference with rows
+but no id column still raises, and so does a missing file: the unit
+was then not built, which is a different fault from having no rows.
+
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 

@@ -190,6 +190,20 @@ def test_county_missing_a_declared_column_still_contributes(mock_data_root):
     assert canonical.loc['a', 'occupancy_type'] == 'Single-Family'
 
 
+def test_a_unit_saved_empty_contributes_no_rows(mock_data_root):
+    # A curate of a unit with nothing to build saves a plain table
+    # without rows, columns or `_geo` sidecar.
+    _county(['a', 'b'], admin3_id='US-NC-AL')
+    save_parquet(pd.DataFrame(), get_output_path(_recipe(), 'US-NC-BB'), combined=True)
+
+    paths = _bundle(['US-NC-AL', 'US-NC-BB'])
+
+    canonical = read_parquet(paths['canonical'])
+    assert list(canonical.index) == ['a', 'b']
+    assert canonical.index.name == 'footprint_id'
+    assert read_parquet(paths['geo'], geom=True).crs == 'EPSG:4326'
+
+
 def test_recipe_without_share_block_raises(two_counties):
     recipe = {k: v for k, v in _recipe().items() if k != 'share'}
 

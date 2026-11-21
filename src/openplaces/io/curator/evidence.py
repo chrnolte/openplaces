@@ -25,6 +25,52 @@ def _field(obj, name):
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
 
 
+def read_curated_reference(recipe_id, admin_id, ref_key) -> pd.DataFrame:
+    """Read a curated reference's output for one unit, its id a column.
+
+    A unit with nothing to build has an empty table saved for it: the
+    harmonize stage saves one without rows, and the curate of that
+    saves it without rows or columns. Such a table reads as "this unit
+    has none of that entity": a frame without rows whose one column is
+    *ref_key*, so a join on it matches nothing. A table with rows but
+    without *ref_key* is a broken reference and raises. A missing file
+    is not an empty unit and raises as well.
+
+    Parameters
+    ----------
+    recipe_id : str
+        A stage ``curate`` recipe whose output is the reference.
+    admin_id : AdminId
+        The unit to read.
+    ref_key : str
+        Id column (or index) of the reference.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The reference, with *ref_key* as a column.
+
+    Raises
+    ------
+    ValueError
+        When the recipe is not a curate recipe, or its output has rows
+        but no *ref_key*.
+    FileNotFoundError
+        When the unit's output does not exist.
+    """
+    ref_recipe = get_recipe_by_id(recipe_id)
+    if ref_recipe.get('stage') != 'curate':
+        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
+    ref = read_parquet(get_output_path(ref_recipe, admin_id))
+    if ref_key not in ref.columns and ref.index.name == ref_key:
+        ref = ref.reset_index()
+    if ref_key in ref.columns:
+        return ref
+    if len(ref) == 0:
+        return pd.DataFrame({ref_key: pd.Series(dtype='string')})
+    raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+
+
 @_register(
     'link_curated_entity',
     phase='gather',
@@ -89,11 +135,10 @@ def link_curated_entity(
             print(f"  link_curated_entity: entity has no '{entity_key}'; skipping.")
         return state
 
-    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
-    if ref_key not in ref.columns and ref.index.name == ref_key:
-        ref = ref.reset_index()
-    if ref_key not in ref.columns:
-        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    ref = read_curated_reference(recipe_id, state.admin_id, ref_key)
+    # A unit without the referenced entity: its columns are all
+    # missing, not a misspelled name.
+    allow_missing = allow_missing or len(ref) == 0
 
     lookup = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key)
     lookup.index = lookup[ref_key].astype('string')
@@ -912,15 +957,17 @@ def apportion_curated_values(
             'Use link_curated_entity for dominant-reference attributes.'
         )
 
-    ref_recipe = get_recipe_by_id(recipe_id)
-    if ref_recipe.get('stage') != 'curate':
-        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
-
-    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
-    if ref_key not in ref.columns and ref.index.name == ref_key:
-        ref = ref.reset_index()
-    if ref_key not in ref.columns:
-        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    ref = read_curated_reference(recipe_id, state.admin_id, ref_key)
+    if len(ref) == 0:
+        # A unit without the referenced entity: no value to divide, and
+        # no overlay link to read for it.
+        for entity_col in columns.values():
+            state.curated[entity_col] = pd.Series(
+                np.nan, index=state.curated.index, dtype='float64'
+            )
+        if state.verbose:
+            print(f'  apportion_curated_values: {recipe_id} has no rows; skipped.')
+        return state
     # A ref column can be legitimately absent when its source never provided
     # that attribute (e.g. a parcel source with no improvement_value split);
     # skip it -- apportion_reference_values already only produces columns
@@ -1281,14 +1328,7 @@ def keep_curated_ids(
         Id column (or index) of the referenced output (default
         ``parcel_id``).
     """
-    ref_recipe = get_recipe_by_id(recipe_id)
-    if ref_recipe.get('stage') != 'curate':
-        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
-    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
-    if ref_key not in ref.columns and ref.index.name == ref_key:
-        ref = ref.reset_index()
-    if ref_key not in ref.columns:
-        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    ref = read_curated_reference(recipe_id, state.admin_id, ref_key)
     known = set(ref[ref_key].dropna().astype(str))
 
     curated = state.curated

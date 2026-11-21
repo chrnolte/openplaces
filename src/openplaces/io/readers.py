@@ -100,7 +100,7 @@ def _concat_recipe_files(paths, reader=None, **read_kwargs):
     # no column but the join id. It contributes nothing, and a filter
     # on a column it lacks cannot even be bound to it, so it is left
     # out unless it is all there is.
-    real = [path for path in paths if not _is_placeholder(path)]
+    real = [path for path in paths if not is_placeholder_output(path)]
     frames = [reader(path, **read_kwargs) for path in real or paths[:1]]
     if len(frames) == 1:
         return frames[0]
@@ -110,15 +110,28 @@ def _concat_recipe_files(paths, reader=None, **read_kwargs):
     return combined
 
 
-def _is_placeholder(path) -> bool:
+def is_placeholder_output(path) -> bool:
     """True for an output file with no rows and no column but `_join_id`.
+
+    The harmonize stage writes one for a unit with nothing to build
+    from, and the curate of such a unit writes one too: the unit was
+    built and has none of the entity. A missing file is not one; it
+    means the unit was not built.
 
     Anything the parquet metadata cannot be read from (a path that is
     not a file, or a reader's own handle in a test) is not a
     placeholder; the reader decides what to do with it.
-    """
-    import pyarrow.parquet as pq
 
+    Parameters
+    ----------
+    path : pathlib.Path or str
+        An output file.
+
+    Returns
+    -------
+    bool
+        Whether the file is a placeholder.
+    """
     try:
         schema = pq.read_schema(path)
         if set(schema.names) - {'_join_id'}:
@@ -819,7 +832,12 @@ def get_entities(
         if not path.exists():
             missing_paths.append(path)
             continue
-        df = read_parquet(path, geom=geom, columns=read_columns, bbox=bbox)
+        # A placeholder has none of the requested columns, and asking
+        # for one raises instead of returning its no rows.
+        placeholder = read_columns is not None and is_placeholder_output(path)
+        df = read_parquet(
+            path, geom=geom, columns=None if placeholder else read_columns, bbox=bbox
+        )
         if admin_col is not None and output_admin_id is not None:
             if admin_col not in df.columns:
                 df[admin_col] = str(output_admin_id)
@@ -866,7 +884,18 @@ def get_entities(
     if admin_col is not None and admin_col in data.columns:
         data[admin_col] = data[admin_col].astype('category')
 
-    if geometry_recipe is not None and not data.empty:
+    if geometry_recipe is not None and len(data) == 0:
+        # No row to join a geometry to (a unit built with none of the
+        # entity); the result still carries the geometry it was asked
+        # for, as an empty layer.
+        from openplaces.config import cfg
+
+        data = gpd.GeoDataFrame(
+            data.assign(geometry=gpd.GeoSeries([], index=data.index, crs=cfg.crs)),
+            crs=cfg.crs,
+        )
+        geom = requested_geom
+    elif geometry_recipe is not None and not data.empty:
         predecessor = get_entities(
             geometry_recipe,
             admin_id=admin_id,
