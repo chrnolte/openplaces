@@ -624,7 +624,13 @@ The step sub-modules:
   that also removed separate buildings nearby), and a Microsoft outline
   clear of every accepted one is left out where most of Microsoft's other
   outlines within 50 m match none (`stale_check_labels`: its imagery
-  predates a rebuilt block). Measured 2026-10-18 on US-NC-NHA: 1,172 of
+  predates a rebuilt block). The check applies only where the accepted
+  layers drew at least four outlines within those 50 m
+  (`stale_observed_min`): where they draw nothing, the block lies in a
+  gap of their coverage as often as it is empty, and the Microsoft
+  outline is the only observation.
+  Measured 2026-11-20 on US-TX-JEF: 4,304 outlines dropped without it, 76 with it.
+  Measured 2026-10-18 on US-NC-NHA: 1,172 of
   the 1,246 separate outlines the old keep-out distance removed came back;
   plans/footprint-keep-out-zone.md.
   **A building crossing a unit line is reconciled across both units**

@@ -58,6 +58,24 @@ def test_a_clear_outline_where_its_source_agrees_is_kept():
     assert list(_stale_neighborhood_reject_ids(accepted, agreeing, 50.0, 4, 0.5)) == []
 
 
+def test_a_block_the_accepted_layers_do_not_cover_is_kept():
+    # A coverage gap: the accepted layer draws a block 200 m away and
+    # nothing here, so the candidate source is the only observation.
+    accepted = _frame(_grid('a', 5, 200))
+    alone = _frame(_grid('m', 5, 0) + [('house', box(30, 20, 40, 30))])
+    assert list(_stale_neighborhood_reject_ids(accepted, alone, 50.0, 4, 0.5)) == []
+
+
+def test_a_gap_edge_with_too_few_accepted_outlines_is_kept():
+    # Two accepted outlines reach into the zone: fewer than observed_min.
+    accepted = _frame(_grid('a', 2, 60))
+    edge = _frame(_grid('m', 5, 0) + [('house', box(30, 20, 40, 30))])
+    assert list(_stale_neighborhood_reject_ids(accepted, edge, 50.0, 4, 0.5)) == []
+    assert 'house' in _stale_neighborhood_reject_ids(
+        accepted, edge, 50.0, 4, 0.5, observed_min=1
+    )
+
+
 def test_too_few_neighbors_never_reject():
     accepted = _frame(_grid('a', 5, 0))
     sparse = _frame(_grid('m', 2, 0, offset=9.0) + [('lone', box(30, 20, 40, 30))])
