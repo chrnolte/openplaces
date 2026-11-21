@@ -40,8 +40,9 @@ from openplaces.io.harmonizer.links.sidecars import (
     _link_fingerprint,
     _load_link_sidecar,
     _write_link_sidecar,
+    empty_overlay,
 )
-from openplaces.io.readers import get_entities
+from openplaces.io.readers import entity_outputs_exist, get_entities
 from openplaces.recipe import (
     find_reference_recipe_id,
     get_recipe_id,
@@ -542,6 +543,40 @@ def _link_spatial_overlay(
     )
     if ref_raw is None or len(ref_raw) == 0:
         raise_if_coverage_complete(recipe_id, state.admin_id)
+        if (
+            save_link
+            and state.spine is not None
+            and entity_outputs_exist(recipe_id, state.admin_id)
+        ):
+            # The reference was built for the unit and has no rows:
+            # the sidecar is written without rows, since the link was
+            # looked for and none found. An unbuilt reference writes
+            # none, so the curate readers refuse the missing file
+            # until the link is computed against it.
+            sidecar_path = get_entity_link_path(
+                get_recipe_id(state.recipe), recipe_id, state.admin_id
+            )
+            fingerprint = _link_fingerprint(
+                state,
+                recipe_id,
+                overlay_step_config(
+                    min_fraction,
+                    area_min_m2,
+                    sort_by,
+                    list_columns,
+                    aggregation_function,
+                    kept_config,
+                ),
+            )
+            empty = empty_overlay(state.spine.index)
+            _write_link_sidecar(
+                sidecar_path,
+                empty,
+                empty[[]].assign(link=pd.Series(dtype='str', index=empty.index)),
+                fingerprint,
+                snapped=empty[[]] if thresholds.get('snap_chains') else None,
+                verbose=state.verbose,
+            )
         if state.verbose:
             print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
         return state

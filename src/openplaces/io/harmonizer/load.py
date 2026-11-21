@@ -740,13 +740,14 @@ def _restore_link(
             sidecar_path, fingerprint, spine_id_col, verbose=state.verbose
         )
         if ref_raw is None or len(ref_raw) == 0:
-            # The geospine run skipped this link for the same reason (an
-            # expected admin-scoped coverage gap), so there is nothing to
-            # restore -- unless a sidecar exists, which means the input
-            # disappeared after the link ran. A reference declaring
-            # complete coverage escalates instead (see
-            # recipe.coverage_is_complete).
-            if overlay is None:
+            # The geospine run found nothing to link for the same reason
+            # (an expected admin-scoped coverage gap) and wrote the
+            # sidecar without rows, or, before it did, no sidecar; there
+            # is nothing to restore -- unless the sidecar has rows, which
+            # means the input disappeared after the link ran. A
+            # reference declaring complete coverage escalates instead
+            # (see recipe.coverage_is_complete).
+            if overlay is None or overlay.empty:
                 raise_if_coverage_complete(resolved_id, state.admin_id)
                 return state
             raise RuntimeError(
@@ -876,7 +877,9 @@ def _restore_parcel_pieces(
     )
     ref_raw, _ = reference_rows(resolved_id, state.admin_id, source_cfg.get('kept_by'))
     if ref_raw is None or len(ref_raw) == 0:
-        if overlay is None:
+        # As in _restore_link: a sidecar without rows is what the split
+        # writes for a unit without parcels.
+        if overlay is None or overlay.empty:
             raise_if_coverage_complete(resolved_id, state.admin_id)
             return state
         raise RuntimeError(

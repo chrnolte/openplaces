@@ -661,6 +661,43 @@ def _as_admin_id(value):
     return value if isinstance(value, AdminId) else AdminId(value)
 
 
+def entity_outputs_exist(recipe, admin_id=None) -> bool:
+    """Whether every file `get_entities` would read for *admin_id* exists.
+
+    Tells a unit that was built with no rows of the entity (a saved
+    table without rows, or a placeholder) from one that was not built,
+    which `get_entities(missing='warn')` returns alike, as a frame
+    without rows. A unit outside the recipe's scope, or one whose files
+    cannot be resolved, reads as not built.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe that defines the entity.
+    admin_id : str or AdminId, optional
+        Administrative unit, resolved as `get_entities` resolves it.
+
+    Returns
+    -------
+    bool
+        True when the unit's output files all exist.
+    """
+    try:
+        if isinstance(recipe, str):
+            recipe = get_recipe_by_id(recipe)
+        partition_id = None
+        if (recipe.get('aggregate_by') or {}).get('single_file'):
+            partition_id = 'all'
+        output_admin_ids, _, _ = _get_output_admin_ids(recipe, admin_id)
+        paths = [
+            get_output_path(recipe, output_admin_id, partition_id=partition_id)
+            for output_admin_id in output_admin_ids
+        ]
+    except (ValueError, KeyError, FileNotFoundError):
+        return False
+    return bool(paths) and all(path.exists() for path in paths)
+
+
 def _get_output_admin_ids(recipe, admin_id):
     """Resolve requested admin IDs to the recipe's output granularity.
 

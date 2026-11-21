@@ -423,7 +423,12 @@ defines the geometry/attribute recipe split below.
 (`US_footprint-geospine-2026`, `US_parcel-geospine-2026`) runs the geometry phase —
 spine resolution, spatial overlays and point joins, group detections, morphology —
 and persists its spine plus one n:m link sidecar per `link_to_reference` join
-(`save_link` is default-on; a step opts *out* with `save_link: false`). The
+(`save_link` is default-on; a step opts *out* with `save_link: false`).
+An overlay whose reference was saved for the unit without rows still
+gets its sidecar, with the usual columns and no rows (the building
+geospine's cut overlay too), so an empty file means no links were
+found. A reference never saved for the unit gets none, and the curate
+readers refuse the missing file. The
 *attribute* recipe keeps the established id (`US_footprint-spine-2026`,
 `US_parcel-spine-2026`), declares the geospine as its `entity_recipe`, starts with
 `load_geospine`, and writes an attribute-only table (`save_to: geometry: false`);
