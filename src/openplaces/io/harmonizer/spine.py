@@ -398,7 +398,27 @@ def get_oriented_dims(geom) -> tuple[float, float, float]:
     """
     if geom is None or geom.is_empty:
         return 0.0, 0.0, 0.0
-    obb = geom.minimum_rotated_rectangle
+    return _rectangle_dims(geom.minimum_rotated_rectangle)
+
+
+def get_oriented_dims_of(geoms) -> list[tuple[float, float, float]]:
+    """`get_oriented_dims` of every geometry in *geoms*, in order.
+
+    The rectangles come from one vectorized `shapely.oriented_envelope`
+    call, the function `minimum_rotated_rectangle` calls per geometry;
+    lengths and angles are then measured exactly as for one geometry,
+    so every tuple equals `get_oriented_dims` of its geometry.
+    """
+    geoms = np.asarray(geoms, dtype=object)
+    rectangles = shapely.oriented_envelope(geoms)
+    return [
+        (0.0, 0.0, 0.0) if geom is None or geom.is_empty else _rectangle_dims(rectangle)
+        for geom, rectangle in zip(geoms, rectangles, strict=True)
+    ]
+
+
+def _rectangle_dims(obb) -> tuple[float, float, float]:
+    """`(angle_deg % 180, length, width)` of a bounding rectangle."""
     if obb is None or obb.is_empty or not hasattr(obb, 'exterior'):
         # A degenerate polygon (a point, or a zero-area sliver) has a
         # rectangle that is not itself a polygon, so it has no corners
@@ -1700,6 +1720,82 @@ def _pick_unanimous(series: pd.Series):
     return values[0] if len(values) == 1 else pd.NA
 
 
+def _representative_groups(picked: np.ndarray) -> list[int]:
+    """Positions of groups whose picks show every kind of value in *picked*.
+
+    One group per type of value (and the smallest and largest of an
+    integer type), and one missing pick, are what pandas reads to infer
+    the dtype of an aggregation.
+    """
+    missing = pd.isna(picked)
+    chosen = [int(np.argmax(missing))] if missing.any() else []
+    by_kind: dict[type, list[int]] = {}
+    for position in np.flatnonzero(~missing):
+        by_kind.setdefault(type(picked[position]), []).append(int(position))
+    for kind, positions in by_kind.items():
+        chosen.append(positions[0])
+        if issubclass(kind, int | np.integer) and not issubclass(kind, bool):
+            numbers = [int(picked[position]) for position in positions]
+            chosen.append(positions[numbers.index(min(numbers))])
+            chosen.append(positions[numbers.index(max(numbers))])
+    return chosen
+
+
+def _rolls_up_by_kind(dtype) -> bool:
+    """Whether pandas' dtype for picks of *dtype* follows their kinds alone.
+
+    True for the numpy object, number and bool dtypes, text, categories
+    and the nullable numbers, the dtypes `_roll_up_unanimous` is
+    checked against; other dtypes keep a call per group.
+    """
+    if isinstance(dtype, pd.StringDtype | pd.CategoricalDtype):
+        return True
+    if isinstance(dtype, pd.api.extensions.ExtensionDtype):
+        return not isinstance(dtype, pd.ArrowDtype) and dtype.kind in 'iufb'
+    return dtype.kind in 'Oiufb'
+
+
+def _roll_up_unanimous(
+    frame: pd.DataFrame, group_by: str, columns: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
+    """Per group, each column's single distinct non-null value, else missing.
+
+    Returns the frame `frame.groupby(group_by)[columns].agg(_pick_unanimous)`
+    returns, values and dtypes alike, together with each column's count
+    of distinct non-null values per group and each row's group number.
+    """
+    grouped = frame.groupby(group_by)
+    counts = grouped[columns].nunique(dropna=True)
+    codes = grouped.ngroup().to_numpy()
+    if grouped.ngroups == 0:
+        return grouped[columns].agg(_pick_unanimous), counts, codes
+    # A Python call per group and column cost minutes on a county's
+    # parcels: the first non-null value where a group has exactly one
+    # distinct value gives the same picks, and pandas' dtype for them
+    # is read off an aggregation of a few representative groups.
+    first = grouped[columns].first()
+    rollup = {}
+    for column in columns:
+        if not _rolls_up_by_kind(frame[column].dtype):
+            rollup[column] = grouped[column].agg(_pick_unanimous)
+            continue
+        values = first[column]
+        if isinstance(values.dtype, pd.api.extensions.ExtensionDtype):
+            picked = values.to_numpy(dtype=object, na_value=pd.NA)
+        else:
+            # Iterating keeps numpy scalars, as pd.unique hands them out.
+            picked = np.fromiter(values.to_numpy(), dtype=object, count=len(values))
+        picked[counts[column].to_numpy() != 1] = pd.NA
+        groups = _representative_groups(picked)
+        rows = np.isin(codes, groups)
+        model = frame[column][rows].groupby(codes[rows]).agg(_pick_unanimous)
+        rolled = pd.Series(picked, index=first.index, dtype=object, name=column)
+        if model.dtype != object:
+            rolled = rolled.astype(model.dtype)
+        rollup[column] = rolled
+    return pd.DataFrame(rollup, index=first.index), counts, codes
+
+
 def _inherit_geographic_ids(
     state: HarmonizeState,
     output_columns: list[str],
@@ -1745,7 +1841,7 @@ def _inherit_geographic_ids(
         return empty, []
 
     if group_by in linked.columns:
-        grouped = linked.groupby(group_by)
+        frame, key = linked, group_by
     elif {'lat', 'long'}.issubset(linked.columns):
         points = points_from_coords(
             linked[['lat', 'long'] + available].copy(), x='long', y='lat'
@@ -1755,22 +1851,31 @@ def _inherit_geographic_ids(
         # ('index_right' for an unnamed index, which 'index' misses),
         # so resolve it through the shared helper rather than by hand.
         joined = _rename_right_index(joined, spine.index.name, '_spine_id')
-        grouped = joined.groupby('_spine_id')
+        frame, key = joined, '_spine_id'
     else:
         return empty, []
 
-    # `grouped` stays column-unselected so each `grouped[col]` below is a
-    # fresh sub-selection -- selecting a column from an *already*
-    # column-selected DataFrameGroupBy raises in pandas.
-    rollup = grouped[available].agg(_pick_unanimous)
+    rollup, counts, codes = _roll_up_unanimous(frame, key, available)
 
+    # Conflicts in one pass per column over the conflicting groups'
+    # rows, in the order of the groups.
     conflicts: list[dict] = []
     for col in available:
-        counts = grouped[col].nunique(dropna=True)
-        for key in counts.index[counts > 1]:
-            values = pd.unique(grouped.get_group(key)[col].dropna())
+        many = counts[col].to_numpy() > 1
+        if not many.any():
+            continue
+        numbers = np.flatnonzero(many)
+        group_keys = dict(zip(numbers, counts.index[many]))
+        rows = np.isin(codes, numbers)
+        values = frame[col][rows]
+        stated = values.notna().to_numpy()
+        for number, group in values[stated].groupby(codes[rows][stated]):
             conflicts.append(
-                {'output_column': col, 'group_key': key, 'values': list(values)}
+                {
+                    'output_column': col,
+                    'group_key': group_keys[number],
+                    'values': list(pd.unique(group)),
+                }
             )
 
     inherited = {

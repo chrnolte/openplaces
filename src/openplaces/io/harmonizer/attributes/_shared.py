@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
 import pandas as pd
 
 from openplaces.io.harmonizer.dominant_parcel import OVERLAP_TIE_M2
@@ -165,8 +166,20 @@ def _join_distinct(areas: pd.DataFrame, spine_id_col: str, col: str) -> pd.Serie
     already stored separately, adding no information.
     """
     grouped = areas.groupby(spine_id_col)[col]
-    joined = grouped.apply(' + '.join)
-    return joined.where(grouped.nunique() > 1)
+    n_distinct = grouped.nunique()
+    several = n_distinct > 1
+    # Only the groups of several values are joined: the rest are left
+    # missing anyway, and a pandas Series per group cost seconds on a
+    # county where nearly every entity has one value.
+    # The first group is joined too, so the result takes the dtype
+    # pandas infers from joined values even where no group has several.
+    keep = (
+        areas[spine_id_col]
+        .isin(n_distinct.index[several | (np.arange(len(several)) == 0)])
+        .to_numpy()
+    )
+    joined = areas[keep].groupby(spine_id_col)[col].apply(' + '.join)
+    return joined.reindex(n_distinct.index).where(several)
 
 
 _ID_COLUMN = re.compile(r'.+_id(_.+)?$')

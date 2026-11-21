@@ -18,6 +18,7 @@ from openplaces.io.harmonizer.apportion import (
 )
 from openplaces.io.harmonizer.dominant_parcel import rank_overlaps, tie_breakers
 from openplaces.recipe import get_output_path, get_recipe_by_id
+from openplaces.table import join_distinct_text, map_distinct, reduce_groups
 
 
 def _field(obj, name):
@@ -252,9 +253,12 @@ def _apportioned_sources(
         # the dataset it carried, so `parcel.floridagio` and the flat
         # `parcel` fallback read as one lane instead of two vocabularies
         # in one column. The `+imputed` marker splits on `+`, so the dot
-        # is invisible to is_imputed.
-        tokens = tokens.map(
-            lambda t: t if pd.isna(t) or str(t).startswith(lane) else f'{lane}.{t}'
+        # is invisible to is_imputed. Each token is mapped once per
+        # distinct value (map_distinct): an entity column holds a
+        # handful of tokens, and a call per entity cost seconds.
+        tokens = map_distinct(
+            tokens,
+            lambda t: t if pd.isna(t) or str(t).startswith(lane) else f'{lane}.{t}',
         )
         pair_tokens = pairs['parcel_id'].map(lookup[side])
         contributed = is_imputed(pair_tokens)
@@ -272,10 +276,11 @@ def _apportioned_sources(
 
         any_imputed = _by_entity(contributed)
         any_closed = _by_entity(closed)
-        tokens = tokens.where(~any_imputed, tokens.map(_strip_open_marker))
-        marked = tokens.map(mark_imputed)
+        tokens = tokens.where(~any_imputed, map_distinct(tokens, _strip_open_marker))
+        marked = map_distinct(tokens, mark_imputed)
         out[col] = tokens.where(
-            ~any_imputed, marked.where(any_closed, marked.map(_with_open_marker))
+            ~any_imputed,
+            marked.where(any_closed, map_distinct(marked, _with_open_marker)),
         )
     return out
 
@@ -1166,6 +1171,17 @@ def apportion_curated_values(
     return state
 
 
+def _join_link_ids(links: pd.DataFrame, id_col: str, ref_key: str) -> pd.Series:
+    """Per *id_col* group, its distinct *ref_key* values joined by '|'.
+
+    Each value is written once as text, in the order of the rows; a
+    group stating none reads ''. Indexed by the sorted group keys.
+    """
+    # A pandas Series per footprint cost most of the step; the shared
+    # reducer runs on array slices with the same result and dtype.
+    return reduce_groups(links[ref_key], links[id_col], join_distinct_text)
+
+
 @_register('collect_link_ids', phase='gather')
 def collect_link_ids(
     state: CurateState,
@@ -1267,9 +1283,7 @@ def collect_link_ids(
         # not be the entity's own parcel_id.
         links = rank_overlaps(links, spine_id_col=id_col, ref_id_col=ref_key)
 
-    collected = links.groupby(id_col)[ref_key].agg(
-        lambda s: '|'.join(s.dropna().astype(str).unique())
-    )
+    collected = _join_link_ids(links, id_col, ref_key)
     curated[column] = collected.where(collected != '').reindex(curated.index)
 
     # Like the harmonizer's `_join_distinct` convention, leave the `_all`

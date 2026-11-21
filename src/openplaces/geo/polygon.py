@@ -18,7 +18,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon
 
 from openplaces.core.constants import AC_TO_HA, M2_PER_AREA_UNIT, M2_TO_SQFT
 from openplaces.geo.crs_transforms import get_or_resolve_crs_transform
-from openplaces.table import require_unique_index
+from openplaces.table import reduce_groups, require_unique_index
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -1455,7 +1455,15 @@ def _leftover_fragments(
         .copy()
         .join(other_geom.rename(columns={'geometry': '_og'}), on=other_idx)
     )
-    other_union = pairs.groupby(self_idx)['_og'].agg(shapely.union_all)
+    # The same union per polygon through the shared reducer: pandas'
+    # Series per group cost half of an overlay of 150,000 polygons.
+    # Handed as plain objects, the geometries are not cast back to a
+    # geometry column; only the index and the values are read below.
+    other_union = reduce_groups(
+        pd.Series(np.asarray(pairs['_og'].to_numpy(), dtype=object)),
+        pairs[self_idx],
+        shapely.union_all,
+    )
     leftover = shapely.difference(
         partial_self.geometry.reindex(other_union.index).values,
         other_union.values,

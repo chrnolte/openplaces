@@ -403,6 +403,47 @@ def score_decisions(
     return winner, token, best_score, second_score.where(has_second), scores
 
 
+def _cell_key(value) -> tuple:
+    """A hashable key equal for two cells only when they are the same.
+
+    The type is part of the key, so 1, 1.0 and True stay apart (Python
+    finds them equal), and so do None, NaN and pd.NA, which all read as
+    missing but are different values to return.
+    """
+    if value is None or value is pd.NA or value is pd.NaT:
+        return (type(value), None)
+    if isinstance(value, float):
+        # NaN equals nothing, and 0.0 equals -0.0: the bits decide.
+        return (type(value), None) if value != value else (type(value), value.hex())
+    return (type(value), value)
+
+
+def _vote_distinct_rows(rows: pd.DataFrame, vote) -> pd.Series:
+    """``rows.apply(vote, axis=1)``, voting once per distinct row.
+
+    *vote* reads nothing but the row's values, so equal rows get equal
+    results. A county's evidence columns hold a few hundred distinct
+    combinations over a few hundred thousand rows, and the call per row
+    was most of the occupancy step. Rows count as equal under
+    :func:`_cell_key`, cell by cell.
+    """
+    codes: dict = {}
+    row_codes = np.fromiter(
+        (
+            codes.setdefault(tuple(_cell_key(v) for v in row), len(codes))
+            for row in rows.itertuples(index=False, name=None)
+        ),
+        dtype=np.int64,
+        count=len(rows),
+    )
+    _, firsts = np.unique(row_codes, return_index=True)
+    results = rows.iloc[firsts].apply(vote, axis=1).to_numpy(dtype=object)
+    voted = np.empty(len(rows), dtype=object)
+    for position, code in enumerate(row_codes):
+        voted[position] = results[code]
+    return pd.Series(voted, index=rows.index)
+
+
 def vote_dynamic_values(
     values: dict[str, pd.Series],
     weights: dict[str, float] | None = None,
@@ -480,7 +521,7 @@ def vote_dynamic_values(
     token = pd.Series(pd.NA, index=index, dtype=object)
     has_vote = pd.concat([keyed[label].notna() for label in labels], axis=1).any(axis=1)
     if has_vote.any():
-        voted = stacked.loc[has_vote].apply(_row_vote, axis=1)
+        voted = _vote_distinct_rows(stacked.loc[has_vote], _row_vote)
         winner.loc[has_vote] = voted.str[0]
         token.loc[has_vote] = voted.str[1]
     return winner, token

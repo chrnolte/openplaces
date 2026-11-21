@@ -22,7 +22,7 @@ from openplaces.io.curator.provenance import record_sources, source_column
 from openplaces.io.readers import describe_recipe, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.recipe import resolve_attribute_name, source_id_from_recipe_id
-from openplaces.table import _agg_func_for, _has_agg_func
+from openplaces.table import _agg_func_for, _has_agg_func, reduce_groups
 
 #: Reference column naming the source each row came from whole, as
 #: `union_spine_sources` writes it on a property spine.
@@ -337,15 +337,20 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
         elif functions[column] == AGREE:
             reduced[column] = by_group.first().where(by_group.nunique() == 1)
         elif functions[column] == DISTINCT:
-            single = by_group.first().where(by_group.nunique() == 1)
-            several = by_group.nunique() > 1
+            n_distinct = by_group.nunique()
+            single = by_group.first().where(n_distinct == 1)
+            several = n_distinct > 1
             if several.any():
                 stated = values[column].notna()
-                joined = (
-                    values.loc[stated, column]
-                    .astype(str)
-                    .groupby(group_key[stated])
-                    .agg(lambda s: DISTINCT_SEPARATOR.join(dict.fromkeys(s)))
+                texts = values.loc[stated, column].astype(str)
+                keys = group_key[stated]
+                # Only groups of several values are read from the join,
+                # so only they pay a Python call each.
+                wanted = keys.isin(several.index[several]).to_numpy()
+                joined = reduce_groups(
+                    texts[wanted],
+                    keys[wanted],
+                    lambda texts: DISTINCT_SEPARATOR.join(dict.fromkeys(texts)),
                 )
                 single = single.astype(object).where(~several, joined)
             reduced[column] = single
@@ -373,7 +378,10 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
         parts = dict.fromkeys(t for v in series for t in v.split('+') if t)
         return '+'.join(parts) or None
 
-    return tokens.groupby(keys).agg(union)
+    # The same result as tokens.groupby(keys).agg(union): wide tables of
+    # mostly lone rows spent minutes in pandas' Series per group, which
+    # the shared reducer replaces with array slices.
+    return reduce_groups(tokens, keys, union)
 
 
 #: Reductions whose value is one row's value, so its token is that row's.

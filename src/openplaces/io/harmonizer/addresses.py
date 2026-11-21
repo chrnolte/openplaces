@@ -86,12 +86,13 @@ def _parse_address_list(value: str, admin1_id) -> dict[str, str]:
     from openplaces.geo.address import (
         compress_number_list,
         normalize_address_components,
-        parse_address,
+        parse_address_components,
         split_address_list,
     )
 
     def _one(text):
-        parsed = parse_address(text, admin1_id=admin1_id).components
+        # Components only: parse_address's rendered lines are not read.
+        parsed = parse_address_components(text, admin1_id=admin1_id)
         return normalize_address_components(
             address_street=parsed['address_street'] or '',
             address_number=parsed['address_number'],
@@ -240,9 +241,9 @@ def reconcile_addresses_df(
     from openplaces.geo.address import (
         ADDRESS_COMPONENTS,
         MATCH_COMPONENTS,
+        assemble_formatted_components,
         format_address_components,
         get_admin2_codes,
-        harmonize_address_case,
         lookup_postal_city,
         match_streets,
         normalize_address_components,
@@ -428,30 +429,24 @@ def reconcile_addresses_df(
     conflict = summarize_conflicts(compare, curated.index).where(disagreeing)
     curated[conflict_column] = conflict
 
-    # Format over unique component tuples, then assign and record provenance.
-    # format_address_components is called separately from harmonize_address_case
-    # (which repeats the same normalization internally) rather than reusing its
-    # private _assemble step directly -- this module doesn't reach into another
-    # module's underscore-prefixed internals, same reasoning as _record_source
-    # and _summarize_conflicts above. Both calls are over the same deduplicated
-    # unique tuples, so the repeated work is cheap.
+    # Format over unique component tuples, then assign and record
+    # provenance. Each tuple is formatted once and its line assembled
+    # from those components, which is what harmonize_address_case
+    # does; formatting twice cost a sixth of the step.
     has = base.ne('')
     subset = merged.loc[has]
     keys = list(zip(*(subset[comp] for comp in components)))
     unique_keys = set(keys)
-    formats = {
-        key: harmonize_address_case(
-            **{comp: value or None for comp, value in zip(components, key)},
-            admin1_id=admin1_id,
-        )
-        for key in unique_keys
-    }
     formatted_components = {
         key: format_address_components(
             **{comp: value or None for comp, value in zip(components, key)},
             admin1_id=admin1_id,
         )
         for key in unique_keys
+    }
+    formats = {
+        key: assemble_formatted_components(parts, admin1_id)
+        for key, parts in formatted_components.items()
     }
     formatted = pd.Series([formats[k] for k in keys], index=subset.index)
 

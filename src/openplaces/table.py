@@ -18,6 +18,7 @@ import warnings
 from itertools import combinations
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
@@ -200,7 +201,164 @@ def join_nonnull_addresses(x):
     return ' + '.join(by_base.values())
 
 
+def join_distinct_text(values, sep: str = '|') -> str:
+    """The distinct stated values as text, in order, joined by *sep*.
+
+    The reducer form of ``sep.join(s.dropna().astype(str).unique())``:
+    each non-missing value is written with ``str`` and kept once, at its
+    first position. A group stating nothing gives ''. ``str`` and
+    ``astype(str)`` agree for text, integers, floats and booleans; a
+    datetime is written differently by the two, so a datetime column
+    must not be joined with this function.
+    """
+    return sep.join(dict.fromkeys(str(v) for v in values if not pd.isna(v)))
+
+
+def _keeps_dtype_per_group(dtype) -> bool:
+    """Whether pandas may cast an aggregate back to *dtype*.
+
+    An aggregate over an extension column other than text (a category,
+    a nullable integer, a geometry) is cast back to that dtype where
+    every result fits it, a test only the whole result can pass.
+    """
+    return isinstance(dtype, pd.api.extensions.ExtensionDtype) and not isinstance(
+        dtype, pd.StringDtype
+    )
+
+
+def _missing_scalar(value) -> bool:
+    """True for None, NaN, pd.NA and NaT, never for a container."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    return isinstance(value, float) and value != value
+
+
+def reduce_groups(values: pd.Series, keys, reduce, *, sort: bool = True) -> pd.Series:
+    """Reduce each group of *values* with *reduce*, one call per group.
+
+    The result is what ``values.groupby(keys, sort=sort).agg(f)``
+    returns, with ``f(s) = reduce(s.to_numpy(dtype=object))``: the same
+    index (the distinct non-missing keys, sorted when
+    *sort*, else in order of first appearance; rows with a missing key
+    are left out), the same name, the same values and the same dtype.
+    *reduce* receives the group's values as an object array in row
+    order, missing values included as they are stored, and its result is
+    used as returned.
+
+    Parameters
+    ----------
+    values : pandas.Series
+        Values to reduce.
+    keys : pandas.Series or array-like
+        Group key of each value, matched by position.
+    reduce : callable
+        Takes an object array, returns one value.
+    sort : bool
+        Order of the result's index, as in `pandas.DataFrame.groupby`.
+
+    Returns
+    -------
+    pandas.Series
+        One reduced value per group.
+
+    Notes
+    -----
+    pandas builds a Series for every group, which made a join over a few
+    hundred thousand groups of one or two rows cost minutes; here the
+    groups are slices of one sorted array. The dtype is the one pandas
+    infers from the results: a few groups, one returning each kind of
+    value (missing, text, number), are aggregated by pandas itself and
+    their dtype is applied to all. Where pandas could cast the results
+    back to the column's own dtype (an extension dtype other than text),
+    or where the keys are categorical (pandas then also lists categories
+    no row holds), pandas aggregates every group itself.
+    """
+    values = values.reset_index(drop=True)
+    keys = (
+        keys.reset_index(drop=True)
+        if isinstance(keys, pd.Series)
+        else pd.Series(np.asarray(keys))
+    )
+
+    def by_series(series):
+        return reduce(series.to_numpy(dtype=object))
+
+    grouped = values.groupby(keys, sort=sort)
+    if (
+        not keys.notna().any()
+        or isinstance(keys.dtype, pd.CategoricalDtype)
+        or _keeps_dtype_per_group(values.dtype)
+    ):
+        return grouped.agg(by_series)
+    index = grouped.size().index
+    codes, uniques = pd.factorize(keys, sort=False)
+    stated = np.flatnonzero(codes >= 0)
+    rows = stated[np.argsort(codes[stated], kind='stable')]
+    group_codes = codes[rows]
+    array = values.to_numpy(dtype=object)[rows]
+    starts = np.r_[0, np.flatnonzero(np.diff(group_codes)) + 1]
+    ends = np.r_[starts[1:], len(rows)]
+    reduced = np.empty(len(starts), dtype=object)
+    for position, (start, end) in enumerate(zip(starts, ends, strict=True)):
+        reduced[position] = reduce(array[start:end])
+    merged = np.empty(len(index), dtype=object)
+    merged[index.get_indexer(pd.Index(uniques).take(group_codes[starts]))] = reduced
+
+    # The first group returning each kind of value is aggregated by
+    # pandas, whose result dtype then applies to every group.
+    kinds: dict = {}
+    for position, value in enumerate(merged):
+        kinds.setdefault('missing' if _missing_scalar(value) else type(value), position)
+    sample = keys.isin(index[sorted(kinds.values())]).to_numpy()
+    model = values[sample].groupby(keys[sample], sort=sort).agg(by_series)
+    result = pd.Series(merged, index=index, name=model.name)
+    if model.dtype == object:
+        return result
+    return result.astype(model.dtype)
+
+
+def map_distinct(series: pd.Series, function) -> pd.Series:
+    """``series.map(function)``, calling *function* once per distinct value.
+
+    Values are distinct when their type and value are (1, 1.0 and True
+    stay apart, and so do None, NaN and pd.NA). The distinct values are
+    mapped by `pandas.Series.map` itself, so *function* receives what it
+    would, and the result's dtype is the one pandas infers from the
+    same set of results. Columns of another dtype than object or text
+    are mapped as they are.
+    """
+    if not len(series) or not (
+        series.dtype == object or isinstance(series.dtype, pd.StringDtype)
+    ):
+        return series.map(function)
+    array = series.to_numpy(dtype=object)
+    if pd.api.types.infer_dtype(array, skipna=True) in ('string', 'empty'):
+        # Text and missing values only: text compares exactly by hash,
+        # and the missing values are told apart by their type, both
+        # without a Python step per value.
+        missing = pd.isna(array)
+        codes = np.empty(len(array), dtype=np.int64)
+        text_codes, texts = pd.factorize(array[~missing])
+        codes[~missing] = text_codes
+        if missing.any():
+            kinds = np.frompyfunc(type, 1, 1)(array[missing])
+            codes[missing] = pd.factorize(kinds)[0] + len(texts)
+    else:
+        tagged = np.empty(len(array), dtype=object)
+        for position, value in enumerate(array):
+            tagged[position] = (
+                (type(value), None) if _missing_scalar(value) else (type(value), value)
+            )
+        codes, _ = pd.factorize(tagged)
+    _, firsts = np.unique(codes, return_index=True)
+    mapped = series.iloc[firsts].map(function)
+    return mapped.iloc[codes].set_axis(series.index)
+
+
 _AGG_ALIASES = {'join_nonnull': join_nonnull_strings}
+#: Reducers a group's values can be handed as an array, so
+#: `aggregate_rows` runs them through `reduce_groups`.
+ARRAY_REDUCERS = (join_nonnull_strings, join_nonnull_addresses)
 
 
 def _agg_func_for(canonical_name: str, fname: str):
@@ -233,6 +391,37 @@ def _has_agg_func(fname) -> bool:
     if fname is None:
         return False
     return not (isinstance(fname, float) and pd.isna(fname))
+
+
+def _aggregate_columns(df, by, grouped, agg_cols: dict) -> pd.DataFrame | None:
+    """``grouped.agg(agg_cols)``, the join reducers through `reduce_groups`.
+
+    A join reducer called by pandas costs a Series per group, which on a
+    reference of a hundred thousand mostly single-row groups was most of
+    the link step; `reduce_groups` returns the same values and dtype.
+    Grouping by several columns or an index level keeps the plain call.
+    """
+    if not agg_cols:
+        return None
+    fast = {
+        column: function
+        for column, function in agg_cols.items()
+        if any(function is reducer for reducer in ARRAY_REDUCERS)
+    }
+    if not fast or not isinstance(by, str) or by not in df.columns:
+        return grouped.agg(agg_cols)
+    rest = {column: f for column, f in agg_cols.items() if column not in fast}
+    base = grouped.agg(rest) if rest else None
+    index = base.index if base is not None else grouped.size().index
+    columns = {
+        column: (
+            reduce_groups(df[column], df[by], fast[column])
+            if column in fast
+            else base[column]
+        )
+        for column in agg_cols
+    }
+    return pd.DataFrame(columns, index=index)
 
 
 def aggregate_rows(
@@ -371,7 +560,7 @@ def aggregate_rows(
         )
 
     grouped = df.groupby(by)
-    result = grouped.agg(agg_cols) if agg_cols else None
+    result = _aggregate_columns(df, by, grouped, agg_cols)
 
     if list_cols:
         # Named aggregation only works through keyword arguments: a

@@ -14,6 +14,30 @@ from openplaces.io.harmonizer.attributes._shared import (
     _point_suffix,
 )
 from openplaces.recipe import resolve_attribute_name, source_id_from_recipe_id
+from openplaces.table import join_distinct_text, reduce_groups
+
+
+def _join_unique(values) -> str | None:
+    """The distinct stated values as text joined by '; ', or None."""
+    seen = dict.fromkeys(str(v) for v in values if pd.notna(v))
+    return '; '.join(seen) if seen else None
+
+
+def _joined_text_columns(
+    crosswalk: pd.DataFrame, key: str, columns: list[str]
+) -> pd.DataFrame:
+    """``crosswalk.groupby(key)[columns].agg(_join_unique)``, per column.
+
+    Each column goes through the shared reducer on array slices: a
+    pandas Series per spine row and column cost a third of the step on
+    a county of 300,000 buildings.
+    """
+    return pd.DataFrame(
+        {
+            column: reduce_groups(crosswalk[column], crosswalk[key], _join_unique)
+            for column in columns
+        }
+    )
 
 
 def _attribute_point_reference(
@@ -201,23 +225,17 @@ def _attribute_point_reference(
         and not pd.api.types.is_datetime64_any_dtype(crosswalk[c])
     ]
     if str_cols:
-
-        def _join_unique(s: pd.Series) -> str | None:
-            seen = dict.fromkeys(str(v) for v in s if pd.notna(v))
-            return '; '.join(seen) if seen else None
-
         spine = spine.join(
-            crosswalk.groupby(spine_id_col)[str_cols]
-            .agg(_join_unique)
-            .rename(columns={c: renamed[c] for c in str_cols if c in renamed})
+            _joined_text_columns(crosswalk, spine_id_col, str_cols).rename(
+                columns={c: renamed[c] for c in str_cols if c in renamed}
+            )
         )
 
     if collect_ids and crosswalk.index.name:
         index_name = crosswalk.index.name
-        grouped_ids = (
-            crosswalk.reset_index()
-            .groupby(spine_id_col)[index_name]
-            .agg(lambda s: '|'.join(s.dropna().astype(str).unique()))
+        linked = crosswalk.reset_index()
+        grouped_ids = reduce_groups(
+            linked[index_name], linked[spine_id_col], join_distinct_text
         )
         spine[index_name] = grouped_ids.where(grouped_ids != '').reindex(spine.index)
 
