@@ -4,6 +4,8 @@ fixed-width files.
 
 from __future__ import annotations
 
+import codecs
+import io
 import json
 import shutil
 import warnings
@@ -26,6 +28,148 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.ingester.access import read_access_table
+
+_UTF16_NAMES = {'utf-16', 'utf16', 'utf_16'}
+
+
+def _is_valid_utf8(path, chunk_bytes=1 << 20):
+    """Whether the whole file at *path* decodes as UTF-8."""
+    decoder = codecs.getincrementaldecoder('utf-8')()
+    try:
+        with open(path, 'rb') as handle:
+            while chunk := handle.read(chunk_bytes):
+                decoder.decode(chunk)
+        decoder.decode(b'', final=True)
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def resolve_utf16_byte_order(path, encoding, fallback=None, sample_bytes=4096):
+    """Name the encoding of a file declared UTF-16 that carries no
+    byte-order mark.
+
+    Python's 'utf-16' codec reads the byte order from the mark at the
+    start of the file and raises "UTF-16 stream does not start with
+    BOM" without it. A file without the mark is still unambiguous when
+    its text is mostly ASCII: every second byte is zero, at odd offsets
+    for little-endian and at even ones for big-endian. That pattern is
+    read from the first *sample_bytes*.
+
+    A file that shows neither is 8-bit text, as when one vintage of a
+    multi-file source was exported differently. It is read only where
+    the recipe names a *fallback* (its encoding_fallback key): as UTF-8
+    when the whole file is valid UTF-8, which 8-bit text with non-ASCII
+    characters almost never is by accident, and as *fallback* otherwise.
+    Without a fallback the error names the file and its first bytes.
+
+    Parameters
+    ----------
+    path : Path
+        File the recipe reads.
+    encoding : str or None
+        From the recipe's encoding key. Anything other than 'utf-16'
+        is returned unchanged, as is 'utf-16' on a file with the mark.
+    fallback : str, optional
+        8-bit encoding of a file that is not UTF-16, e.g. 'cp1252'.
+    sample_bytes : int, optional
+        How many leading bytes to test.
+
+    Returns
+    -------
+    str or None
+        *encoding*; 'utf-16-le' or 'utf-16-be' for a UTF-16 file
+        without the mark; 'utf-8' or *fallback* for an 8-bit file.
+
+    Raises
+    ------
+    UnicodeError
+        When a file declared 'utf-16' has no mark and no UTF-16 byte
+        pattern, and no fallback is given.
+    """
+    if not encoding or str(encoding).lower() not in _UTF16_NAMES:
+        return encoding
+    path = Path(path)
+    if not path.is_file():
+        return encoding
+    with open(path, 'rb') as handle:
+        head = handle.read(sample_bytes)
+    if len(head) < 2 or head[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        return encoding
+    pairs = len(head) // 2
+    zero_odd = sum(1 for i in range(1, 2 * pairs, 2) if head[i] == 0)
+    zero_even = sum(1 for i in range(0, 2 * pairs, 2) if head[i] == 0)
+    # Mostly-ASCII text puts a zero in nearly every high byte; 90% of
+    # pairs leaves room for accented or other non-ASCII characters.
+    if zero_odd >= 0.9 * pairs and zero_even == 0:
+        resolved = 'utf-16-le'
+    elif zero_even >= 0.9 * pairs and zero_odd == 0:
+        resolved = 'utf-16-be'
+    elif fallback:
+        resolved = 'utf-8' if _is_valid_utf8(path) else fallback
+    else:
+        raise UnicodeError(
+            f'{path} is declared utf-16 but starts with no byte-order mark '
+            f'and its bytes are not UTF-16 (first bytes: {head[:8].hex(" ")}). '
+            'Check whether this file was exported in another encoding; '
+            'encoding_fallback in the recipe names it.'
+        )
+    print(f'{path.name}: no byte-order mark, read as {resolved}.')
+    return resolved
+
+
+def requote_all_quoted_fields(path, delimiter, encoding):
+    """Escape a file whose every field is quoted but whose quotes are not.
+
+    Some exports enclose every field in double quotes and write a quote
+    or delimiter inside a field as is, never doubled. A CSV parser then
+    ends the field at the inner quote and either finds too many fields
+    or, without a word, shifts the rest of the row into the wrong
+    columns. In such a file, a field boundary is exactly
+    quote-delimiter-quote, so each line is split there, its outer
+    quotes removed, and the fields written back with their quotes
+    doubled, which any CSV parser reads correctly.
+
+    Parameters
+    ----------
+    path : Path
+        File to read.
+    delimiter : str
+        Field delimiter.
+    encoding : str or None
+        Text encoding of the file; UTF-8 when None.
+
+    Returns
+    -------
+    tuple of (io.StringIO, int)
+        The escaped text, and how many lines held a quote or delimiter
+        inside a field.
+
+    Raises
+    ------
+    ValueError
+        When a nonempty line does not start and end with a quote: the
+        file is not quoted throughout, or a field spans lines.
+    """
+    boundary = '"' + delimiter + '"'
+    with open(path, encoding=encoding or 'utf-8', newline='') as handle:
+        lines = handle.read().split('\n')
+    out = []
+    n_repaired = 0
+    for number, line in enumerate(lines, start=1):
+        line = line.removesuffix('\r')
+        if not line:
+            continue
+        if len(line) < 2 or line[0] != '"' or line[-1] != '"':
+            raise ValueError(
+                f'{Path(path).name}, line {number}: all_fields_quoted expects '
+                'every line to start and end with a quote.'
+            )
+        fields = line[1:-1].split(boundary)
+        if any('"' in f or delimiter in f for f in fields):
+            n_repaired += 1
+        out.append('"' + boundary.join(f.replace('"', '""') for f in fields) + '"')
+    return io.StringIO('\n'.join(out) + '\n'), n_repaired
 
 
 class _TableReadMixin:
@@ -298,6 +442,9 @@ class _TableReadMixin:
             dtype = None
 
         suffix = data_path.suffix.lower()
+        encoding = resolve_utf16_byte_order(
+            data_path, encoding, self.recipe.get('encoding_fallback')
+        )
 
         if suffix in ACCESS_EXTENSIONS:
             # One named table of the database (the recipe's `layer`),
@@ -386,13 +533,30 @@ class _TableReadMixin:
         # the default stays pandas' 'error', so nothing is lost unasked.
         if self.recipe.get('on_bad_lines'):
             read_kwargs['on_bad_lines'] = self.recipe['on_bad_lines']
+        # Indiana's sales disclosure files quote every field but never
+        # double a quote inside one, and one field even holds a literal
+        # tab. pandas then splits that row in the wrong place (a
+        # ParserError) or, worse, shifts values into the neighboring
+        # columns without a word. `all_fields_quoted: true` splits on
+        # quote-delimiter-quote instead and hands pandas a properly
+        # escaped copy, so every other read option still applies.
+        source = data_path
+        if self.recipe.get('all_fields_quoted'):
+            source, n_repaired = requote_all_quoted_fields(
+                data_path, read_kwargs['delimiter'], encoding
+            )
+            read_kwargs.pop('encoding', None)
+            print(
+                f'{Path(data_path).name}: {n_repaired} line(s) hold a quote or '
+                'delimiter inside a field, read as text (all_fields_quoted).'
+            )
         # The Census Gazetteer pads its last header with spaces, so the
         # name never matches a mapping. A recipe that declares
         # `strip_column_names: true` reads its headers trimmed.
         if self.recipe.get('strip_column_names'):
             wanted = None if columns is None else {str(c).strip() for c in columns}
             df = pd.read_csv(
-                data_path,
+                source,
                 usecols=None if wanted is None else lambda c: c.strip() in wanted,
                 **read_kwargs,
             )
@@ -406,7 +570,7 @@ class _TableReadMixin:
                     f'not found: {absent}'
                 )
             return df
-        return pd.read_csv(data_path, usecols=columns, **read_kwargs)
+        return pd.read_csv(source, usecols=columns, **read_kwargs)
 
     def _read_joined_members(self, members, key, encoding=None):
         """Read several headerless delimited files and join them on a key.

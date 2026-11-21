@@ -89,7 +89,22 @@ every CAMA field null with a perfectly plausible feature count.
   stored codes ('FED'), for a source documented by code or with some
   coded fields that carry no domain (PAD-US `EHoldTyp`).
 - `encoding:` — set `utf-8-sig` for files with a byte-order mark, or the first
-  column name arrives as `﻿OBJECTID`.
+  column name arrives as `﻿OBJECTID`. A file declared `utf-16` without its
+  byte-order mark is read as UTF-16LE or BE where its zero bytes show which,
+  and raises, naming the file, where they do not. `encoding_fallback: cp1252`
+  reads such a non-UTF-16 file instead: as UTF-8 when all of it is valid
+  UTF-8, as the named encoding otherwise (one vintage of a multi-file source
+  exported as 8-bit text).
+- `all_fields_quoted: true`: for a delimited export that encloses every
+  field in double quotes but never doubles a quote inside one (Indiana's
+  sales disclosure files). pandas otherwise ends such a field at the inner
+  quote and either raises on the field count or shifts the row's later
+  values into other columns without a word. The reader splits on
+  quote-delimiter-quote instead and prints how many lines held a quote or
+  delimiter inside a field. Every line must start and end with a quote.
+- `on_bad_lines: warn`: drops a malformed line and says so; the default
+  raises. Prefer a setting that reads the line correctly, and say in the
+  header how many lines it drops.
 - `csv_dtype:` — `str` for everything, or a `{FIELD: str}` map. **Always set
   this for all-digit id columns**, or pandas infers an integer, breaks the
   registry's string type and destroys leading zeros.
