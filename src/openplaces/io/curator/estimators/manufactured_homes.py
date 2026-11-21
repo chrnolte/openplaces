@@ -87,6 +87,81 @@ def flag_manufactured_home_communities(
     return state
 
 
+def _exterior_vertex_counts(geoms: np.ndarray) -> np.ndarray:
+    """Vertices of each polygon's exterior ring, closing point not counted.
+
+    Holes are not counted, and anything but a single polygon (a
+    multipolygon, a missing geometry) counts 0. An empty polygon counts
+    -1, its empty ring's no coordinates less the closing point.
+    """
+    import shapely
+
+    geoms = np.asarray(geoms, dtype=object)
+    counts = np.zeros(len(geoms), dtype=np.int64)
+    polygons = shapely.get_type_id(geoms) == shapely.GeometryType.POLYGON
+    rings = shapely.get_exterior_ring(geoms[polygons])
+    counts[polygons] = shapely.get_num_coordinates(rings) - 1
+    return counts
+
+
+#: Slack, in meters, on the envelope bound in `_nearest_distances`: far
+#: above the rounding of a distance between coordinates of this size.
+_ENVELOPE_SLACK_M = 1e-3
+
+
+def _nearest_distances(tree, geoms: np.ndarray, n_rows: int) -> np.ndarray:
+    """Each geometry's distance to its nearest other geometry within 200 m.
+
+    Another geometry means another row: a duplicate outline is 0 m
+    away. A geometry with none within 200 m reads 200.
+
+    Parameters
+    ----------
+    tree : shapely.STRtree
+        Tree built on *geoms*.
+    geoms : numpy.ndarray
+        Metric geometries, positionally.
+    n_rows : int
+        Number of geometries.
+    """
+    import shapely
+
+    geoms = np.asarray(geoms, dtype=object)
+    query, other = tree.query(geoms, predicate='dwithin', distance=200.0)
+    apart = query != other
+    query, other = query[apart], other[apart]
+    if not len(query):
+        return np.full(n_rows, 200.0)
+    # Two geometries are never closer than their envelopes, so a pair
+    # whose envelopes are farther apart than a distance already found
+    # for its row cannot be that row's minimum. Measuring only the
+    # others gives the same minimum as measuring every pair within
+    # 200 m, at a fraction of the cost where buildings stand dense.
+    bounds = shapely.bounds(geoms)
+    gap_x = np.maximum(bounds[other, 0] - bounds[query, 2], 0.0)
+    gap_x = np.maximum(gap_x, bounds[query, 0] - bounds[other, 2])
+    gap_y = np.maximum(bounds[other, 1] - bounds[query, 3], 0.0)
+    gap_y = np.maximum(gap_y, bounds[query, 1] - bounds[other, 3])
+    gap = np.hypot(gap_x, gap_y)
+    order = np.lexsort((gap, query))
+    starts = np.r_[True, query[order][1:] != query[order][:-1]]
+    closest = order[starts]
+    found = np.full(n_rows, np.inf)
+    found[query[closest]] = shapely.distance(
+        geoms[query[closest]], geoms[other[closest]]
+    )
+    # A missing distance compares false, so its row keeps every pair.
+    keep = ~(gap > found[query] + _ENVELOPE_SLACK_M)
+    distances = shapely.distance(geoms[query[keep]], geoms[other[keep]])
+    return (
+        pd.Series(distances)
+        .groupby(query[keep])
+        .min()
+        .reindex(range(n_rows), fill_value=200.0)
+        .values
+    )
+
+
 def _score_manufactured_home_candidates(
     work,
     assessor_labels,
@@ -140,9 +215,7 @@ def _score_manufactured_home_candidates(
     width_clip = np.clip(width, a_min=1e-6, a_max=None)
     aspect_ratio = length / width_clip
     rectangularity = area / np.clip(length * width, a_min=1e-6, a_max=None)
-    n_vertices = geom.map(
-        lambda g: len(g.exterior.coords) - 1 if hasattr(g, 'exterior') else 0
-    ).values
+    n_vertices = _exterior_vertex_counts(geom.values)
 
     # Prefer the globally-unique parcel_id over locally-scoped fallbacks, same
     # rationale as flag_manufactured_home_communities above. An explicit
@@ -198,21 +271,7 @@ def _score_manufactured_home_candidates(
         orientation_std = np.zeros(n_rows)
         share_elongated = np.zeros(n_rows)
 
-    idx_q2, idx_t2 = tree.query(geom.values, predicate='dwithin', distance=200.0)
-    df_pairs2 = pd.DataFrame({'query_idx': idx_q2, 'tree_idx': idx_t2})
-    df_pairs2 = df_pairs2[df_pairs2['query_idx'] != df_pairs2['tree_idx']]
-    if len(df_pairs2) > 0:
-        left = geom.iloc[df_pairs2['query_idx'].to_numpy()].reset_index(drop=True)
-        right = geom.iloc[df_pairs2['tree_idx'].to_numpy()].reset_index(drop=True)
-        df_pairs2['distance'] = left.distance(right).to_numpy()
-        nn_dist = (
-            df_pairs2.groupby('query_idx')['distance']
-            .min()
-            .reindex(range(n_rows), fill_value=200.0)
-            .values
-        )
-    else:
-        nn_dist = np.full(n_rows, 200.0)
+    nn_dist = _nearest_distances(tree, geom.values, n_rows)
 
     features = pd.DataFrame(
         {
@@ -339,14 +398,13 @@ def _score_manufactured_home_candidates(
     )
 
     is_candidate = (assessor_labels == mh_label) | (p_mfg_morph >= 0.5)
-    idx_q, idx_t = tree.query(geom.values, predicate='dwithin', distance=100.0)
-    df_p = pd.DataFrame({'query_idx': idx_q, 'tree_idx': idx_t})
-    df_p = df_p[df_p['query_idx'] != df_p['tree_idx']]
-    if len(df_p) > 0:
+    # The 100 m pairs of the neighbor statistics above, not a second
+    # query of the same tree.
+    if len(q) > 0:
         cand_vals = is_candidate.to_numpy().astype(int)
         nearby_cands = (
-            pd.Series(cand_vals[df_p['tree_idx'].to_numpy()])
-            .groupby(df_p['query_idx'].to_numpy())
+            pd.Series(cand_vals[t])
+            .groupby(q)
             .sum()
             .reindex(range(n_rows), fill_value=0)
             .to_numpy()

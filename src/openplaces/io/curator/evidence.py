@@ -1119,6 +1119,56 @@ def apportion_curated_values(
     return state
 
 
+def _join_link_ids(links: pd.DataFrame, id_col: str, ref_key: str) -> pd.Series:
+    """Per *id_col* group, its distinct *ref_key* values joined by '|'.
+
+    Each value is written once as text, in the order of the rows; a
+    group stating none reads ''. Indexed by the sorted group keys.
+    """
+
+    def join(ids):
+        return '|'.join(ids.dropna().astype(str).unique())
+
+    grouped = links.groupby(id_col)[ref_key]
+    dtype = links[ref_key].dtype
+    if grouped.ngroups == 0 or not (
+        isinstance(dtype, pd.StringDtype)
+        or not isinstance(dtype, pd.api.extensions.ExtensionDtype)
+    ):
+        # pandas casts the joined strings back to another extension
+        # dtype (a category, a nullable integer) where each one fits,
+        # which only the call per group reproduces.
+        return grouped.agg(join)
+    # A Python call per group cost most of the step, and nearly every
+    # footprint lists one id: only groups of several distinct ids are
+    # joined in Python, the rest take their one id as it is.
+    index = grouped.size().index
+    stated = links[ref_key].notna().to_numpy()
+    pairs = pd.DataFrame(
+        {
+            'key': links[id_col][stated].reset_index(drop=True),
+            'id': links[ref_key][stated].astype(str).reset_index(drop=True),
+        }
+    ).drop_duplicates()
+    several = pairs['key'].duplicated(keep=False).to_numpy()
+    merged = np.full(len(index), '', dtype=object)
+    lone = pairs[~several]
+    positions = index.get_indexer(lone['key'])
+    found = positions >= 0
+    merged[positions[found]] = lone['id'].to_numpy(dtype=object)[found]
+    if several.any():
+        shared = pairs[several].groupby('key')['id'].agg('|'.join)
+        merged[index.get_indexer(shared.index)] = shared.to_numpy(dtype=object)
+    # pandas infers the dtype from the strings the groups return, so
+    # one group's aggregation gives the dtype of all of them.
+    first = (links[id_col] == index[0]).to_numpy()
+    model = links[first].groupby(id_col)[ref_key].agg(join)
+    result = pd.Series(merged, index=index, name=ref_key)
+    if model.dtype == object:
+        return result
+    return result.astype(model.dtype)
+
+
 @_register('collect_link_ids', phase='gather')
 def collect_link_ids(
     state: CurateState,
@@ -1220,9 +1270,7 @@ def collect_link_ids(
         # not be the entity's own parcel_id.
         links = rank_overlaps(links, spine_id_col=id_col, ref_id_col=ref_key)
 
-    collected = links.groupby(id_col)[ref_key].agg(
-        lambda s: '|'.join(s.dropna().astype(str).unique())
-    )
+    collected = _join_link_ids(links, id_col, ref_key)
     curated[column] = collected.where(collected != '').reindex(curated.index)
 
     # Like the harmonizer's `_join_distinct` convention, leave the `_all`

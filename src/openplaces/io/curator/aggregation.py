@@ -337,14 +337,19 @@ def _reduce(values: pd.DataFrame, group_key, functions: dict) -> pd.DataFrame:
         elif functions[column] == AGREE:
             reduced[column] = by_group.first().where(by_group.nunique() == 1)
         elif functions[column] == DISTINCT:
-            single = by_group.first().where(by_group.nunique() == 1)
-            several = by_group.nunique() > 1
+            n_distinct = by_group.nunique()
+            single = by_group.first().where(n_distinct == 1)
+            several = n_distinct > 1
             if several.any():
                 stated = values[column].notna()
+                texts = values.loc[stated, column].astype(str)
+                keys = group_key[stated]
+                # Only groups of several values are read from the join,
+                # so only they pay a Python call each.
+                wanted = keys.isin(several.index[several]).to_numpy()
                 joined = (
-                    values.loc[stated, column]
-                    .astype(str)
-                    .groupby(group_key[stated])
+                    texts[wanted]
+                    .groupby(keys[wanted])
                     .agg(lambda s: DISTINCT_SEPARATOR.join(dict.fromkeys(s)))
                 )
                 single = single.astype(object).where(~several, joined)
@@ -373,7 +378,38 @@ def _union_tokens(values: pd.DataFrame, group_key, column: str, sidecar: str):
         parts = dict.fromkeys(t for v in series for t in v.split('+') if t)
         return '+'.join(parts) or None
 
-    return tokens.groupby(keys).agg(union)
+    # The same result as tokens.groupby(keys).agg(union), with a Python
+    # call per group only where several rows share a key: a lone row's
+    # union depends on its own sidecar alone, so it is computed once per
+    # distinct sidecar. Wide tables of mostly lone rows spent minutes in
+    # the call per group.
+    index = tokens.groupby(keys).size().index
+    several = keys.duplicated(keep=False).to_numpy()
+    lone = tokens[~several].to_numpy()
+    memo = {value: union((value,)) for value in pd.unique(lone)}
+    merged = np.empty(len(index), dtype=object)
+    positions = index.get_indexer(keys[~several])
+    found = positions >= 0
+    merged[positions[found]] = np.array(
+        [memo[value] for value in lone[found]], dtype=object
+    )
+    if several.any():
+        shared = tokens[several].groupby(keys[several]).agg(union)
+        # union returns a string or None; pandas may hold None as NaN.
+        joined = np.array(shared.to_numpy(dtype=object), dtype=object)
+        joined[pd.isna(joined)] = None
+        merged[index.get_indexer(shared.index)] = joined
+    # pandas infers the dtype of an agg from the kinds of value its
+    # groups return (a string, None), so the first group of each kind
+    # gives the dtype the call per group gave.
+    missing = pd.isna(merged)
+    firsts = [int(np.argmax(kind)) for kind in (missing, ~missing) if kind.any()]
+    sample = keys.isin(index[firsts]).to_numpy()
+    model = tokens[sample].groupby(keys[sample]).agg(union)
+    result = pd.Series(merged, index=index, name=tokens.name)
+    if model.dtype == object:
+        return result
+    return result.astype(model.dtype)
 
 
 #: Reductions whose value is one row's value, so its token is that row's.
