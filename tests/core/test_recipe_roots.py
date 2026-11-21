@@ -12,7 +12,6 @@ import yaml
 import openplaces.diagnostics as diagnostics
 import openplaces.path as path_module
 import openplaces.recipe as recipe_module
-from openplaces.io.harmonizer import discover
 from openplaces.path import (
     BUNDLED_RECIPES_DIR,
     recipe_path,
@@ -85,7 +84,7 @@ def test_a_contributed_recipe_loads_by_id(external_root):
 def test_a_contributed_recipe_is_indexed_and_discoverable(external_root):
     found = diagnostics.find_recipes('parcel', stage='ingest')
     assert RECIPE_ID in set(found['recipe_id'])
-    scanned = {s['recipe_id'] for s in discover._scan_entity_ingest_recipes('parcel')}
+    scanned = {s['recipe_id'] for s in recipe_module.scan_ingest_recipes('parcel')}
     assert RECIPE_ID in scanned
 
 

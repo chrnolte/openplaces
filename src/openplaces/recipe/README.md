@@ -119,6 +119,10 @@ package at call time.
 - `get_save_admin_level(recipe)` / `get_process_admin_level(recipe)` - determine output/processing granularity
 - `get_layers(recipe)` - list secondary layers in `additional_layers`
 - `build_table_recipe(primary, layer_spec)` - merge primary recipe with an additional_layers spec
+- `find_admin_source_recipes(admin_level, admin_id)` - the admin source
+  recipes a `discover_sources` step reads for a unit; the step and
+  `get_recipe_dependencies` both call it, so the graph schedules what
+  the run reads
 
 ## File layout on disk
 

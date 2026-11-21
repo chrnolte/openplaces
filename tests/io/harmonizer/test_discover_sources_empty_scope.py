@@ -12,6 +12,7 @@ empty-spine output for the unit.
 from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import discover as discover_module
+from openplaces.recipe import discovery as discovery_module
 
 
 def _state(admin_id, admin_level):
@@ -27,7 +28,7 @@ def _state(admin_id, admin_level):
 def test_a_childless_unit_gets_an_empty_assignment(monkeypatch):
     sources = [{'recipe_id': 'admin-gadm-2026_admin2', 'admin_id': ''}]
     monkeypatch.setattr(
-        discover_module, '_scan_admin_ingest_recipes', lambda level: sources
+        discovery_module, '_scan_admin_ingest_recipes', lambda level: sources
     )
     seen = {}
 

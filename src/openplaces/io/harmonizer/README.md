@@ -743,7 +743,12 @@ The step sub-modules:
   polygon from the first that has one, so a names-only national recipe
   (INSEE, Soumu) falls through to geoBoundaries, and
   `carve_lumped_territories` (level 1) gives a territory from a finer
-  source the area its sovereign's polygon lumped in. Not
+  source the area its sovereign's polygon lumped in. The sources come
+  from `recipe.find_admin_source_recipes`, which the dependency scan
+  also reads, so each source's ingest is scheduled before the unit's
+  harmonize; a unit whose candidates could not be read and which got
+  no polygon raises `AdminSourcesNotIngestedError` instead of saving
+  an empty table. Not
   `resolve_overlaps`, which is the footprint step in `links/overlaps.py`;
   the step registry refuses a second function under a taken name
 - `admin_names.py` — `assign_admin_id_from_name`: the admin unit a record

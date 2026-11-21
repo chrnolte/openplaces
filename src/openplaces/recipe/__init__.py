@@ -10,7 +10,8 @@ output paths. One package since 2026-09-30 (until then a single
   columns, the supplements key
 - naming: recipe ids, versions, sources, provenance suffixes
 - discovery: find_entity_recipe_id, find_reference_recipe_id,
-  find_additional_layer_recipes, layers and supplemented tables
+  find_additional_layer_recipes, layers and supplemented tables,
+  find_admin_source_recipes
 - patches: patch recipes and their pipeline operations
 - dependencies: DepEdge and get_recipe_dependencies
 - output: output paths, admin levels, partitions
@@ -42,12 +43,15 @@ from openplaces.recipe.dependencies import (  # noqa: F401
 from openplaces.recipe.discovery import (  # noqa: F401
     _declared_entity_type,
     _recipe_yaml,
+    admin_sources_covering,
     find_additional_layer_recipes,
+    find_admin_source_recipes,
     find_entity_recipe_id,
     find_reference_recipe_id,
     get_layers,
     get_supplemented_table,
     get_supplements_key,
+    scan_ingest_recipes,
 )
 from openplaces.recipe.loading import (  # noqa: F401
     STACKED_UNITS_LAYER_KEY,

@@ -14,6 +14,7 @@ from openplaces.core.schema import (
     admin_scope_covers,
 )
 from openplaces.recipe.discovery import (
+    find_admin_source_recipes,
     find_entity_recipe_id,
 )
 from openplaces.recipe.loading import (
@@ -159,6 +160,11 @@ def get_recipe_dependencies(
     - a step's 'lot_values_from' recipe: every source its
       'auto_discover' 'link_by_id' passes discover, and never that
       recipe itself, for the same reason
+    - a 'discover_sources' step (the admin geometry recipes): every
+      admin source recipe at the recipe's admin_level whose scope
+      covers the unit or lies within it, every source with no unit
+      (:func:`openplaces.recipe.find_admin_source_recipes`, the
+      listing the step reads)
 
     Parameters
     ----------
@@ -425,6 +431,18 @@ def get_recipe_dependencies(
         if not isinstance(step_spec, dict):
             continue
         step_name = step_spec.get('step')
+        if step_name == 'discover_sources':
+            # The admin geometry step reads every admin source covering
+            # a unit it harmonizes, through the listing it uses itself,
+            # so each source's ingest is scheduled before it. With no
+            # unit the run is global and reads them all.
+            for src in find_admin_source_recipes(
+                recipe.get('admin_level', 1),
+                admin_str,
+                include_restricted=bool(step_spec.get('include_restricted')),
+            ):
+                _add(src['recipe_id'], 'auto_discover', step=step_name)
+            continue
         if step_name == 'link_to_reference' and step_spec.get('kept_by'):
             _add_kept_by(str(step_spec['kept_by']), step_name)
         if step_spec.get('lot_values_from'):
