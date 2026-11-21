@@ -65,8 +65,9 @@ class _AdminScopeMixin:
         self._resolve_admin_ids_to_save(reprocess)
 
         if not self.admin_ids_to_save:
-            if self.verbose:
-                print('All output files found. Processing skipped.\n')
+            # Printed whatever `verbose` says: a direct run that does
+            # nothing has to leave a line in its log saying why.
+            print(self._nothing_to_save_message(), flush=True)
             self.admin_ids_to_process = []
             self.admin_ids_to_download = []
             return
@@ -87,6 +88,29 @@ class _AdminScopeMixin:
                 'Admin IDs of download partitions:',
                 format_list(self.admin_ids_to_download),
             )
+
+    def _nothing_to_save_message(self) -> str:
+        """Say why an ingest has no unit left to save.
+
+        Returns
+        -------
+        str
+            One line naming the recipe and the requested units, and
+            whether every unit in scope already has its output or the
+            request covers no unit at the recipe's save level.
+        """
+        requested = ', '.join(str(a) for a in self.admin_ids) or '(all)'
+        in_scope = getattr(self, '_admin_ids_in_scope', None) or []
+        if in_scope:
+            return (
+                f'{self._recipe_id()} [{requested}]: all {len(in_scope)} '
+                'requested unit(s) already have outputs; nothing to ingest. '
+                'Pass reprocess to rebuild them.'
+            )
+        return (
+            f'{self._recipe_id()} [{requested}]: the request covers no unit '
+            'at the save level; nothing to ingest.'
+        )
 
     def _resolve_output_admin_ids(
         self,
@@ -155,6 +179,10 @@ class _AdminScopeMixin:
                     'renamed them; look the unit up in the current spine '
                     'by its name or national code.'
                 )
+
+        # Kept so that an empty result can say why it is empty: every
+        # unit in scope already built, or no unit in scope at all.
+        self._admin_ids_in_scope = list(admin_ids_to_save)
 
         if not reprocess:
             # Skip if the output exists, or a tombstone receipt records its

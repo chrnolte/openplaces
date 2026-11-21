@@ -8,7 +8,11 @@ current code. -->
 **Stage 1 - Ingest** (`io/ingester/`, `io/ingester/table_ingester.py`):
 
 `Ingester` orchestrates download, unzip, and processing of one recipe:
-1. Resolves admin IDs to save/process/download (three potentially different levels)
+1. Resolves admin IDs to save/process/download (three potentially different levels).
+   Without `reprocess`, a unit whose output exists is dropped; when none is left,
+   the run prints one line naming the recipe and why (all built, or no unit at the
+   save level) and returns without running a later step, except the backfill of
+   missing `entity_links` files. A requested id outside the spine still raises.
 2. For each download partition (admin unit × partition ID): downloads + unzips source,
    calls `TableIngester` to process each chunk
 3. After tile partitions: merges per-tile partials into per-admin files

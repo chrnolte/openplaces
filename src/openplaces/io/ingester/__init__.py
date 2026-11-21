@@ -317,6 +317,17 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
 
             self._resolve_admin_ids(reprocess)
 
+            if not self.admin_ids_to_save:
+                # Nothing left to save means no step runs: the tile
+                # crosswalk, downloads, merges, joins and aggregates all
+                # read this list, and the tile one fails on an empty one
+                # (pd.concat of no tables). Only the entity link
+                # backfill below stays, because it is promised for
+                # outputs that already exist and writes only a missing
+                # link.
+                self._create_entity_links(reprocess)
+                return
+
             self._resolve_partition_ids(reprocess)
 
             # Partition first so all admin units within the same partition

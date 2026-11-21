@@ -198,15 +198,15 @@ def test_ingest_auto_joins_table_partitions_end_to_end(cache_to_tmp):
         assert not get_output_path(recipe, ADMIN_ID, partition_id=table_name).exists()
 
 
-def test_ingest_second_call_is_a_no_op(cache_to_tmp, monkeypatch):
-    """A second `ingest()` call without `reprocess` doesn't re-enter partition
-    resolution/download for a county whose joined output already exists: the
-    admin_id resolution excludes it upstream, so `_join_table_partitions` runs
-    (the property gate only checks recipe shape) but delegates with an empty
-    `admin_ids` list -- a safe no-op, not a special-cased skip."""
+def test_ingest_second_call_is_a_no_op(cache_to_tmp, monkeypatch, capsys):
+    """A second `ingest()` call without `reprocess` stops once it finds the
+    county's joined output on disk: the admin_id resolution leaves no unit to
+    save, so neither partition resolution nor the join runs, and the run says
+    why."""
     recipe = get_recipe_by_id(RECIPE_ID)
     _seed_table_partitions(recipe, ['k1'])
     ingest(RECIPE_ID, admin_ids=[ADMIN_ID], partition_ids=SEEDED, verbose=False)
+    capsys.readouterr()
 
     calls = []
     monkeypatch.setattr(
@@ -216,16 +216,8 @@ def test_ingest_second_call_is_a_no_op(cache_to_tmp, monkeypatch):
 
     ingest(RECIPE_ID, admin_ids=[ADMIN_ID], verbose=False)
 
-    assert calls == [
-        {
-            'table_names': ['boundaries', 'predictions', 'predictors', 'crosswalk'],
-            'admin_ids': [],
-            'join_key_name': 'parcel_id_int',
-            'keep_original': False,
-            'sidecar_tables': ['crosswalk'],
-            'verbose': False,
-        }
-    ]
+    assert calls == []
+    assert 'already have outputs' in capsys.readouterr().out
 
 
 def test_early_warnings_raises_on_unknown_sidecar_table():
