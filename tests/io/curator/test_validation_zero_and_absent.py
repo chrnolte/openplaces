@@ -88,8 +88,11 @@ def test_an_absent_dwelling_count_is_not_an_asserted_single_family():
     """No Overture record must score as no prediction, not Single-Family."""
     linked = pd.DataFrame(
         {
-            'n_dwellings_overture_inv': [np.nan, 1.0, 3.0],
+            # A 0 is the curated file's form of "no record": the building
+            # curate zero-fills the count.
+            'n_dwellings_overture_inv': [np.nan, 0.0, 1.0, 3.0],
             'occupancy_type_canonical': [
+                'Manufactured Home',
                 'Manufactured Home',
                 'Single-Family',
                 'Multi-Family',
@@ -98,8 +101,8 @@ def test_an_absent_dwelling_count_is_not_an_asserted_single_family():
     )
     values = _Context().source_values(linked)['overture']
 
-    assert values.isna().tolist() == [True, False, False]
-    assert values.tolist()[1:] == ['Single-Family', 'Multi-Family']
+    assert values.isna().tolist() == [True, True, False, False]
+    assert values.tolist()[2:] == ['Single-Family', 'Multi-Family']
 
     scored = score_classification(
         linked['occupancy_type_canonical'],

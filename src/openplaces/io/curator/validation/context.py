@@ -468,8 +468,13 @@ class ValidationContext:
             # penalized for a Single-Family it never asserted. Absent
             # evidence stays missing, and score_classification's
             # predicted.notna() gate excludes it from this source's score.
+            # A count of 0 is no record too: the count is the number of
+            # dwelling points linked to the entity, so the source's
+            # smallest statement is 1, and the building curate writes 0
+            # where it had none (fill_missing_numeric).
+            # Measured 2026-11-21 on US-NC-NHA: 20,305 outlines hold a 0.
             implied = pd.Series(None, index=linked.index, dtype=object)
-            observed = dwellings.notna()
+            observed = dwellings.gt(0)
             implied[observed & (dwellings >= 2)] = 'Multi-Family'
             implied[observed & (dwellings < 2)] = 'Single-Family'
             values['overture'] = implied

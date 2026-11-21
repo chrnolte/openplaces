@@ -97,9 +97,10 @@ validation:
   keyword_ruleset: parcel-occupancy-keywords.csv
   inventory_suffix: _inv
   # Overture carries a count, not a class: two or more dwellings reads
-  # as Multi-Family, one or zero as Single-Family. An entity with no
-  # Overture record at all is scored as no prediction, not as an
-  # asserted Single-Family, so its recall reflects coverage.
+  # as Multi-Family, one as Single-Family. An entity with no Overture
+  # record (a missing count or the 0 the building curate fills in) is
+  # scored as no prediction, not as an asserted Single-Family, so its
+  # recall reflects coverage.
   dwelling_count_column: n_dwellings_overture_inv
   source_columns:
     final_vote: predicted
