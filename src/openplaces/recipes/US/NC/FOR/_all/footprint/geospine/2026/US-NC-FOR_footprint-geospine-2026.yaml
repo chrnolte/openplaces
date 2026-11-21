@@ -1,0 +1,31 @@
+# Patch: Forsyth County's footprint spine leaves out Microsoft's layer,
+# which is displaced here.
+#
+# Microsoft's US layer (US_footprint-microsoft-v2) lies about 7 m to the
+# west-northwest of OpenBuildingMap and of the NC DPS state layer, which
+# agree with each other. A house moved 7 m still overlaps its OBM
+# outline and is rejected as a copy. A small building moved 7 m clears
+# it and enters the spine as a second building beside the first: in a
+# manufactured-home park, where a unit is 4 to 5 m wide, every home is
+# drawn twice.
+# Measured 2026-11-20 on US-NC-FOR: 80% of 137,881 Microsoft outlines lie over 5 m from the OBM outline they overlap most, in one direction.
+# Measured 2026-11-20 on US-NC-FOR: NC DPS 2023 draws 142 of the 5,612 Microsoft outlines that touch no OBM outline.
+#
+# OBM and NC DPS both cover the county, so the spine is built from them.
+# Examples and the scan of the other units:
+# plans/source-coverage-and-absence-rules.md, section 7.3.
+
+admin_id: US-NC-FOR
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - discard: resolve_spine
+    key: sources
+    values: [US_footprint-microsoft-v2]
