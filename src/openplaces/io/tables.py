@@ -1155,6 +1155,19 @@ def read_parquet(
         geo_suffix = '_geo_simplified' if geom == 'simplified' else '_geo'
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + geo_suffix)
 
+    if geom and df.empty and not geoparquet_path.exists():
+        # A table saved without rows from a frame without geometry (the
+        # curate of a unit with nothing to build) has no sidecar, and a
+        # sidecar could add no row to it. It reads as an empty layer,
+        # as an empty table with a sidecar does. A table with rows and
+        # no sidecar still raises below: its geometry is missing.
+        from openplaces.config import cfg
+
+        df = gpd.GeoDataFrame(
+            df.assign(geometry=gpd.GeoSeries([], index=df.index, crs=cfg.crs)),
+            crs=cfg.crs,
+        )
+    elif geom:
         if df.empty:
             # A predicate matching no rows would build an empty `in` list
             # below, which pyarrow rejects against the sidecar's string

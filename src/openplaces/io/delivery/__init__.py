@@ -64,7 +64,7 @@ from openplaces.io.delivery.terms import (
     value_source_cells,
 )
 from openplaces.io.delivery.versions import ArchiveError as ArchiveError
-from openplaces.io.readers import get_admin, get_dataset
+from openplaces.io.readers import get_admin, get_dataset, is_placeholder_output
 from openplaces.io.tables import redacted_share_writes
 from openplaces.path import recipe_path
 from openplaces.recipe import (
@@ -819,10 +819,10 @@ def check_share_alike(
         process_level = get_process_admin_level(recipe)
         for process_id in delivery_members(recipe, admin_id, admin_ids, region):
             path = get_output_path(recipe, process_id)
-            if path.exists():
-                inputs.append((process_id, path))
-            else:
+            if not path.exists():
                 missing.append(process_id)
+            elif not is_placeholder_output(path):
+                inputs.append((process_id, path))
     else:
         process_level, inputs = _resolve_inputs(recipe, admin_id, admin_ids, region)
     process_ids = [process_id for process_id, _ in inputs]
@@ -1127,6 +1127,11 @@ def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
     were not built ships a different dataset under that name, and the
     only trace used to be a unit count printed when verbose.
 
+    A member whose curated file is a placeholder (no rows, no column
+    but the join id: a unit built with none of the entity) is left out
+    of the pooled files: it has nothing to contribute, and a read for
+    its geometry or entity id would find neither.
+
     Parameters
     ----------
     recipe : dict
@@ -1147,10 +1152,10 @@ def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
     missing = []
     for process_id in delivery_members(recipe, admin_id, admin_ids, region):
         path = get_output_path(recipe, process_id)
-        if path.exists():
-            inputs.append((process_id, path))
-        else:
+        if not path.exists():
             missing.append(process_id)
+        elif not is_placeholder_output(path):
+            inputs.append((process_id, path))
     if missing and inputs:
         listed = ', '.join(missing[:10])
         more = f' (and {len(missing) - 10} more)' if len(missing) > 10 else ''
