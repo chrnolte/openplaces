@@ -23,10 +23,7 @@
 # outline's geometry_source, and io.delivery.terms resolves that token
 # by source id. `microsoft` is the legacy layer's id and reads ODbL.
 #
-# The national stale check (stale_check_labels) is left off: it removes
-# a Microsoft outline that disagrees with the accepted outlines around
-# it, and here Microsoft is the first source, so nothing was accepted
-# before it. The other thresholds are the national ones.
+# The thresholds are the national ones.
 #
 # Measured 2026-10-23 on US-NC-PIT: see the numbers in the handoff of
 # branch pitt-footprint-source.
