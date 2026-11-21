@@ -1,5 +1,6 @@
 """Find recipes for an admin unit: find_entity_recipe_id,
-find_additional_layer_recipes, layers, supplemented tables.
+find_additional_layer_recipes, layers, supplemented tables, and the
+admin source recipes a discover_sources step reads.
 """
 
 import glob
@@ -21,7 +22,7 @@ from openplaces.core.schema import (
     AdminId,
     admin_scope_covers,
 )
-from openplaces.path import recipe_path
+from openplaces.path import recipe_path, recipe_roots
 from openplaces.recipe.loading import (
     STACKED_UNITS_LAYER_KEY,
     get_recipe_id,
@@ -573,3 +574,175 @@ def get_supplements_key(recipe: dict) -> str | None:
                 'must carry it.'
             )
     return key
+
+
+@cache
+def _ingest_recipe_files(
+    entity_type: str, filename_glob: str, roots: tuple[Path, ...]
+) -> tuple[str, ...]:
+    """Glob the recipe roots for one entity type's recipe files, sorted.
+
+    Cached for the life of the process, keyed by the roots, under the
+    same caveat as `_recipe_yaml`: the dependency scan asks this for
+    every admin job of a graph, and a recursive glob of the tree on
+    each call would cost more than the rest of the scan.
+    """
+    pattern = Path('**') / entity_type / '*' / '*' / f'{filename_glob}.yaml'
+    return tuple(
+        sorted(
+            match
+            for root in roots
+            for match in glob.glob(str(root / pattern), recursive=True)
+        )
+    )
+
+
+def scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dict]:
+    """List the auto-discoverable ingest recipes of an entity type.
+
+    Searches every recipe root for
+    {entity_type}/*/*/{filename_glob}.yaml (recursively), keeps the
+    recipes whose stage is ingest, and leaves out a recipe that
+    declares exclude_from_auto_discover or supplements, and one that
+    is held or excluded from the run (`core.held_recipes`). Every
+    version of a source is kept.
+
+    Parameters
+    ----------
+    entity_type : str
+        Entity type directory name (e.g. 'admin', 'parcel', 'footprint').
+    filename_glob : str, optional
+        Glob pattern matched against the recipe filename stem. Defaults to
+        '*' (all files). A .yaml extension is appended automatically.
+
+    Returns
+    -------
+    list of dict
+        One dict per recipe with recipe_id, admin_id (an empty string
+        for a global recipe), specificity (the number of levels in
+        admin_id), version and restricted (whether the source declares
+        redistribution_restricted: true), sorted by (specificity,
+        version) descending: most specific admin_id and newest version
+        first.
+    """
+    found = _ingest_recipe_files(entity_type, filename_glob, tuple(recipe_roots()))
+    sources: list[dict] = []
+    for rp in found:
+        try:
+            data = _recipe_yaml(rp)
+        except Exception:  # noqa: BLE001 - an unreadable file is no source
+            continue
+        if not isinstance(data, dict) or not data:
+            continue
+        if (data.get('stage') or 'ingest') != 'ingest':
+            continue
+        # A recipe can withdraw itself from auto-discovery, so a
+        # superseded layer never fills a gap the current vintage
+        # leaves.
+        if data.get('exclude_from_auto_discover'):
+            continue
+        # A supplement details another recipe's entities (see
+        # spine._expand_auto_discover) and is never the source to pick.
+        if data.get('supplements'):
+            continue
+        # A held or run-excluded recipe is never a source
+        # (core.held_recipes). This scan globs the tree itself rather
+        # than reading find_recipes, so it needs its own check.
+        if is_undiscoverable(Path(rp).stem, data):
+            continue
+        entity = data.get('entity') or {}
+        raw_admin_id = data.get('admin_id')
+        admin_id_str = (
+            str(raw_admin_id)
+            if raw_admin_id is not None and str(raw_admin_id) != 'None'
+            else ''
+        )
+        specificity = len(admin_id_str.split('-')) if admin_id_str else 0
+        version = str(entity.get('version') or '')
+        source = entity.get('source') or {}
+        sources.append(
+            {
+                'recipe_id': Path(rp).stem,
+                'admin_id': admin_id_str,
+                'specificity': specificity,
+                'version': version,
+                'restricted': source.get('redistribution_restricted') is True,
+            }
+        )
+
+    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
+    return sources
+
+
+def _scan_admin_ingest_recipes(admin_level: int) -> list[dict]:
+    """The ingest admin recipes at one level, named *_admin{level}."""
+    return scan_ingest_recipes('admin', filename_glob=f'*_admin{admin_level}')
+
+
+def find_admin_source_recipes(
+    admin_level: int,
+    admin_id: str | AdminId | None = None,
+    include_restricted: bool = False,
+) -> list[dict]:
+    """List the admin source recipes a discover_sources step reads.
+
+    The one listing behind both the harmonizer's discover_sources step
+    and the dependency scan, so that the graph schedules exactly the
+    ingests the run reads. A source is listed when its admin scope
+    covers admin_id (a global source covers every unit) or lies within
+    it: the step ranks, for each unit at admin_level within admin_id,
+    the sources whose scope covers that unit, and each of those is one
+    of the two. Which units exist is not consulted, so a source scoped
+    to a unit with no children at admin_level is still listed.
+
+    Parameters
+    ----------
+    admin_level : int
+        The level the step harmonizes (the recipe's admin_level).
+    admin_id : str or AdminId, optional
+        The unit the step runs for. None is the whole world, and lists
+        every source.
+    include_restricted : bool, optional
+        Keep sources whose recipe declares redistribution_restricted:
+        true (the step's own parameter of the same name).
+
+    Returns
+    -------
+    list of dict
+        The `scan_ingest_recipes` entries, in its priority order.
+    """
+    sources = _scan_admin_ingest_recipes(admin_level)
+    if not include_restricted:
+        sources = [s for s in sources if not s.get('restricted')]
+    if admin_id is None or str(admin_id) in ('', 'None'):
+        return sources
+    unit = str(admin_id)
+    return [
+        s
+        for s in sources
+        if admin_scope_covers(s['admin_id'], unit)
+        or admin_scope_covers(unit, s['admin_id'])
+    ]
+
+
+def admin_sources_covering(unit: str, sources: list[dict]) -> list[str]:
+    """Return the recipe ids of every source covering a unit, in order.
+
+    Parameters
+    ----------
+    unit : str
+        The admin unit.
+    sources : list of dict
+        Sources as `find_admin_source_recipes` lists them.
+
+    Returns
+    -------
+    list of str
+        Recipe ids, highest priority first.
+    """
+    # Containment by level, not by string prefix: leaf codes mix two and
+    # three characters, so a source scoped to the pre-2026 'US-NC-WA'
+    # (Wake) would otherwise be picked for 'US-NC-WAR' (Warren).
+    return [
+        src['recipe_id'] for src in sources if admin_scope_covers(src['admin_id'], unit)
+    ]

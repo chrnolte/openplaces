@@ -23,6 +23,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io.admin import ids as ids_module
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer import discover as discover_module
+from openplaces.recipe import discovery as discovery_module
 
 
 def _state(spine=None, admin_level=1):
@@ -120,7 +121,7 @@ class TestRestrictedSources:
             {'recipe_id': 'gadm_like', 'admin_id': '', 'restricted': True},
         ]
         monkeypatch.setattr(
-            discover_module, '_scan_admin_ingest_recipes', lambda level: sources
+            discovery_module, '_scan_admin_ingest_recipes', lambda level: sources
         )
         monkeypatch.setattr(
             discover_module,
@@ -137,7 +138,7 @@ class TestRestrictedSources:
             {'recipe_id': 'gadm_like', 'admin_id': '', 'restricted': True},
         ]
         monkeypatch.setattr(
-            discover_module, '_scan_admin_ingest_recipes', lambda level: sources
+            discovery_module, '_scan_admin_ingest_recipes', lambda level: sources
         )
         monkeypatch.setattr(
             discover_module,

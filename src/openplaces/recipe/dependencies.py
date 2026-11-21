@@ -14,6 +14,7 @@ from openplaces.core.schema import (
     admin_scope_covers,
 )
 from openplaces.recipe.discovery import (
+    find_admin_source_recipes,
     find_entity_recipe_id,
 )
 from openplaces.recipe.loading import (
@@ -22,6 +23,7 @@ from openplaces.recipe.loading import (
 from openplaces.recipe.naming import (
     version_sort_key,
 )
+from openplaces.recipe.output import get_process_admin_level
 
 
 class DepEdge(NamedTuple):
@@ -159,6 +161,12 @@ def get_recipe_dependencies(
     - a step's 'lot_values_from' recipe: every source its
       'auto_discover' 'link_by_id' passes discover, and never that
       recipe itself, for the same reason
+    - a 'discover_sources' step (the admin geometry recipes): every
+      admin source recipe at the recipe's admin_level whose scope
+      covers the unit or lies within it
+      (:func:`openplaces.recipe.find_admin_source_recipes`, the
+      listing the step reads); without a unit, every source for a
+      recipe run globally and an unresolved edge for one run per unit
 
     Parameters
     ----------
@@ -425,6 +433,26 @@ def get_recipe_dependencies(
         if not isinstance(step_spec, dict):
             continue
         step_name = step_spec.get('step')
+        if step_name == 'discover_sources':
+            # The admin geometry step reads every admin source covering
+            # a unit it harmonizes, through the listing it uses itself,
+            # so each source's ingest is scheduled before it. A recipe
+            # run per unit has no sources without one, the contract of
+            # every auto-discovered edge: listing the whole world there
+            # made a unit-less walk (bundle_terms without admin ids)
+            # reach every country's admin sources. A recipe run globally
+            # (no process_by) reads them all, so without a unit it lists
+            # all of them.
+            if admin_str is None and get_process_admin_level(recipe) > 0:
+                _add(None, 'auto_discover', step=step_name, resolved=False)
+                continue
+            for src in find_admin_source_recipes(
+                recipe.get('admin_level', 1),
+                admin_str,
+                include_restricted=bool(step_spec.get('include_restricted')),
+            ):
+                _add(src['recipe_id'], 'auto_discover', step=step_name)
+            continue
         if step_name == 'link_to_reference' and step_spec.get('kept_by'):
             _add_kept_by(str(step_spec['kept_by']), step_name)
         if step_spec.get('lot_values_from'):

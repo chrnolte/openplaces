@@ -24,7 +24,7 @@ import openplaces.path as path_module
 import openplaces.recipe as recipe_module
 from openplaces.core.held_recipes import EXCLUDE_ENV, is_held
 from openplaces.core.schema import AdminId
-from openplaces.io.harmonizer import HarmonizeState, discover
+from openplaces.io.harmonizer import HarmonizeState
 from openplaces.path import recipe_path, recipe_root_records, recipe_roots
 from openplaces.recipe import discovery as discovery_module
 from tests.links_patching import patch_links
@@ -340,7 +340,7 @@ def test_an_enrich_of_an_open_source_is_unchanged(held_root):
 
 
 def test_the_admin_style_scan_skips_held_recipes(held_root):
-    scanned = {s['recipe_id'] for s in discover._scan_entity_ingest_recipes('property')}
+    scanned = {s['recipe_id'] for s in recipe_module.scan_ingest_recipes('property')}
     assert OPEN_ID in scanned
     assert not scanned & {HELD_BY_KEY_ID, HELD_BY_SOURCE_ID}
 
@@ -365,7 +365,7 @@ def test_a_run_excluded_recipe_is_not_discovered(held_root, monkeypatch):
         diagnostics.find_recipes('property', stage='ingest')['recipe_id']
     )
     assert OPEN_ID not in links._find_admin_scoped_recipe_ids(_state(UNIT), 'property')
-    scanned = {s['recipe_id'] for s in discover._scan_entity_ingest_recipes('property')}
+    scanned = {s['recipe_id'] for s in recipe_module.scan_ingest_recipes('property')}
     assert OPEN_ID not in scanned
     # Reported, not chosen: the full listing still names it.
     assert OPEN_ID in set(

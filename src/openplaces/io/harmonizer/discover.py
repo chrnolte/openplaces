@@ -9,29 +9,41 @@ Pipeline steps for admin geometry harmonization:
 
 from __future__ import annotations
 
-import glob
 import warnings
-from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 import shapely
-import yaml
 
-from openplaces.core.held_recipes import is_undiscoverable
-from openplaces.core.schema import admin_scope_covers
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.path import recipe_roots
+from openplaces.recipe.discovery import (
+    admin_sources_covering,
+    find_admin_source_recipes,
+)
+
+
+class AdminSourcesNotIngestedError(RuntimeError):
+    """No candidate source of a unit's admin geometry could be loaded.
+
+    Raised by merge_global when discover_sources assigned at least one
+    unit a candidate, no candidate supplied a polygon, and a candidate
+    could not be read, which means its ingest has not run. Saving the
+    empty table instead would report the unit as built with no
+    geometry.
+    """
 
 
 @_register('discover_sources', phase='geometry')
 def discover_sources(
     state: HarmonizeState, include_restricted: bool = False
 ) -> HarmonizeState:
-    """Scan all ingest admin recipes at the recipe's admin_level.
+    """Rank the ingest admin recipes at the recipe's admin_level.
 
-    Ranks, for each admin_id within state.admin_id, every ingest recipe
+    Lists the sources through `openplaces.recipe.find_admin_source_recipes`,
+    the listing the dependency scan also uses, so the graph schedules
+    the ingest of each. Ranks, for each admin_id within state.admin_id,
+    every ingest recipe
     that covers it: most-specific admin_id first, newest version first
     within the same specificity tier. merge_global takes each unit's
     polygon from the first of them that has one. With no state.admin_id
@@ -60,13 +72,15 @@ def discover_sources(
     - 'unassigned_admin_ids': admin_ids no source covers
     """
     admin_level = state.recipe.get('admin_level', 1)
-    sources = _scan_admin_ingest_recipes(admin_level)
-    if not include_restricted:
-        sources = [s for s in sources if not s.get('restricted')]
+    sources = find_admin_source_recipes(
+        admin_level, state.admin_id, include_restricted=include_restricted
+    )
 
     if not sources:
+        scope = state.admin_id or 'the whole spine'
         warnings.warn(
-            f'No ingest admin sources found at level {admin_level}. Skipping.'
+            f'No ingest admin sources found at level {admin_level} '
+            f'within {scope}. Skipping.'
         )
         state.metadata['discovered_sources'] = []
         state.metadata['source_candidates'] = {}
@@ -94,7 +108,7 @@ def discover_sources(
     assignment: dict[str, list[str]] = {}
     unassigned: list[str] = []
     for aid in all_admin_ids:
-        covering = _recipes_for(aid, sources)
+        covering = admin_sources_covering(aid, sources)
         if not covering:
             unassigned.append(aid)
         else:
@@ -113,106 +127,9 @@ def discover_sources(
     return state
 
 
-def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dict]:
-    """Scan recipe tree for ingest recipes of entity_type, priority-sorted.
-
-    Searches ``{recipes_root}/**/{entity_type}/*/*/{filename_glob}.yaml``
-    (recursive), reads each YAML to verify ``stage == 'ingest'``, and returns
-    a list sorted by (specificity, version) descending — most-specific
-    admin_id and newest version first.
-
-    Parameters
-    ----------
-    entity_type : str
-        Entity type directory name (e.g. 'admin', 'parcel', 'footprint').
-    filename_glob : str, optional
-        Glob pattern matched against the recipe filename stem. Defaults to
-        '*' (all files). A .yaml extension is appended automatically.
-    """
-    found = sorted(
-        match
-        for recipes_root in recipe_roots()
-        for match in glob.glob(
-            str(
-                recipes_root / '**' / entity_type / '*' / '*' / f'{filename_glob}.yaml'
-            ),
-            recursive=True,
-        )
-    )
-
-    sources: list[dict] = []
-    for rp in found:
-        try:
-            with open(rp, encoding='utf-8') as fh:
-                data = yaml.safe_load(fh)
-        except Exception:
-            continue
-        if (data.get('stage') or 'ingest') != 'ingest':
-            continue
-        # A recipe can withdraw itself from auto-discovery. The field was
-        # already set by two recipes and reported by
-        # `diagnostics.find_recipes`, but never enforced here -- and this
-        # is the path admin-source discovery actually takes, so a
-        # superseded layer stayed in the candidate pool and could fill
-        # any gap the current vintage did not cover.
-        if data.get('exclude_from_auto_discover'):
-            continue
-        # A supplement details another recipe's entities (see
-        # spine._expand_auto_discover) and is never the source to pick.
-        if data.get('supplements'):
-            continue
-        # A held or run-excluded recipe is never a source
-        # (core.held_recipes). This scan globs the tree itself rather
-        # than reading find_recipes, so it needs its own check.
-        if is_undiscoverable(Path(rp).stem, data):
-            continue
-        entity = data.get('entity') or {}
-        raw_admin_id = data.get('admin_id')
-        admin_id_str = (
-            str(raw_admin_id)
-            if raw_admin_id is not None and str(raw_admin_id) != 'None'
-            else ''
-        )
-        specificity = len(admin_id_str.split('-')) if admin_id_str else 0
-        version = str(entity.get('version') or '')
-        source = entity.get('source') or {}
-        sources.append(
-            {
-                'recipe_id': Path(rp).stem,
-                'admin_id': admin_id_str,
-                'specificity': specificity,
-                'version': version,
-                'restricted': source.get('redistribution_restricted') is True,
-            }
-        )
-
-    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
-    return sources
-
-
-def _scan_admin_ingest_recipes(admin_level: int) -> list[dict]:
-    return _scan_ingest_recipes('admin', filename_glob=f'*_admin{admin_level}')
-
-
-def _scan_entity_ingest_recipes(entity_type: str) -> list[dict]:
-    return _scan_ingest_recipes(entity_type)
-
-
-def _recipes_for(admin_id_str: str, sources: list[dict]) -> list[str]:
-    """Return every source covering admin_id, highest priority first."""
-    # Containment by level, not by string prefix: leaf codes mix two and
-    # three characters, so a source scoped to the pre-2026 'US-NC-WA'
-    # (Wake) would otherwise be picked for 'US-NC-WAR' (Warren).
-    return [
-        src['recipe_id']
-        for src in sources
-        if admin_scope_covers(src['admin_id'], admin_id_str)
-    ]
-
-
 def _best_recipe_for(admin_id_str: str, sources: list[dict]) -> str | None:
     """Return recipe_id of the highest-priority source covering admin_id."""
-    covering = _recipes_for(admin_id_str, sources)
+    covering = admin_sources_covering(admin_id_str, sources)
     return covering[0] if covering else None
 
 
@@ -235,7 +152,16 @@ def merge_global(state: HarmonizeState) -> HarmonizeState:
 
     Writes state.spine, and in state.metadata 'geometry_source' (the
     recipe each unit's polygon came from) and 'unmatched_admin_ids'
-    (candidates that no source had a polygon for).
+    (candidates that no source had a polygon for). A source that cannot
+    be read is skipped with a warning while another one supplies a
+    polygon. With no unit to fill, the spine stays unset and the
+    harmonizer saves an empty table.
+
+    Raises
+    ------
+    AdminSourcesNotIngestedError
+        When at least one unit had a candidate, no polygon was taken,
+        and a candidate could not be read: its ingest has not run.
     """
     sources = state.metadata.get('discovered_sources', [])
     candidates = state.metadata.get('source_candidates')
@@ -251,6 +177,7 @@ def merge_global(state: HarmonizeState) -> HarmonizeState:
     remaining = set(candidates)
     origin: dict[str, str] = {}
     pieces = []
+    unreadable: list[str] = []
     for src in sources:
         recipe_id = src['recipe_id']
         wanted = {aid for aid in remaining if recipe_id in candidates[aid]}
@@ -260,6 +187,7 @@ def merge_global(state: HarmonizeState) -> HarmonizeState:
             gdf = get_entities(recipe_id, geom=True)
         except Exception as exc:
             warnings.warn(f'Could not load {recipe_id}: {exc}. Skipping source.')
+            unreadable.append(recipe_id)
             continue
 
         available = gdf[gdf.index.isin(wanted)]
@@ -285,6 +213,18 @@ def merge_global(state: HarmonizeState) -> HarmonizeState:
 
     if spine.empty:
         admin_level = state.recipe.get('admin_level', '?')
+        # A unit with candidates whose sources could not be read has
+        # sources that were never ingested; an empty table saved for it
+        # would read as a unit built with no geometry. A unit with no
+        # candidates at all (Antarctica at level 2) has nothing to
+        # ingest, and its empty table is the right output.
+        if candidates and unreadable:
+            scope = state.admin_id or 'the whole spine'
+            raise AdminSourcesNotIngestedError(
+                f'No admin level {admin_level} geometry could be loaded '
+                f'for {scope}: candidate source(s) {", ".join(unreadable)} '
+                'could not be read. Ingest them, then rerun this harmonize.'
+            )
         warnings.warn(f'No admin geometries loaded at level {admin_level}.')
         return state
 
