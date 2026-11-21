@@ -167,7 +167,7 @@
 #   - BLDGSQFT: "Square footage of building(s)." -> living_area_sqft
 #     (538,368/647,192, 83.2%, > 0). It equals Clackamas County's
 #     LIVING_AREA on 99.98% of matched accounts (see
-#     US-OR-CO_property-clackamascounty-2026), so it is read as
+#     US-OR-CL_property-clackamascounty-2026), so it is read as
 #     living area, not gross.
 #   - A_T_ACRES: "Acreage of tax lot as shown in the County Assessor's
 #     database" -> land_area_sqft via `acres_to_sqft` (453,834/647,192,
