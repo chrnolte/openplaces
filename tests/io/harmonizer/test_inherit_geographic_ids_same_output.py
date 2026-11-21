@@ -240,3 +240,78 @@ def test_randomized_rows_match_the_previous_code(monkeypatch):
     spine_ids = sorted(set(linked['parcel_id'].dropna()))[::2] + ['P9999999']
     columns = ['tract_str', 'tract_cat', 'tract_obj', 'number']
     _compare(monkeypatch, linked, _spine(spine_ids), columns)
+
+
+# A parcel geospine's columns when link_geographic_ids runs: value
+# `_source` sidecars at positions 8 to 10 (the Fort Bend layout, where
+# land_value_source and improvement_value_source were seen to swap)
+# and a source-native admin4_id the step overwrites in place.
+GEOSPINE_COLUMNS = [
+    'parcel_id_local',
+    'admin4_id',
+    'use_group',
+    'improvement_value',
+    'land_value',
+    'year_built',
+    'n_dwellings',
+    'geometry_source',
+    'land_value_source',
+    'year_built_source',
+    'improvement_value_source',
+    'lat',
+    'long',
+]
+
+
+def _geospine() -> gpd.GeoDataFrame:
+    spine = _spine(['P1', 'P2', 'P3'])
+    for column in GEOSPINE_COLUMNS:
+        if column not in spine.columns:
+            spine[column] = pd.Series(['x', 'y', 'z'], index=spine.index)
+    # The ids the linked rows hold, so the step has nothing to warn of.
+    spine['admin4_id'] = pd.Series(['a1', 'a2', 'a3'], index=spine.index)
+    return spine[[*GEOSPINE_COLUMNS, 'geometry']]
+
+
+def test_link_geographic_ids_keeps_the_column_order(monkeypatch):
+    """The whole step writes the columns the previous code wrote, in order."""
+    linked = _linked(
+        ['P1', 'P2', 'P2', 'P3'],
+        {
+            'admin4_id': ('str', ['a1', 'a2', 'a2', 'a3']),
+            'census_tract_id': ('str', ['t1', 't2', 't2', 't3']),
+            'census_block_id': ('str', ['b1', 'b2', 'b2', 'b3']),
+        },
+    )
+    monkeypatch.setattr(
+        spine_module, 'get_entities', lambda *args, **kwargs: linked.copy()
+    )
+    monkeypatch.setattr(
+        'openplaces.io.harmonizer.diagnostics.save_geographic_id_inheritance_conflicts',
+        lambda state: None,
+    )
+    links = [
+        {'output_column': 'census_tract_id', 'recipe_id': 'tracts'},
+        {'output_column': 'admin4_id', 'admin_level': 4},
+        {'output_column': 'census_block_id', 'recipe_id': 'blocks'},
+    ]
+    inherit_from = {'recipe_id': 'US_building-spine-2026', 'group_by': 'parcel_id'}
+
+    def run():
+        state = SimpleNamespace(
+            spine=_geospine(), admin_id='US-ZZ-AAA', metadata={}, verbose=False
+        )
+        return spine_module.link_geographic_ids(
+            state, links=links, inherit_from=inherit_from
+        ).spine
+
+    new = run()
+    monkeypatch.setattr(
+        spine_module, '_inherit_geographic_ids', _old_inherit_geographic_ids
+    )
+    old = run()
+
+    expected = [*GEOSPINE_COLUMNS, 'geometry', 'census_tract_id', 'census_block_id']
+    assert list(old.columns) == expected
+    assert list(new.columns) == expected
+    pd.testing.assert_frame_equal(new, old, check_exact=True)
