@@ -95,8 +95,8 @@
 # PRIMACCNUM for Clackamas (8 digits both sides): 99.92% of the
 # layer's accounts are in RLIS and 100.00% of RLIS's Clackamas accounts
 # are in the layer; 100.00% of residential improved accounts match.
-# Neither side has a bundled parcel_id_links row for US-OR-CO, so both
-# resolve to the default 'simple' conversion. No override row needed.
+# The bundled parcel_id_links rows for US-OR-CL name the 'simple'
+# conversion for both sides. No override row needed.
 #
 # NOT MAPPED, deliberately: situs address, sale price and document
 # fields, values, LANDCLASS (RLIS carries values and land use for this
@@ -113,7 +113,7 @@ description: >-
   Clackamas County, OR taxlot roll curated for the county's CMap viewer:
   bedrooms, full baths and living area per assessor account.
 
-admin_id: US-OR-CO
+admin_id: US-OR-CL
 
 entity:
   entity_type: property
