@@ -24,7 +24,17 @@ def _spine_sources(admin_id):
     return [s['recipe_id'] for s in _expand_auto_discover(step['sources'], state)]
 
 
-@pytest.mark.parametrize('admin_id', ['US-NC-FOR', 'US-NC-STO'])
+DISPLACED = [
+    'US-NC-FOR',
+    'US-NC-STO',
+    'US-NC-DAE',
+    'US-NC-ROC',
+    'US-NC-CUR',
+    'US-NC-PES',
+]
+
+
+@pytest.mark.parametrize('admin_id', DISPLACED)
 def test_a_displaced_unit_reads_no_microsoft_outlines(admin_id):
     sources = _spine_sources(admin_id)
     assert MICROSOFT not in sources
