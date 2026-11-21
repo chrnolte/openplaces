@@ -185,6 +185,20 @@ class _DownloadMixin:
 
         self.download_partition['download_url'] = download_url
 
+    def _archive_varies_by_partition(self):
+        """Whether each download partition has an archive of its own.
+
+        True when the recipe's `compressed_file_name` holds the
+        placeholder of its `download_by.partition` (`SDF_{year}.zip`
+        partitioned by `year`). One archive with a member per partition
+        is not such a case: its members are told apart by their names.
+        """
+        partition = (self.recipe.get('download_by') or {}).get('partition')
+        name = self.recipe.get('compressed_file_name')
+        if not partition or not isinstance(name, str):
+            return False
+        return partition in self._get_placeholders(name)
+
     def _resolve_downloaded_and_data_paths(self):
         """Get the paths for the data ingestion files of a recipe"""
 
@@ -286,6 +300,21 @@ class _DownloadMixin:
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
+
+        # The same holds for the partition: where every partition has
+        # its own archive (`SDF_{year}.zip`) but the member read has one
+        # name in all of them (`SALEDISC.txt`), a shared heap path let a
+        # member left behind by an earlier partition, or by a run that
+        # stopped before its cleanup, pass the "already unzipped" skip:
+        # the partition then read another partition's file and never
+        # opened its own archive (Indiana's 2021 sales read the 2026
+        # file, 2026-11-21). Each such partition extracts into a folder
+        # of its own, so the only file it can find is from its archive.
+        partition_id = self.download_partition.get('partition_id_to_download')
+        self.download_partition['partition_heap_dir'] = False
+        if partition_id is not None and self._archive_varies_by_partition():
+            self.recipe_heap_dir = self.recipe_heap_dir / str(partition_id)
+            self.download_partition['partition_heap_dir'] = True
 
         # Identify path of file to import (to see whether it's already saved)
         if compressed_file_name is not None:

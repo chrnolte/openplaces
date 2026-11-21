@@ -13,6 +13,7 @@ module the method lives in: `openplaces.io.ingester.download.unzip`, not
 """
 
 import re
+import shutil
 import warnings
 from itertools import product
 
@@ -592,6 +593,15 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
                 if self.verbose:
                     print('Deleting unzipped data.')
                 delete_data(self.download_partition['data_path'])
+            # A partition's own extraction folder holds only what its
+            # archive unpacked, so the members no recipe reads (Indiana's
+            # buyer and seller contacts beside the sales) go with it
+            # rather than lingering in the heap.
+            if (
+                self.download_partition.get('partition_heap_dir')
+                and self.recipe_heap_dir.exists()
+            ):
+                shutil.rmtree(self.recipe_heap_dir)
 
     def _process_recipe_data(self, admin_id_to_process=None):
         """Process data from a downloaded (and unzipped) data file"""
