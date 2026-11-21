@@ -1,0 +1,30 @@
+# Patch: Currituck County's footprint spine leaves out Microsoft's
+# layer, which is displaced in part of the county.
+#
+# Microsoft's US layer (US_footprint-microsoft-v2) lies about 7 m to the
+# east-southeast of OpenBuildingMap and of the NC DPS state layer there,
+# so a small building clears the OBM outline of itself and enters the
+# spine twice (the mechanism is described in
+# US-NC-FOR_footprint-geospine-2026; the direction here is the
+# opposite one).
+# Measured 2026-11-20 on US-NC-CUR: 12% of 16,478 Microsoft outlines lie over 5 m from the OBM outline they overlap most, in one direction.
+# Measured 2026-11-20 on US-NC-CUR: NC DPS 2023 draws 896 of the 1,090 Microsoft outlines that touch no OBM outline.
+#
+# OBM and NC DPS both cover the county, so the spine is built from them;
+# where Microsoft is registered, NC DPS supplies the buildings OBM lacks.
+# plans/source-coverage-and-absence-rules.md, section 7.3.
+
+admin_id: US-NC-CUR
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - discard: resolve_spine
+    key: sources
+    values: [US_footprint-microsoft-v2]

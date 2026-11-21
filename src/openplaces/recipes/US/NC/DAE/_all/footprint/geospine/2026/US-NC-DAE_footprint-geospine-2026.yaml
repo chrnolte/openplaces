@@ -1,0 +1,29 @@
+# Patch: Davie County's footprint spine leaves out Microsoft's layer,
+# which is displaced in part of the county.
+#
+# The same displacement as in Forsyth County to its east (see
+# US-NC-FOR_footprint-geospine-2026): Microsoft's US layer lies about
+# 8 m to the west-northwest of OpenBuildingMap and of the NC DPS state
+# layer there, so a small building clears the OBM outline of itself and
+# enters the spine twice.
+# Measured 2026-11-20 on US-NC-DAE: 12% of 25,034 Microsoft outlines lie over 5 m from the OBM outline they overlap most, in one direction.
+# Measured 2026-11-20 on US-NC-DAE: NC DPS 2023 draws 406 of the 1,246 Microsoft outlines that touch no OBM outline.
+#
+# OBM and NC DPS both cover the county, so the spine is built from them;
+# where Microsoft is registered, NC DPS supplies the buildings OBM lacks.
+# plans/source-coverage-and-absence-rules.md, section 7.3.
+
+admin_id: US-NC-DAE
+stage: harmonize
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: geospine
+  version: 2026
+
+patches: US_footprint-geospine-2026
+pipeline_patch:
+  - discard: resolve_spine
+    key: sources
+    values: [US_footprint-microsoft-v2]
