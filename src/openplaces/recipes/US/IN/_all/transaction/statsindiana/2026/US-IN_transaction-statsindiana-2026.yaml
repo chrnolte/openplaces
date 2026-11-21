@@ -41,29 +41,26 @@
 # something a harmonizer step would need to do; no such step exists
 # yet.
 #
-# NOTE -- discovered ingester limitation (not a recipe error): a
-# straight `pandas.read_csv(delimiter='\t', encoding='utf-16')` call
-# on the real 2025 SALEDISC.txt -- the exact call
-# `TableIngester._read_recipe_data` makes for a `.txt` source -- FAILS
-# with `ParserError: Error tokenizing data. C error: Expected 111
-# fields in line 3323, saw 112`. The file contains an unescaped
-# literal `"` inside at least one free-text field (a candidate is
-# `B6_Partial_Description`, a free-text easement/partial-interest
-# description) that breaks RFC4180 quote parsing; Indiana does not
-# double up embedded quotes the way the format requires. Reading with
-# `engine='python', on_bad_lines='skip', quoting=csv.QUOTE_NONE`
-# recovers 198,843 of 200,969 lines (99.94%2,126 lines skipped,
-# 1.06%), so this is a small-magnitude but real problem: the current
-# `TableIngester` has no recipe-level `quoting`/`on_bad_lines` option,
-# so `op.ingest()` on this recipe as written will currently raise
-# partway through the file. This needs either an ingester enhancement
-# (a `quoting`/`on_bad_lines` passthrough for CSV reads) or a
-# preprocessing step before this recipe can be run end-to-end; flagged
-# here rather than silently worked around. The sibling
-# `US-IN_transaction-statsindianaparcel-2026` recipe (SALEPARCEL.txt)
-# does NOT have this problem -- it read cleanly with the identical
-# call in this research pass -- so it was the one actually ingested
-# for validation (see its own header).
+# NOTE on quoting (`all_fields_quoted: true` below): every field of
+# every line, header included, is enclosed in double quotes, but a
+# quote inside a field is written as is, never doubled, and one
+# field can hold a literal tab. pandas' default read of the 2025
+# SALEDISC.txt stops with `ParserError: Expected 111 fields in line
+# 3323, saw 112`: that line's `P2_15_Special_Circum` text holds
+# unescaped quotes and a tab, and the parser ends the field at the
+# inner quote and splits at the tab. `on_bad_lines` would drop that
+# sale and still read the other quote-bearing lines by the wrong
+# rule. A field boundary in this export is exactly quote-tab-quote,
+# so the reader splits there and escapes the quotes before parsing;
+# it prints how many lines it so read. Measured 2026-11-21 on
+# US-IN (2025 vintage, 199,907 lines): every line has 111 fields on
+# that split; 1,063 lines hold a quote inside a field
+# (`P2_15_Special_Circum` 1,027 cells, `C5_Other` 23,
+# `P2_10_Physical_Changes` 12, `B6_Partial_Description` 2,
+# `D3_Planned_Use` 1) and 1 a tab; the read matches the
+# quote-tab-quote split cell for cell, no row dropped. The source's
+# metadata sheet (SDF_File_Parsing_MetaData.xlsx) calls the files
+# "Tab Delmited" with UNICODE fields and says nothing on quoting.
 #
 # NOTE on the county crosswalk: `County_ID` in SALEDISC.txt is the
 # DLGF's own alphabetical county numbering (same scheme as
@@ -103,16 +100,17 @@
 # Measured (2025 vintage, the full statewide annual file --
 # confirmed complete/statewide by county coverage, not the partial-
 # county-coverage "current year" file the source's own documentation
-# warns about): 198,843 rows recovered (of 200,969 raw lines; 2,126
-# skipped for the quoting reason above), spanning all 92 counties.
-# `E1_Sales_Price` > 0: 183,822/198,843 (92.5%). `C7_Conveyance_Date`
-# populated 198,843/198,843 (100%), a clean ISO `YYYY-MM-DD` string
-# (not an epoch-ms or sentinel value in this sample). Neither `SDF_ID`
-# nor `Unique_Sales_ID` is a unique key on this table (163,971
-# distinct values for 198,843 rows) -- duplicate rows share identical
-# SDF_ID/Unique_Sales_ID/county/date, a source-side data-quality trait
-# (not investigated further in this pass), not a join-key problem
-# since this recipe has no join key.
+# warns about). Measured 2026-11-21 on US-IN (2025 vintage, read
+# with all_fields_quoted): 199,906 rows, all 92 County_ID values.
+# `E1_Sales_Price` > 0: 184,624/199,906 (92.4%).
+# `C7_Conveyance_Date` populated 199,906/199,906, a clean ISO
+# `YYYY-MM-DD` string (not an epoch-ms or sentinel value). `SDF_ID`
+# is not a unique key on this table (167,467 distinct values for
+# 199,906 rows); duplicate rows share identical
+# SDF_ID/Unique_Sales_ID/county/date, a source-side trait (not
+# investigated further), not a join-key problem since this recipe
+# has no join key. (An earlier pass, on a 200,969-line download of
+# the same year, quoted 198,843 rows from a lossy read.)
 #
 # License: `stats.indiana.edu`'s own SDF pages state no explicit
 # license or redistribution terms; the data is described as a
@@ -120,10 +118,11 @@
 # research purposes." Recorded as 'unknown'.
 #
 # Validation performed: recipe-loading and registry-column checks
-# were run for real; `op.ingest()` was NOT run for this recipe (see
-# the quoting bug above) -- see the sibling
-# `US-IN_transaction-statsindianaparcel-2026` recipe for the real,
-# successful `op.ingest()` run against the same year's data.
+# were run for real, and the 2025 SALEDISC.txt was read in memory
+# through the ingester's flat-table reader (counts above);
+# `op.ingest()` has not been run end to end for this recipe. Only the
+# 2025 file was inspected: the 2021-2024 and 2026 files are assumed
+# to share the export's quoting.
 
 description: >-
   Indiana statewide Sales Disclosure Form headers (price, conveyance date,
@@ -161,6 +160,8 @@ uncompressed_file_name: "SALEDISC.txt"
 encoding: "utf-16"
 delimiter: "\t"
 csv_dtype: str
+# Quotes inside fields are not escaped; see the NOTE on quoting.
+all_fields_quoted: true
 
 process_by:
   admin_level: 3

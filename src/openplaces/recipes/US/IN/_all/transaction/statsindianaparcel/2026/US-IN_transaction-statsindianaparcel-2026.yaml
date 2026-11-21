@@ -27,13 +27,29 @@
 # hold and process as one statewide file per year, like
 # `US-WI_transaction-widor-2026`'s per-month files.
 #
-# NOTE: this table read CLEANLY with the exact call
-# `TableIngester._read_recipe_data` makes for a `.txt` source
-# (`pandas.read_csv(delimiter='\t', encoding='utf-16')`, no
-# `on_bad_lines`/`quoting` workaround needed) -- unlike the sibling
-# SALEDISC.txt, which has a quoting bug (see that recipe's header).
-# This is the recipe actually exercised end-to-end in this research
-# pass (see "Validation performed" below).
+# NOTE on quoting (`all_fields_quoted: true` below): the same export
+# rule as the sibling SALEDISC.txt (see its header): every field
+# quoted, quotes inside a field never doubled. pandas' default read
+# of the 2025 SALEPARCEL.txt raises nothing, which hid that it reads
+# 5 rows wrongly: an unescaped quote makes the parser end or extend
+# a field at the wrong place, and the row's later values
+# (`P2_5_Total_AV`, `P2_6_Prop_Class_Code` among them) land in
+# another column (`A5_Street1` differs in 4 rows).
+# Measured 2026-11-21 on US-IN (2025
+# vintage, 205,069 lines): every line has 31 fields on the
+# quote-tab-quote split; 946 lines hold a quote inside a field
+# (`A7_Legal_Description` 934 cells, `A1_Subdiv_Name` 30,
+# `A5_Street1` 4, `A6_Street1` 1), 4 a tab; the reader reports 950
+# lines read so and matches that split cell for cell.
+#
+# NOTE on encoding (`encoding_fallback` below): SALEPARCEL.txt of
+# 2021 to 2025 starts with the UTF-16LE byte-order mark (FF FE).
+# The 2026 member starts with `"SDF_ID"` as 8-bit text, no mark
+# (first bytes read 2026-11-21), and made the ingest at 419fa8d5
+# raise "UTF-16 stream does not start with BOM". The reader takes
+# such a file as UTF-8 when all of it is valid UTF-8 and as the
+# fallback otherwise. Which of the two the 2026 file is has not
+# been checked; the ingest prints the encoding it read.
 #
 # NOTE on fields left unmapped: `A1_Subdiv_Name`/`A1_Subdiv_Lot_Num`
 # (subdivision plat reference, no registry slot), `A2_Split` (whether
@@ -71,7 +87,9 @@
 # for 198,475 rows (a parcel selling more than once in the year is
 # expected, not a key defect).
 # `land_value`/`total_value`/`land_area_sqft` populated (>0) in
-# 97.5%/97.9%/96.7%.
+# 97.5%/97.9%/96.7%. That run predates `all_fields_quoted` and so
+# carried the 5 misread rows described in the NOTE on quoting; it
+# has not been repeated.
 #
 # This pass also surfaced and fixed two real, pre-existing
 # `openplaces` bugs (neither specific to this source), only
@@ -130,8 +148,12 @@ compressed_file_name: "SDF_{year}.zip"
 uncompressed_file_name: "SALEPARCEL.txt"
 
 encoding: "utf-16"
+# The 2026 file is 8-bit text; see the NOTE on encoding.
+encoding_fallback: "cp1252"
 delimiter: "\t"
 csv_dtype: str
+# Quotes inside fields are not escaped; see the NOTE on quoting.
+all_fields_quoted: true
 
 # The raw file carries rows that are exact duplicates on every
 # MAPPED column (verified: 6,573 of 205,068 rows in the 2025
