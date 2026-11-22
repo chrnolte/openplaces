@@ -7,13 +7,24 @@
 # Covers the whole county, Saint Paul included (Saint Paul publishes no
 # separate assessor table; its assessment is county-run).
 #
-# SOURCE. Ramsey County's own bulk file on the Minnesota Geospatial
-# Commons, us_mn_co_ramsey/plan_parcel_data (shp_plan_parcel_data.zip,
-# about 200 MB, 2026-03-06 edition). Directly downloadable, no gate. The
-# zip holds 16 layers; only plan_attributedparcelpoint and
-# plan_attributedparcelpoly carry room fields. The live service
-# (gis.ramseycountymn.gov .../CAD_AttributedParcelPoly_ViewOnly) has
-# the same schema but only 2,000 rows per page.
+# SOURCE. Ramsey County's "Attributed Parcel Points" (item
+# e1d26ac7a8944f1f8059f5659f656fe1) on its open data site, as the
+# site's shapefile export. Directly downloadable, no gate. The export
+# URL redirects to hub.arcgis.com's cached download; two HEAD requests
+# on 2026-11-22 both returned the zip (Attributed_Parcel_Points.zip,
+# last modified 2026-07-21). Fetched once that day (49 MB): one point
+# layer, 167,749 rows, Point Z in the county's own Ramsey County
+# coordinate system (ESRI:103768, US feet), with every source column
+# this recipe reads under the same shortened names as before.
+# Earlier versions read the county's bulk file on the Minnesota
+# Geospatial Commons (us_mn_co_ramsey/plan_parcel_data,
+# shp_plan_parcel_data.zip, 2026-03-06 edition, 16 layers); that file
+# and its metadata return 404 since the portal migration (checked
+# 2026-11-22), and the new portal lists Ramsey only as the county's
+# services. The live service
+# (gis.ramseycountymn.gov .../CAD_AttributedParcelPoint_ViewOnly) has
+# the same fields under their full names but only 2,000 rows per page.
+# The measurements below were taken on the March 2026 Commons file.
 #
 # WHY THE POINT LAYER. Points are one per tax parcel, condominium units
 # and manufactured homes included, while polygons can stack. Measured
@@ -121,18 +132,22 @@ entity:
     # Checked 2026-09-12: the Commons metadata states "Access
     # Constraints: None. Use Constraints: None" and asks that the
     # publisher be acknowledged. No fee, gate or resale clause.
+    # Checked 2026-11-22: the open data item's constraints read "None.
+    # Please check sources, scale, accuracy, currentness and other
+    # available information." and "Acknowledgment of the publisher
+    # would be appreciated." The site's own terms page was not read.
     license: >-
       Access constraints none; use constraints none (Ramsey County
-      metadata on the Minnesota Geospatial Commons). Acknowledgment of
-      the publisher, Ramsey County, is appreciated.
-    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_ramsey/plan_parcel_data/metadata/metadata.html"
+      metadata). Acknowledgment of the publisher, Ramsey County, is
+      appreciated.
+    terms_url: "https://data-ramseygis.opendata.arcgis.com/datasets/RamseyGIS::attributed-parcel-points"
     redistribution_restricted: false
-    portal_url: "https://gis.data.mn.gov/"
-    download_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_ramsey/plan_parcel_data/shp_plan_parcel_data.zip"
+    portal_url: "https://data-ramseygis.opendata.arcgis.com/"
+    download_url: "https://data-ramseygis.opendata.arcgis.com/api/download/v1/items/e1d26ac7a8944f1f8059f5659f656fe1/shapefile?layers=0"
   version: "2026"
 
-compressed_file_name: "shp_plan_parcel_data.zip"
-uncompressed_file_name: "plan_attributedparcelpoint.shp"
+compressed_file_name: "Attributed_Parcel_Points.zip"
+uncompressed_file_name: "Attributed_Parcel_Points.shp"
 
 process_by:
   admin_level: 3

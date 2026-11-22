@@ -50,7 +50,10 @@ record, "the best source available at build time" is not reproducible.
   `file_pattern` instead of `admin_id_column`: a filename pattern relative to the recipe's
   heap directory, with `{partition_id}` and the crosswalk's raw-code column name (e.g.
   `{admin3_id_admin2}`) as placeholders, resolved per admin unit
-  (`TableIngester._resolve_file_pattern_path`).
+  (`TableIngester._resolve_file_pattern_path`). For one layer per admin unit
+  inside a single multi-layer file (a geodatabase or GeoPackage), use
+  `layer_pattern` with the same placeholders (`"Parcels{co_name_file}"`); a
+  layer the file lacks raises (`TableIngester._resolve_layer_pattern`).
 - `save_to` - output location (`data_dir` from `STANDARD_DIRS`, `admin_level`, optional
   `retention` class). When `save_to.admin_level` is coarser than `process_by.admin_level`,
   the Ingester aggregates intermediate files to that level.

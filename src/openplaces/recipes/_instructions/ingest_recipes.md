@@ -263,8 +263,11 @@ degenerate source column, empty column — is in
 - `download_by:` — `admin_level`, or `partition: year | year_month | table |
   tile_id | latlon_tile`.
 - `process_by:` — chunking granularity: `admin_level` plus either
-  `admin_id_column` (filter rows by an in-data column) or `file_pattern` (one
-  pre-split file per admin unit inside a shared download).
+  `admin_id_column` (filter rows by an in-data column), `file_pattern` (one
+  pre-split file per admin unit inside a shared download) or `layer_pattern`
+  (one layer per admin unit inside one geodatabase or GeoPackage, e.g.
+  `"Parcels{co_name_file}"`; a missing layer raises and lists the file's
+  layers).
 - `save_to:` — `data_dir` (`core` for entities you keep, `cache` for
   intermediates such as transactions, `share` for deliverables),
   `admin_level`, optional `retention`.

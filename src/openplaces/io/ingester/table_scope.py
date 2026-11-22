@@ -1,5 +1,5 @@
 """What a table ingest reads for an admin unit: the fid filter, the
-admin-id crosswalks, file-pattern paths and admin geometries.
+admin-id crosswalks, file- and layer-pattern names and admin geometries.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import pyogrio
 
 from openplaces.core.schema import AdminId
 from openplaces.geo import get_crs
@@ -96,6 +97,90 @@ class _TableScopeMixin:
             admin_id_crosswalk_dict, flip=False
         )
 
+    def _fill_unit_pattern(self, pattern: str, what: str) -> str:
+        """Fill a per-admin-unit pattern for the unit being processed.
+
+        Substitutes ``{partition_id}`` with the current download
+        partition id and the crosswalk's raw-code column name (e.g.
+        ``{co_name_file}``) with this admin unit's code, looked up via
+        :meth:`_prepare_reverse_admin_id_crosswalk`.
+
+        Parameters
+        ----------
+        pattern : str
+            A ``process_by.file_pattern`` or ``process_by.layer_pattern``.
+        what : str
+            What the pattern names ('file name', 'layer name'), for the
+            error message.
+
+        Raises
+        ------
+        KeyError
+            The admin unit has no code in the recipe's crosswalk.
+        """
+        if 'admin_id_crosswalk_reverse' not in self.download_partition:
+            self._prepare_reverse_admin_id_crosswalk()
+        reverse_crosswalk = self.download_partition['admin_id_crosswalk_reverse']
+
+        admin_id_to_process = self.processing_chunk['admin_id_to_process']
+        if admin_id_to_process not in reverse_crosswalk.index:
+            # The reverse crosswalk records no scope of its own (unlike the
+            # forward one), so an admin unit a scoped sidecar does not cover
+            # reached `.loc` and raised a bare KeyError naming only the id.
+            raise KeyError(
+                f"{admin_id_to_process} has no code in this recipe's "
+                f'process_by.admin_id_crosswalk, so no {what} can be '
+                'built for it.'
+            )
+        raw_code = reverse_crosswalk.loc[admin_id_to_process]
+
+        filled = pattern.replace(
+            '{partition_id}',
+            str(self.download_partition.get('partition_id_to_download')),
+        )
+        return filled.replace('{' + reverse_crosswalk.name + '}', str(raw_code))
+
+    def _resolve_layer_pattern(self, layer_pattern: str, data_path) -> str:
+        """Resolve the layer this admin unit reads from a multi-layer file.
+
+        Some sources ship one layer per admin unit inside a single
+        geodatabase or GeoPackage (MetroGIS: ``ParcelsCarver`` and six
+        sibling county layers in one file geodatabase).
+        ``process_by.layer_pattern`` names that layer with the same
+        placeholders as ``process_by.file_pattern``. The recipe-level
+        ``layer`` stays the default for every other read.
+
+        A layer is chosen by name only. An unresolved name raises rather
+        than falling back to the file's first layer, because a fallback
+        would save one county's rows under another county's id.
+
+        Parameters
+        ----------
+        layer_pattern : str
+            Pattern from ``process_by.layer_pattern``.
+        data_path : Path
+            The file (or ``.gdb`` folder) the layer is read from.
+
+        Raises
+        ------
+        ValueError
+            The resolved layer is not in the file; the message names it
+            and lists the layers the file has.
+        """
+        layer = self._fill_unit_pattern(layer_pattern, 'layer name')
+        layers_by_path = self.download_partition.setdefault('layer_names', {})
+        key = str(data_path)
+        if key not in layers_by_path:
+            layers_by_path[key] = [str(n) for n in pyogrio.list_layers(data_path)[:, 0]]
+        available = layers_by_path[key]
+        if layer not in available:
+            raise ValueError(
+                f"process_by.layer_pattern '{layer_pattern}' resolved to layer "
+                f"'{layer}' for {self.processing_chunk['admin_id_to_process']}, "
+                f'which {data_path} does not have. Its layers: {available}'
+            )
+        return layer
+
     def _resolve_file_pattern_path(self, file_pattern: str) -> Path:
         """Resolve the per-admin-unit source file named by a file pattern.
 
@@ -117,27 +202,8 @@ class _TableScopeMixin:
             Pattern from ``process_by.file_pattern``, relative to
             :attr:`recipe_heap_dir`.
         """
-        if 'admin_id_crosswalk_reverse' not in self.download_partition:
-            self._prepare_reverse_admin_id_crosswalk()
-        reverse_crosswalk = self.download_partition['admin_id_crosswalk_reverse']
-
+        pattern = self._fill_unit_pattern(file_pattern, 'file name')
         admin_id_to_process = self.processing_chunk['admin_id_to_process']
-        if admin_id_to_process not in reverse_crosswalk.index:
-            # The reverse crosswalk records no scope of its own (unlike the
-            # forward one), so an admin unit a scoped sidecar does not cover
-            # reached `.loc` and raised a bare KeyError naming only the id.
-            raise KeyError(
-                f"{admin_id_to_process} has no code in this recipe's "
-                'process_by.admin_id_crosswalk, so no file name can be '
-                'built for it.'
-            )
-        raw_code = reverse_crosswalk.loc[admin_id_to_process]
-
-        pattern = file_pattern.replace(
-            '{partition_id}',
-            str(self.download_partition.get('partition_id_to_download')),
-        )
-        pattern = pattern.replace('{' + reverse_crosswalk.name + '}', str(raw_code))
 
         matches = list(self.recipe_heap_dir.glob(pattern))
         if len(matches) == 0 and (

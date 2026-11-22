@@ -2,18 +2,14 @@
 # metro area (Minneapolis-St. Paul), Minnesota.
 #
 # Source: published quarterly (Jan/Apr/Jul/Oct) by the Metropolitan
-# Council on behalf of MetroGIS, distributed through the Minnesota
-# Geospatial Commons. The dataset's own bulk-file host
-# (resources.gisdata.mn.gov) is current and directly downloadable; the
-# older gisdata.mn.gov CKAN-style dataset pages (e.g.
-# `/dataset/us-mn-state-metrogis-plan-regional-parcels`) now
-# 301-redirect to the new portal's bare homepage
-# (https://gis.data.mn.gov/) rather
-# than a specific listing, following a portal migration -- a future
-# agent should not be surprised the old dataset-page URL no longer
-# resolves to anything useful; the live human landing page is
-# metrogis.org/how-do-i-get/parcel-data/, and the actual file host below
-# is what this recipe downloads from.
+# Council on behalf of MetroGIS, listed on the Minnesota Geospatial
+# Commons (gis.data.mn.gov, item 136b28bd0d874076b702ca55b9aafffc,
+# "Metropolitan 7-County Parcel Polygons"). The bulk file now lives on
+# the Met Council's own host (gisdata.metc.state.mn.us). The old
+# resources.gisdata.mn.gov files (shp_, fgdb_ and gpkg_ zips and
+# metadata.html) return 404 since the portal migration (checked
+# 2026-11-22), and the Met Council host offers no shapefile or
+# GeoPackage, only the file geodatabase zip below.
 #
 # NOTE on scope -- Minnesota has NO statewide parcel aggregator.
 # MnGeo states this explicitly: "a comprehensive process for combining
@@ -46,23 +42,36 @@
 #     ("Between 2014-2015, all seven county boards formally adopted
 #     policy resolutions to make their public geospatial data freely
 #     available without fee or licensure").
-#   - resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/
-#     plan_regional_parcels/ (current, live, directly downloadable, no
-#     login/click-through): the live directory listing at ingest time
-#     showed `shp_plan_regional_parcels.zip` (543 MB), `fgdb_...zip`
-#     (365 MB) and `gpkg_...zip` (480 MB) side by side, all last
-#     modified 2026-04-21 -- this is the same quarterly refresh in every
-#     format; shp was chosen (see "Bulk vs REST" below).
-#   - The accompanying metadata (metadata.html) and attribute reference
-#     ("Metro Regional Parcel Dataset Attributes, March 2026 Edition",
-#     Metro_Regional_Parcel_Attributes.pdf, both beside the zip files):
+#   - gisdata.metc.state.mn.us/gisdata/Parcels/plan_regional_parcels.zip
+#     (checked 2026-11-22 with a HEAD request: 397 MB, last modified
+#     2026-07-21, no login or click-through). It holds the July 2026
+#     release (metadata: "Time Period of Content Date: 07/01/2026",
+#     "Publication Date: 07/20/2026") as one file geodatabase,
+#     plan_regional_parcels/fgdb/plan_regional_parcels.gdb, plus
+#     plan_regional_parcels/metadata/metadata.html and
+#     Metro_Regional_Parcel_Attributes.pdf. The licence text quoted
+#     below ships only inside the zip, in that metadata.html.
+#   - The geodatabase holds 14 layers, one polygon and one point layer
+#     per county, named like the old shapefiles: ParcelsAnoka,
+#     ParcelsAnokaPoints, ParcelsCarver, and so on. Read remotely over
+#     HTTP range requests on 2026-11-22 (structure and counts only):
+#     every polygon layer has the same 95 fields, all source columns
+#     this recipe reads among them, in EPSG:26915; SALE_DATE and
+#     EXP_DATE read as dates, as they did from the shapefile. Polygon
+#     rows: Anoka 140,221, Carver 47,886, Dakota 154,315, Hennepin
+#     447,044, Ramsey 172,178, Scott 61,696, Washington 119,096.
+#   - The geodatabase defines coded-value domains (YesNoUnknown,
+#     StreetPostType and others). `gdb_domain_labels: false` below keeps
+#     the stored codes, so the values match what the shapefile carried
+#     and the GARAGE/BASEMENT remaps still apply.
+#   - The attribute reference ("Metro Regional Parcel Dataset
+#     Attributes, March 2026 Edition", Metro_Regional_Parcel_Attributes.pdf):
 #     full field list, per-county field-population percentages (an
 #     aggregate figure from the source's own published document, not
-#     sampled from raw records), and the license/access-constraints text
-#     quoted below.
+#     sampled from raw records).
 #
 # License (checked explicitly, per README.md/acquiring_sources.md):
-# the current, live metadata.html states, verbatim: "Access
+# the metadata.html inside the July 2026 zip states, verbatim: "Access
 # Constraints: None. This dataset is public domain under the Minnesota
 # Government Data Practices Act (Minnesota Statutes Chapter 13)." and
 # an identical "Use Constraints" statement. Its distribution-liability
@@ -84,25 +93,17 @@
 license: 'public domain (MN Government Data Practices Act, Minn. Stat. ch. 13); no fee or license execution required as of the 7 counties'' 2014-2015 open-data resolutions'
 #
 # Bulk vs REST (Phase 3): a ready-made, static, region-wide bulk
-# shapefile zip is offered directly with no paywall, registration, or
-# click-through gate, so it was used as-is -- no REST paging and no Hub
-# 202/404 job-status wait were involved. No equivalence test against a
-# live REST layer applies here: each of the 7 counties runs its own,
-# separate REST GIS service (a different source entirely, out of this
-# recipe's scope), and there is no single "regional" REST endpoint this
-# bulk file could diverge from. A byte-range read of the zip's own
-# central directory (fetched the last 300KB over HTTP Range, without
-# downloading the full 543MB archive) confirmed its real internal
-# structure ahead of the full download: one polygon shapefile plus one
-# companion point shapefile per county, named
-# `Parcels{County}.shp` / `Parcels{County}Points.shp` (e.g.
-# `ParcelsAnoka.shp`, `ParcelsAnokaPoints.shp`), flat with no
-# subfolder -- this is what `process_by.file_pattern` below resolves
-# against. The points layer duplicates the polygon layer's own
-# attribute schema and exists (per the source's documentation) only to
-# disambiguate cases where multiple tax parcels share one polygon (e.g.
-# a condo complex); it is intentionally not ingested here, since this
-# recipe's entity is parcel polygons.
+# geodatabase zip is offered directly with no paywall, registration, or
+# click-through gate, so it is used as-is, with no REST paging. The Met
+# Council also serves the same data as feature services
+# (arcgis.metc.state.mn.us .../parcels/Parcels/FeatureServer, one layer
+# per county; Carver's layer has the same fields as the geodatabase).
+# Each county's polygon layer is read by `process_by.layer_pattern`
+# below (`Parcels{co_name_file}`). The points layers duplicate the
+# polygon layers' attribute schema and exist (per the source's
+# documentation) only to disambiguate cases where multiple tax parcels
+# share one polygon (e.g. a condo complex); they are intentionally not
+# ingested here, since this recipe's entity is parcel polygons.
 #
 # Field population figures below are the source's own published
 # per-county "Attribute Completeness Assessment" percentages (March
@@ -208,11 +209,11 @@ license: 'public domain (MN Government Data Practices Act, Minn. Stat. ch. 13); 
 # own documentation candidly states GARAGE has been unpopulated "since
 # this quarter (July 2022)" -- expect an all-null has_garage for Anoka.
 #
-# SALE_DATE / EXP_DATE are native Esri Date fields inside a shapefile
-# (not GeoJSON), so they are NOT expected to hit the Esri
+# SALE_DATE / EXP_DATE are native Esri Date fields inside a file
+# geodatabase (not GeoJSON), so they do not hit the Esri
 # f=geojson-epoch-milliseconds trap documented in
-# acquiring_sources.md -- verify this empirically at ingest time
-# regardless (see the ingest verification notes for this recipe).
+# acquiring_sources.md: they read as datetime64[ms] (checked
+# 2026-11-22 on the layer schemas, not yet on an ingest).
 
 description: >-
   Twin Cities (Minneapolis-St. Paul) 7-county regional tax parcel
@@ -226,29 +227,31 @@ entity:
   source:
     source_id: metrogis
     portal_url: "https://metrogis.org/how-do-i-get/parcel-data/"
-    download_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/shp_plan_regional_parcels.zip"
+    download_url: "https://gisdata.metc.state.mn.us/gisdata/Parcels/plan_regional_parcels.zip"
     license: "public domain (MN Government Data Practices Act, Minn. Stat. ch. 13)"
-    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/metadata/metadata.html"
+    # The licence text ships inside the zip
+    # (plan_regional_parcels/metadata/metadata.html); this landing page
+    # and its item record carry the same statement.
+    terms_url: "https://gis.data.mn.gov/maps/136b28bd0d874076b702ca55b9aafffc/about"
     redistribution_restricted: false
   version: "2026"
 
-compressed_file_name: "shp_plan_regional_parcels.zip"
-# Anoka is only the "already unzipped" presence signal (arbitrary,
-# guaranteed present); the actual per-county file used to process each
-# admin unit is resolved by process_by.file_pattern below.
-uncompressed_file_name: "ParcelsAnoka.shp"
+compressed_file_name: "plan_regional_parcels.zip"
+uncompressed_file_name: "plan_regional_parcels/fgdb/plan_regional_parcels.gdb"
 
-# One already-split polygon shapefile per county inside the shared
-# zip (see "Bulk vs REST" above) -- resolved per admin unit by
-# file_pattern rather than an in-data admin_id_column filter.
-# `co_name_file` is this admin unit's plain county name as it appears
-# in the filename (e.g. "Anoka"), looked up from the dedicated sidecar
-# crosswalk below -- CO_CODE (the in-data county-FIPS field) is not
-# used for this lookup because the file is already split per county
-# before any row is read.
+# Keep stored codes, as the shapefile carried them (see the header).
+gdb_domain_labels: false
+
+# One polygon layer per county inside the shared geodatabase (see
+# "Bulk vs REST" above), resolved per admin unit by layer_pattern
+# rather than an in-data admin_id_column filter. `co_name_file` is
+# this admin unit's plain county name as it appears in the layer name
+# (e.g. "Anoka"), looked up from the dedicated sidecar crosswalk
+# below. CO_CODE (the in-data county-FIPS field) is not used, because
+# the data is already split per county before any row is read.
 process_by:
   admin_level: 3
-  file_pattern: "Parcels{co_name_file}.shp"
+  layer_pattern: "Parcels{co_name_file}"
   admin_id_crosswalk:
     recipe_id: "US-MN_parcel-metrogis-2026_admin3-crosswalk"
 
@@ -304,7 +307,7 @@ transformations:
     inputs: [parcel_id_admin3]
     output: parcel_id_assessor
 
-  # ANUMBER is numeric in the shapefile; the registry's
+  # ANUMBER is numeric in the source; the registry's
   # address_number is text ('123', not 123.0), and a missing number
   # stays missing.
   - type: string

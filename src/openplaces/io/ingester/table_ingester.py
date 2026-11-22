@@ -116,17 +116,31 @@ class TableIngester(
 
         read_kwargs = {}
         data_path_override = None
-        file_pattern = (self.recipe.get('process_by') or {}).get('file_pattern')
-        if process_in_chunks and file_pattern:
-            # Some sources (e.g. FL DOR's NAL rolls) ship one file per admin
-            # unit already, rather than one shared file to split by FID.
-            data_path_override = self._resolve_file_pattern_path(file_pattern)
-            if data_path_override is None:
-                # process_by.file_pattern_missing: skip - this partition's
-                # download genuinely lacks this admin unit (FL DOR's 2008
-                # roll ships 43 of 67 counties), the same soft gap as a
-                # missing download URL. Nothing to read, nothing written.
-                return None
+        layer_override = None
+        process_by = self.recipe.get('process_by') or {}
+        file_pattern = process_by.get('file_pattern')
+        layer_pattern = process_by.get('layer_pattern')
+        if process_in_chunks and (file_pattern or layer_pattern):
+            if file_pattern:
+                # Some sources (e.g. FL DOR's NAL rolls) ship one file per
+                # admin unit already, rather than one shared file to split
+                # by FID.
+                data_path_override = self._resolve_file_pattern_path(file_pattern)
+                if data_path_override is None:
+                    # process_by.file_pattern_missing: skip - this
+                    # partition's download genuinely lacks this admin unit
+                    # (FL DOR's 2008 roll ships 43 of 67 counties), the
+                    # same soft gap as a missing download URL. Nothing to
+                    # read, nothing written.
+                    return None
+            if layer_pattern:
+                # Others (MetroGIS) ship one layer per admin unit inside
+                # one multi-layer file: the layer is the unit, so no FID
+                # filter is built.
+                layer_override = self._resolve_layer_pattern(
+                    layer_pattern,
+                    data_path_override or self.download_partition['data_path'],
+                )
         elif process_in_chunks:
             if bbox is not None:
                 read_kwargs['bbox'] = bbox
@@ -168,7 +182,9 @@ class TableIngester(
                 )
 
         gdf = self._read_recipe_data(
-            data_path_override=data_path_override, **read_kwargs
+            data_path_override=data_path_override,
+            layer_override=layer_override,
+            **read_kwargs,
         )
 
         # Some source shapefiles ship a blank/unreadable .prj (no CRS on

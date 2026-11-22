@@ -101,12 +101,14 @@ entity:
     # read. MetroGIS's metadata records that all seven metro county
     # boards, Anoka's included, adopted resolutions in 2014-2015 to
     # make their public geospatial data available without fee or
-    # licence; that is context, not this layer's own terms.
+    # licence; that is context, not this layer's own terms. The terms
+    # URL is the MetroGIS landing page; the metadata with that record
+    # ships inside the MetroGIS zip.
     license: >-
       unknown (no terms on the service; county website unreachable on
       2026-09-12). MetroGIS records the county board's 2014-2015
       resolution to share public geospatial data without fee or licence.
-    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/metadata/metadata.html"
+    terms_url: "https://gis.data.mn.gov/maps/136b28bd0d874076b702ca55b9aafffc/about"
     redistribution_restricted: null
   version: "2026"
 
