@@ -156,6 +156,44 @@ def test_synthetic_fallback_bypasses_floor(monkeypatch):
     assert state.spine.loc['A', 'n_small_elongated_buildings_per_parcel'] == 0
 
 
+def test_synthetic_fallback_counts_without_parcel_id_all(monkeypatch):
+    # The building spine names a fallback outline's lot in parcel_id and
+    # leaves parcel_id_all missing; the lot still counts its building.
+    # A drawn outline with a missing parcel_id_all stays uncounted.
+    state = _parcel_spine(['A', 'B', 'C'])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'parcel_id_all': None,
+                'geometry_source': 'parcel.nconemap',
+                'area_intersection_m2_parcel': None,
+                'geometry': box(0, 0, 10, 10),
+            },
+            {
+                'parcel_id': 'B',
+                'parcel_id_all': 'B',
+                'geometry': box(20, 0, 30, 10),
+            },
+            {
+                'parcel_id': 'C',
+                'parcel_id_all': None,
+                'geometry': box(40, 0, 50, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(
+        state, footprint_recipe_id='fp', min_overlap_m2=10.0
+    )
+
+    assert state.spine.loc['A', 'n_buildings_per_parcel'] == 1
+    assert state.spine.loc['A', 'n_primary_buildings_per_parcel'] == 1
+    assert state.spine.loc['B', 'n_buildings_per_parcel'] == 1
+    assert state.spine.loc['C', 'n_buildings_per_parcel'] == 0
+
+
 def test_secondary_priority_excluded_from_primary_count_only(monkeypatch):
     # A parcel with one primary home and one legitimate, substantial (not a
     # sliver) accessory structure: n_buildings_per_parcel should count both,
