@@ -14,7 +14,19 @@ current code. -->
    save level) and returns without running a later step, except the backfill of
    missing `entity_links` files. A requested id outside the spine still raises.
 2. For each download partition (admin unit × partition ID): downloads + unzips source,
-   calls `TableIngester` to process each chunk
+   calls `TableIngester` to process each chunk. **A download holding no rows
+   raises** (`download.EmptyDownloadError`, naming recipe, unit, source host
+   and file) before any chunk is read: an empty answer from a service is not
+   an observation that the unit has none. When the source has a download
+   mechanism the empty file is deleted first, as the REST scraper discards a
+   partial download, so a cached empty file is fetched again by the next run;
+   a file placed by hand is kept. Only formats with a cheap row count are
+   checked (`count_source_rows`: GeoJSON up to 64 KB, parquet, shapefile,
+   GeoPackage, geodatabase, FlatGeobuf, header-only CSV, blank text); tile,
+   `file_pattern`, `read_members` and
+   `join_members` partitions are not. A source that legitimately ships no
+   rows for some units declares `empty_download_ok` (true, or a list of admin
+   ids); the ingest then proceeds and prints one line.
 3. After tile partitions: merges per-tile partials into per-admin files
 4. In aggregate mode: calls `aggregate_to_admin_level()` to merge process-level chunks
    into save-level files

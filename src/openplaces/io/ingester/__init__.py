@@ -490,6 +490,9 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
         if self.download_partition.get('unavailable'):
             return
 
+        # An empty download is not an observed "none" (download.py).
+        self._refuse_empty_download()
+
         if self._is_tile_partition and (
             self.download_partition['data_path'] is None
             or not self.download_partition['data_path'].exists()

@@ -19,7 +19,7 @@ from openplaces.io.ingester._helpers import (  # noqa: F401
     _transform_partition_key,
     _warn_registry_type_mismatches,
 )
-from openplaces.io.readers import get_admin
+from openplaces.io.readers import _get_output_admin_ids, get_admin
 from openplaces.io.transform import get_crosswalk
 from openplaces.recipe import (
     get_download_admin_level,
@@ -51,6 +51,89 @@ def crosswalk_coverage(recipe: dict) -> set[str] | None:
         # optimization and `process()` reports a real mismatch. Narrow,
         # so an unexpected failure is not read as "unscoped".
         return None
+
+
+def crosswalk_lists_unit(recipe: dict, admin_id, covered=...) -> bool:
+    """Whether a recipe's scoped crosswalk sidecar lists an admin unit.
+
+    The test `RecipeDAG` applies before deriving a job: a recipe with
+    no `recipe_id`-form crosswalk, or one whose sidecar is keyed to a
+    level other than the process level, claims nothing and lists every
+    unit. A unit coarser than the process level is listed when the
+    sidecar lists one of its children; a finer one when the sidecar
+    lists the unit containing it.
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded ingest recipe.
+    admin_id : str or AdminId
+        The unit asked about.
+    covered : set of str or None, optional
+        The recipe's `crosswalk_coverage`, when the caller already read
+        it; read here otherwise.
+
+    Returns
+    -------
+    bool
+        False only when the sidecar lists units at the process level
+        and none of them is, contains or lies inside this unit.
+    """
+    if covered is ...:
+        covered = crosswalk_coverage(recipe)
+    if not covered:
+        return True
+    level = get_process_admin_level(recipe)
+    if not any(AdminId(unit).get_level() == level for unit in covered):
+        return True
+    unit = AdminId(str(admin_id))
+    if unit.get_level() < level:
+        return any(unit.is_parent_or_equal_of(AdminId(c)) for c in covered)
+    return str(AdminId(*unit.levels[:level])) in covered
+
+
+def unbuilt_outputs(recipe: dict, admin_id) -> list:
+    """Output files an ingest owes for a unit and has not written.
+
+    Resolves the files `get_entities` reads for *admin_id* and keeps
+    those the recipe is expected to hold (its scope contains them and
+    its crosswalk lists them, see `crosswalk_lists_unit`) that do not
+    exist. A saved table without rows, or a placeholder, exists and is
+    not returned: it is the observation that the unit has none.
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded ingest recipe (a primary table, not a bundled layer).
+    admin_id : str or AdminId
+        The unit a consumer is about to read.
+
+    Returns
+    -------
+    list of pathlib.Path
+        The missing files; empty when every owed file exists or the
+        unit lies outside the recipe's scope.
+    """
+    partition_id = None
+    if (recipe.get('aggregate_by') or {}).get('single_file'):
+        partition_id = 'all'
+    try:
+        output_admin_ids, _, _ = _get_output_admin_ids(recipe, admin_id)
+    except (ValueError, KeyError, FileNotFoundError):
+        # Outside the recipe's scope, or no admin layer to expand the
+        # unit with: the recipe owes this unit nothing it can name.
+        return []
+    covered = crosswalk_coverage(recipe)
+    missing = []
+    for output_admin_id in output_admin_ids:
+        if output_admin_id is not None and not crosswalk_lists_unit(
+            recipe, output_admin_id, covered
+        ):
+            continue
+        path = get_output_path(recipe, output_admin_id, partition_id=partition_id)
+        if not path.exists():
+            missing.append(path)
+    return missing
 
 
 class _AdminScopeMixin:

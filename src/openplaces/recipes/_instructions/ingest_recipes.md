@@ -81,6 +81,18 @@ layer** before committing to it; see the equivalence test in
 [`acquiring_sources.md`](acquiring_sources.md). One NC county's export had
 every CAMA field null with a perfectly plausible feature count.
 
+A download holding no rows stops the ingest (`EmptyDownloadError`), and
+the empty file is deleted so the next run fetches it again: a service
+answering a unit's filter with zero features is not evidence that the
+unit has none. Where the source legitimately ships nothing for a unit,
+declare it, and say in the header why:
+
+```yaml
+empty_download_ok: [US-XX-AAA, US-XX-BBB]   # or true, for every unit
+```
+
+The ingest then reads the empty file as before and prints one line.
+
 ## Reading the file
 
 - `layer:` — which layer of a multi-layer gdb/gpkg.

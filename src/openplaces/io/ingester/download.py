@@ -20,6 +20,7 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.io import (
+    delete_data,
     download,
     find_latest_file_or_gdb,
     request_headers,
@@ -41,6 +42,102 @@ from openplaces.path import (
 from openplaces.recipe import (
     get_recipe_id,
 )
+
+# Recipe key naming a source that legitimately ships no rows: true for
+# every download, or a list of the admin ids whose download may be
+# empty. See `_DownloadMixin._refuse_empty_download`.
+EMPTY_DOWNLOAD_OK_KEY = 'empty_download_ok'
+
+# Flat-table suffixes whose first line is a header, so a file holding
+# one line holds no rows. A `.txt` or `.dat` may be fixed width, where
+# one line is one record, so only a blank file counts as empty there.
+_HEADER_TABLE_SUFFIXES = {'.csv', '.tab'}
+
+# Bytes read to tell a header-only table from one with rows, and the
+# largest GeoJSON parsed to count its features (an empty answer is a
+# few dozen bytes; parsing a large file twice would double its read).
+_HEADER_PROBE_BYTES = 1 << 16
+
+# Vector formats whose feature count GDAL reads from a header or an
+# index rather than by scanning every feature.
+_INDEXED_VECTOR_SUFFIXES = {'.shp', '.gpkg', '.gdb', '.fgb'}
+
+
+class EmptyDownloadError(ValueError):
+    """A download made for an admin unit holds no rows.
+
+    Raised instead of saving the unit's file without rows: an empty
+    answer from a source (a service that returned zero features for a
+    filter, an export cut short) is not an observation that the unit
+    has none, and once cached it would be reused by every later run.
+    """
+
+
+def count_source_rows(path, layer=None) -> int | None:
+    """Count the rows of a downloaded source file, where that is cheap.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        The file (or geodatabase folder) the ingest will read.
+    layer : str, optional
+        The layer of a multi-layer vector file the recipe reads.
+
+    Returns
+    -------
+    int or None
+        The number of rows, 0 for a file holding none, or None when the
+        format gives no cheap count (an archive, a spreadsheet, an
+        Access database, a GeoJSON file too large to be an empty
+        answer) or the count cannot be read. None means "not known",
+        never "empty".
+    """
+    path = Path(path)
+    if path.is_file() and path.stat().st_size == 0:
+        return 0
+    suffix = path.suffix.lower()
+    try:
+        if (
+            suffix in {'.geojson', '.json'}
+            and path.is_file()
+            and path.stat().st_size <= _HEADER_PROBE_BYTES
+        ):
+            # A service's empty answer is a 45-byte FeatureCollection,
+            # which GDAL may refuse to open as a layer at all. Parsed
+            # directly while small.
+            import json
+
+            content = json.loads(path.read_text(encoding='utf-8'))
+            if isinstance(content, dict) and isinstance(content.get('features'), list):
+                return len(content['features'])
+            if isinstance(content, list):
+                return len(content)
+            return None
+        if suffix == '.parquet':
+            import pyarrow.parquet as pq
+
+            return int(pq.ParquetFile(path).metadata.num_rows)
+        if suffix in _INDEXED_VECTOR_SUFFIXES:
+            import pyogrio
+
+            info = pyogrio.read_info(path, layer=layer, force_feature_count=True)
+            features = int(info.get('features', -1))
+            return features if features >= 0 else None
+        if suffix in _HEADER_TABLE_SUFFIXES | {'.txt', '.dat'}:
+            with path.open('rb') as handle:
+                head = handle.read(_HEADER_PROBE_BYTES)
+                more = bool(handle.read(1))
+            lines = [line for line in head.splitlines() if line.strip()]
+            if not lines:
+                return None if more else 0
+            if suffix in _HEADER_TABLE_SUFFIXES and len(lines) == 1 and not more:
+                return 0
+            return None
+    except Exception:  # noqa: BLE001
+        # A probe that cannot read the file says nothing about its
+        # rows; the read that follows raises with the real reason.
+        return None
+    return None
 
 
 class _DownloadMixin:
@@ -686,6 +783,117 @@ class _DownloadMixin:
                 'Did not succeed in downloading and unzipping:\n\n'
                 + str(self.download_partition['data_path'])
             )
+
+    def _empty_download_allowed(self, unit) -> bool:
+        """Does the recipe declare this unit's download may be empty?"""
+        allowed = self.recipe.get(EMPTY_DOWNLOAD_OK_KEY)
+        if allowed is True:
+            return True
+        if isinstance(allowed, str):
+            allowed = [allowed]
+        if isinstance(allowed, list | tuple | set):
+            return unit is not None and str(unit) in {str(a) for a in allowed}
+        return False
+
+    def _download_source_host(self) -> str | None:
+        """The host the partition's file was fetched from, for messages."""
+        candidates = [self.download_partition.get('download_url')]
+        options = self.recipe.get('scraper_options') or {}
+        candidates += [options.get('bulk_url'), options.get('layer_url')]
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source if entity_or_dataset else None
+        if source is not None:
+            candidates.append(getattr(source, 'portal_url', None))
+        for url in candidates:
+            if url:
+                host = urllib.parse.urlparse(str(url)).netloc
+                if host:
+                    return host
+        return None
+
+    def _refuse_empty_download(self):
+        """Raise when the partition's downloaded file holds no rows.
+
+        An empty saved table is an observation that a unit has none of
+        the entity; an empty download is not. A REST layer that answers
+        a unit's filter with zero features writes a valid, empty
+        FeatureCollection, and the cached file was reused by every later
+        run, which saved the unit's output without rows.
+
+        Only formats with a cheap row count are checked
+        (`count_source_rows`), and only partitions read from one file:
+        a tile, a `process_by.file_pattern`, `read_members` or
+        `join_members` partition is left alone. A recipe whose source
+        legitimately ships no rows declares `empty_download_ok` (true,
+        or a list of admin ids); the ingest then proceeds and prints one
+        line.
+
+        When the source has a download mechanism, the empty file is
+        deleted before raising, the way the REST scraper discards a
+        partial download, so the next run fetches it again. A file
+        placed by hand is kept.
+
+        Raises
+        ------
+        EmptyDownloadError
+            Naming the recipe, the unit, the source host and the file.
+        """
+        partition = self.download_partition
+        process_by = self.recipe.get('process_by') or {}
+        if (
+            self._is_tile_partition
+            or process_by.get('file_pattern')
+            or partition.get('read_members_glob')
+            or partition.get('join_members')
+        ):
+            return
+        data_path = partition.get('data_path')
+        if data_path is None or not Path(data_path).exists():
+            return
+        if count_source_rows(data_path, self.recipe.get('layer')) != 0:
+            return
+
+        unit = partition.get('admin_id_to_download')
+        unit_text = str(unit) if unit is not None else '(whole source)'
+        if partition.get('partition_id_to_download') is not None:
+            unit_text += f', partition {partition["partition_id_to_download"]}'
+        recipe_id = self._recipe_id()
+        if self._empty_download_allowed(unit):
+            print(
+                f'{recipe_id} [{unit_text}]: download holds no rows '
+                f'({Path(data_path).name}); accepted ({EMPTY_DOWNLOAD_OK_KEY}).',
+                flush=True,
+            )
+            return
+
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source if entity_or_dataset else None
+        fetched = source is not None and bool(
+            source.download_url
+            or source.download_url_source
+            or getattr(source, 'download_url_scraper', None)
+        )
+        downloaded_path = partition.get('downloaded_path')
+        deleted = []
+        if fetched:
+            for path in dict.fromkeys(p for p in (data_path, downloaded_path) if p):
+                path = Path(path)
+                if path.exists():
+                    delete_data(path, delete_empty_parent_dirs=False)
+                    deleted.append(path.name)
+        host = self._download_source_host() or 'unknown host'
+        action = (
+            f'Deleted {", ".join(deleted)} so the next run fetches it again.'
+            if deleted
+            else 'The file was placed by hand and is kept.'
+        )
+        raise EmptyDownloadError(
+            f'{recipe_id} [{unit_text}]: the download from {host} holds no '
+            f'rows ({data_path}). An empty download is not evidence that the '
+            f'unit has none. {action} If this source legitimately ships no '
+            f'rows for the unit, declare {EMPTY_DOWNLOAD_OK_KEY}: true (or a '
+            'list of admin ids) in the recipe.'
+        )
 
     def _run_download_scraper(self, scraper_name, redownload=False):
         """Produce a partition's source file via a browser-driven scraper.
