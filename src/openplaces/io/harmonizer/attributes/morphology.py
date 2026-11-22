@@ -316,6 +316,14 @@ def summarize_footprint_morphology(
             if on_all_col in footprints.columns
             else footprints[on]
         )
+        if on_all_col in footprints.columns:
+            # A fallback outline is added after the overlay that fills
+            # {on}_all, so its row names its lot in {on} alone. Without
+            # this its lot counted no building.
+            # Measured 2026-11-22 on US-NC-CUR: 3,306 of 3,306 such lots at 0.
+            pid_source = pid_source.where(
+                pid_source.notna() | ~is_synthetic, footprints[on]
+            )
         per_fp = pd.DataFrame(
             {
                 '_pid': pid_source.astype('string').to_numpy(),
