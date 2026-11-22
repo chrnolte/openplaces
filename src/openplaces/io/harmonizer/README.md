@@ -428,7 +428,12 @@ An overlay or point join whose reference was saved for the unit
 without rows still gets its sidecar, with no rows (the building
 geospine's cut overlay too), so an empty file means no links were
 found. A reference never saved for the unit gets none, and the curate
-readers refuse the missing file. The
+readers refuse the missing file. A reference declaring `coverage:
+complete` (FEMA, NSI) raises in either case
+(`recipe.raise_if_coverage_complete`), and the error says which: a
+table saved without rows asks for the unit's ingest to be rerun with
+`--reprocess` (an ingest skips a unit whose file exists), a missing
+file for the unit to be ingested. The
 *attribute* recipe keeps the established id (`US_footprint-spine-2026`,
 `US_parcel-spine-2026`), declares the geospine as its `entity_recipe`, starts with
 `load_geospine`, and writes an attribute-only table (`save_to: geometry: false`);

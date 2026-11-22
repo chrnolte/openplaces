@@ -289,21 +289,62 @@ def coverage_is_complete(recipe_id) -> bool:
         return False
 
 
-def raise_if_coverage_complete(recipe_id, admin_id, cause=None):
+def raise_if_coverage_complete(recipe_id, admin_id, cause=None, saved_empty=None):
     """Escalate a missing reference that declares complete coverage.
 
     Absence of a complete-coverage reference (NSI anywhere in the U.S.)
     is an unfinished or broken ingest, and skipping it silently degrades
     every vote downstream; callers invoke this before their tolerant
     soft-skip path.
+
+    Parameters
+    ----------
+    recipe_id : str
+        The reference recipe that returned no rows.
+    admin_id : str or AdminId
+        The unit being built.
+    cause : BaseException, optional
+        The load failure that led here, chained onto the error.
+    saved_empty : bool or callable, optional
+        True when the unit's output files exist and hold no rows, False
+        when a file is missing, None when the caller did not check; a
+        callable returning one of these is called only when the recipe
+        declares complete coverage, so a caller pays for the file check
+        only on the way to the error. Only the message differs: a table
+        saved without rows contradicts the recipe's own declaration as
+        much as a missing one does, and is what an earlier ingest that
+        matched no row of the source leaves behind (the national FEMA
+        recipe run for New England towns by code older than the state
+        recipes that cut them spatially). An ingest skips a unit whose
+        file exists, so the first case asks for a rerun with
+        --reprocess.
+
+    Raises
+    ------
+    RuntimeError
+        When *recipe_id* declares `coverage: complete`.
     """
-    if coverage_is_complete(recipe_id):
-        raise RuntimeError(
-            f'{recipe_id} declares complete coverage but has no data for '
-            f'{admin_id}. Ingest it for this admin unit (or fix the '
-            'failed load) rather than letting the pipeline run without '
-            'it.'
-        ) from cause
+    if not coverage_is_complete(recipe_id):
+        return
+    if callable(saved_empty):
+        saved_empty = saved_empty()
+    if saved_empty:
+        detail = (
+            'its output for this unit exists but was saved without rows. '
+            'An ingest that matched no row of the source leaves such a '
+            'table (one written by an older recipe or older code that '
+            'writes the same file). An ingest skips a unit whose file '
+            "exists, so rerun this unit's ingest with --reprocess"
+        )
+    elif saved_empty is False:
+        detail = 'no output file exists for this unit. Ingest it for this unit'
+    else:
+        detail = 'ingest it for this admin unit (or fix the failed load)'
+    raise RuntimeError(
+        f'{recipe_id} declares complete coverage but has no data for '
+        f'{admin_id}: {detail}, rather than letting the pipeline run '
+        'without it.'
+    ) from cause
 
 
 def get_recipe_by_id(recipe_id, **kwargs):

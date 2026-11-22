@@ -404,7 +404,11 @@ def _link_spatial_point(
     # not an error.
     ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
     if ref is None or len(ref) == 0:
-        raise_if_coverage_complete(recipe_id, state.admin_id)
+        raise_if_coverage_complete(
+            recipe_id,
+            state.admin_id,
+            saved_empty=lambda: entity_outputs_exist(recipe_id, state.admin_id),
+        )
         # Record the reference's type even with nothing to link:
         # reconcile_attributes needs it to name this source's evidence
         # columns, which it writes as nulls so a zero-coverage unit's

@@ -46,7 +46,7 @@ from openplaces.io.harmonizer.links import (
     split_context,
 )
 from openplaces.io.harmonizer.written import note_written
-from openplaces.io.readers import get_entities
+from openplaces.io.readers import entity_outputs_exist, get_entities
 from openplaces.recipe import (
     apply_recipe_patches,
     get_output_path,
@@ -748,7 +748,13 @@ def _restore_link(
             # reference declaring complete coverage escalates instead
             # (see recipe.coverage_is_complete).
             if overlay is None or overlay.empty:
-                raise_if_coverage_complete(resolved_id, state.admin_id)
+                raise_if_coverage_complete(
+                    resolved_id,
+                    state.admin_id,
+                    saved_empty=lambda: entity_outputs_exist(
+                        resolved_id, state.admin_id
+                    ),
+                )
                 return state
             raise RuntimeError(
                 f'Link sidecar {sidecar_path.name} exists but its reference '
@@ -813,7 +819,13 @@ def _restore_link(
                 # coverage gap, so nothing is left to restore. One that
                 # declares complete coverage and produced nothing is a
                 # vanished input, not a gap, and escalates.
-                raise_if_coverage_complete(resolved_id, state.admin_id)
+                raise_if_coverage_complete(
+                    resolved_id,
+                    state.admin_id,
+                    saved_empty=lambda: entity_outputs_exist(
+                        resolved_id, state.admin_id
+                    ),
+                )
                 # Fall through to the type bookkeeping below rather than
                 # returning: reconcile_attributes names this reference's
                 # (all-null) evidence columns from it.
@@ -880,7 +892,11 @@ def _restore_parcel_pieces(
         # As in _restore_link: a sidecar without rows is what the split
         # writes for a unit without parcels.
         if overlay is None or overlay.empty:
-            raise_if_coverage_complete(resolved_id, state.admin_id)
+            raise_if_coverage_complete(
+                resolved_id,
+                state.admin_id,
+                saved_empty=lambda: entity_outputs_exist(resolved_id, state.admin_id),
+            )
             return state
         raise RuntimeError(
             f'Link sidecar {sidecar_path.name} exists but its reference '
