@@ -22,7 +22,7 @@ from openplaces.io.harmonizer.links.sidecars import (
     _load_point_link_sidecar,
     _write_point_link_sidecar,
 )
-from openplaces.io.readers import get_entities
+from openplaces.io.readers import entity_outputs_exist, get_entities
 from openplaces.io.transform import remap
 from openplaces.recipe import (
     get_recipe_id,
@@ -411,12 +411,15 @@ def _link_spatial_point(
         # spine carries the same columns as its neighbors'.
         if entity_type:
             state.reference_types[recipe_id] = entity_type
-        if save_link:
-            # The link file is a declared output of the step, so it is
-            # written empty rather than left out: a missing file reads
-            # to the workflow as a failed job, and to a reader as a link
-            # never computed. Measured 2026-10-19 on US-WI: 9 of 72
-            # counties have no Overture point, and each geospine failed.
+        if save_link and entity_outputs_exist(recipe_id, state.admin_id):
+            # The reference was built for the unit and has no rows: the
+            # link was looked for and none found, so the declared link
+            # file is written without rows rather than left out, which
+            # would read as a failed job. Measured 2026-10-19 on US-WI:
+            # 9 of 72 counties have no Overture point, and each
+            # geospine failed. An unbuilt reference writes none, so the
+            # curate readers refuse the missing file until the link is
+            # computed against it (links/spatial.py does the same).
             sidecar_path = get_entity_link_path(
                 get_recipe_id(state.recipe), recipe_id, state.admin_id
             )

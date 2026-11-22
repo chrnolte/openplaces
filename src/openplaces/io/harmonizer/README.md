@@ -424,8 +424,8 @@ defines the geometry/attribute recipe split below.
 spine resolution, spatial overlays and point joins, group detections, morphology —
 and persists its spine plus one n:m link sidecar per `link_to_reference` join
 (`save_link` is default-on; a step opts *out* with `save_link: false`).
-An overlay whose reference was saved for the unit without rows still
-gets its sidecar, with the usual columns and no rows (the building
+An overlay or point join whose reference was saved for the unit
+without rows still gets its sidecar, with no rows (the building
 geospine's cut overlay too), so an empty file means no links were
 found. A reference never saved for the unit gets none, and the curate
 readers refuse the missing file. The
@@ -542,9 +542,25 @@ property-to-parcel edge
 building chain
 (`test_the_building_spine_sits_between_the_footprint_geospine_and_spine`),
 on one North Carolina county, through the jobs' input paths; a script
-that calls stages by hand has to follow it, and **a parcel geospine built
-before one of its county's rolls was ingested silently lacks that roll's
-values until it is rerun**.
+that calls stages by hand has to follow it.
+
+**A spine source that covers the unit and has no ingest file raises**
+(`source_outputs.require_source_ingested`, `SourceNotIngestedError`).
+An ingest that ran for a unit always leaves a file, rows or an empty
+table, so a missing one is an unfinished build: a parcel geospine built
+before one of its county's rolls was ingested used to lack that roll's
+values without a word. `resolve_spine`, `union_spine_sources` and the
+auto-discovered `link_by_id` passes check a source when its read
+returns nothing or finds no file. A source covers the unit when its
+admin scope contains it and its `recipe_id`-form crosswalk sidecar, if
+any, lists it (`ingester.scope.crosswalk_lists_unit`, the test
+`RecipeDAG` schedules ingests by). A saved table without rows passes,
+as do held and run-excluded recipes, bundled layers and a `link_by_id`
+naming its `recipe_id` explicitly. A coarser unit read across several
+files is checked only when none of them yields a row.
+**Discovery lists only sources that cover the unit**: `_expand_auto_discover`
+skips a recipe whose crosswalk sidecar leaves the unit out, since the
+DAG never schedules its ingest there.
 
 The parcel geospine copies one explicit list of parcel-level columns
 (values, `tax_year`, use labels and codes, `building_style`,

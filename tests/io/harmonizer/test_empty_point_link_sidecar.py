@@ -1,4 +1,5 @@
-"""A point reference with no rows in the unit still writes its link file.
+"""A point reference built with no rows in the unit still writes its
+link file; one never built for the unit writes none.
 
 The file is a declared output of the geospine; without it the workflow
 read nine Wisconsin counties with no Overture point as failed jobs
@@ -25,9 +26,12 @@ def _state():
     )
 
 
-def _patch(monkeypatch, tmp_path):
+def _patch(monkeypatch, tmp_path, built=True):
     empty = gpd.GeoDataFrame({'geometry': []}, geometry='geometry', crs='EPSG:4326')
     monkeypatch.setattr(points, 'get_entities', lambda *a, **k: empty)
+    # Built for the unit and empty, or never built: get_entities with
+    # missing='warn' returns the two alike.
+    monkeypatch.setattr(points, 'entity_outputs_exist', lambda *a, **k: built)
     monkeypatch.setattr(points, 'raise_if_coverage_complete', lambda *a, **k: None)
     monkeypatch.setattr(points, 'get_recipe_id', lambda recipe: 'geospine')
     monkeypatch.setattr(
@@ -48,6 +52,17 @@ def test_an_empty_reference_writes_an_empty_link(monkeypatch, tmp_path):
     assert pd.read_parquet(path).empty
     # Nothing to restore from it: no crosswalk, the type still recorded.
     assert 'points-ref' not in state.crosswalks
+    assert state.reference_types['points-ref'] == 'dwelling'
+
+
+def test_an_unbuilt_reference_writes_no_link(monkeypatch, tmp_path):
+    path = _patch(monkeypatch, tmp_path, built=False)
+    state = points._link_spatial_point(
+        _state(), 'points-ref', 'dwelling', None, {}, save_link=True
+    )
+    # No file: the curate readers refuse the missing link until it is
+    # computed against a built reference.
+    assert not path.exists()
     assert state.reference_types['points-ref'] == 'dwelling'
 
 

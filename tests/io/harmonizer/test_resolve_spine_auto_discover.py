@@ -58,7 +58,9 @@ def test_expand_auto_discover_skips_excluded_recipe(monkeypatch):
 
     state = HarmonizeState(
         recipe={'admin_id': AdminId('US')},
-        admin_id=AdminId('US-MA-MI'),
+        # A town MassGIS's crosswalk sidecar lists: discovery skips
+        # one it does not.
+        admin_id=AdminId('US-MA-MID'),
         verbose=False,
         timer=None,
         spine=None,
@@ -260,7 +262,9 @@ def test_expand_auto_discover_skips_an_explicitly_listed_layer(monkeypatch):
 
     state = HarmonizeState(
         recipe={'admin_id': AdminId('US')},
-        admin_id=AdminId('US-MA-MI'),
+        # A town MassGIS's crosswalk sidecar lists: discovery skips
+        # one it does not.
+        admin_id=AdminId('US-MA-MID'),
         verbose=False,
         timer=None,
         spine=None,
@@ -297,7 +301,9 @@ def test_expand_auto_discover_keeps_a_layer_of_an_explicit_host(monkeypatch):
 
     state = HarmonizeState(
         recipe={'admin_id': AdminId('US')},
-        admin_id=AdminId('US-MA-MI'),
+        # A town MassGIS's crosswalk sidecar lists: discovery skips
+        # one it does not.
+        admin_id=AdminId('US-MA-MID'),
         verbose=False,
         timer=None,
         spine=None,

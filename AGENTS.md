@@ -321,9 +321,9 @@ The stages divide the work, and **harmonize keeps redundancy minimal**:
 
 **The build order is fixed** (full order in
 `src/openplaces/io/harmonizer/README.md`; `RecipeDAG` derives it and a test
-pins it). A script that calls stages by hand has to follow it, and **a parcel
-geospine built before one of its county's rolls was ingested silently lacks
-that roll's values until it is rerun**.
+pins it). A script that calls stages by hand has to follow it: **a spine whose
+source covers the unit but was never ingested there raises
+`SourceNotIngestedError`**, while a source saved with no rows reads as none.
 
 **A property's id is the account number its assessor issued**, scoped by
 its admin unit, and rows sharing an id merge into one. **Relationships

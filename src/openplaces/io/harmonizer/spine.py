@@ -29,6 +29,8 @@ from openplaces.io.harmonizer import (
     _rename_right_index,
     restrict_to_admin_by_name,
 )
+from openplaces.io.harmonizer.source_outputs import require_source_ingested
+from openplaces.io.ingester.scope import crosswalk_lists_unit
 from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
 from openplaces.io.transform import make_index_unique
@@ -808,6 +810,11 @@ def resolve_spine(
             if state.verbose:
                 print(f'  Load {label}: {len(gdf):,d} footprints')
         except Exception as exc:
+            if isinstance(exc, FileNotFoundError) and not src.get('layer'):
+                # A covering source with no file was never ingested
+                # for the unit; skipping it would build the spine
+                # without it, unseen.
+                require_source_ingested(recipe_id, state.admin_id, 'resolve_spine')
             raise_if_coverage_complete(recipe_id, state.admin_id, cause=exc)
             warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
 
@@ -1258,19 +1265,28 @@ def union_spine_sources(
         label = src.get('label', recipe_id)
         layer = src.get('layer')
         try:
-            # missing='ignore': a source scoped finer than state.admin_id
-            # (e.g. a per-town transaction crawl) may only have partial
-            # coverage -- some child units genuinely not yet ingested rather
-            # than an error -- so load whatever's available instead of
-            # failing the whole admin unit. layer selects a bundled
-            # additional_layers table (e.g. 'property') on a recipe whose
-            # own primary entity is a different type.
+            # missing='ignore': a file the source does not owe the unit
+            # (a child unit outside its crosswalk) is absent by design;
+            # one it owes is checked below when nothing was read. layer
+            # selects a bundled additional_layers table (e.g. 'property')
+            # on a recipe whose own primary entity is a different type.
             df = get_entities(
                 recipe_id, state.admin_id, layer=layer, missing='ignore', geom=geom
             )
         except Exception as exc:
+            if isinstance(exc, FileNotFoundError) and layer is None:
+                require_source_ingested(
+                    recipe_id, state.admin_id, 'union_spine_sources'
+                )
             warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
             continue
+        if df.empty and layer is None:
+            # Nothing read: a saved table without rows, or no file at
+            # all. Only the second is unfinished, and only for a source
+            # that covers the unit. A bundled layer is not checked:
+            # parcel outputs written before the stacked-units split
+            # carry none.
+            require_source_ingested(recipe_id, state.admin_id, 'union_spine_sources')
         df = restrict_to_admin_by_name(df, recipe_id, state.admin_id)
         if df.empty:
             continue
@@ -1319,6 +1335,22 @@ def union_spine_sources(
     return state
 
 
+def _crosswalk_omits(recipe_id: str, admin_id) -> bool:
+    """Whether a discovered recipe's crosswalk sidecar leaves the unit out.
+
+    The same coverage `RecipeDAG` schedules ingests by
+    (`ingester.scope.crosswalk_lists_unit`). A recipe that cannot be
+    loaded is not judged here; its read reports it.
+    """
+    if admin_id is None:
+        return False
+    try:
+        recipe = get_recipe_by_id(recipe_id)
+    except (OSError, ValueError, KeyError):
+        return False
+    return not crosswalk_lists_unit(recipe, admin_id)
+
+
 def _expand_auto_discover(
     sources: list[dict],
     state: HarmonizeState,
@@ -1351,6 +1383,12 @@ def _expand_auto_discover(
     through ``link_by_id``; as a spine source every one of its rows would
     become an entity. Victoria County TX's property spine held 100,112
     rows, its roll's 53,405 plus 46,707 components, before this skip.
+
+    A recipe whose `recipe_id`-form `process_by.admin_id_crosswalk`
+    sidecar does not list the unit is skipped too, standalone or
+    bundled: `RecipeDAG` schedules it no ingest for the unit
+    (`ingester.scope.crosswalk_lists_unit`), so it never delivers rows
+    there.
     """
     from openplaces.recipe import find_additional_layer_recipes
 
@@ -1441,6 +1479,11 @@ def _expand_auto_discover(
             and admin_scope_covers(rid_str, admin_str)
         ):
             child_id = row['recipe_id']
+            if _crosswalk_omits(child_id, state.admin_id):
+                # The source lists the units it carries, and not this
+                # one: the DAG schedules it no ingest here, so it
+                # never delivers rows for the unit.
+                continue
             if (child_id, None) not in existing_ids:
                 specificity = rid_str.count('-') + 1
                 entry = (
@@ -1470,6 +1513,8 @@ def _expand_auto_discover(
         for match in find_additional_layer_recipes(entity_type, state.admin_id):
             key = (match['recipe_id'], match['layer'])
             if key in existing_ids:
+                continue
+            if _crosswalk_omits(match['recipe_id'], state.admin_id):
                 continue
             discovered.append(
                 {

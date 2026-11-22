@@ -57,6 +57,7 @@ from openplaces.io.harmonizer.links.roll_values import (
     blank_values_not_on_roll,
     parse_roll_values,
 )
+from openplaces.io.harmonizer.source_outputs import require_source_ingested
 from openplaces.io.readers import get_entities
 from openplaces.recipe import (
     resolve_attribute_name,
@@ -642,6 +643,9 @@ def _link_auto_discovered(
             _row_rule=row_rule,
             _supplement_of=match['supplements'] if keyed else None,
             _unit_lot_pairs=unit_lot_pairs,
+            # A discovered roll covering the unit was scheduled for it;
+            # its missing file is an unfinished ingest, not a skip.
+            _require_ingested=match['layer'] is None,
             # Only rolls: a transaction table carries tax_year too (the
             # SDF's assessment year), and every one of its years holds
             # different sales.
@@ -1170,6 +1174,7 @@ def link_by_id(
     _unit_lot_pairs: pd.DataFrame | None = None,
     _latest_vintage: bool = False,
     _property_rows: bool = False,
+    _require_ingested: bool = False,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1490,10 +1495,14 @@ def link_by_id(
 
     try:
         ref = get_entities(recipe_id, state.admin_id, layer=layer)
-    except (FileNotFoundError, OSError, KeyError, ValueError):
+    except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
         # The reference is not available for this admin (e.g. a source-specific
         # roll listed in a shared pipeline that does not apply here, including
-        # one scoped to a different state) or has not been ingested; skip.
+        # one scoped to a different state); skip. A discovered roll that
+        # covers the unit and has no file was never ingested for it, which
+        # would leave the spine without its values unseen.
+        if _require_ingested and isinstance(exc, FileNotFoundError):
+            require_source_ingested(recipe_id, state.admin_id, 'link_by_id')
         if state.verbose:
             print(f'  link_by_id: no {recipe_id} for {state.admin_id}; skipping.')
         return state
