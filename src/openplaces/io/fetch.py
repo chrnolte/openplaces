@@ -5,6 +5,7 @@ extension sniffed from the content when the URL does not say), and
 the content-type table behind that.
 """
 
+import os
 import re
 import shutil
 import tempfile
@@ -25,6 +26,15 @@ _CONTENT_TYPE_EXT = {
     'application/x-zip-compressed': '.zip',
     'application/vnd.apache.parquet': '.parquet',
 }
+
+
+class DownloadTargetInUseError(PermissionError):
+    """A finished download could not replace a target that is in use.
+
+    Raised by `download` when the existing target cannot be swapped for
+    the new file, as on Windows while another process holds it open.
+    The existing file is left unchanged.
+    """
 
 
 def _content_type_to_ext(content_type: str) -> str | None:
@@ -95,6 +105,17 @@ def download(
     ------
     requests.RequestException
         If download fails
+    DownloadTargetInUseError
+        If the target exists and cannot be replaced, typically because
+        another process holds it open on Windows. The existing file is
+        left as it was.
+
+    Notes
+    -----
+    The bytes are written to a staging folder beside the target and
+    moved into place in one atomic step, so a process reading an
+    earlier copy of the target keeps reading that copy, never a file
+    truncated and rewritten under it.
     """
 
     to_path = Path(to_path)
@@ -164,12 +185,20 @@ def download(
         if ext is not None:
             to_path = to_path.with_suffix(ext)
 
-    # Download to temp location first, then move to final destination.
-    # The staging directory is unique per call: keyed on the basename
-    # alone, two concurrent jobs fetching per-county archives that share
-    # a name (parcels.zip) wrote the same file and each moved a
-    # half-written mix into place.
-    temp_dir = Path(tempfile.mkdtemp(prefix='openplaces-download-'))
+    # Download to a staging folder, then move to the final destination.
+    # The folder is unique per call: keyed on the basename alone, two
+    # concurrent jobs fetching per-county archives that share a name
+    # (parcels.zip) wrote the same file and each moved a half-written
+    # mix into place. It sits beside the target rather than in the
+    # system temp directory so that the move is a rename on one
+    # filesystem. Across filesystems (a node-local /tmp on a cluster)
+    # the move copied the bytes over the existing target in place, and
+    # a job unzipping that target read a truncated file (EOFError).
+    # os.replace swaps the name atomically; a reader with the old file
+    # open keeps reading the old bytes.
+    temp_dir = Path(
+        tempfile.mkdtemp(prefix='.openplaces-download-', dir=to_path.parent)
+    )
     temp_path = temp_dir / f'{to_path.name}.part'
 
     try:
@@ -188,8 +217,19 @@ def download(
                         f.write(chunk)
                         pbar.update(len(chunk))
 
-        # Move completed download to final destination
-        shutil.move(str(temp_path), str(to_path))
+        try:
+            os.replace(temp_path, to_path)
+        except PermissionError as error:
+            # Windows refuses to replace a file another process holds
+            # open. Raised rather than falling back to a copy, which
+            # would rewrite the file under that process.
+            raise DownloadTargetInUseError(
+                f'Could not replace {to_path} with the new download: the '
+                'file is in use, most likely held open by another process '
+                '(another ingest of the same source, or a sync app). The '
+                'existing file is unchanged. Re-run once that process has '
+                'finished.'
+            ) from error
 
     finally:
         # Removes a partial download on error, and the empty staging

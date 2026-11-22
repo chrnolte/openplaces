@@ -237,7 +237,11 @@ entity:
   version: "2026"
 
 compressed_file_name: "plan_regional_parcels.zip"
-uncompressed_file_name: "plan_regional_parcels/fgdb/plan_regional_parcels.gdb"
+# The path as extracted: unzip drops the zip's single top-level folder
+# (plan_regional_parcels/), so the geodatabase lands at fgdb/ in the
+# heap. Naming the path inside the zip instead meant the "already
+# unzipped" check never found it, and every run extracted again.
+uncompressed_file_name: "fgdb/plan_regional_parcels.gdb"
 
 # Keep stored codes, as the shapefile carried them (see the header).
 gdb_domain_labels: false

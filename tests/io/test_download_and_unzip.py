@@ -7,6 +7,7 @@ those steps produced a wrong path or a misleading error.
 """
 
 import bz2
+import sys
 import threading
 from pathlib import Path
 
@@ -214,3 +215,88 @@ def test_a_finished_download_leaves_no_staging_directory(tmp_path, monkeypatch):
 
     assert staged
     assert not any(directory.exists() for directory in staged)
+
+
+def test_the_download_is_staged_beside_its_target(tmp_path, monkeypatch):
+    # A staging folder in the system temp directory may sit on another
+    # filesystem (a node-local /tmp on a cluster), where the final move
+    # becomes a copy over the target in place.
+    _serve(monkeypatch, {})
+    staged = []
+    real_mkdtemp = op_io.tempfile.mkdtemp
+
+    def _mkdtemp(*args, **kwargs):
+        made = real_mkdtemp(*args, **kwargs)
+        staged.append(Path(made))
+        return made
+
+    monkeypatch.setattr(op_io.tempfile, 'mkdtemp', _mkdtemp)
+    target = tmp_path / 'external' / 'parcels.zip'
+    download('https://example.invalid/parcels.zip', target)
+
+    assert [directory.parent for directory in staged] == [target.parent]
+    assert sorted(p.name for p in target.parent.iterdir()) == ['parcels.zip']
+
+
+def test_a_failed_download_leaves_nothing_behind(tmp_path, monkeypatch):
+    class _BrokenResponse(_FakeResponse):
+        def iter_content(self, chunk_size=8192):
+            yield b'partial'
+            raise ConnectionError('stream cut')
+
+    def _get(url, **kwargs):
+        return _BrokenResponse({})
+
+    monkeypatch.setattr(op_io.requests, 'head', _get)
+    monkeypatch.setattr(op_io.requests, 'get', _get)
+    target = tmp_path / 'parcels.zip'
+    target.write_bytes(b'old archive')
+
+    with pytest.raises(ConnectionError):
+        download('https://example.invalid/parcels.zip', target)
+
+    assert target.read_bytes() == b'old archive'
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['parcels.zip']
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows refuses to replace a file another handle holds open; '
+    'see the test below for what download does there.',
+)
+def test_a_reader_of_the_old_file_keeps_its_bytes(tmp_path, monkeypatch):
+    # Two ingests of one shared archive: one is unzipping it while the
+    # other's download lands. The reader must keep the bytes it opened,
+    # never a file truncated and rewritten under it.
+    old = b'O' * 100_000
+    new = b'N' * 50_000
+    target = tmp_path / 'parcels.zip'
+    target.write_bytes(old)
+    _serve(monkeypatch, {}, body=new)
+
+    with target.open('rb') as reader:
+        head = reader.read(10)
+        download('https://example.invalid/parcels.zip', target)
+        rest = reader.read()
+
+    assert head + rest == old
+    assert target.read_bytes() == new
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['parcels.zip']
+
+
+@pytest.mark.skipif(
+    sys.platform != 'win32', reason='An open file blocks a replace on Windows only.'
+)
+def test_a_target_held_open_on_windows_raises_and_stays_intact(tmp_path, monkeypatch):
+    old = b'O' * 100_000
+    target = tmp_path / 'parcels.zip'
+    target.write_bytes(old)
+    _serve(monkeypatch, {}, body=b'N' * 50_000)
+
+    with target.open('rb') as reader:
+        with pytest.raises(op_io.DownloadTargetInUseError, match='in use'):
+            download('https://example.invalid/parcels.zip', target)
+        assert reader.read() == old
+
+    assert target.read_bytes() == old
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['parcels.zip']
