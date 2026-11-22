@@ -179,7 +179,9 @@ class _TableReadMixin:
     State lives on the TableIngester instance.
     """
 
-    def _read_recipe_data(self, columns=None, data_path_override=None, **kwargs):
+    def _read_recipe_data(
+        self, columns=None, data_path_override=None, layer_override=None, **kwargs
+    ):
         """Read data from the resolved data path for this table's layer.
 
         Parameters
@@ -192,6 +194,10 @@ class _TableReadMixin:
             ``process_by.file_pattern`` (see :meth:`_resolve_file_pattern_path`),
             where each admin unit within the same download partition reads a
             different physical file.
+        layer_override : str, optional
+            Read this layer instead of the recipe's ``layer``. Used by
+            ``process_by.layer_pattern`` (see :meth:`_resolve_layer_pattern`),
+            where each admin unit reads its own layer of one file.
         kwargs : dict
             Passed to the underlying reader (e.g. fids, bbox,
             read_geometry, fid_as_index).
@@ -218,7 +224,7 @@ class _TableReadMixin:
         else:
             timer_suffix = ''
 
-        layer = self.recipe.get('layer')
+        layer = layer_override or self.recipe.get('layer')
         data_path = data_path_override or self.download_partition['data_path']
 
         joined = (getattr(self, 'download_partition', None) or {}).get('join_members')

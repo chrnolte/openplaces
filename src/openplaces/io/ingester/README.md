@@ -23,7 +23,7 @@ current code. -->
    a file placed by hand is kept. Only formats with a cheap row count are
    checked (`count_source_rows`: GeoJSON up to 64 KB, parquet, shapefile,
    GeoPackage, geodatabase, FlatGeobuf, header-only CSV, blank text); tile,
-   `file_pattern`, `read_members` and
+   `file_pattern`, `layer_pattern`, `read_members` and
    `join_members` partitions are not. A source that legitimately ships no
    rows for some units declares `empty_download_ok` (true, or a list of admin
    ids); the ingest then proceeds and prints one line.
@@ -131,6 +131,18 @@ records the design: the split groups all rows by the source's own lot
 identity and never verifies a row against other mapping or addressing
 data, flags it as inconsistent, or normalizes it. Data on disk keeps the
 old row shape until a county is re-ingested.
+
+**A source already split by admin unit is read one piece per unit**, not
+filtered by row. `process_by.file_pattern` names one file per unit (FL DOR
+rolls); `process_by.layer_pattern` names one layer per unit of a single
+multi-layer file (MetroGIS's `Parcels{co_name_file}` county layers in one
+file geodatabase). Both fill `{partition_id}` and the crosswalk's raw-code
+column from the same reverse crosswalk lookup
+(`table_scope._fill_unit_pattern`), and may be combined. A
+`layer_pattern` that names a layer the file lacks raises with the layer
+name and the file's layers; it never falls back to the first layer,
+which would save one unit's rows under another unit's id. The recipe's
+`layer` stays the default for every other read.
 
 Public entrypoint:
 

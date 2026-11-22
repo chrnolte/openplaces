@@ -822,8 +822,8 @@ class _DownloadMixin:
 
         Only formats with a cheap row count are checked
         (`count_source_rows`), and only partitions read from one file:
-        a tile, a `process_by.file_pattern`, `read_members` or
-        `join_members` partition is left alone. A recipe whose source
+        a tile, a `process_by.file_pattern` or `layer_pattern`,
+        `read_members` or `join_members` partition is left alone. A recipe whose source
         legitimately ships no rows declares `empty_download_ok` (true,
         or a list of admin ids); the ingest then proceeds and prints one
         line.
@@ -843,6 +843,7 @@ class _DownloadMixin:
         if (
             self._is_tile_partition
             or process_by.get('file_pattern')
+            or process_by.get('layer_pattern')
             or partition.get('read_members_glob')
             or partition.get('join_members')
         ):
