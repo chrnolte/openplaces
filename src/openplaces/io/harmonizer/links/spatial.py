@@ -542,7 +542,13 @@ def _link_spatial_overlay(
         recipe_id, state.admin_id, kept_by, verbose=state.verbose
     )
     if ref_raw is None or len(ref_raw) == 0:
-        raise_if_coverage_complete(recipe_id, state.admin_id)
+        # Built for the unit without rows, or never built: the read
+        # returns both alike, and the error names which one it was.
+        raise_if_coverage_complete(
+            recipe_id,
+            state.admin_id,
+            saved_empty=lambda: entity_outputs_exist(recipe_id, state.admin_id),
+        )
         if (
             save_link
             and state.spine is not None
