@@ -106,11 +106,27 @@
 # `C7_Conveyance_Date` populated 199,906/199,906, a clean ISO
 # `YYYY-MM-DD` string (not an epoch-ms or sentinel value). `SDF_ID`
 # is not a unique key on this table (167,467 distinct values for
-# 199,906 rows); duplicate rows share identical
-# SDF_ID/Unique_Sales_ID/county/date, a source-side trait (not
-# investigated further), not a join-key problem since this recipe
-# has no join key. (An earlier pass, on a 200,969-line download of
-# the same year, quoted 198,843 rows from a lossy read.)
+# 199,906 rows); see the NOTE on repeated rows. (An earlier pass, on
+# a 200,969-line download of the same year, quoted 198,843 rows from
+# a lossy read.)
+#
+# NOTE on repeated rows (`drop_duplicates` below): the export repeats
+# one sale on several rows that agree on SDF_ID, price, conveyance
+# date and county and differ in the auditor/assessor workflow fields
+# (`P2_18_Validated_By`, `P2_16_Valid_Trending` and others), which
+# this recipe does not map. Saved as they are, the rows are exact
+# duplicates on every column the recipe keeps, and the merge into
+# `_all.parquet` refuses them. The drop keeps one row per distinct
+# (SDF_ID, price, conveyance date); rows that share an SDF_ID but
+# state a different price or date are different saved rows and all
+# stay: no row is chosen over another. The subset is the full list
+# of mapped columns, not a bare `true`, because the drop runs before
+# unmapped raw columns are pruned (see the sibling recipe).
+# Measured 2026-11-21 on US-IN: 32,326 of 199,906 rows (2025) repeat
+# a saved row, 167,580 stay. In the same 2025 read, no repeat spans
+# two counties, so the per-county chunks drop all of them, and 113
+# SDF_IDs keep 2 rows each, differing in price (88) or conveyance
+# date (51).
 #
 # License: `stats.indiana.edu`'s own SDF pages state no explicit
 # license or redistribution terms; the data is described as a
@@ -174,6 +190,13 @@ process_by:
     # way documented (and fixed) on the sibling parcel/property
     # recipes' crosswalks.
     dtype: str
+
+# Exact repeats on every mapped column; see the NOTE on repeated
+# rows. Keep this list equal to the keys of `columns`.
+drop_duplicates:
+  - instrument_number
+  - price
+  - conveyance_date
 
 columns:
   instrument_number: SDF_ID
