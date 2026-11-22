@@ -71,6 +71,10 @@ class OpenPlacesConfig:
     DEFAULTS = {
         'crs': CRS,
         'geo_min_area_m2': GEO_MIN_AREA_M2,
+        # Seconds io.fetch.download waits on a server. A default here
+        # keeps a run started outside the repository, where no
+        # project config file is found, from failing on a missing key.
+        'download_timeout': 600,
         # Who to say you are when downloading from someone else's
         # server. Both unset means the User-Agent says 'unidentified'
         # rather than guessing: a wrong identity is worse than none.
