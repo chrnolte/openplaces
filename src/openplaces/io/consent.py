@@ -28,6 +28,7 @@ __all__ = [
     'TermsNotAcceptedError',
     'forget_terms_consent',
     'require_terms_consent',
+    'terms_declines',
 ]
 
 # Prompt answers. 'a' records a standing decision in the user's config;
@@ -43,6 +44,32 @@ _ALWAYS = ('a', 'always')
 # decisions live in the user config instead
 # (`config.set_terms_consent`).
 _ANSWERED: dict[str, bool] = {}
+
+# Refusals returned in this process. A scraper that hits a refused gate
+# returns None, as for an unpublished period; the ingester compares
+# this count before and after the call to tell the two apart, so the
+# unit's empty table can say it was declined.
+_DECLINES = 0
+
+
+def _declined() -> bool:
+    """Count one refusal and return False."""
+    global _DECLINES
+    _DECLINES += 1
+    return False
+
+
+def terms_declines() -> int:
+    """How many times a terms gate was refused in this process.
+
+    Returns
+    -------
+    int
+        The number of `require_terms_consent` calls that returned
+        False.
+    """
+    return _DECLINES
+
 
 _PROMPT = """\
 Accept the terms of use?
@@ -160,7 +187,7 @@ def require_terms_consent(
     if accept_terms is False:
         if verbose:
             print(f'  {source}: terms of use declined by recipe configuration.')
-        return False
+        return _declined()
 
     if accept_terms is True:
         raise ConsentNotDelegableError(
@@ -175,14 +202,14 @@ def require_terms_consent(
         )
 
     if source in _ANSWERED:
-        return _ANSWERED[source]
+        return _ANSWERED[source] or _declined()
 
     standing = get_terms_consent(source)
     if standing is not None:
         if verbose:
             settled = 'accepted' if standing else 'declined'
             print(f'  {source}: terms of use previously {settled} by this user.')
-        return standing
+        return standing or _declined()
 
     # `can_prompt` rather than a raw isatty: a Jupyter kernel answers
     # `input` perfectly well without being a terminal, and asking isatty
@@ -235,4 +262,4 @@ def require_terms_consent(
             print(f'Recorded: {source} terms accepted. Change it in your config.')
     elif not accepted:
         print('Not accepted; skipping this download.')
-    return accepted
+    return accepted or _declined()

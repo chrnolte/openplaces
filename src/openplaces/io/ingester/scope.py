@@ -19,12 +19,19 @@ from openplaces.io.ingester._helpers import (  # noqa: F401
     _transform_partition_key,
     _warn_registry_type_mismatches,
 )
-from openplaces.io.readers import _get_output_admin_ids, get_admin
+from openplaces.io.ingester.empty_outputs import UnexplainedEmptySourceError
+from openplaces.io.readers import (
+    _get_output_admin_ids,
+    empty_reason,
+    get_admin,
+    is_unexplained_empty,
+)
 from openplaces.io.transform import get_crosswalk
 from openplaces.recipe import (
     get_download_admin_level,
     get_output_path,
     get_process_admin_level,
+    get_recipe_id,
     get_save_admin_level,
 )
 from openplaces.utils import format_list
@@ -92,14 +99,36 @@ def crosswalk_lists_unit(recipe: dict, admin_id, covered=...) -> bool:
     return str(AdminId(*unit.levels[:level])) in covered
 
 
+def output_is_built(path) -> bool:
+    """Whether an ingest output file counts as built.
+
+    It must exist and must not be an empty table without a recorded
+    reason (`readers.is_unexplained_empty`). The test reads the
+    parquet footer of an existing file, never a row.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        An ingest output file.
+
+    Returns
+    -------
+    bool
+    """
+    return path.exists() and not is_unexplained_empty(path)
+
+
 def unbuilt_outputs(recipe: dict, admin_id) -> list:
     """Output files an ingest owes for a unit and has not written.
 
     Resolves the files `get_entities` reads for *admin_id* and keeps
     those the recipe is expected to hold (its scope contains them and
     its crosswalk lists them, see `crosswalk_lists_unit`) that do not
-    exist. A saved table without rows, or a placeholder, exists and is
-    not returned: it is the observation that the unit has none.
+    exist. A saved table without rows that records why
+    (`readers.empty_reason`) exists and is not returned: it is the
+    observation that the unit has none. One whose reason is `marker`
+    is returned, since a marker only says where the rows are and is
+    never read as data.
 
     Parameters
     ----------
@@ -113,6 +142,12 @@ def unbuilt_outputs(recipe: dict, admin_id) -> list:
     list of pathlib.Path
         The missing files; empty when every owed file exists or the
         unit lies outside the recipe's scope.
+
+    Raises
+    ------
+    UnexplainedEmptySourceError
+        For an owed file with no rows and no recorded reason: an older
+        or interrupted ingest wrote it, and it is not an observed none.
     """
     partition_id = None
     if (recipe.get('aggregate_by') or {}).get('single_file'):
@@ -131,8 +166,16 @@ def unbuilt_outputs(recipe: dict, admin_id) -> list:
         ):
             continue
         path = get_output_path(recipe, output_admin_id, partition_id=partition_id)
-        if not path.exists():
+        if not path.exists() or empty_reason(path) == 'marker':
             missing.append(path)
+        elif is_unexplained_empty(path):
+            raise UnexplainedEmptySourceError(
+                f'{get_recipe_id(recipe)} [{output_admin_id}]: {path} holds no '
+                'rows and records no reason, so it is not evidence that the '
+                "unit has none. Rerun this unit's ingest (the ingest treats the "
+                'file as not built and writes it again with a reason, or '
+                'raises).'
+            )
     return missing
 
 
@@ -272,10 +315,15 @@ class _AdminScopeMixin:
             # deliberate deletion with all consumers intact (section 4.3 of
             # the lifecycle design; gated by retention.cleanup.honor_receipts
             # and voided under an orchestrator)
+            # An output with no rows and no recorded reason is not a
+            # build (readers.is_unexplained_empty): the unit is ingested
+            # again and ends with a reason or an error.
             admin_ids_to_save = [
                 admin_id
                 for admin_id in admin_ids_to_save
-                if not get_output_path(self.recipe, admin_id, partition_id).exists()
+                if not output_is_built(
+                    get_output_path(self.recipe, admin_id, partition_id)
+                )
                 and not (
                     partition_id is None
                     and receipt_justifies_skip(self.recipe, admin_id)
@@ -331,7 +379,7 @@ class _AdminScopeMixin:
             self.admin_ids_to_save = [
                 sid
                 for sid in all_candidates
-                if not get_output_path(self.recipe, sid).exists()
+                if not output_is_built(get_output_path(self.recipe, sid))
                 or self._output_is_incomplete(sid)
             ]
         else:

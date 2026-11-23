@@ -1,5 +1,8 @@
 """A spine source the unit is owed must have been ingested for it.
 
+An empty ingest table counts as ingested only when it records why it is
+empty (`readers.empty_reason`).
+
 A spine step reads each of its sources with a tolerant read, because a
 source can legitimately have no rows for a unit. That tolerance also let
 a source that was never ingested for the unit pass as one without rows:
@@ -13,6 +16,9 @@ an unfinished build, not an observation.
 from __future__ import annotations
 
 from openplaces.core.held_recipes import is_undiscoverable
+from openplaces.io.ingester.empty_outputs import (  # noqa: F401
+    UnexplainedEmptySourceError,
+)
 from openplaces.io.ingester.scope import unbuilt_outputs
 
 
@@ -28,8 +34,10 @@ def require_source_ingested(recipe_id: str, admin_id, step: str) -> None:
     test `RecipeDAG` applies before it schedules the unit's ingest. A
     source outside the unit, a held or run-excluded recipe and a recipe
     that cannot be loaded are not checked (the read that follows skips
-    or reports them as before). A saved table without rows, or a
-    placeholder, passes: the unit was ingested and has none.
+    or reports them as before). A saved table without rows that records
+    why (`readers.empty_reason`) passes: the unit was ingested and has
+    none. One that records no reason raises, and a `marker` (which
+    only says where the rows are) counts as missing.
 
     Parameters
     ----------
@@ -44,6 +52,9 @@ def require_source_ingested(recipe_id: str, admin_id, step: str) -> None:
     ------
     SourceNotIngestedError
         Naming the unit, the recipe, the step and the first missing file.
+    UnexplainedEmptySourceError
+        Naming the recipe, the unit and the file, for an output with no
+        rows and no recorded reason.
     """
     if admin_id is None or is_undiscoverable(recipe_id):
         return
@@ -55,7 +66,14 @@ def require_source_ingested(recipe_id: str, admin_id, step: str) -> None:
         recipe = get_recipe_by_id(recipe_id)
     except (OSError, ValueError, KeyError):
         return
-    missing = unbuilt_outputs(recipe, admin_id)
+    if (recipe.get('stage') or 'ingest') != 'ingest':
+        # A harmonize placeholder records no reason; only ingest
+        # outputs are held to one.
+        return
+    try:
+        missing = unbuilt_outputs(recipe, admin_id)
+    except UnexplainedEmptySourceError as err:
+        raise UnexplainedEmptySourceError(f'{step}: {err}') from err
     if missing:
         raise SourceNotIngestedError(
             f'{step}: {recipe_id} covers {admin_id} but has no ingest output '

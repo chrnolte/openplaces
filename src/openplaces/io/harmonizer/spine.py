@@ -29,7 +29,11 @@ from openplaces.io.harmonizer import (
     _rename_right_index,
     restrict_to_admin_by_name,
 )
-from openplaces.io.harmonizer.source_outputs import require_source_ingested
+from openplaces.io.harmonizer.source_outputs import (
+    SourceNotIngestedError,
+    UnexplainedEmptySourceError,
+    require_source_ingested,
+)
 from openplaces.io.ingester.scope import crosswalk_lists_unit
 from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.stacked_units import STACKED_UNITS_LABEL_SUFFIX
@@ -801,6 +805,10 @@ def resolve_spine(
             continue
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
+            if not len(gdf) and not src.get('layer'):
+                # Nothing read: an empty table counts only when it
+                # records why (UnexplainedEmptySourceError otherwise).
+                require_source_ingested(recipe_id, state.admin_id, 'resolve_spine')
             if not _is_spine_product(recipe_id):
                 gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
             source_gdfs[recipe_id] = gdf
@@ -810,6 +818,8 @@ def resolve_spine(
             if state.verbose:
                 print(f'  Load {label}: {len(gdf):,d} footprints')
         except Exception as exc:
+            if isinstance(exc, UnexplainedEmptySourceError | SourceNotIngestedError):
+                raise
             if isinstance(exc, FileNotFoundError) and not src.get('layer'):
                 # A covering source with no file was never ingested
                 # for the unit; skipping it would build the spine

@@ -93,6 +93,15 @@ empty_download_ok: [US-XX-AAA, US-XX-BBB]   # or true, for every unit
 
 The ingest then reads the empty file as before and prints one line.
 
+The check covers every format the ingester reads except tiles and
+rasters: where the row count is not cheap before the read (a
+spreadsheet, an Access table, a large GeoJSON), it is taken from the
+table's first full read. With `process_by.file_pattern` or
+`layer_pattern`, each unit's own file or layer is checked, and the
+list may name that unit. With `read_members` or `join_members`, one
+blank member is fine; the members together must hold rows.
+Additional layers are not checked.
+
 ## Reading the file
 
 - `layer:` — which layer of a multi-layer gdb/gpkg.

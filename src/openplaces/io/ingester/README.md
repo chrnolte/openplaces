@@ -20,13 +20,92 @@ current code. -->
    an observation that the unit has none. When the source has a download
    mechanism the empty file is deleted first, as the REST scraper discards a
    partial download, so a cached empty file is fetched again by the next run;
-   a file placed by hand is kept. Only formats with a cheap row count are
-   checked (`count_source_rows`: GeoJSON up to 64 KB, parquet, shapefile,
-   GeoPackage, geodatabase, FlatGeobuf, header-only CSV, blank text); tile,
-   `file_pattern`, `layer_pattern`, `read_members` and
-   `join_members` partitions are not. A source that legitimately ships no
-   rows for some units declares `empty_download_ok` (true, or a list of admin
-   ids); the ingest then proceeds and prints one line.
+   a file placed by hand is kept. The check runs in two places, and
+   neither parses a file twice:
+   - **Before any read**, where a row count is cheap
+     (`count_source_rows`: GeoJSON up to 64 KB, parquet, shapefile,
+     GeoPackage, geodatabase, FlatGeobuf, header-only CSV, blank text)
+     and the partition is one file.
+   - **At the primary table's first unfiltered read**
+     (`TableIngester._refuse_empty_read`, called from `_read_recipe_data`),
+     for everything else: spreadsheets, Access tables, GeoJSON over
+     64 KB, XML and JSON tables, archives read in place, one unit's
+     `process_by.file_pattern` file or `layer_pattern` layer, and a
+     `read_members` or `join_members` set as a whole. The frame is read
+     anyway, so its length costs nothing; a read filtered by FID or
+     bounding box says nothing about the file and is not checked. One
+     blank member among others is legal (it is skipped, and in a
+     `join_members` set the strict join names it); a set of members that
+     together hold no rows raises. An empty `file_pattern` file or
+     `layer_pattern` layer is part of a download other units read, so it
+     is kept, and `empty_download_ok` may list the processing unit
+     itself.
+
+   Three paths stay unchecked by design. A **tile** with no features is
+   an observation (open water, an empty quarter-degree), not a failed
+   download. A **raster** has no rows. **Additional layers** are not
+   checked: a secondary table of a roll (sales, permits) may be empty
+   for a unit while the primary table is not. A read clipped to a
+   bounding box (`use_spatial_mask`) is checked only where the format
+   allows the cheap count before the read.
+   A source that legitimately ships no rows for some units declares
+   `empty_download_ok` (true, or a list of admin ids); the ingest then
+   proceeds and prints one line.
+   **Every table an ingest writes without rows says why**, in its parquet
+   footer: `openplaces:empty_reason` and a short `openplaces:empty_detail`
+   (`empty_outputs.save_empty_table`; read with `readers.empty_reason`,
+   footer only). The reasons:
+   - `not_published`: the source does not publish the unit or partition
+     (a scraper or `partition_key_lookup` said so, no URL and no file for
+     a partition, `file_pattern_missing: skip`).
+   - `not_covered`: the source was read and holds rows, none for the
+     unit. The detail gives the rows read, the filter (the
+     `admin_id_column` and the unit's code, the bounding box, the split
+     column) or says preprocessing (a `query`, the overlay) kept none.
+   - `source_has_none`: the source itself holds no rows, which
+     `empty_download_ok` allowed (or the table is one the empty-download
+     check does not cover).
+   - `marker`: the base file of a `download_by: partition` recipe, whose
+     rows are in the `_all` file (`aggregate_by: single_file`) or the
+     per-partition files. It only tells the skip check the unit was
+     ingested and is never read as data.
+   - `nothing_stacked`: the stacked-units layer of a parcel table whose
+     lots each carry one record.
+   - `declined`: the user's usage profile (`usage_requirement`) or a
+     withheld terms consent (`io.consent`, which counts refusals so a
+     scraper's None is told apart from "not published") declined the
+     download. The detail names the mechanism and its key, never a
+     profile or config value.
+
+   Consumers read every reason as none except `marker`.
+
+   The writers: a processed chunk saved without rows (`table_save`,
+   decided from the rows read before and after the unit filter); a split
+   that has no rows for a unit, recorded for the after-run fill; the
+   after-run fill (`outputs._record_units_the_source_does_not_cover`),
+   which also replaces a reasonless empty file and raises
+   `UnexplainedEmptyIngestError` for a unit nothing explains; a unit no
+   tile holds rows for; the stacked-units layer; and an aggregate or
+   join of inputs that all hold no rows, which inherits their reasons
+   (none if any input records none). An aggregate-mode `replace_by`
+   that drops every row of an existing file stamps the inputs' reasons,
+   or raises `UnexplainedEmptyIngestError` when not every input has one.
+
+   **A table with no rows and no reason is not a build**
+   (`readers.is_unexplained_empty`): the skip checks
+   (`scope._resolve_output_admin_ids`, the aggregate-mode check and
+   `partitions.get_ingested_partition_ids`) ingest the unit again, a
+   batched ingest's `flow.dag.needs_rerun` reruns it, and
+   `scope.unbuilt_outputs` (behind the harmonizer's
+   `require_source_ingested`) raises `UnexplainedEmptySourceError`. Each
+   costs one parquet footer read per existing output, never a row.
+   `classify_empty_ingest_outputs.py` (plan
+   `empty-ingest-outputs-say-why`) stamps legacy markers that are
+   provable from the files beside them; every other legacy empty file is
+   re-ingested. Open: the skip check of a `single_file` recipe still
+   reads the base marker, so a new partition (a new year) is not picked
+   up without `reprocess`, and a unit with truly no sales never gets an
+   `_all` file, so its consumers raise `SourceNotIngestedError`.
 3. After tile partitions: merges per-tile partials into per-admin files
 4. In aggregate mode: calls `aggregate_to_admin_level()` to merge process-level chunks
    into save-level files

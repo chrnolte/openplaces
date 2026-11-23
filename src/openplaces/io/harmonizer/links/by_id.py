@@ -1506,6 +1506,10 @@ def link_by_id(
         if state.verbose:
             print(f'  link_by_id: no {recipe_id} for {state.admin_id}; skipping.')
         return state
+    if _require_ingested and layer is None and ref is not None and not len(ref):
+        # An empty roll counts only when its table records why it is
+        # empty; one that does not raises UnexplainedEmptySourceError.
+        require_source_ingested(recipe_id, state.admin_id, 'link_by_id')
     if ref is not None and layer is None:
         # A reference scoped coarser than state.admin_id with no matching
         # admin-id column (e.g. a statewide transaction table keyed only by a

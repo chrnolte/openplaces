@@ -5,14 +5,9 @@ partitions and the aggregation to the save level.
 
 from __future__ import annotations
 
-import geopandas as gpd
-
-from openplaces.config import cfg
+from openplaces.core.schema import admin_scope_covers
 from openplaces.geo.link import create_entity_link, get_entity_link_path
-from openplaces.io import (
-    release_unused_memory,
-    save_parquet,
-)
+from openplaces.io import release_unused_memory
 from openplaces.io.aggregate import aggregate_to_admin_level
 from openplaces.io.ingester._helpers import (  # noqa: F401
     _SCRAPER_MODULE_CACHE,
@@ -20,6 +15,11 @@ from openplaces.io.ingester._helpers import (  # noqa: F401
     _transform_partition_key,
     _warn_registry_type_mismatches,
 )
+from openplaces.io.ingester.empty_outputs import (
+    UnexplainedEmptyIngestError,
+    save_empty_table,
+)
+from openplaces.io.readers import is_unexplained_empty
 from openplaces.recipe import (
     build_table_recipe,
     get_output_path,
@@ -57,10 +57,21 @@ class _OutputMixin:
         its one candidate was ruled out), and the stale rows would
         otherwise read as current.
 
+        Every table written here records why it is empty
+        (`_empty_reason_for`), and an existing table with no rows and no
+        reason (`readers.is_unexplained_empty`) is replaced as well.
+
         Parameters
         ----------
         reprocess : bool, optional
             Whether this run was asked to rebuild existing outputs.
+
+        Raises
+        ------
+        UnexplainedEmptyIngestError
+            For a unit left without output for no reason this run
+            recorded, rather than writing an empty table nothing
+            accounts for.
         """
         stale = getattr(self, '_unavailable_units', set()) if reprocess else set()
         # A table-partitioned unit missing one table is not uncovered: a
@@ -71,17 +82,91 @@ class _OutputMixin:
         for admin_id in self.admin_ids_to_save or []:
             out_path = get_output_path(self.recipe, admin_id)
             replacing = out_path.exists() and str(admin_id) in stale
-            if out_path.exists() and not replacing:
+            if (
+                out_path.exists()
+                and not replacing
+                and not is_unexplained_empty(out_path)
+            ):
                 continue
+            reason = self._empty_reason_for(admin_id)
             if self.verbose:
                 what = 'no longer covered' if replacing else 'not covered'
-                print(f'{admin_id}: {what} by the source; saved an empty table.')
-            for old in (out_path, out_path.with_stem(out_path.stem + '_geo')):
-                old.unlink(missing_ok=True)
-            empty = gpd.GeoDataFrame(
-                {'geometry': gpd.GeoSeries([], dtype='geometry')}, crs=cfg.crs
+                print(
+                    f'{admin_id}: {what} by the source; saved an empty table '
+                    f'({reason[0]}).'
+                )
+            save_empty_table(out_path, *reason)
+
+    def _empty_reason_for(self, admin_id):
+        """Why *admin_id* ended this run without an output of its own.
+
+        In order: a unit whose download the usage profile or a withheld
+        terms consent refused is `declined` (the detail names the
+        mechanism and its key, never a profile or config value); the
+        base file of a partitioned recipe is a `marker` (its rows are in
+        the `_all` file or the per-partition files); a unit whose
+        download the source does not publish is `not_published`;
+        otherwise the reason a writer recorded during the run for the
+        unit, or for a unit containing it or inside it.
+
+        Returns
+        -------
+        tuple of str
+            (reason, detail).
+
+        Raises
+        ------
+        UnexplainedEmptyIngestError
+            When nothing this run recorded explains the missing output.
+        """
+        unit = str(admin_id)
+
+        def related(other):
+            other = str(other)
+            return (
+                other == unit
+                or admin_scope_covers(other, unit)
+                or admin_scope_covers(unit, other)
             )
-            save_parquet(empty, out_path)
+
+        declined = getattr(self, '_declined_units', {})
+        for other, what in declined.items():
+            if other is None or related(other):
+                return 'declined', f'the download was declined by {what}'
+
+        download_by = self.recipe.get('download_by') or {}
+        partition = download_by.get('partition')
+        if (
+            partition
+            and not self._is_tile_partition
+            and not self._is_joined_table_partition
+        ):
+            agg = self.recipe.get('aggregate_by') or {}
+            where = (
+                'the _all file'
+                if agg.get('single_file')
+                else f'the per-partition files (download_by.partition: {partition})'
+            )
+            return 'marker', f'rows of {unit} are in {where}'
+
+        unavailable = sorted(
+            u for u in getattr(self, '_unavailable_units', set()) if related(u)
+        )
+        if unavailable:
+            return (
+                'not_published',
+                f'the source does not publish {", ".join(unavailable)}',
+            )
+        recorded = getattr(self, '_empty_reasons', {})
+        for other in [unit, *sorted(recorded)]:
+            if other in recorded and related(other):
+                return recorded[other]
+        raise UnexplainedEmptyIngestError(
+            f'{get_recipe_id(self.recipe)} [{unit}]: the ingest ended without an '
+            'output for this unit and recorded no reason (not published, not '
+            'covered, source empty). No empty table is written for an absence '
+            'nothing explains; rerun with verbose to see which step skipped it.'
+        )
 
     def _create_entity_links(self, reprocess=False):
         """Persist the n:m entity links declared under `entity_links`.
@@ -151,6 +236,18 @@ class _OutputMixin:
             existing_tiles = [(t, p) for t, p in existing_tiles if p.exists()]
 
             if not existing_tiles:
+                # No tile left a partial for the unit: the tiles were
+                # read (or fetched empty) and none holds its rows. A tile
+                # without features is an observation, so the after-run
+                # fill writes the unit's table with this reason.
+                self.__dict__.setdefault('_empty_reasons', {}).setdefault(
+                    str(admin_id),
+                    (
+                        'not_covered',
+                        f'none of the {len(tile_ids)} tile(s) covering {admin_id} '
+                        f'holds rows for it ({", ".join(map(str, tile_ids[:10]))})',
+                    ),
+                )
                 continue
 
             if len(existing_tiles) == 1:

@@ -131,7 +131,15 @@ class TableIngester(
                     # partition's download genuinely lacks this admin unit
                     # (FL DOR's 2008 roll ships 43 of 67 counties), the
                     # same soft gap as a missing download URL. Nothing to
-                    # read, nothing written.
+                    # read, nothing written here; the after-run fill
+                    # writes the unit's empty table with this reason.
+                    self._record_empty(
+                        admin_id_to_process,
+                        'not_published',
+                        f'process_by.file_pattern {file_pattern!r} matched no '
+                        f'file in partition {partition_id} '
+                        '(file_pattern_missing: skip)',
+                    )
                     return None
             if layer_pattern:
                 # Others (MetroGIS) ship one layer per admin unit inside
@@ -186,6 +194,7 @@ class TableIngester(
             layer_override=layer_override,
             **read_kwargs,
         )
+        self._note_read(len(gdf), read_kwargs, data_path_override, layer_override)
 
         # Some source shapefiles ship a blank/unreadable .prj (no CRS on
         # read) despite genuinely being in a known projection -- declare it
@@ -213,7 +222,14 @@ class TableIngester(
         gdf, properties = self._split_stacked_units(gdf, suffix)
         self._save_recipe_data(gdf)
         if properties is not None:
-            self._save_recipe_data(properties, recipe=self._stacked_units_recipe())
+            self._save_recipe_data(
+                properties,
+                recipe=self._stacked_units_recipe(),
+                empty_reason=(
+                    'nothing_stacked',
+                    f'{len(gdf):,} parcel row(s), none stacked on a shared lot',
+                ),
+            )
         self.timer.mark(f'Save{suffix}')
 
     # FID filter helpers (per-table, cached in download_partition)

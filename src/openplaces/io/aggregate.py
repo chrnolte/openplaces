@@ -20,7 +20,11 @@ from openplaces.io import (
     read_parquet,
     save_parquet,
 )
-from openplaces.io.readers import get_admin
+from openplaces.io.readers import (
+    EMPTY_DETAIL_KEY,
+    EMPTY_REASON_KEY,
+    get_admin,
+)
 from openplaces.recipe import (
     get_output_path,
     get_partition_ids,
@@ -870,6 +874,17 @@ def _aggregate_to_file(
     input_has_geo = {p: _has_geometry(p) for p in input_paths}
     has_geo = any(input_has_geo.values())
 
+    # An aggregate of inputs that all hold no rows holds none either,
+    # and says why: the inputs' own reasons, read from their footers.
+    keeps_existing = (how == 'union' or replace_by is not None) and Path(
+        final_path
+    ).exists()
+    inherited = _inherited_empty_metadata(
+        input_paths + ([final_path] if keeps_existing else [])
+    )
+    if inherited:
+        file_metadata = {**(file_metadata or {}), **inherited}
+
     # A large panel rolled up in one frame is the memory ceiling of the
     # whole ingest: Miami-Dade's 22 vintages are 19.1 million rows, and
     # the in-memory path below holds them beside a reloaded copy of the
@@ -1013,6 +1028,27 @@ def _aggregate_to_file(
                     merged[col], categories=cats, ordered=ordered
                 )
         merged = coerce_mixed_object_columns(merged)
+        if (
+            merged.empty
+            and replace_by is not None
+            and EMPTY_REASON_KEY not in (file_metadata or {})
+        ):
+            # The existing file's rows were all replaced by inputs that
+            # hold none: the result says why only if every input does.
+            inherited = _inherited_empty_metadata(input_paths)
+            if inherited is None:
+                from openplaces.io.ingester.empty_outputs import (
+                    UnexplainedEmptyIngestError,
+                )
+
+                raise UnexplainedEmptyIngestError(
+                    f'{final_path.name}: replacing '
+                    f'{", ".join(str(i) for i, _ in inputs)} by {replace_by} '
+                    'left no rows, and not every input records why it is '
+                    'empty. No reasonless empty file is written; rerun the '
+                    "inputs' ingest."
+                )
+            file_metadata = {**(file_metadata or {}), **inherited}
         save_parquet(merged, final_path, combined=combined, file_metadata=file_metadata)
     except PermissionError as e:
         raise PermissionError(
@@ -1353,7 +1389,12 @@ def join_partitions_by_index(
             joined.index = pd.Index(key.astype(str).to_numpy(), name='parcel_id')
 
         output_path = get_output_path(recipe, admin_id)
-        save_parquet(joined, output_path)
+        # A left join keeps the first table's rows: none there, none
+        # joined, and the first table's reason is the joined file's.
+        inherited = (
+            _inherited_empty_metadata(partition_paths[:1]) if joined.empty else None
+        )
+        save_parquet(joined, output_path, file_metadata=inherited)
         written.append(str(admin_id))
         if verbose:
             print(f'{admin_id}: joined {len(joined):,} rows -> {output_path.name}')
@@ -1447,6 +1488,63 @@ def read_file_metadata(path) -> dict[str, str]:
         return {}
     meta = pq.read_metadata(path).metadata or {}
     return {k.decode(): v.decode(errors='replace') for k, v in meta.items()}
+
+
+# When the inputs of an empty aggregate disagree on why they are empty,
+# the first reason here that any input gives is the aggregate's: one
+# input whose source held rows makes the whole "not covered".
+_EMPTY_REASON_PRECEDENCE = (
+    'not_covered',
+    'source_has_none',
+    'not_published',
+    'declined',
+    'nothing_stacked',
+)
+
+
+def _inherited_empty_metadata(paths) -> dict[str, str] | None:
+    """The empty reason an aggregate of *paths* inherits, if it has no rows.
+
+    Reads each input's footer only. Returns None when any input holds
+    rows, when any input records no reason (the aggregate then records
+    none either, and reads as unexplained), or when an input is a
+    `marker`, which is never data.
+
+    Parameters
+    ----------
+    paths : list of pathlib.Path
+        The aggregate's inputs (and the existing output it keeps rows
+        of, if any).
+
+    Returns
+    -------
+    dict of str to str or None
+        Footer metadata stating the reason and a detail naming the
+        inputs' reasons.
+    """
+    import pyarrow.parquet as pq
+
+    reasons = []
+    for path in paths:
+        try:
+            meta = pq.read_metadata(path)
+        except (OSError, ValueError):
+            return None
+        if meta.num_rows:
+            return None
+        kv = meta.metadata or {}
+        reason = kv.get(EMPTY_REASON_KEY.encode())
+        if reason is None or reason.decode() == 'marker':
+            return None
+        detail = kv.get(EMPTY_DETAIL_KEY.encode(), b'').decode(errors='replace')
+        reasons.append((reason.decode(), detail))
+    if not reasons:
+        return None
+    found = {r for r, _ in reasons}
+    reason = next((r for r in _EMPTY_REASON_PRECEDENCE if r in found), sorted(found)[0])
+    details = sorted({f'{r}: {d}' for r, d in reasons})
+    detail = f'all {len(reasons)} input(s) hold no rows; ' + ' | '.join(details)
+    return {EMPTY_REASON_KEY: reason, EMPTY_DETAIL_KEY: detail[:1000]}
 
 
 def _existing_partition_ids(recipe, admin_id) -> list[str]:
