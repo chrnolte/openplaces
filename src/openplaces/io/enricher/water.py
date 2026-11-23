@@ -567,7 +567,41 @@ def _nearest(geoms: gpd.GeoSeries, water: gpd.GeoDataFrame, max_distance_m):
     return out
 
 
-@_register('link_parcels_to_waterbodies')
+#: The evidence columns, each written with the waterbody suffix.
+WATER_COLUMNS = (
+    'lake_frontage',
+    'lake_id',
+    'lake_area_ha',
+    'lake_distance',
+    'lake_distance_parcel',
+    'lake_id_nearest',
+    'lake_area_ha_nearest',
+    'river_frontage',
+    'river_distance',
+    'river_distance_parcel',
+    'waterbody_area_share',
+)
+
+
+def _water_suffix(recipe_ids: list[str]) -> str:
+    """The column suffix: the first waterbody recipe's version."""
+    return '_' + get_recipe_by_id(recipe_ids[0])['dataset'].version
+
+
+def _water_writes(arguments) -> list[str]:
+    """The suffixed evidence columns, read off the recipe as the step does."""
+    recipe_ids = [
+        r
+        for r in (arguments.get('waterbody_recipe_id'), arguments.get('area_recipe_id'))
+        if r
+    ]
+    if not recipe_ids:
+        return []
+    suffix = _water_suffix(recipe_ids)
+    return [f'{column}{suffix}' for column in WATER_COLUMNS]
+
+
+@_register('link_parcels_to_waterbodies', reads=['geometry'], writes=[_water_writes])
 def link_parcels_to_waterbodies(
     state: EnrichState,
     waterbody_recipe_id: str = WATERBODY_RECIPES[0],
@@ -662,20 +696,8 @@ def link_parcels_to_waterbodies(
         recipe's version (``_nhdhr2023``).
     """
     recipe_ids = [r for r in (waterbody_recipe_id, area_recipe_id) if r]
-    suffix = '_' + get_recipe_by_id(recipe_ids[0])['dataset'].version
-    columns = [
-        'lake_frontage',
-        'lake_id',
-        'lake_area_ha',
-        'lake_distance',
-        'lake_distance_parcel',
-        'lake_id_nearest',
-        'lake_area_ha_nearest',
-        'river_frontage',
-        'river_distance',
-        'river_distance_parcel',
-        'waterbody_area_share',
-    ]
+    suffix = _water_suffix(recipe_ids)
+    columns = list(WATER_COLUMNS)
     evidence = pd.DataFrame(index=state.spine.index, columns=columns, dtype=object)
 
     spine = state.spine

@@ -225,7 +225,8 @@ def load_geospine(
     return state
 
 
-@_register('load_links', phase='geometry')
+# Restores crosswalks and writes no spine column.
+@_register('load_links', phase='geometry', reads=['{links_key}'], writes=[])
 def load_links(
     state: HarmonizeState,
     links_recipe_id: str,

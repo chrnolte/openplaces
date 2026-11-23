@@ -562,7 +562,8 @@ def _first_shared_key(spine, ref, spine_key, ref_key) -> tuple[str, str]:
     return spine_keys[0], ref_keys[0]
 
 
-@_register('link_entities_by_id')
+# Writes a link table and no spine column.
+@_register('link_entities_by_id', writes=[])
 def link_entities_by_id(
     state: HarmonizeState,
     recipe_id: str,
@@ -1030,7 +1031,8 @@ def get_contiguity_link_path(recipe, admin_id):
     return path.with_name(f'{path.stem}_contiguity{path.suffix}')
 
 
-@_register('link_common_areas_by_contiguity')
+# Writes a link table and no spine column.
+@_register('link_common_areas_by_contiguity', writes=[])
 def link_common_areas_by_contiguity(
     state: HarmonizeState,
     common_pattern: str,
@@ -1105,7 +1107,8 @@ def get_plat_link_path(recipe, admin_id):
     return get_entity_link_path(owner, owner, admin_id)
 
 
-@_register('link_common_areas_by_plat')
+# Writes a link table and no spine column.
+@_register('link_common_areas_by_plat', writes=[])
 def link_common_areas_by_plat(
     state: HarmonizeState,
     lot_use_values: list[str],

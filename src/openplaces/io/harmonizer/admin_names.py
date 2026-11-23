@@ -90,7 +90,21 @@ def match_admin_names(
     return row_key.map(candidates).astype('string')
 
 
-@_register('assign_admin_id_from_name')
+def _admin_output_column(arguments) -> list[str]:
+    """The column written, `admin{level}_id` unless the recipe names one."""
+    if arguments.get('output_column'):
+        return [arguments['output_column']]
+    level = arguments.get('level')
+    return [f'admin{level}_id'] if level is not None else []
+
+
+# A value already present is kept, so the step writes the column and
+# decides none of it.
+@_register(
+    'assign_admin_id_from_name',
+    reads=['{name_column}', _admin_output_column],
+    writes=[_admin_output_column],
+)
 def assign_admin_id_from_name(
     state: HarmonizeState,
     name_column: str,

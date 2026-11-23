@@ -107,7 +107,14 @@ def _resolve_index_path(state: HarmonizeState, index: str) -> Path:
     return Path(recipe_dir) / index
 
 
-@_register('deflate_values')
+# Each output and its sidecar are assigned whole (the sidecar emptied
+# first), so the step decides both.
+@_register(
+    'deflate_values',
+    reads=['{columns}', '{columns}_source', '{year_column}'],
+    writes=['{columns}{output_suffix}', '{columns}{output_suffix}_source'],
+    decides=['{columns}{output_suffix}', '{columns}{output_suffix}_source'],
+)
 def deflate_values(
     state: HarmonizeState,
     columns: list[str],

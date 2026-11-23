@@ -53,7 +53,21 @@ PARCEL_KEY_METHOD = 'parcel_id_local'
 CITED_DOCUMENT_METHOD = 'cited_document'
 
 
-@_register('derive_sale_period')
+def _candidate_columns(arguments) -> list[str]:
+    """Every column a document-id candidate group names."""
+    return [
+        column
+        for group in arguments.get('candidates') or []
+        for column in ([group] if isinstance(group, str) else group)
+    ]
+
+
+# A year or month the source stated is kept, so the step only writes.
+@_register(
+    'derive_sale_period',
+    reads=['{date_column}', 'sale_year', 'sale_month'],
+    writes=['sale_year', 'sale_month'],
+)
 def derive_sale_period(
     state: HarmonizeState, date_column: str = 'recorded_date'
 ) -> HarmonizeState:
@@ -70,7 +84,8 @@ def derive_sale_period(
     return state
 
 
-@_register('dedup_transactions')
+# Drops rows and writes no column.
+@_register('dedup_transactions', reads=['{key_columns}'], writes=[])
 def dedup_transactions(
     state: HarmonizeState, key_columns: list, normalize_columns: list | None = None
 ) -> HarmonizeState:
@@ -104,7 +119,12 @@ def dedup_transactions(
     return state
 
 
-@_register('derive_document_id')
+@_register(
+    'derive_document_id',
+    reads=[_candidate_columns, '{scope_column}'],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def derive_document_id(
     state: HarmonizeState,
     candidates: list,
@@ -138,7 +158,12 @@ def derive_document_id(
     return state
 
 
-@_register('count_parcels_per_document')
+@_register(
+    'count_parcels_per_document',
+    reads=['{parcel_column}', '{document_column}'],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def count_parcels_per_document(
     state: HarmonizeState,
     parcel_column: str | list[str],
@@ -335,7 +360,26 @@ def _cited_document_rows(rows, document_key, kind_column, citing_kind, id_column
     return merged.set_index(TRANSACTION_ID)
 
 
-@_register('link_transactions')
+# The summary of link methods is rebuilt from the link table on every
+# row, so the step decides it. The link tables are files, not columns.
+@_register(
+    'link_transactions',
+    reads=[
+        '{parcel_key}',
+        '{lot_column}',
+        '{property_key}',
+        '{parcel_id_keys}',
+        '{document_key}',
+        '{address_keys}',
+        'address_street',
+        'address_number',
+        'admin4_id',
+        '{kind_column}',
+        'source',
+    ],
+    writes=['{output_column}'],
+    decides=['{output_column}'],
+)
 def link_transactions(
     state: HarmonizeState,
     parcel_recipe_id: str = 'US_parcel-spine-2026',
@@ -699,7 +743,14 @@ def link_transactions(
     return state
 
 
-@_register('link_transactions_by_overlap')
+# Rewritten from the link table merged with every earlier link, so a
+# sale this pass links to nothing keeps the label link_transactions
+# gave it: the step writes the column and decides none of it.
+@_register(
+    'link_transactions_by_overlap',
+    reads=['geometry', 'source'],
+    writes=['{output_column}'],
+)
 def link_transactions_by_overlap(
     state: HarmonizeState,
     parcel_recipe_id: str = 'US_parcel-spine-2026',
@@ -853,7 +904,8 @@ def duplicate_sale_pair_path(recipe, admin_id):
     return get_entity_link_path(owner_id, owner_id, admin_id)
 
 
-@_register('link_duplicate_sales')
+# Writes a link table and no spine column.
+@_register('link_duplicate_sales', writes=[])
 def link_duplicate_sales(
     state: HarmonizeState,
     parcel_recipe_id: str = 'US_parcel-spine-2026',
@@ -1060,7 +1112,8 @@ def _parcel_point_keys(points, parcels, admin_id) -> pd.Series:
     )
 
 
-@_register('check_parcel_links_by_address_points')
+# Adds its column to the link table, not to the spine.
+@_register('check_parcel_links_by_address_points', writes=[])
 def check_parcel_links_by_address_points(
     state: HarmonizeState,
     dwelling_recipe_ids: list[str] | tuple[str, ...] = ('dwelling-overture-2025',),

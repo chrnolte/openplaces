@@ -34,7 +34,8 @@ class AdminSourcesNotIngestedError(RuntimeError):
     """
 
 
-@_register('discover_sources', phase='geometry')
+# Ranks the sources into state.metadata and writes no spine column.
+@_register('discover_sources', phase='geometry', writes=[])
 def discover_sources(
     state: HarmonizeState, include_restricted: bool = False
 ) -> HarmonizeState:
@@ -443,7 +444,8 @@ def carve_lumped_territories(
     return state
 
 
-@_register('simplify_geometries', phase='geometry')
+# Writes a simplified-geometry sidecar, not a spine column.
+@_register('simplify_geometries', phase='geometry', reads=['geometry'], writes=[])
 def simplify_geometries(
     state: HarmonizeState,
     thresholds: dict | None = None,

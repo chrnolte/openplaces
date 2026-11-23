@@ -22,7 +22,16 @@ _SUPPORTED_COLUMNS = [
 _AREA_DEPENDENTS = {'area_ha', 'area_ha_log', 'n_buildings_per_ha'}
 
 
-@_register('derive_from_spine')
+def _derived_columns(arguments) -> list[str]:
+    """The derived columns the recipe asks for, all of them by default."""
+    return list(arguments.get('columns') or _SUPPORTED_COLUMNS)
+
+
+@_register(
+    'derive_from_spine',
+    reads=['geometry', 'n_buildings'],
+    writes=[_derived_columns],
+)
 def derive_from_spine(
     state: EnrichState,
     columns: list[str] | None = None,

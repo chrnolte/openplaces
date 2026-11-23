@@ -50,7 +50,41 @@ def _outline_span(footprints, on: str | None, span: np.ndarray) -> np.ndarray:
     return np.where(np.isnan(outline_span), span, outline_span)
 
 
-@_register('summarize_footprint_morphology', phase='geometry')
+#: The per-parcel columns the step assigns whole on every run that
+#: finds buildings, so it decides each of them.
+MORPHOLOGY_COLUMNS = (
+    'n_buildings_per_parcel',
+    'n_small_elongated_buildings_per_parcel',
+    'max_footprint_area_m2',
+    'footprint_area_m2_dominant',
+    'footprint_area_m2_in_parcel',
+    'n_primary_buildings_per_parcel',
+    'footprint_area_m2_primary',
+    'max_dwellings_per_building',
+    'max_parcels_per_footprint',
+)
+
+
+@_register(
+    'summarize_footprint_morphology',
+    phase='geometry',
+    reads=['{on}', 'geometry'],
+    writes=MORPHOLOGY_COLUMNS,
+    decides=MORPHOLOGY_COLUMNS,
+    reads_from={
+        'footprint_recipe_id': [
+            'geometry',
+            'geometry_source',
+            '{on}',
+            '{on}_all',
+            '{overlap_column}',
+            '{priority_column}',
+            '{dwelling_column}',
+            '{span_column}',
+            OUTLINE_COLUMN,
+        ]
+    },
+)
 def summarize_footprint_morphology(
     state: HarmonizeState,
     footprint_recipe_id: str,
