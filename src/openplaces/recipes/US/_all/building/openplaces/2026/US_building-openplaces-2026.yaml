@@ -655,6 +655,13 @@ pipeline:
         type: shape_metric
         metric: aspect_ratio
 
+      # The long side of the same rectangle, in degrees clockwise from
+      # grid north, modulo 180. flag_manufactured_home_communities reads
+      # it: a park's homes are long and set in rows along one bearing.
+      - output: long_axis_bearing
+        type: shape_metric
+        metric: bearing
+
       # The short side of the same bounding rectangle, in meters. Elongation
       # answers "is this a manufactured home"; the width answers "how many
       # boxes did it ship in", because a section is a road-legal load and its
@@ -1834,19 +1841,30 @@ pipeline:
 
   # Recompute the manufactured home community flag using final footprint
   # classifications. A lot is a park where it holds 8 or more
-  # manufactured homes, or 3 or more whose median aspect (long over
-  # short side) is 2.78 or more: parks hold long homes laid out alike,
-  # a family lot a few of any shape (maintainer, 2026-11-22, question
-  # 4 of plans/occupancy-and-dwellings-one-decider.md). Labels: 16 of
-  # 18 held-out lots right (10 of 11 on the maintainer's alone); parks
-  # of 4 to 7 homes caught 13 of 14, family or other lots of 4 to 7
-  # called a park 1 of 22. The shape arm needs 3 homes: no label covers
-  # a lot under 3 homes, and two homes on a lot are the plan's family
-  # lot. Until 2026-11-22 a lot was a park from 4 homes of any shape.
+  # manufactured homes, or where 3 or more of its homes with an aspect
+  # (long over short side) of 2.5 or more have long-axis bearings
+  # inside one 15-degree window (modulo 180): a park sets long homes in
+  # rows, a family lot holds a few of any shape, set as they came. The
+  # maintainer's cue: "it's almost always aspect ratio and orientation
+  # of a group of MMHs that determines my choice" (question 4 of
+  # plans/occupancy-and-dwellings-one-decider.md, "Park rule research").
+  # Labels: on the 48 lots labeled before (40 maintainer, 8 agent) this
+  # rule and the median-aspect rule it replaces (3 or more homes with a
+  # median aspect of 2.78 or more) decide every lot alike, 43 of 48
+  # right. On 40 lots drawn where the rules disagree, labeled blind by
+  # an agent (one labeler so far; a second labeler and a maintainer
+  # audit are open), all 16 confident labels on the 33 lots where this
+  # rule disagrees side with it (sign test p = 3e-5); on the 21
+  # confident labels of the 40, this rule 18 right, the median-aspect
+  # rule 2, the same rule with 4 aligned homes 15. Both arms need 3
+  # homes: no label covers a lot under 3, and two homes on a lot are
+  # the plan's family lot. Until 2026-11-22 a lot was a park from 4
+  # homes of any shape.
   - step: flag_manufactured_home_communities
     homes_at_least: 8
-    min_median_aspect: 2.78
-    aspect_min_homes: 3
+    aligned_homes_at_least: 3
+    min_aspect: 2.5
+    bearing_window_degrees: 15
 
   # The one step that decides n_dwellings, after the last writer of the
   # class (the votes above and a state patch's correction right after
@@ -1976,6 +1994,7 @@ pipeline:
       # analyze_occupancy_stages.py or export_cheer_nsi_conflicts.py.
       - p_manufactured_home
       - aspect_ratio
+      - long_axis_bearing
       - width_m
       - shared_wall_m
       - occupancy_type_nsi_class

@@ -60,12 +60,18 @@ decider in the patched recipe.
 side.** `flag_manufactured_home_communities`, after the class votes,
 calls `is_manufactured_home_park` (`estimators/manufactured_homes.py`):
 the national building recipe makes a lot a park where it holds 8 or
-more manufactured homes, or 3 or more whose median `aspect_ratio` is
-2.78 or more (maintainer, 2026-11-22). The parcel vote's Manufactured
-Home Park class still decides the lot side from the geospine's
-elongated-outline count, a proxy run before the buildings have
-classes; a second parcel pass after the building curate is to replace
-it.
+more manufactured homes, or where 3 or more of its homes with an
+`aspect_ratio` of 2.5 or more have `long_axis_bearing`s inside one
+15-degree window, modulo 180 (`aligned_homes`; a window across 0 and
+180 counts). Both columns come from one `shape_metric` rectangle in
+`derive_indicators`, which the recipe drops before output. The
+aligned-homes arm raises where its columns are absent rather than
+calling every small park a family lot. The delivery's building
+imputation reads this flag as its park (`io/delivery/README.md`). The
+parcel vote's Manufactured Home Park class still decides the lot side
+from the geospine's elongated-outline count, a proxy run before the
+buildings have classes; a second parcel pass after the building
+curate is to replace it.
 
 **A building's dwelling count is decided after its class.** The
 building curate's lanes (`reconcile_values`: the roll's apportioned

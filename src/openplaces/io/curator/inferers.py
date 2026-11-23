@@ -227,9 +227,21 @@ def _derive_shape_metric(state: CurateState, spec: dict) -> pd.Series | None:
         return width
     if metric == 'orientation':
         return dims.map(lambda d: d[0])
+    if metric == 'bearing':
+        # The long side's azimuth, clockwise from the local metric
+        # CRS's grid north, modulo 180: the axis 'orientation' gives
+        # counterclockwise from east, read as a compass would. The
+        # same rectangle as aspect_ratio, so the two always agree. A
+        # square outline has no long side; the rectangle's first edge
+        # is taken, so its bearing is one of two perpendicular values
+        # and means nothing. Such an outline has aspect 1 and fails
+        # any elongation cut a bearing is read with. A geometry
+        # without a rectangle (empty, degenerate) has none.
+        angle = dims.map(lambda d: d[0]).astype(float)
+        return ((90.0 - angle) % 180.0).where(length > 0)
     raise ValueError(
         f'Unknown shape_metric {metric!r}; expected aspect_ratio, length, '
-        f'width, or orientation.'
+        f'width, orientation, or bearing.'
     )
 
 
@@ -618,8 +630,10 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       (``log``, ``log1p`` or ``asinh``) is applied to the ratio; ``log``
       leaves a non-positive ratio missing.
     - ``shape_metric``: a minimum-bounding-rectangle ``metric`` of each
-      geometry -- ``aspect_ratio`` (default), ``length``, ``width``, or
-      ``orientation``. Measured on a locally-projected metric copy.
+      geometry -- ``aspect_ratio`` (default), ``length``, ``width``,
+      ``orientation`` (long side, degrees counterclockwise from east), or
+      ``bearing`` (long side, degrees clockwise from grid north), both
+      modulo 180. Measured on a locally-projected metric copy.
     - ``shared_wall``: in meters, the longest run of each outline's
       boundary that lies on or inside another outline of at least
       ``partner_min_m2`` (default 20 m2): per partner, the length of

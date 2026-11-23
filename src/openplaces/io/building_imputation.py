@@ -267,9 +267,13 @@ COUNTY_FEATURES = [
 # a held-out county so leave-county-out mimics that case.
 PARCEL_VALUE_INPUTS = ['log_land_value_parcel']
 # Manufactured homes the roll does not list (manufactured_home_listing).
-# A parcel with this many homes is a park: homes on another's land are
-# personal property, and the parcel's improvements are the park's.
-PARK_MIN_HOMES = 5
+# A home in a park stands on another's land and is personal property;
+# the parcel's improvements are the park's. Which lot is a park is the
+# building curate's call (flag_manufactured_home_communities), read
+# here from this column, so the delivery and the curated inventory
+# never disagree about a park (maintainer, 2026-11-22). No count of
+# homes stands in for it.
+PARK_COLUMN = 'manufactured_home_community'
 # Value per m2 of footprint below which a single home's parcel value is
 # site improvements only, and at or above which it is a listed home.
 # Between the two, the value is kept but trains nothing.
@@ -398,6 +402,57 @@ def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors='coerce')
 
 
+class MissingParkFlagError(ValueError):
+    """A manufactured home has no park flag (PARK_COLUMN) to read."""
+
+
+def park_flags(frame: pd.DataFrame, homes: pd.Series) -> pd.Series:
+    """The building curate's park flag (PARK_COLUMN) of each row.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Rows carrying PARK_COLUMN.
+    homes : pandas.Series
+        Boolean, the manufactured homes among them: the rows whose flag
+        is read.
+
+    Raises
+    ------
+    MissingParkFlagError
+        Where a manufactured home has no flag: the column is absent, or
+        a unit's curated file lacked it and its rows came in empty.
+        Counting the homes on the lot instead would be a second park
+        rule beside the curate's.
+    """
+    homes = homes.fillna(False).astype(bool)
+    if not homes.any():
+        return pd.Series(False, index=frame.index)
+    if PARK_COLUMN not in frame.columns:
+        raise MissingParkFlagError(
+            f'{int(homes.sum()):,} manufactured homes but no {PARK_COLUMN} '
+            'column: re-curate the buildings (and footprints) with '
+            'flag_manufactured_home_communities, or read the column into '
+            'the delivery frame.'
+        )
+    text = frame[PARK_COLUMN].astype('string').str.strip().str.lower()
+    # Bool, a 0/1 number or its text, as a pooled column may hold it.
+    truth = {'true': True, '1': True, '1.0': True}
+    truth |= {'false': False, '0': False, '0.0': False}
+    flag = text.map(truth)
+    unset = homes & flag.isna()
+    if unset.any():
+        where = ''
+        if 'admin3_id' in frame.columns:
+            units = frame.loc[unset, 'admin3_id'].astype('string').value_counts()
+            where = ' (' + ', '.join(f'{u}: {n:,}' for u, n in units.items()) + ')'
+        raise MissingParkFlagError(
+            f'{int(unset.sum()):,} manufactured homes have no {PARK_COLUMN} '
+            f'value{where}; re-curate those units.'
+        )
+    return flag.fillna(False).astype(bool)
+
+
 def manufactured_home_listing(frame: pd.DataFrame) -> pd.Series:
     """Classify each manufactured home by how the roll lists it.
 
@@ -420,7 +475,8 @@ def manufactured_home_listing(frame: pd.DataFrame) -> pd.Series:
     Returns 'listed' (a usable label: the only manufactured home on its
     parcel, valued at LISTED_MIN_VALUE_PER_M2 or more), 'unlisted' (the
     value is not the home's and is filled: no value, a zero, an NSI
-    value, a park of PARK_MIN_HOMES or more, or under
+    value, a home on a park's lot (PARK_COLUMN, :func:`park_flags`,
+    which raises where a home has no flag), or under
     UNLISTED_MAX_VALUE_PER_M2 on a parcel with no building record, read
     as no parcel year built), 'unclear' (kept as observed, never a
     label), and NA for rows that are not primary manufactured homes.
@@ -450,11 +506,12 @@ def manufactured_home_listing(frame: pd.DataFrame) -> pd.Series:
         else pd.Series('', index=frame.index, dtype='string')
     )
     has_record = year_source.str.startswith('parcel')
+    park = park_flags(frame, mh)
     unlisted = (
         value.isna()
         | value.eq(0)
         | ~from_parcel
-        | homes.ge(PARK_MIN_HOMES)
+        | park
         | (per_m2.lt(UNLISTED_MAX_VALUE_PER_M2) & ~has_record)
     )
     listed = ~unlisted & homes.eq(1) & per_m2.ge(LISTED_MIN_VALUE_PER_M2)
@@ -1798,9 +1855,8 @@ class Imputer:
         then applies to every filled home in a park.
         """
         frame = self.frame
-        homes = _numeric_column(frame, 'n_manufactured_homes_per_parcel')
         is_mh = applies_to(MANUFACTURED_VALUE, frame)
-        park = is_mh & homes.ge(PARK_MIN_HOMES) & missing
+        park = is_mh & park_flags(frame, is_mh) & missing
         value = pd.to_numeric(frame['structure_value'], errors='coerce')
         source = frame['structure_value_source'].astype('string').fillna('')
         area = _numeric_column(frame, 'area_m2')

@@ -321,6 +321,18 @@ outputs read-only, unlocking them itself on the next run -- deliberately not
 Snakemake's `protected()`, which additionally refuses to ever regenerate a file
 and would abort the workflow on every reship.
 
+**The building imputation takes a park from the curate, never from a
+count** (`io/building_imputation.py`; maintainer, 2026-11-22). A
+manufactured home on a park's lot is read as off the roll (its parcel
+value is the park's) and refilled, and its filled value is scaled by
+the park factor. Which lot is a park is the building curate's
+`manufactured_home_community` flag (`flag_manufactured_home_communities`),
+which pass one reads beside the model inputs (`PARK_COLUMN`); it is no
+model input and is never filled. A bundle with manufactured homes but no
+flag, or with homes whose unit's curated file lacked it, raises
+`MissingParkFlagError` naming the units: a count of homes standing in
+would be a second park rule. Donor weights are untouched by it.
+
 The QGIS side is `qgis/load_joined_parquet.py`, which resolves the whole set from
 any one of its files. It picks the join key at load time (`_join_id`, then
 `geo_id`, then whichever entity id the two files share), so one algorithm reads
