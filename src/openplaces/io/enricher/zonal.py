@@ -199,7 +199,23 @@ def _spine_in_raster_crs(state, spine, raster_crs, raster_bounds):
     return parcels_r
 
 
-@_register('sample_raster_at_centroids')
+def _raster_column(arguments) -> list[str]:
+    """The evidence column, `{raster_key}_{stat}` unless one is named.
+
+    *stat* defaults differ by step, so the caller's default is read
+    from *arguments*, which carry the step's own defaults.
+    """
+    if arguments.get('column'):
+        return [arguments['column']]
+    if arguments.get('raster_key') is None:
+        return []
+    return [f'{arguments["raster_key"]}_{arguments.get("stat")}']
+
+
+# Enrich steps write and never decide: a run over some sub-units
+# merges with the stored output, which keeps the rows it did not
+# reach (Enricher.run).
+@_register('sample_raster_at_centroids', reads=['geometry'], writes=['{column}'])
 def sample_raster_at_centroids(
     state: EnrichState,
     raster_recipe_id: str,
@@ -248,7 +264,7 @@ def sample_raster_at_centroids(
     return state
 
 
-@_register('zonal_stats')
+@_register('zonal_stats', reads=['geometry'], writes=[_raster_column])
 def zonal_stats(
     state: EnrichState,
     raster_key: str,

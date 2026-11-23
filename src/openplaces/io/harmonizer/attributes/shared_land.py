@@ -8,7 +8,23 @@ import pandas as pd
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 
-@_register('detect_shared_land_groups', phase='geometry')
+# The group id is assigned whole, so the step decides it; the count and
+# its source keep every row outside a group, so the step only writes
+# them.
+@_register(
+    'detect_shared_land_groups',
+    phase='geometry',
+    reads=[
+        '{land_value_column}',
+        '{improvement_value_column}',
+        'area_ha',
+        'geometry',
+        '{property_count_column}',
+        '{source_column}',
+    ],
+    writes=['{property_count_column}', '{source_column}', '{group_id_column}'],
+    decides=['{group_id_column}'],
+)
 def detect_shared_land_groups(
     state: HarmonizeState,
     land_value_column: str = 'land_value',

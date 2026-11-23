@@ -10,7 +10,19 @@ import pandas as pd
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 
-@_register('estimate_property_counts')
+# Writes, never decides: a source an earlier step set is kept, with
+# its count.
+@_register(
+    'estimate_property_counts',
+    reads=[
+        '{property_count_column}',
+        '{source_column}',
+        '{dwelling_column}',
+        '{footprint_dwelling_column}',
+        '{preliminary_dwelling_column}',
+    ],
+    writes=['{property_count_column}', '{source_column}'],
+)
 def estimate_property_counts(
     state: HarmonizeState,
     property_count_column: str = 'n_properties_per_parcel',

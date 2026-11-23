@@ -101,7 +101,9 @@ def _add_prediction_column(
     return state
 
 
-@_register('classify_roof_shape')
+# The image steps declare what they write. What they read off the spine
+# to fetch imagery is the image recipe's business and is not declared.
+@_register('classify_roof_shape', writes=['{column}'])
 def classify_roof_shape(
     state: EnrichState,
     image_recipe: str | None = None,
@@ -129,7 +131,7 @@ def classify_roof_shape(
     return _add_prediction_column(state, predictions, column)
 
 
-@_register('classify_occupancy')
+@_register('classify_occupancy', writes=['{column}'])
 def classify_occupancy(
     state: EnrichState,
     image_recipe: str | None = None,
@@ -157,7 +159,7 @@ def classify_occupancy(
     return _add_prediction_column(state, predictions, column)
 
 
-@_register('detect_n_stories', 'detect_nfloors')
+@_register('detect_n_stories', 'detect_nfloors', writes=['{column}'])
 def detect_n_stories(
     state: EnrichState,
     image_recipe: str | None = None,

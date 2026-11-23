@@ -211,7 +211,9 @@ def reconcile_attributes(
     return state
 
 
-@_register('rename_columns')
+# A rename moves values without computing any, so it writes the new
+# names and decides none of them.
+@_register('rename_columns', reads=['{columns:keys}'], writes=['{columns:values}'])
 def rename_columns(state: HarmonizeState, columns: dict[str, str]) -> HarmonizeState:
     """Rename spine columns.
 

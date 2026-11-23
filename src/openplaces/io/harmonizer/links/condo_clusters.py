@@ -112,7 +112,14 @@ def lots_under_footprints(
     )
 
 
-@_register('consolidate_condo_cluster_footprints', phase='geometry')
+# Only the outlines kept whole get a new label, so the step writes
+# geometry_source and decides none of it.
+@_register(
+    'consolidate_condo_cluster_footprints',
+    phase='geometry',
+    reads=['geometry', 'geometry_source'],
+    writes=['geometry_source'],
+)
 def consolidate_condo_cluster_footprints(
     state: HarmonizeState,
     entity_type: str | None = 'parcel',

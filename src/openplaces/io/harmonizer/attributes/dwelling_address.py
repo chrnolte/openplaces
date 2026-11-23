@@ -7,7 +7,40 @@ from __future__ import annotations
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 
-@_register('attribute_dwelling_address')
+def _default_columns() -> dict[str, str]:
+    """The relayed columns when the recipe names none."""
+    return {
+        f'{comp}_dwelling_overture': f'{comp}_dwelling_footprint'
+        for comp in ('address_street', 'address_number', 'city', 'postal_code')
+    }
+
+
+def _relayed_columns(arguments) -> list[str]:
+    """The spine columns the relay writes, as declared."""
+    return list((arguments.get('columns') or _default_columns()).values())
+
+
+def _source_columns(arguments) -> list[str]:
+    """The footprint columns the relay copies, as declared."""
+    return list(arguments.get('columns') or _default_columns())
+
+
+# Each relayed column is assigned whole (missing where a parcel has no
+# primary footprint), so the step decides it.
+@_register(
+    'attribute_dwelling_address',
+    reads=['{on}'],
+    writes=[_relayed_columns],
+    decides=[_relayed_columns],
+    reads_from={
+        'footprint_recipe_id': [
+            '{on}',
+            '{priority_column}',
+            '{overlap_column}',
+            _source_columns,
+        ]
+    },
+)
 def attribute_dwelling_address(
     state: HarmonizeState,
     footprint_recipe_id: str,
@@ -77,10 +110,7 @@ def attribute_dwelling_address(
         return state
     spine = state.spine
 
-    columns = columns or {
-        f'{comp}_dwelling_overture': f'{comp}_dwelling_footprint'
-        for comp in ('address_street', 'address_number', 'city', 'postal_code')
-    }
+    columns = columns or _default_columns()
 
     # missing='ignore': footprint_recipe_id genuinely has no output yet for
     # some admin units (not yet harmonized, or itself skipped a reference

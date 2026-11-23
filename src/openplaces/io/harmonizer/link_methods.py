@@ -76,7 +76,12 @@ def _reference_keys(state, recipe_id, ref_key, layer=None, spine_key=None) -> se
     return set(ref[ref_key].dropna().astype('string'))
 
 
-@_register('record_link_method')
+# A row already labeled keeps its label, so the step only writes.
+@_register(
+    'record_link_method',
+    reads=['{spine_key}', '{via_column}', '{output_column}'],
+    writes=['{output_column}'],
+)
 def record_link_method(
     state: HarmonizeState,
     label: str,

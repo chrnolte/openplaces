@@ -35,7 +35,23 @@ def _dominant_parcel(state, crosswalk, parcel_recipe_id, spine_id_col, ids):
     return None
 
 
-@_register('classify_footprint_priority')
+def _secondary_column(arguments) -> list[str]:
+    """The column naming a building's secondary parcels, as declared.
+
+    A template cannot say it: *entity_type* defaults to None and the
+    step reads None as 'parcel'.
+    """
+    return [f'{arguments.get("entity_type") or "parcel"}_id_secondary']
+
+
+# Both columns are assigned whole on every run that finds a parcel
+# crosswalk, so the step decides them.
+@_register(
+    'classify_footprint_priority',
+    reads=['geometry_source', 'area_ha', 'parcel_id'],
+    writes=['priority_on_parcel', _secondary_column],
+    decides=['priority_on_parcel', _secondary_column],
+)
 def classify_footprint_priority(
     state: HarmonizeState,
     entity_type: str | None = None,

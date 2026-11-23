@@ -33,7 +33,7 @@ def _admin_level_from_column(admin_id_column: str, admin_level: int | None) -> i
     )
 
 
-@_register('link_admin_attribute')
+@_register('link_admin_attribute', reads=['{admin_id_column}'], writes=['{output}'])
 def link_admin_attribute(
     state: EnrichState,
     output: str,

@@ -8,8 +8,30 @@ import pandas as pd
 
 from openplaces.io.harmonizer import HarmonizeState, _register
 
+#: The label's parts when the recipe names none.
+DEFAULT_USE_COLUMNS = (
+    ('use_group', 'use_group_code'),
+    ('use_subgroup', 'use_subgroup_code'),
+)
 
-@_register('derive_use_classes')
+
+def _use_columns(arguments) -> list[str]:
+    """Every column the label's parts may read, alternatives included."""
+    return [
+        column
+        for entry in (arguments.get('columns') or DEFAULT_USE_COLUMNS)
+        for column in ([entry] if isinstance(entry, str) else entry)
+    ]
+
+
+# Both labels are rebuilt whole from their parts, so the step decides
+# them.
+@_register(
+    'derive_use_classes',
+    reads=[_use_columns],
+    writes=['{combined_column}', '{labeled_column}'],
+    decides=['{combined_column}', '{labeled_column}'],
+)
 def derive_use_classes(
     state: HarmonizeState,
     combined_column: str = 'use_group_combined',
@@ -85,13 +107,7 @@ def derive_use_classes(
     spine = state.spine
     groups = [
         [entry] if isinstance(entry, str) else list(entry)
-        for entry in (
-            columns
-            or [
-                ['use_group', 'use_group_code'],
-                ['use_subgroup', 'use_subgroup_code'],
-            ]
-        )
+        for entry in (columns or DEFAULT_USE_COLUMNS)
     ]
     present = [[c for c in group if c in spine.columns] for group in groups]
     present = [group for group in present if group]

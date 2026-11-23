@@ -1062,7 +1062,15 @@ def resolve_spine(
     return state
 
 
-@_register('adopt_source_entity_id', phase='geometry')
+# The source ids are written whole into a column the spine must not
+# already carry, so the step decides it. The index rename is not a
+# column.
+@_register(
+    'adopt_source_entity_id',
+    phase='geometry',
+    writes=['{source_id_column}'],
+    decides=['{source_id_column}'],
+)
 def adopt_source_entity_id(
     state: HarmonizeState, source_id_column: str
 ) -> HarmonizeState:
@@ -1549,7 +1557,15 @@ def _expand_auto_discover(
     return sources + discovered
 
 
-@_register('derive_geometry_attributes', phase='geometry')
+# All three are assigned whole (a synthetic outline's area left
+# empty), so the step decides them.
+@_register(
+    'derive_geometry_attributes',
+    phase='geometry',
+    reads=['geometry'],
+    writes=['lat', 'long', 'area_{area_unit}'],
+    decides=['lat', 'long', 'area_{area_unit}'],
+)
 def derive_geometry_attributes(
     state: HarmonizeState, area_unit: str = 'ha'
 ) -> HarmonizeState:

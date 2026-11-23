@@ -22,7 +22,11 @@ from shapely.geometry import box
 
 from openplaces.geo.raster import compute_vicinity_coverage
 from openplaces.io.enricher import EnrichState, _register
-from openplaces.io.enricher.zonal import resolve_raster_reference, sample_raster
+from openplaces.io.enricher.zonal import (
+    _raster_column,
+    resolve_raster_reference,
+    sample_raster,
+)
 from openplaces.path import resolve_raster_path
 
 
@@ -58,7 +62,7 @@ def _admin_vicinity_raster_path(source_raster_path, admin_id, px_radius: int) ->
     return out_dir / f'{source_raster_path.stem}Vicinity{px_radius}pxFloat.tif'
 
 
-@_register('vicinity_coverage')
+@_register('vicinity_coverage', reads=['geometry'], writes=[_raster_column])
 def vicinity_coverage(
     state: EnrichState,
     raster_key: str,

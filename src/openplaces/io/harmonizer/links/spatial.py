@@ -51,7 +51,14 @@ from openplaces.recipe import (
 from openplaces.table import require_unique_index
 
 
-@_register('link_to_reference', phase='geometry')
+# Writes no spine column: its products are the crosswalk, the overlay
+# and the link sidecar, which reconcile_attributes and curate read.
+@_register(
+    'link_to_reference',
+    phase='geometry',
+    reads=['geometry', 'geometry_source'],
+    writes=[],
+)
 def link_to_reference(
     state: HarmonizeState,
     join: str = 'spatial_overlay',

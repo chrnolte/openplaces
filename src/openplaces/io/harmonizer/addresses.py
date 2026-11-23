@@ -502,7 +502,47 @@ def reconcile_addresses_df(
     return curated
 
 
-@_register('reconcile_addresses')
+def _address_source_columns(arguments) -> list[str]:
+    """Every evidence column the recipe's address sources name."""
+    return [
+        column
+        for roles in (arguments.get('sources') or {}).values()
+        for column in (roles or {}).values()
+    ]
+
+
+def _address_writes(arguments) -> list[str]:
+    """The columns `reconcile_addresses_df` writes under *arguments*.
+
+    The wrapper takes **kwargs, so the defaults are those of
+    `reconcile_addresses_df` and are restated here.
+    """
+    output = arguments.get('output_col', 'address')
+    named = [
+        output,
+        f'{output}{_SOURCE_SUFFIX}',
+        arguments.get('conflict_column', 'address_conflict'),
+        arguments.get('street_output_col', 'address_street'),
+        arguments.get('number_output_col'),
+        arguments.get('unit_output_col'),
+        arguments.get('city_output_col'),
+    ]
+    return [name for name in named if name]
+
+
+def _address_decides(arguments) -> list[str]:
+    """The conflict summary, the one column assigned on every row."""
+    return [arguments.get('conflict_column', 'address_conflict')]
+
+
+# The address and its parts are set on rows with a usable source only,
+# so they are written; the conflict summary is assigned whole.
+@_register(
+    'reconcile_addresses',
+    reads=[_address_source_columns],
+    writes=[_address_writes, _address_decides],
+    decides=[_address_decides],
+)
 def reconcile_addresses(state: HarmonizeState, **kwargs) -> HarmonizeState:
     """Harmonize-stage wrapper: reconcile addresses on ``state.spine``.
 
@@ -517,7 +557,15 @@ def reconcile_addresses(state: HarmonizeState, **kwargs) -> HarmonizeState:
     return state
 
 
-@_register('reconcile_postal_code')
+# The coalesced code and its conflict summary are assigned whole, so
+# the step decides them; the sidecar is set on the rows a source won
+# only, so it is written.
+@_register(
+    'reconcile_postal_code',
+    reads=['{sources}'],
+    writes=['{output_column}', '{output_column}_source', '{conflict_column}'],
+    decides=['{output_column}', '{conflict_column}'],
+)
 def reconcile_postal_code(
     state: HarmonizeState,
     sources: list[str],
@@ -604,7 +652,37 @@ def reconcile_postal_code(
     return state
 
 
-@_register('impute_postal_city')
+#: The ZIP lookup's own columns, assigned whole on every run that finds
+#: the ZIP column, so the step decides them.
+POSTAL_CITY_COLUMNS = (
+    'postal_zip5',
+    'postal_city',
+    'postal_city_acceptable',
+    'postal_city_unacceptable',
+)
+
+
+# The city and the address are filled where the city is missing, so
+# they are written, never decided.
+@_register(
+    'impute_postal_city',
+    reads=[
+        '{column}',
+        '{city_column}',
+        '{address_column}',
+        'address_number',
+        'address_street',
+        'address_unit',
+    ],
+    writes=[
+        *POSTAL_CITY_COLUMNS,
+        'postal_city_source',
+        '{city_column}',
+        '{city_column}_source',
+        '{address_column}',
+    ],
+    decides=POSTAL_CITY_COLUMNS,
+)
 def impute_postal_city(
     state: HarmonizeState,
     column: str = 'postal_code',
@@ -725,7 +803,12 @@ def impute_postal_city(
     return state
 
 
-@_register('derive_address_id_local')
+@_register(
+    'derive_address_id_local',
+    reads=['{street_column}', '{number_column}', '{city_column}', '{admin4_column}'],
+    writes=['{output_column}', '{output_column_city}'],
+    decides=['{output_column}', '{output_column_city}'],
+)
 def derive_address_id_local(
     state: HarmonizeState,
     street_column: str = 'address_street',

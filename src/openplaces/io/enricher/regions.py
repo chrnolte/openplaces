@@ -24,7 +24,15 @@ from openplaces.io.readers import get_dataset
 ALBERS = 'EPSG:5070'
 
 
-@_register('assign_land_value_region')
+@_register(
+    'assign_land_value_region',
+    reads=['geometry'],
+    writes=[
+        'land_value_region_id',
+        'land_value_region_type',
+        'distance_to_land_value_core_km',
+    ],
+)
 def assign_land_value_region(
     state: EnrichState,
     regions_recipe_id: str,

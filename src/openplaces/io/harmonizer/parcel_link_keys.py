@@ -52,7 +52,14 @@ def unit_lots(pairs: pd.DataFrame) -> pd.Series:
     return single.set_index('unit_key')['lot_key']
 
 
-@_register('derive_parcel_link_key')
+# The join key is assigned whole, so the step decides it; a lot
+# already stated is kept, so the lot column is only written.
+@_register(
+    'derive_parcel_link_key',
+    reads=['{key_column}', '{lot_column}'],
+    writes=['{lot_column}', '{output_column}'],
+    decides=['{output_column}'],
+)
 def derive_parcel_link_key(
     state: HarmonizeState,
     key_column: str = 'parcel_id_local',
