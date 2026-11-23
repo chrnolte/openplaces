@@ -285,7 +285,17 @@ def _decide(
     return None, None
 
 
-@_register('translate_descriptions', phase='standardize')
+# Writes only the rows a reviewed table row translates and keeps the
+# others (with fill_only, also every value already there), so it
+# writes its output and decides nothing. Where a state patch puts it
+# in place of the cohort statistic (group_parcel in MA and WI), that
+# column has no declared decider in the patched recipe.
+@_register(
+    'translate_descriptions',
+    phase='standardize',
+    reads=['{columns}', '{source_column}', '{output}'],
+    writes=['{output}', '{output}_source'],
+)
 def translate_descriptions(
     state: CurateState,
     output: str,

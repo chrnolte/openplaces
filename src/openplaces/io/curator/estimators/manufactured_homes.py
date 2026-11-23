@@ -12,14 +12,72 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('flag_manufactured_home_communities', phase='infer')
+def is_manufactured_home_park(
+    homes: pd.Series,
+    median_aspect: pd.Series,
+    *,
+    more_than: int = 3,
+    homes_at_least: int | None = None,
+    min_median_aspect: float | None = None,
+    aspect_min_homes: int = 3,
+) -> pd.Series:
+    """Whether a lot of manufactured homes is a park, per lot.
+
+    The one place the park rule lives. Without *min_median_aspect* or
+    *homes_at_least*, a lot is a park where it holds more than
+    *more_than* homes. With them: a park where it holds at least
+    *homes_at_least* homes, or at least *aspect_min_homes* homes whose
+    median aspect (long over short side of each home's bounding
+    rectangle) is at least *min_median_aspect*.
+
+    Parameters
+    ----------
+    homes : pandas.Series
+        Manufactured homes per lot.
+    median_aspect : pandas.Series
+        Median aspect of those homes per lot, aligned to *homes*.
+    more_than : int, optional
+        The count rule used when *homes_at_least* is None (default 3).
+    homes_at_least, min_median_aspect : optional
+        The count arm and the shape arm; None leaves an arm off.
+    aspect_min_homes : int, optional
+        Fewest homes for the shape arm (default 3).
+    """
+    homes = pd.to_numeric(homes, errors='coerce').fillna(0)
+    if homes_at_least is None and min_median_aspect is None:
+        return homes > more_than
+    park = pd.Series(False, index=homes.index)
+    if homes_at_least is not None:
+        park |= homes >= homes_at_least
+    if min_median_aspect is not None:
+        aspect = pd.to_numeric(median_aspect, errors='coerce')
+        park |= (homes >= aspect_min_homes) & aspect.ge(min_median_aspect).fillna(False)
+    return park
+
+
+# Rewrites both columns on every row from the final classes, so it
+# decides them in the building curate; the lot vote's flag that
+# link_curated_entity carries in is only written there. The lot side
+# keeps a proxy until a second parcel pass reads this flag
+# (plans/occupancy-and-dwellings-one-decider.md, O5).
+@_register(
+    'flag_manufactured_home_communities',
+    phase='infer',
+    reads=['occupancy_type', 'parcel_id', '{aspect_column}'],
+    writes=['{output}', '{count_column}'],
+    decides=['{output}', '{count_column}'],
+)
 def flag_manufactured_home_communities(
     state: CurateState,
     min_homes: int = 3,
     output: str = 'manufactured_home_community',
     count_column: str = 'n_manufactured_homes_per_parcel',
+    homes_at_least: int | None = None,
+    min_median_aspect: float | None = None,
+    aspect_min_homes: int = 3,
+    aspect_column: str = 'aspect_ratio',
 ) -> CurateState:
-    """Flag parcels with more than *min_homes* manufactured-home footprints.
+    """Flag parcels whose manufactured-home footprints make a park.
 
     Recomputed from the FINAL footprint occupancy (after imagery, vote, and height
     refinement), so it reflects the richest manufactured-home evidence — a
@@ -33,16 +91,32 @@ def flag_manufactured_home_communities(
     future second parcel pass can write this correction back to the parcel
     dataset.
 
+    The rule is :func:`is_manufactured_home_park`: with *homes_at_least*
+    or *min_median_aspect* set, a parcel is a park where it holds that
+    many homes, or at least *aspect_min_homes* homes whose median
+    *aspect_column* reaches *min_median_aspect*; otherwise where it holds
+    more than *min_homes*.
+
     Parameters
     ----------
     min_homes : int, optional
-        A parcel is a community when it carries strictly more than this many
-        manufactured-home footprints (default 3, i.e. 4+).
+        Without the two arms below, a parcel is a community when it carries
+        strictly more than this many manufactured-home footprints (default
+        3, i.e. 4+).
     output : str, optional
         Boolean community-flag column (default ``manufactured_home_community``).
     count_column : str, optional
         Per-parcel manufactured-home count column
         (default ``n_manufactured_homes_per_parcel``).
+    homes_at_least : int, optional
+        The count arm: a park from this many homes on.
+    min_median_aspect : float, optional
+        The shape arm: the median aspect of the parcel's homes.
+    aspect_min_homes : int, optional
+        Fewest homes for the shape arm (default 3).
+    aspect_column : str, optional
+        A home's aspect (default ``aspect_ratio``, from
+        ``derive_indicators``).
     """
     from openplaces.io.curator.occupancy import get_occupancy_config
 
@@ -72,18 +146,28 @@ def flag_manufactured_home_communities(
         .get('manufactured_home_geometry', {})
         .get('class', 'Manufactured Home')
     )
-    is_mh = curated['occupancy_type'].astype(object).eq(mh_label).astype(int)
-    counts = is_mh.groupby(curated[parcel_col]).transform('sum')
+    is_mh = curated['occupancy_type'].astype(object).eq(mh_label)
+    lot = curated[parcel_col]
+    counts = is_mh.astype(int).groupby(lot).transform('sum')
     curated[count_column] = counts.fillna(0).astype('int64')
-    curated[output] = (curated[count_column] > min_homes).to_numpy()
+    if aspect_column in curated.columns:
+        aspect = pd.to_numeric(curated[aspect_column], errors='coerce').where(is_mh)
+        median = aspect.groupby(lot).transform('median')
+    else:
+        median = pd.Series(np.nan, index=curated.index)
+    curated[output] = is_manufactured_home_park(
+        curated[count_column],
+        median,
+        more_than=min_homes,
+        homes_at_least=homes_at_least,
+        min_median_aspect=min_median_aspect,
+        aspect_min_homes=aspect_min_homes,
+    ).to_numpy()
     state.curated = curated
 
     if state.verbose:
         n_comm = int(curated.loc[curated[output], parcel_col].nunique())
-        print(
-            f'  flag_manufactured_home_communities: {n_comm:,} community parcels '
-            f'(> {min_homes} manufactured-home footprints).'
-        )
+        print(f'  flag_manufactured_home_communities: {n_comm:,} community parcels.')
     return state
 
 

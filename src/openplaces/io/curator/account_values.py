@@ -538,6 +538,46 @@ def on_other_lots_flag(contributions: pd.DataFrame, column: str) -> pd.Series:
     return every & states.groupby(lot).any()
 
 
+def _unstated_zeros_to_missing(
+    curated: pd.DataFrame,
+    lot_index: pd.Index,
+    lot_states: pd.DataFrame,
+    columns,
+) -> dict[str, int]:
+    """Empty a lot's 0 in *columns* where none of its accounts states one.
+
+    A lot no account states a column for keeps its own value, which is
+    the parcel layer's. A layer can hold 0 where its roll leaves the
+    field blank (a numeric field in a GIS format has no missing value),
+    so the 0 says nothing: it is an observation only where an account
+    states it. Only lots linked to at least one account are touched; a
+    lot without accounts keeps the layer's statement, 0 included, and
+    a positive layer value is kept everywhere.
+
+    Returns
+    -------
+    dict of {str: int}
+        Lots emptied per column.
+    """
+    emptied = {}
+    linked = pd.Series(lot_index.isin(lot_states.index), index=curated.index)
+    for column in columns or ():
+        if column not in curated.columns or column not in lot_states.columns:
+            continue
+        states = (
+            lot_states[column].reindex(lot_index).fillna(False).astype(bool).to_numpy()
+        )
+        value = pd.to_numeric(curated[column], errors='coerce')
+        mask = linked & pd.Series(~states, index=curated.index) & value.eq(0)
+        if mask.any():
+            curated[column] = value.where(~mask)
+            side = source_column(column)
+            if side in curated.columns:
+                curated[side] = curated[side].astype(object).where(~mask, pd.NA)
+        emptied[column] = int(mask.sum())
+    return emptied
+
+
 @_register(
     'divide_account_values',
     phase='gather',
@@ -571,6 +611,7 @@ def divide_account_values(
     area_column: str = 'area_ha',
     report: str | None = REPORT_FILENAME,
     on_other_lots: dict[str, str] | None = None,
+    unstated_zero_missing: list[str] = (),
 ) -> CurateState:
     """Decide each lot's account values by dividing every account over its lots.
 
@@ -604,7 +645,8 @@ def divide_account_values(
     sums of `aggregate_from_entities` (which fill only empty cells and
     stay for units without a link table). A stated zero stays zero and
     a column no account of the lot states keeps the lot's own value,
-    missing or the layer's. Stacked-unit rows follow the rule
+    missing or the layer's, except a 0 in *unstated_zero_missing*,
+    which becomes missing. Stacked-unit rows follow the rule
     `aggregate_from_entities` applies (`mask_units_rows`).
 
     `{column}_source` names the sources that stated the value: each
@@ -666,6 +708,12 @@ def divide_account_values(
         a total-only roll, where the lot's total (the roll's, by area)
         and its land (the layer's) are not one statement and so cannot
         confirm it. Default none.
+    unstated_zero_missing : list of str, optional
+        Columns in which a lot's own 0 becomes missing where accounts
+        are linked to the lot and none of them states the column: a 0
+        is an observation only where the roll states it (the parcel
+        curate names `n_dwellings`). A lot without accounts, and a
+        positive value, are kept. Default none.
     """
     curated = state.curated
     by_area = [c for c in by_area]
@@ -730,6 +778,9 @@ def divide_account_values(
     if frame.empty:
         return state
     stated = accounts.loc[frame[ACCOUNT], columns].reset_index(drop=True)
+    # Per lot, whether any account linked to it states each column,
+    # before the stacked-units rule sets a row aside.
+    lot_states = stated.notna().groupby(frame[LOT].to_numpy()).any()
     values = stated.copy()
     left_out = mask_units_rows(values, frame[LOT], frame['units'], columns)
     # Accounts the units rule took a value from: their lots need not
@@ -793,6 +844,11 @@ def divide_account_values(
         token = pd.Series(pd.NA, index=curated.index, dtype=object)
         token.iloc[rows] = tokens[column].reindex(lots).to_numpy()
         record_sources(curated, column, token, mask=mask, clear_missing=True)
+    unstated = _unstated_zeros_to_missing(
+        curated, lot_index, lot_states, unstated_zero_missing
+    )
+    if state.verbose and unstated:
+        print(f'  divide_account_values: unstated zeros made missing: {unstated}')
     for column, flag in (on_other_lots or {}).items():
         if not flag or column not in contributions.columns:
             continue

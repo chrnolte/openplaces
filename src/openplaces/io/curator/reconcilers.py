@@ -267,7 +267,16 @@ def suppress_where(
 REVIEWED_CORRECTION_SOURCE = 'reviewed_correction'
 
 
-@_register('apply_reviewed_corrections', phase='infer')
+# The columns it sets are named by the sidecar's rows, not by its
+# arguments, so it declares that it may write any column (a lineage
+# query lists it beside every column) and decides none: each cell it
+# sets overrides one entity's decided value.
+@_register(
+    'apply_reviewed_corrections',
+    phase='infer',
+    reads=['{id_column}'],
+    writes=['*'],
+)
 def apply_reviewed_corrections(
     state: CurateState,
     corrections_id: str,
@@ -418,7 +427,17 @@ def null_out_of_range(
     return state
 
 
-@_register('resolve_occupancy', phase='infer')
+# Corrects the base class only where a reviewed keyword rule disagrees,
+# so it writes occupancy_type and decides nothing. Its evidence and
+# review columns come from the recipe's occupancy block; the wildcard
+# covers the parcel proposal, the conflict summary and the review
+# flag it writes under occupancy_type_*.
+@_register(
+    'resolve_occupancy',
+    phase='infer',
+    reads=['occupancy_type', '{parcel_column}'],
+    writes=['occupancy_type', 'occupancy_type_*'],
+)
 def resolve_occupancy(
     state: CurateState,
     ruleset: str,
@@ -587,7 +606,24 @@ def resolve_occupancy(
     return state
 
 
-@_register('reconcile_land_use', phase='infer')
+def _land_use_reads(args) -> list[str]:
+    """The voting columns, the tiebreaker and the output it fills."""
+    voters = [
+        spec['column']
+        for spec in args.get('columns') or ()
+        if isinstance(spec, dict) and isinstance(spec.get('column'), str)
+    ]
+    return [*voters, args.get('tiebreaker', 'group_parcel'), args['output']]
+
+
+# Fills only rows the rule vote left without a class, so it writes the
+# output and decides nothing.
+@_register(
+    'reconcile_land_use',
+    phase='infer',
+    reads=[_land_use_reads],
+    writes=['{output}', '{output}_source', '{conflict_column}'],
+)
 def reconcile_land_use(
     state: CurateState,
     columns: list[dict],
@@ -723,7 +759,44 @@ def reconcile_land_use(
     return state
 
 
-@_register('resolve_by_vote', phase='infer')
+def _vote_reads(args) -> list[str]:
+    """Columns a vote reads: its target and every indicator's column."""
+    from openplaces.io.curator.indicators import indicator_columns
+
+    return [args['target'], *indicator_columns(args.get('decisions'))]
+
+
+def _vote_decides(args) -> list[str]:
+    """The columns a vote decides: none where it keeps unclaimed rows.
+
+    A vote with `preserve_base: false` rebuilds its target (and the
+    flag read off its winner) from its own decisions on every row, so
+    it is the column's decider. A vote that keeps the base value where
+    no decision is eligible corrects an earlier decision and only
+    writes, so the target keeps the decider that set its base
+    (`impute_occupancy_type` for the building class). Listed in
+    `writes` as well, which the declaration requires of `decides`.
+    """
+    if args.get('preserve_base', True):
+        return []
+    return [name for name in (args['target'], args.get('flag_column')) if name]
+
+
+@_register(
+    'resolve_by_vote',
+    phase='infer',
+    reads=[_vote_reads],
+    writes=[
+        '{target}',
+        '{target}_source',
+        '{base_output}',
+        '{flag_column}',
+        '{review_column}',
+        '{score_columns:values}',
+        _vote_decides,
+    ],
+    decides=[_vote_decides],
+)
 def resolve_by_vote(
     state: CurateState,
     target: str,

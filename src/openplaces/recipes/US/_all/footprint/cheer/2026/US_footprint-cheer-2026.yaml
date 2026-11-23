@@ -175,10 +175,12 @@ share:
     - land_use_class_parcel
     - year_built
     - n_stories
-    # Dwelling count on the verified footprint: overture markers linked
-    # to this footprint, NSI's unit count behind them, imputed where
-    # both are silent -- not the raw overture marker count, which ships
-    # in the evidence file.
+    # Dwelling count on the verified footprint, summed over its
+    # buildings, each decided in the building curate in this order: the
+    # roll's count apportioned to the building, Overture's address
+    # points linked to it, NSI's unit count, then a class lookup marked
+    # imputed where all three are silent. Not the raw Overture marker
+    # count, which ships in the evidence file.
     - n_dwellings
     # Populated for manufactured homes only, and missing wherever the two
     # shape tests disagree -- so a null here means "not asked" or "not

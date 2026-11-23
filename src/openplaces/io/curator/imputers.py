@@ -61,9 +61,25 @@ _DWELLING_CLASS_COLUMNS = (
 )
 
 
-@_register('impute_n_dwellings', phase='infer')
-def impute_n_dwellings(state: CurateState, column: str | None = None) -> CurateState:
-    """Fill missing ``n_dwellings`` from an occupancy-class lookup.
+def _dwelling_class_reads(args) -> list[str]:
+    """The count it fills and the class columns it may key on."""
+    column = args.get('column')
+    return [args['target'], *((column,) if column else _DWELLING_CLASS_COLUMNS)]
+
+
+# A fill behind the count's lanes, so it declares that it writes and
+# decides nothing. In the building curate it fills the preliminary
+# count, which decide_dwellings turns into n_dwellings after the class.
+@_register(
+    'impute_n_dwellings',
+    phase='infer',
+    reads=[_dwelling_class_reads],
+    writes=['{target}', '{target}_source'],
+)
+def impute_n_dwellings(
+    state: CurateState, column: str | None = None, target: str = 'n_dwellings'
+) -> CurateState:
+    """Fill a missing dwelling count from an occupancy-class lookup.
 
     Rows still missing a dwelling-unit count after value reconciliation are
     filled from an occupancy-class column, using the occupancy-to-units
@@ -80,14 +96,17 @@ def impute_n_dwellings(state: CurateState, column: str | None = None) -> CurateS
         ``purpose_subgroup``, ``use_subgroup`` present on the curated
         frame. A named column that is absent is skipped, like a missing
         default, rather than raising.
+    target : str, optional
+        The count to fill (default ``n_dwellings``; the building curate
+        fills ``n_dwellings_preliminary``).
     """
     from openplaces.io.harmonizer.attributes import _OCC_UNITS
 
     curated = state.curated
-    if 'n_dwellings' not in curated.columns:
-        curated['n_dwellings'] = np.nan
+    if target not in curated.columns:
+        curated[target] = np.nan
 
-    null_mask = curated['n_dwellings'].isna()
+    null_mask = curated[target].isna()
     if null_mask.any():
         candidates = (column,) if column else _DWELLING_CLASS_COLUMNS
         subgroup_col = next((c for c in candidates if c in curated.columns), None)
@@ -98,11 +117,11 @@ def impute_n_dwellings(state: CurateState, column: str | None = None) -> CurateS
             )
         if subgroup_col is not None:
             inferred = curated.loc[null_mask, subgroup_col].map(_OCC_UNITS)
-            curated.loc[null_mask, 'n_dwellings'] = inferred
+            curated.loc[null_mask, target] = inferred
             from openplaces.io.curator.provenance import record_source
 
-            filled = null_mask & curated['n_dwellings'].notna()
-            record_source(curated, 'n_dwellings', filled, 'imputed')
+            filled = null_mask & curated[target].notna()
+            record_source(curated, target, filled, 'imputed')
 
     state.curated = curated
     return state
@@ -117,7 +136,15 @@ _GROUP_STATISTICS = {
 }
 
 
-@_register('impute_from_group_statistic', phase='infer')
+# Writes every row's output from its cohort, replacing what was there,
+# so it decides the output (group_parcel in the parcel curate).
+@_register(
+    'impute_from_group_statistic',
+    phase='infer',
+    reads=['{group_column}', '{value_column}'],
+    writes=['{output}', '{output}_source'],
+    decides=['{output}'],
+)
 def impute_from_group_statistic(
     state: CurateState,
     group_column: str,

@@ -388,6 +388,10 @@ pipeline:
       # no_improvement_value signal reads its share against them.
       improvement_value_imputed: improvement_value_imputed_parcel_whole
       land_value_imputed: land_value_imputed_parcel_whole
+      # The lot's own dwelling count, undivided: decide_dwellings
+      # holds a stated 0 by it. The apportioned share cannot tell a
+      # stated 0 from no statement, as both pass 0 to the buildings.
+      n_dwellings: n_dwellings_parcel_whole
 
   # Store the pipe-separated list of all overlapping parcels (dominant first),
   # loaded from the persisted spatial overlay link sidecar.
@@ -537,8 +541,8 @@ pipeline:
 
   # The roll's share is evidence only where it amounts to a dwelling:
   # a lot whose roll states 0 (a commercial account, a town that leaves
-  # UNITS at 0) or nothing passes 0 to its footprints, and a secondary
-  # receives 0 by rule. A share of one half or less (a lot of one
+  # UNITS at 0) passes 0 to its footprints (one that states nothing
+  # passes nothing), and a secondary receives 0 by rule. A share of one half or less (a lot of one
   # stated dwelling and two or three dwelling buildings) rounds to no
   # dwelling (cast_integers rounds half to even) on a building that
   # holds one. Both are emptied, and the footprint falls through to
@@ -554,12 +558,16 @@ pipeline:
   # Reconcile remaining per-row values from competing sources:
   # - land_value is pre-written by apportionment and needs no reconciliation.
   # - structure_value is the apportioned roll value, not reconciled.
-  # - n_dwellings: the roll's count, apportioned above, ahead of
-  #   Overture's address points and NSI. One Overture point per building
-  #   counted 1 dwelling on a building its roll gives 5 or 30, so the
-  #   building's value per dwelling was its lot's whole improvement
-  #   (the diagnosis plans/findings/boston-large-parcels-as-homes.md,
-  #   section 6). Ordered first non-null, no weights between lanes.
+  # - n_dwellings_preliminary: the roll's count, apportioned above,
+  #   ahead of Overture's address points and NSI. One Overture point per
+  #   building counted 1 dwelling on a building its roll gives 5 or 30,
+  #   so the building's value per dwelling was its lot's whole
+  #   improvement (the diagnosis
+  #   plans/findings/boston-large-parcels-as-homes.md, section 6).
+  #   Ordered first non-null, no weights between lanes. Preliminary:
+  #   decide_dwellings sets n_dwellings from it once the class is
+  #   decided (plans/occupancy-and-dwellings-one-decider.md, O2 to O4).
+  #   No vote reads either column.
   # - postal_code is not reconciled here: the building spine's
   #   reconcile_postal_code already chose it (Overture's ZIP, then the
   #   ZCTA) and kept its five digits. Choosing again here copied
@@ -577,7 +585,8 @@ pipeline:
   # vote 2026-09-29; neither reads the other's output).
   - step: reconcile_values
     priority:
-      n_dwellings: [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
+      n_dwellings_preliminary:
+        [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
       depreciated_replacement_cost: [structure_value_building_nsi]
       replacement_cost: [structure_value_full_building_nsi]
     # A cost of 0 is NSI's empty value, not a building that costs
@@ -766,8 +775,10 @@ pipeline:
         fallback: 90
         min_samples: 3
 
-  # Impute: fill any dwelling-unit gaps left after reconciliation.
+  # Impute: fill any dwelling-unit gaps the lanes left in the
+  # preliminary count (decide_dwellings decides the count later).
   - step: impute_n_dwellings
+    target: n_dwellings_preliminary
 
   # Determine base occupancy class via weighted consensus voting and fallback rules.
   - step: impute_occupancy_type
@@ -1821,9 +1832,47 @@ pipeline:
             weight: 3
             label: parcel.keyword
 
-  # Recompute the manufactured home community flag using final footprint classifications.
+  # Recompute the manufactured home community flag using final footprint
+  # classifications. A lot is a park where it holds 8 or more
+  # manufactured homes, or 3 or more whose median aspect (long over
+  # short side) is 2.78 or more: parks hold long homes laid out alike,
+  # a family lot a few of any shape (maintainer, 2026-11-22, question
+  # 4 of plans/occupancy-and-dwellings-one-decider.md). Labels: 16 of
+  # 18 held-out lots right (10 of 11 on the maintainer's alone); parks
+  # of 4 to 7 homes caught 13 of 14, family or other lots of 4 to 7
+  # called a park 1 of 22. The shape arm needs 3 homes: no label covers
+  # a lot under 3 homes, and two homes on a lot are the plan's family
+  # lot. Until 2026-11-22 a lot was a park from 4 homes of any shape.
   - step: flag_manufactured_home_communities
-    min_homes: 3
+    homes_at_least: 8
+    min_median_aspect: 2.78
+    aspect_min_homes: 3
+
+  # The one step that decides n_dwellings, after the last writer of the
+  # class (the votes above and a state patch's correction right after
+  # the main vote). It starts from n_dwellings_preliminary and applies
+  # three rules (plans/occupancy-and-dwellings-one-decider.md, rulings
+  # of 2026-11-21 and 2026-11-22):
+  # - The roll's 0 holds on a lot of one of stated_zero_classes (rule
+  #   4 as amended). Empty here, so the rule is off: it is switched on
+  #   per unit in a patch recipe once measured there. A curated lot's
+  #   0 is not always the roll's statement: in US-MA-SOM most listed
+  #   lots read 0 while their accounts state units, and in US-FL-LA the
+  #   accounts of those lots state no count at all (plan, "Build
+  #   scope", rule 1 evidence). The classes meant are those of a
+  #   non-residential use: Commercial, Retail, Office, Industrial,
+  #   Institutional, Recreation; never Agricultural, since a farmhouse
+  #   is a home (the maintainer's rule for value pages), nor Vacant,
+  #   Mostly Vacant, RV Park or a lot without a class.
+  # - A Secondary building that is not its lot's largest has 0
+  #   dwellings (ruling 3; 17 of 17 labeled none). The largest keeps
+  #   its count: which building is the house when the largest is
+  #   Secondary is the plan's open question 5.
+  # - A Single-Family building whose roll share ships as 2 or more has
+  #   1 dwelling (ruling 1; 11 of 12 labeled single-family), the share
+  #   kept in n_dwellings_parcel.
+  - step: decide_dwellings
+    stated_zero_classes: []
 
   # Outlines drawn tall (value per sq ft of outline) that their measured
   # floors do not explain: a building the outline does not hold, or a
@@ -1886,7 +1935,7 @@ pipeline:
   # integers. n_dwellings can carry the unrounded 3.5/14.5-unit
   # midpoints impute_n_dwellings's occupancy-class fallback (_OCC_UNITS)
   # assigns to a size range with no exact count evidence; it flows into
-  # this canonical column via reconcile_values above, so it needs the
+  # this canonical column via decide_dwellings above, so it needs the
   # same integer cast year_built already got. n_sections joins them
   # because resolve_by_vote writes a Categorical whatever its class
   # values look like, so the section count arrives here as a category
