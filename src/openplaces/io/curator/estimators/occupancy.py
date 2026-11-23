@@ -49,7 +49,17 @@ def _vote_evidence_class(
     return vote_dynamic_values(values, weights, buckets=buckets)
 
 
-@_register('impute_occupancy_type', phase='infer')
+# The base class of every row comes from here, so this step decides
+# occupancy_type; the votes after it keep a row they do not claim and
+# declare that they write. Its evidence columns come from the recipe's
+# occupancy block, not from step arguments, so they are not declared
+# as reads (plans/occupancy-and-dwellings-one-decider.md, O1).
+@_register(
+    'impute_occupancy_type',
+    phase='infer',
+    writes=['occupancy_type', 'occupancy_type_source'],
+    decides=['occupancy_type'],
+)
 def impute_occupancy_type(state: CurateState) -> CurateState:
     """Impute ``occupancy_type`` from ordered evidence, then dwellings.
 

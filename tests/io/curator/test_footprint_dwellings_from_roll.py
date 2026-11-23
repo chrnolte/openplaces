@@ -2,7 +2,8 @@
 
 The roll's dwelling count is split over a lot's footprints by the
 weights its improvement value uses, and it is the first lane of
-`n_dwellings` in the footprint recipe's `reconcile_values`, ahead of
+`n_dwellings_preliminary` in the building recipe's `reconcile_values`
+(the count `decide_dwellings` starts from), ahead of
 Overture's address points and NSI. One Overture point on a building
 whose roll states several units counted one dwelling, so the building's
 value per dwelling was its lot's whole improvement. All rows fabricated.
@@ -76,6 +77,33 @@ def test_dwellings_follow_the_improvement_value_weights():
     assert per_home.iloc[0] == pytest.approx(250_000.0)
 
 
+def test_a_lot_without_a_count_passes_none_to_its_buildings():
+    # Missing is not zero: a lot whose count is missing gives its
+    # buildings a missing share, secondaries included; a stated 0 gives
+    # 0. A mixed pair of lots sums only what is stated.
+    pairs = _pairs(
+        [
+            ('F1', 'P1', 200.0),
+            ('F2', 'P1', 20.0),
+            ('F3', 'P2', 100.0),
+            ('F4', 'P2', 50.0),
+            ('F4', 'P3', 50.0),
+        ]
+    )
+    ref = pd.DataFrame(
+        {'improvement_value': [1.0, 1.0, 1.0], 'n_dwellings': [None, 0.0, 3.0]},
+        index=pd.Index(['P1', 'P2', 'P3']),
+    )
+    priority = pd.Series(
+        ['primary', 'secondary', 'primary', 'primary'],
+        index=['F1', 'F2', 'F3', 'F4'],
+    )
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
+    assert out.loc[['F1', 'F2'], 'n_dwellings'].isna().all()
+    assert out.loc['F3', 'n_dwellings'] == 0.0
+    assert out.loc['F4', 'n_dwellings'] > 0
+
+
 def _step(name, occurrence=1, **match):
     steps = [
         s
@@ -91,13 +119,15 @@ def test_the_recipe_apportions_the_roll_count():
 
 
 def test_the_roll_count_is_the_first_lane():
+    # The lanes write the preliminary count; decide_dwellings turns it
+    # into n_dwellings once the class is decided.
     step = next(
         s
         for s in get_recipe_by_id(RECIPE)['pipeline']
         if s.get('step') == 'reconcile_values'
-        and 'n_dwellings' in (s.get('priority') or {})
+        and 'n_dwellings_preliminary' in (s.get('priority') or {})
     )
-    assert step['priority']['n_dwellings'] == [
+    assert step['priority']['n_dwellings_preliminary'] == [
         'n_dwellings_parcel',
         'n_dwellings_overture',
         'n_dwellings_nsi',

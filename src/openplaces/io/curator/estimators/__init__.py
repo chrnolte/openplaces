@@ -5,6 +5,7 @@ sub-packages, so the steps here register like any top-level module's.
 """
 
 from openplaces.io.curator.estimators import (  # noqa: F401
+    dwellings,
     manufactured_homes,
     occupancy,
     stories,

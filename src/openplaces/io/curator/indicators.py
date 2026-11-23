@@ -26,6 +26,65 @@ import pandas as pd
 # steps keep importing it from here.
 from openplaces.core.rulesets import as_matchable_text  # noqa: F401
 
+#: Indicator keys that name a column, and those that name a list of
+#: columns (value_share_* totals). `value` names a column only in the
+#: value_share types; elsewhere (`equals`) it is the literal compared.
+_COLUMN_KEYS = ('column', 'other', 'label_column', 'class_column')
+_COLUMN_LIST_KEYS = ('total',)
+_SHARE_TYPES = ('value_share_below', 'value_share_at_least')
+#: Indicator keys that nest further indicators.
+_NESTED_KEYS = ('indicators', 'require')
+
+
+def indicator_columns(items) -> list[str]:
+    """The column names a list of indicators or decisions reads.
+
+    Walks nested indicators (`any_of`, `all_of`, `none_of`), a
+    decision's `indicators` and `require`, its `class_column`, and the
+    `where` of each `insufficient_alone` guard, so a step that votes
+    can declare what it reads (`openplaces.io.steps`).
+
+    Parameters
+    ----------
+    items : list of dict or dict or None
+        Indicators, or decisions holding them.
+
+    Returns
+    -------
+    list of str
+        Each column once, in the order first met.
+    """
+    found: dict[str, None] = {}
+
+    def walk(item) -> None:
+        if isinstance(item, list | tuple):
+            for sub in item:
+                walk(sub)
+            return
+        if not isinstance(item, dict):
+            return
+        keys = _COLUMN_KEYS
+        if item.get('type') in _SHARE_TYPES:
+            keys = keys + ('value',)
+        for key in keys:
+            if isinstance(item.get(key), str):
+                found.setdefault(item[key], None)
+        for key in _COLUMN_LIST_KEYS:
+            names = item.get(key)
+            if isinstance(names, list | tuple):
+                for name in names:
+                    if isinstance(name, str):
+                        found.setdefault(name, None)
+        for key in _NESTED_KEYS:
+            walk(item.get(key))
+        guards = item.get('insufficient_alone')
+        for guard in guards if isinstance(guards, list) else [guards]:
+            if isinstance(guard, dict):
+                walk(guard.get('where'))
+
+    walk(items)
+    return list(found)
+
 
 def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     """Return a boolean Series marking rows that satisfy one voting indicator.

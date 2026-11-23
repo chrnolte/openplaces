@@ -1,5 +1,7 @@
 """Declared step columns resolved across the recipe tree (flow.lineage)."""
 
+import pytest
+
 from openplaces.flow import lineage
 from openplaces.flow.lineage import StepUse
 
@@ -178,10 +180,7 @@ def test_the_value_curates_add_no_undeclared_step_unseen():
         (parcel, 'declare_columns'),
         (parcel, 'merge_enrichments'),
         (parcel, 'apportion_common_land'),
-        (parcel, 'impute_from_group_statistic'),
         (parcel, 'derive_indicators'),
-        (parcel, 'resolve_by_vote'),
-        (parcel, 'reconcile_land_use'),
         (parcel, 'cast_categoricals'),
         (parcel, 'order_columns'),
         (building, 'declare_columns'),
@@ -189,21 +188,113 @@ def test_the_value_curates_add_no_undeclared_step_unseen():
         (building, 'keep_curated_ids'),
         (building, 'merge_enrichments'),
         (building, 'derive_admin_attribute'),
-        (building, 'resolve_by_vote'),
         (building, 'fill_missing_numeric'),
         (building, 'derive_indicators'),
-        (building, 'impute_n_dwellings'),
-        (building, 'impute_occupancy_type'),
-        (building, 'resolve_occupancy'),
         (building, 'classify_manufactured_homes'),
         (building, 'derive_group_count'),
         (building, 'derive_group_rank'),
-        (building, 'flag_manufactured_home_communities'),
         (building, 'flag_unconfirmed_height'),
         (building, 'report_lot_value_sharing'),
         (building, 'cast_categoricals'),
         (building, 'order_columns'),
     }
+
+
+#: The columns of the occupancy and dwelling chain
+#: (plans/occupancy-and-dwellings-one-decider.md, O1).
+_OCCUPANCY_COLUMNS = (
+    'occupancy_type',
+    'n_dwellings',
+    'land_use_class',
+    'group_parcel',
+    'manufactured_home_community',
+)
+
+
+def _chain_writers(admin_id=None) -> dict:
+    """(recipe, column) -> [(step, decides)] in the two curates."""
+    curates = ('US_parcel-openplaces-2026', 'US_building-openplaces-2026')
+    steps = lineage.all_steps(admin_id) if admin_id else lineage.all_steps()
+    found = {}
+    for recipe_id in curates:
+        of_recipe = [use for use in steps if use.recipe_id == recipe_id]
+        for column in _OCCUPANCY_COLUMNS:
+            writers = lineage.writers(column, of_recipe)
+            if writers:
+                found[(recipe_id, column)] = [
+                    (use.step, column in use.decides) for use in writers
+                ]
+    return found
+
+
+def test_occupancy_chain_declares_its_writers_and_deciders():
+    # O1: every step that writes a column of the chain declares it, and
+    # a step decides a column only where it rebuilds every row of it.
+    # The building class has one decider (the base class) and four
+    # correcting writers; the dwelling count is decided before the
+    # class. A step that starts or stops deciding one of these columns
+    # changes this map on purpose.
+    parcel = 'US_parcel-openplaces-2026'
+    building = 'US_building-openplaces-2026'
+    assert _chain_writers() == {
+        (parcel, 'n_dwellings'): [
+            ('aggregate_from_entities', False),
+            ('divide_account_values', True),
+        ],
+        (parcel, 'land_use_class'): [
+            ('resolve_by_vote', True),
+            ('reconcile_land_use', False),
+        ],
+        (parcel, 'group_parcel'): [('impute_from_group_statistic', True)],
+        (parcel, 'manufactured_home_community'): [('resolve_by_vote', True)],
+        (building, 'occupancy_type'): [
+            ('impute_occupancy_type', True),
+            ('resolve_occupancy', False),
+            ('resolve_by_vote', False),
+            ('resolve_by_vote', False),
+            ('resolve_by_vote', False),
+        ],
+        (building, 'n_dwellings'): [
+            ('decide_dwellings', True),
+            ('cast_integers', False),
+        ],
+        (building, 'group_parcel'): [('link_curated_entity', False)],
+        (building, 'manufactured_home_community'): [
+            ('link_curated_entity', False),
+            ('flag_manufactured_home_communities', True),
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    'admin_id', [None, 'US-MA-SOM', 'US-MA-CAM', 'US-WI-DA', 'US-NC-PIT']
+)
+def test_one_step_decides_the_building_dwelling_count(admin_id):
+    # O2 to O4: the lanes write a preliminary count before the class,
+    # and decide_dwellings, after the last class writer, is the only
+    # decider of n_dwellings, with the state patches applied too.
+    building = 'US_building-openplaces-2026'
+    steps = lineage.all_steps(admin_id) if admin_id else lineage.all_steps()
+    uses = [use for use in steps if use.recipe_id == building]
+    deciders = [use for use in uses if 'n_dwellings' in use.decides]
+    assert [use.step for use in deciders] == ['decide_dwellings']
+    class_writers = [use.position for use in lineage.writers('occupancy_type', uses)]
+    corrections = [
+        use.position for use in uses if use.step == 'apply_reviewed_corrections'
+    ]
+    last_class_writer = max(p for p in class_writers if p not in corrections)
+    assert deciders[0].position > last_class_writer
+    preliminary = [use.step for use in uses if 'n_dwellings_preliminary' in use.decides]
+    assert preliminary == ['reconcile_values']
+
+
+def test_a_reviewed_correction_is_listed_as_writing_the_chain():
+    # Cambridge's sidecar names the columns it sets, so the step
+    # declares that it may write any column and decides none.
+    writers = _chain_writers('US-MA-CAM')
+    building = 'US_building-openplaces-2026'
+    for column in ('occupancy_type', 'n_dwellings'):
+        assert ('apply_reviewed_corrections', False) in writers[(building, column)]
 
 
 def test_writers_readers_and_repeated_deciders():

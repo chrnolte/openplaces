@@ -166,6 +166,16 @@ pipeline:
     # layer's) cannot confirm it.
     on_other_lots:
       improvement_value: improvement_value_on_other_lots
+    # A lot's dwelling count of 0 is an observation only where an
+    # account on it states 0. Where its accounts leave the count blank,
+    # a 0 the lot holds is the parcel layer's empty field (a GIS
+    # numeric field has no missing value) and becomes missing.
+    # The state roll of US-FL-LA leaves the count blank on 5,952 of
+    # 6,630 accounts on lots of a non-residential class, whose lots read
+    # 0 from the statewide layer
+    # (plans/occupancy-and-dwellings-one-decider.md, rule 1 evidence).
+    # Measured 2026-11-22 on US-FL-LA: step re-run on the stored curate, 70,441 lot zeros became missing, 802 stated zeros stay.
+    unstated_zero_missing: [n_dwellings]
     # Same lanes as decide_stories in US_building-openplaces-2026.
     stories:
       floor_height_m: 3.5
@@ -452,6 +462,13 @@ pipeline:
     review_column: land_use_review
     review_margin: 1.0
     decisions:
+      # A second decider of the park, to be removed: the building curate's
+      # flag_manufactured_home_communities applies the park rule decided
+      # 2026-11-22 (median aspect of 3 or more homes, or 8 homes). This
+      # lot-side decision is a proxy that runs before the buildings have
+      # classes. A second parcel pass after the building curate will make
+      # the lot's park class read the building-side flag
+      # (plans/occupancy-and-dwellings-one-decider.md, O5).
       # Park scale is now a hard precondition rather than one more vote.
       # Previously a parcel with manufactured-home keyword + group evidence
       # but no park-scale footprint count tied this decision against the

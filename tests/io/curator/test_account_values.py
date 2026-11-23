@@ -381,6 +381,70 @@ def test_a_stated_zero_stays_zero_and_missing_stays_missing(run):
     assert out['other_value'].isna().all()
 
 
+def _dwelling_lots():
+    """Three lots whose layer reads 0 dwellings, and one without accounts."""
+    return _lots(
+        {
+            'm1': (0.1, {'n_dwellings': 0.0, 'n_dwellings_source': 'layer'}),
+            'm2': (0.1, {'n_dwellings': 0.0, 'n_dwellings_source': 'layer'}),
+            'm3': (0.1, {'n_dwellings': 0.0, 'n_dwellings_source': 'layer'}),
+            'm4': (0.1, {'n_dwellings': 0.0, 'n_dwellings_source': 'layer'}),
+            'm5': (0.1, {'n_dwellings': 3.0, 'n_dwellings_source': 'layer'}),
+        }
+    )
+
+
+def test_missing_is_not_zero_for_a_listed_count(run):
+    # m1: every account leaves the count blank; m2: an account states 0;
+    # m3: one blank and one stating 2; m4: no account at all; m5: blank
+    # accounts over a positive layer count.
+    accounts = _accounts(
+        {
+            'A': {'land_value': 100.0},
+            'B': {'land_value': 100.0, 'n_dwellings': 0.0},
+            'C': {'land_value': 100.0},
+            'D': {'land_value': 100.0, 'n_dwellings': 2.0},
+            'E': {'land_value': 100.0},
+        }
+    )
+    links = _links(
+        [
+            ('A', 'm1', 1.0, 'parcel_id_local', 'roll'),
+            ('B', 'm2', 1.0, 'parcel_id_local', 'roll'),
+            ('C', 'm3', 0.5, 'parcel_id_local', 'roll'),
+            ('D', 'm3', 0.5, 'parcel_id_local', 'roll'),
+            ('E', 'm5', 1.0, 'parcel_id_local', 'roll'),
+        ]
+    )
+    out = run(accounts, links, _dwelling_lots(), unstated_zero_missing=['n_dwellings'])
+    assert np.isnan(out.loc['m1', 'n_dwellings'])
+    assert pd.isna(out.loc['m1', 'n_dwellings_source'])
+    assert out.loc['m2', 'n_dwellings'] == 0
+    assert out.loc['m3', 'n_dwellings'] == 2
+    # No account on the lot: the layer's statement stands, 0 included.
+    assert out.loc['m4', 'n_dwellings'] == 0
+    # A positive count is never a format default.
+    assert out.loc['m5', 'n_dwellings'] == 3
+
+
+def test_without_the_listed_count_a_layer_zero_stays(run):
+    accounts = _accounts({'A': {'land_value': 100.0}})
+    links = _links([('A', 'm1', 1.0, 'parcel_id_local', 'roll')])
+    out = run(accounts, links, _dwelling_lots())
+    assert out.loc['m1', 'n_dwellings'] == 0
+
+
+def test_the_parcel_curate_lists_the_dwelling_count():
+    from openplaces.recipe import get_recipe_by_id
+
+    step = next(
+        e
+        for e in get_recipe_by_id('US_parcel-openplaces-2026')['pipeline']
+        if e.get('step') == 'divide_account_values'
+    )
+    assert step['unstated_zero_missing'] == ['n_dwellings']
+
+
 def test_a_lot_whose_improvement_went_to_the_other_lot_is_marked(run):
     # V3 deviation 5: the account's improvement stands on a1, so a2's
     # 0 is where the roll put it, and the step says so.

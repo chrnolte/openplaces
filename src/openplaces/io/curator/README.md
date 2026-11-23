@@ -36,6 +36,57 @@ rows. A separate assemble stage for the gather phase was measured and
 rejected on 2026-09-29: gathering is 7% to 35% of a county's curate time
 (Galveston footprints 21 of 99 s, Lake transactions 8 of 111 s).
 
+**A step decides a column only where it rebuilds every row of it.**
+A registered step may declare the columns it reads, writes and decides
+(`io/steps`, read by `python -m openplaces.flow.lineage`), and no recipe
+may declare two deciders of one column (`tests/flow/test_lineage.py`).
+`reconcile_values`, `apportion_curated_values`, `divide_account_values`,
+`impute_from_group_statistic`, `impute_occupancy_type`,
+`flag_manufactured_home_communities`, `decide_dwellings` and a
+`resolve_by_vote` with `preserve_base: false` (its target and
+`flag_column`) decide. A step that keeps rows it does not claim only
+writes: a vote that keeps the base class, a fill (`impute_n_dwellings`,
+`reconcile_land_use`), a translation table (`translate_descriptions`),
+a gate (`suppress_where`) and a reviewed correction
+(`apply_reviewed_corrections`, which declares `*` because its sidecar
+names the columns). So the building class is decided once, by
+`impute_occupancy_type`, and the votes after it (`resolve_occupancy`,
+the main vote, the second pass, the height bands) are writers of it.
+Where a state patch puts a translation table in place of the cohort
+statistic (`group_parcel` in MA and WI), that column has no declared
+decider in the patched recipe.
+
+**A lot is a manufactured-home park by one rule, on the building
+side.** `flag_manufactured_home_communities`, after the class votes,
+calls `is_manufactured_home_park` (`estimators/manufactured_homes.py`):
+the national building recipe makes a lot a park where it holds 8 or
+more manufactured homes, or 3 or more whose median `aspect_ratio` is
+2.78 or more (maintainer, 2026-11-22). The parcel vote's Manufactured
+Home Park class still decides the lot side from the geospine's
+elongated-outline count, a proxy run before the buildings have
+classes; a second parcel pass after the building curate is to replace
+it.
+
+**A building's dwelling count is decided after its class.** The
+building curate's lanes (`reconcile_values`: the roll's apportioned
+share, Overture's address points, NSI; then `impute_n_dwellings`'s
+class lookup) write `n_dwellings_preliminary`, which no vote reads, so
+the votes see what they saw when the lanes wrote `n_dwellings`.
+`decide_dwellings` (`estimators/dwellings.py`), after the last writer
+of the class, is the one step that sets `n_dwellings`: the roll's 0
+holds on a lot whose own count (`n_dwellings_parcel_whole`) is 0 and
+whose class is listed in the recipe's `stated_zero_classes`, credited
+to `parcel` (empty in the national recipe, so off; a unit's patch
+recipe lists the classes once the rule is measured there, because a
+curated lot's 0 is not always the roll's statement); a Secondary
+building that is not its lot's largest has 0; a Single-Family building
+whose roll share ships as 2 or more has 1, the share kept in
+`n_dwellings_parcel`. The two class rules mark their cells imputed.
+The largest building of a lot keeps its count whatever its class:
+which building is the house there is open
+(`plans/occupancy-and-dwellings-one-decider.md`, question 5).
+Measured 2026-11-22 on US-MA-SOM: simulated on the stored curate of 2026-10-31 with the stated-zero rule off, 2,292 secondary buildings changed to 0 (225 dwellings), 1 house set to 1, 39,113 dwellings to 38,887.
+
 Steps are organized by the nature of the transformation:
 
 - `evidence.py` — incorporate enrichment evidence (`merge_enrichments`).
@@ -153,6 +204,12 @@ Steps are organized by the nature of the transformation:
   unit without a link table. Story counts are `decide_stories`'
   evidence without its roll fill, which reads this curate. Writes a
   conservation report per unit (`account-values-conservation.csv`).
+  **A 0 is an observation only where an account states it**: a lot
+  whose accounts all leave a column of `unstated_zero_missing` blank
+  (the parcel curate names `n_dwellings`) loses the 0 it holds from
+  the parcel layer, whose numeric field has no missing value; a lot
+  without accounts, and a positive layer value, keep theirs.
+  Measured 2026-11-22 on US-FL-LA: step re-run on the stored curate, 70,441 lot zeros became missing, 802 stated zeros stay.
 - `common_land.py` — `apportion_common_land` (gather), the plat's
   common land as an area: it reads the parcel spine's `plat key` link
   table and writes `common_land_share_ha` on each lot (the common area
