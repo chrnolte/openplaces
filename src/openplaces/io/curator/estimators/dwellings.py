@@ -13,6 +13,8 @@ from openplaces.io.curator import CurateState, _register
 #: source. Each is written with the imputed marker.
 SECONDARY_TOKEN = 'secondary'
 SINGLE_FAMILY_TOKEN = 'single_family'
+#: The largest building of a guarded lot, kept Secondary with 0.
+GUARD_TOKEN = 'secondary_nonresidential_lot'
 
 
 def _has_token(tokens: pd.Series, token: str) -> pd.Series:
@@ -66,6 +68,7 @@ def decide_dwellings(
     secondary_class: str | None = 'Secondary',
     single_family_class: str | None = 'Single-Family',
     roll_token: str = 'parcel',
+    guard_classes: list[str] | tuple[str, ...] = (),
 ) -> CurateState:
     """Decide each building's dwelling count, after its class.
 
@@ -83,7 +86,11 @@ def decide_dwellings(
     2. A Secondary building that is not the largest on its lot (by
        *area_column* within *lot_column*) has 0 dwellings, marked
        imputed. The largest building of a lot keeps its preliminary
-       count whatever its class.
+       count whatever its class, except on a lot whose class is one of
+       *guard_classes*: there the largest building stays Secondary
+       too and has 0 dwellings, marked imputed (rule 3 of the plan,
+       "the largest building is never Secondary", does not apply on
+       such a lot). A lot without a class is not guarded.
     3. A Single-Family building whose preliminary count is the roll's
        share and rounds to 2 or more has 1 dwelling, marked imputed.
        The roll's share stays in its own column as evidence.
@@ -114,6 +121,9 @@ def decide_dwellings(
         The class names rules 2 and 3 read; None switches a rule off.
     roll_token : str, optional
         The token of the roll's lane (default `parcel`).
+    guard_classes : list of str, optional
+        Lot classes on which the largest Secondary building has 0
+        dwellings as well (default none; the recipe names them).
     """
     from openplaces.io.curator.provenance import (
         mark_imputed,
@@ -157,12 +167,25 @@ def decide_dwellings(
 
     # Rule 2. Only the lot's other buildings: which building of a lot is
     # the house when its largest is Secondary is open (question 5 of
-    # the plan), so the largest keeps today's count.
+    # the plan), so the largest keeps today's count, except on a lot of
+    # one of guard_classes, where no building is the house.
     secondary = pd.Series(False, index=index)
+    guarded = pd.Series(False, index=index)
     if secondary_class is not None:
-        secondary = classes.eq(secondary_class).fillna(False).astype(bool)
-        secondary &= _below_lot_largest(curated, lot_column, area_column)
-        secondary &= ~stated_zero
+        is_secondary = classes.eq(secondary_class).fillna(False).astype(bool)
+        secondary = (
+            is_secondary
+            & _below_lot_largest(curated, lot_column, area_column)
+            & ~stated_zero
+        )
+        if guard_classes and lot_class_column in curated.columns:
+            lot_class = curated[lot_class_column].astype(object)
+            guarded = (
+                is_secondary
+                & lot_class.isin(set(guard_classes)).fillna(False).astype(bool)
+                & ~secondary
+                & ~stated_zero
+            )
 
     # Rule 3. A share that ships as 2 or more: cast_integers rounds
     # half to even, as numpy's round does, so the test is the shipped
@@ -175,16 +198,18 @@ def decide_dwellings(
             & pd.Series(np.round(counts.to_numpy()) >= 2, index=index)
             & ~stated_zero
             & ~secondary
+            & ~guarded
         )
 
     decided = counts.copy()
-    decided[stated_zero | secondary] = 0.0
+    decided[stated_zero | secondary | guarded] = 0.0
     decided[single] = 1.0
     curated[output] = decided
     side = source_column(output)
     curated[side] = tokens.copy()
     record_source(curated, output, stated_zero, roll_token)
     record_source(curated, output, secondary, mark_imputed(SECONDARY_TOKEN))
+    record_source(curated, output, guarded, mark_imputed(GUARD_TOKEN))
     record_source(curated, output, single, mark_imputed(SINGLE_FAMILY_TOKEN))
     state.curated = curated
 
@@ -192,6 +217,8 @@ def decide_dwellings(
         print(
             f'  decide_dwellings: {int(stated_zero.sum()):,} stated zeros held, '
             f'{int(secondary.sum()):,} secondary buildings set to 0, '
-            f'{int(single.sum()):,} single-family buildings set to 1.'
+            f'{int(guarded.sum()):,} largest secondary buildings on guarded '
+            f'lots set to 0, {int(single.sum()):,} single-family buildings set '
+            'to 1.'
         )
     return state

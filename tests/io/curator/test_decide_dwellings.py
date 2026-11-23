@@ -130,6 +130,72 @@ def test_a_secondary_building_other_than_the_largest_has_no_dwellings():
     assert out.loc['house', 'n_dwellings'] == 1
 
 
+GUARD = [
+    'Vacant',
+    'Mostly Vacant',
+    'Retail',
+    'Commercial',
+    'Office',
+    'Industrial',
+    'Institutional',
+    'Recreation',
+]
+
+
+@pytest.mark.parametrize(
+    ('lot_class', 'guarded'),
+    [
+        ('Retail', True),
+        ('Vacant', True),
+        ('Single-Family', False),
+        ('Agricultural', False),
+        (None, False),
+    ],
+    ids=['retail', 'vacant', 'residential', 'agricultural', 'no class'],
+)
+def test_the_largest_secondary_building_on_a_guarded_lot(lot_class, guarded):
+    out = _decide(
+        _buildings(
+            {
+                'big': ('lot1', 400.0, 'Secondary', lot_class, np.nan, 2.0, 'nsi'),
+                'small': ('lot1', 30.0, 'Secondary', lot_class, np.nan, 1.0, 'nsi'),
+            }
+        ),
+        guard_classes=GUARD,
+    )
+    # It stays Secondary in every case: the step decides the count only.
+    assert out.loc['big', 'occupancy_type'] == 'Secondary'
+    assert out.loc['small', 'n_dwellings'] == 0
+    if guarded:
+        assert out.loc['big', 'n_dwellings'] == 0
+        assert out.loc['big', 'n_dwellings_source'] == (
+            'secondary_nonresidential_lot+imputed'
+        )
+        assert _imputed(out.loc['big', 'n_dwellings_source'])
+    else:
+        assert out.loc['big', 'n_dwellings'] == 2
+        assert out.loc['big', 'n_dwellings_source'] == 'nsi'
+
+
+def test_a_guarded_lot_leaves_its_other_classes_alone():
+    out = _decide(
+        _buildings(
+            {
+                'shop': ('lot1', 400.0, 'Retail', 'Retail', np.nan, 3.0, 'overture'),
+                'flat': ('lot1', 90.0, 'Single-Family', 'Retail', np.nan, 1.0, 'nsi'),
+            }
+        ),
+        guard_classes=GUARD,
+    )
+    assert out.loc['shop', 'n_dwellings'] == 3
+    assert out.loc['flat', 'n_dwellings'] == 1
+
+
+def test_the_national_recipe_names_the_guard():
+    step = next(e for e in _pipeline() if e.get('step') == 'decide_dwellings')
+    assert step['guard_classes'] == GUARD
+
+
 def test_a_single_family_house_with_a_roll_share_of_two_counts_one():
     out = _decide(
         _buildings(
