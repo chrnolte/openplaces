@@ -60,8 +60,65 @@ def _homes():
             ],
             'structure_value_source': ['parcel'] * 5 + [None, 'parcel'],
             'n_manufactured_homes_per_parcel': [1, 1, 1, 1, 40, 1, 0],
+            'manufactured_home_community': [False] * 4 + [True, False, False],
         }
     )
+
+
+def test_the_park_is_the_curate_flag_not_a_count_of_homes():
+    # Fabricated: a home of $400/m2 is listed alone on its lot, and
+    # unlisted where the curate calls the lot a park, however few
+    # homes it holds; 40 homes on a lot the curate calls a family lot
+    # are no park (unclear: not alone, so not listed either).
+    frame = _homes().iloc[[0, 0, 4]].reset_index(drop=True)
+    frame['n_manufactured_homes_per_parcel'] = [1, 3, 40]
+    frame['manufactured_home_community'] = [False, True, False]
+    listing = bi.manufactured_home_listing(frame)
+    assert listing.tolist() == ['listed', 'unlisted', 'unclear']
+
+
+def test_a_home_without_a_park_flag_fails_loudly():
+    frame = _homes().drop(columns='manufactured_home_community')
+    with pytest.raises(bi.MissingParkFlagError, match='manufactured_home_community'):
+        bi.manufactured_home_listing(frame)
+    # A unit whose curated file lacked the flag: its homes came in
+    # empty, and the error names the unit.
+    frame = _homes()
+    frame['admin3_id'] = ['US-XX-AAA'] * 4 + ['US-XX-BBB'] * 3
+    frame['manufactured_home_community'] = [False] * 4 + [None] * 3
+    with pytest.raises(bi.MissingParkFlagError, match='US-XX-BBB: 2'):
+        bi.value_labels(frame)
+    # Without manufactured homes the flag is not needed.
+    houses = _homes().iloc[[6]].drop(columns='manufactured_home_community')
+    assert bi.manufactured_home_listing(houses).isna().all()
+
+
+def test_the_park_factor_scales_the_homes_the_curate_calls_park_homes():
+    # Fabricated county: 25 park homes on the roll at $20,000 against a
+    # model value of $40,000 (factor 0.5); a filled home on a flagged
+    # lot of 2 homes is scaled, one among 40 homes on an unflagged lot
+    # is not.
+    n = 25
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['US-XX-AAA'] * (n + 2),
+            'occupancy_type': ['Manufactured Home'] * (n + 2),
+            'structure_value': [20000.0] * n + [np.nan, np.nan],
+            'structure_value_source': ['parcel'] * n + [None, None],
+            'area_m2': [100.0] * (n + 2),
+            'n_manufactured_homes_per_parcel': [40] * n + [2, 40],
+            'manufactured_home_community': [True] * n + [True, False],
+        }
+    )
+    imputer = object.__new__(bi.Imputer)
+    imputer.frame = frame
+    imputer.value_scale = pd.Series(1.0, index=frame.index)
+    current = pd.Series(40000.0, index=frame.index)
+    missing = pd.Series(True, index=frame.index)
+    out = imputer._apply_park_factor(current, missing, lambda message: None)
+    assert imputer.park_factor == pytest.approx(0.5)
+    assert out.iloc[n] == pytest.approx(20000.0)
+    assert out.iloc[n + 1] == pytest.approx(40000.0)
 
 
 def test_manufactured_home_listing_follows_the_roll():

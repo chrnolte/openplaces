@@ -1848,8 +1848,14 @@ def export_delivery(
     # The models' evidence inputs ride along in pass one only, so they
     # are withheld like every other value before any model sees them;
     # they still reach the evidence file through pass two as before.
+    # The park flag is no model input: it says which homes the roll
+    # lists as a park's and is never filled (missing, it raises).
     model_inputs = (
-        [*building_imputation.EVIDENCE_COLUMNS, building_imputation.LOT_COLUMN]
+        [
+            *building_imputation.EVIDENCE_COLUMNS,
+            building_imputation.LOT_COLUMN,
+            building_imputation.PARK_COLUMN,
+        ]
         if impute
         else []
     )

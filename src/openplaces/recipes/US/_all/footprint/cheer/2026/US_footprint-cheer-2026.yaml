@@ -364,7 +364,8 @@ share:
     #   (-8.8%, unstable leaves), 2026-10-21; the expected value per
     #   building (Wake's imputed single-family median was $4,840).
     # - A manufactured home the roll does not list (personal property,
-    #   or a park of five or more homes) is valued by a model of listed
+    #   or a home on a lot the building curate flags as a park,
+    #   manufactured_home_community) is valued by a model of listed
     #   homes, park homes scaled by the park factor.
     # - Counties without value labels get their price level from the
     #   ACS median home value where `price_anchor` (per region) says
@@ -599,6 +600,7 @@ pipeline:
       - dwelling_multiplicity_source
       - p_manufactured_home
       - aspect_ratio
+      - long_axis_bearing
       - width_m
       - shared_wall_m
       - occupancy_type_nsi_class

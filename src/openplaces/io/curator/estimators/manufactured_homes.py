@@ -12,46 +12,111 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
+def aligned_homes(
+    lot: pd.Series,
+    aspect: pd.Series,
+    bearing: pd.Series,
+    *,
+    min_aspect: float,
+    window_degrees: float,
+) -> pd.Series:
+    """Largest group of a lot's long homes that share one orientation.
+
+    Per row, for the row's lot: the most homes with an aspect of at
+    least *min_aspect* whose long-axis bearings fit inside one window
+    of *window_degrees*, on the circle of period 180 (a long axis has
+    no direction, so 179 and 1 degree are 2 degrees apart). Every
+    pairwise difference in the group is at most the window. Rows
+    without a lot, an aspect or a bearing take no part.
+
+    Parameters
+    ----------
+    lot : pandas.Series
+        The lot of each home; pass only the rows that are homes.
+    aspect : pandas.Series
+        Long over short side of each home's bounding rectangle.
+    bearing : pandas.Series
+        Each home's long-axis bearing, degrees modulo 180.
+    min_aspect : float
+        Aspect from which a home counts as long.
+    window_degrees : float
+        Width of the window, at least 0 and under 180.
+
+    Returns
+    -------
+    pandas.Series
+        The group's size for each row's lot (0 where the lot has no
+        long home), indexed like *lot*.
+    """
+    if not 0 <= window_degrees < 180:
+        raise ValueError(f'window_degrees must be in [0, 180); got {window_degrees}.')
+    aspect = pd.to_numeric(aspect, errors='coerce')
+    bearing = pd.to_numeric(bearing, errors='coerce')
+    long_ = (aspect >= min_aspect) & bearing.notna() & lot.notna()
+    out = pd.Series(0, index=lot.index, dtype='int64')
+    if not long_.any():
+        return out
+    codes, lots = pd.factorize(lot[long_])
+    b = np.mod(bearing[long_].to_numpy(dtype=float), 180.0)
+    # Every lot gets its own stretch of one number line, 512 wide, with
+    # each bearing written twice, at b and at b + 180 (below 360), so a
+    # window wrapping past 180 reads on as a plain interval. For each
+    # home, the bearings in [b, b + window] of its own lot are counted
+    # with two binary searches over the sorted line: O(m log m) for m
+    # long homes, no loop over lots, and never a pair table. A window
+    # under 180 cannot reach a home's own second copy.
+    key = codes * 512.0 + b
+    line = np.sort(np.concatenate([key, key + 180.0]))
+    # Rounding slack, far below a degree and above the float spacing
+    # of a key near 512 times the number of lots.
+    slack = 1e-6
+    upper = np.searchsorted(line, key + window_degrees + slack, side='right')
+    lower = np.searchsorted(line, key - slack, side='left')
+    per_lot = (
+        pd.Series(upper - lower).groupby(codes).max().set_axis(lots[np.unique(codes)])
+    )
+    return lot.astype(object).map(per_lot).fillna(0).astype('int64')
+
+
 def is_manufactured_home_park(
     homes: pd.Series,
-    median_aspect: pd.Series,
+    aligned: pd.Series,
     *,
     more_than: int = 3,
     homes_at_least: int | None = None,
-    min_median_aspect: float | None = None,
-    aspect_min_homes: int = 3,
+    aligned_homes_at_least: int | None = None,
 ) -> pd.Series:
     """Whether a lot of manufactured homes is a park, per lot.
 
-    The one place the park rule lives. Without *min_median_aspect* or
-    *homes_at_least*, a lot is a park where it holds more than
+    The one place the park rule lives. Without *homes_at_least* or
+    *aligned_homes_at_least*, a lot is a park where it holds more than
     *more_than* homes. With them: a park where it holds at least
-    *homes_at_least* homes, or at least *aspect_min_homes* homes whose
-    median aspect (long over short side of each home's bounding
-    rectangle) is at least *min_median_aspect*.
+    *homes_at_least* homes, or at least *aligned_homes_at_least* long
+    homes sharing one orientation (*aligned*, from
+    :func:`aligned_homes`).
 
     Parameters
     ----------
     homes : pandas.Series
         Manufactured homes per lot.
-    median_aspect : pandas.Series
-        Median aspect of those homes per lot, aligned to *homes*.
+    aligned : pandas.Series
+        Largest group of the lot's long homes inside one bearing
+        window, aligned to *homes*.
     more_than : int, optional
-        The count rule used when *homes_at_least* is None (default 3).
-    homes_at_least, min_median_aspect : optional
-        The count arm and the shape arm; None leaves an arm off.
-    aspect_min_homes : int, optional
-        Fewest homes for the shape arm (default 3).
+        The count rule used when both arms are None (default 3).
+    homes_at_least, aligned_homes_at_least : int, optional
+        The count arm and the aligned-homes arm; None leaves an arm
+        off.
     """
     homes = pd.to_numeric(homes, errors='coerce').fillna(0)
-    if homes_at_least is None and min_median_aspect is None:
+    if homes_at_least is None and aligned_homes_at_least is None:
         return homes > more_than
     park = pd.Series(False, index=homes.index)
     if homes_at_least is not None:
         park |= homes >= homes_at_least
-    if min_median_aspect is not None:
-        aspect = pd.to_numeric(median_aspect, errors='coerce')
-        park |= (homes >= aspect_min_homes) & aspect.ge(min_median_aspect).fillna(False)
+    if aligned_homes_at_least is not None:
+        group = pd.to_numeric(aligned, errors='coerce').fillna(0)
+        park |= group >= aligned_homes_at_least
     return park
 
 
@@ -63,7 +128,7 @@ def is_manufactured_home_park(
 @_register(
     'flag_manufactured_home_communities',
     phase='infer',
-    reads=['occupancy_type', 'parcel_id', '{aspect_column}'],
+    reads=['occupancy_type', 'parcel_id', '{aspect_column}', '{bearing_column}'],
     writes=['{output}', '{count_column}'],
     decides=['{output}', '{count_column}'],
 )
@@ -73,9 +138,11 @@ def flag_manufactured_home_communities(
     output: str = 'manufactured_home_community',
     count_column: str = 'n_manufactured_homes_per_parcel',
     homes_at_least: int | None = None,
-    min_median_aspect: float | None = None,
-    aspect_min_homes: int = 3,
+    aligned_homes_at_least: int | None = None,
+    min_aspect: float = 2.5,
+    bearing_window_degrees: float = 15.0,
     aspect_column: str = 'aspect_ratio',
+    bearing_column: str = 'long_axis_bearing',
 ) -> CurateState:
     """Flag parcels whose manufactured-home footprints make a park.
 
@@ -92,10 +159,12 @@ def flag_manufactured_home_communities(
     dataset.
 
     The rule is :func:`is_manufactured_home_park`: with *homes_at_least*
-    or *min_median_aspect* set, a parcel is a park where it holds that
-    many homes, or at least *aspect_min_homes* homes whose median
-    *aspect_column* reaches *min_median_aspect*; otherwise where it holds
-    more than *min_homes*.
+    or *aligned_homes_at_least* set, a parcel is a park where it holds
+    that many homes, or where at least *aligned_homes_at_least* of its
+    homes with an aspect of *min_aspect* or more have long-axis bearings
+    inside one window of *bearing_window_degrees*, modulo 180
+    (:func:`aligned_homes`); otherwise where it holds more than
+    *min_homes*.
 
     Parameters
     ----------
@@ -104,19 +173,30 @@ def flag_manufactured_home_communities(
         strictly more than this many manufactured-home footprints (default
         3, i.e. 4+).
     output : str, optional
-        Boolean community-flag column (default ``manufactured_home_community``).
+        Boolean community-flag column (default manufactured_home_community).
     count_column : str, optional
         Per-parcel manufactured-home count column
-        (default ``n_manufactured_homes_per_parcel``).
+        (default n_manufactured_homes_per_parcel).
     homes_at_least : int, optional
         The count arm: a park from this many homes on.
-    min_median_aspect : float, optional
-        The shape arm: the median aspect of the parcel's homes.
-    aspect_min_homes : int, optional
-        Fewest homes for the shape arm (default 3).
-    aspect_column : str, optional
-        A home's aspect (default ``aspect_ratio``, from
-        ``derive_indicators``).
+    aligned_homes_at_least : int, optional
+        The aligned-homes arm: a park from this many long homes sharing
+        one orientation.
+    min_aspect : float, optional
+        Aspect from which a home counts as long (default 2.5).
+    bearing_window_degrees : float, optional
+        Width of the bearing window, degrees (default 15).
+    aspect_column, bearing_column : str, optional
+        A home's aspect and long-axis bearing (default aspect_ratio and
+        long_axis_bearing, from derive_indicators' shape_metric, one
+        rectangle for both).
+
+    Raises
+    ------
+    ValueError
+        With the aligned-homes arm on, where the parcel holds a
+        manufactured home and either column is absent: every small park
+        would otherwise read as a family lot without a word.
     """
     from openplaces.io.curator.occupancy import get_occupancy_config
 
@@ -150,18 +230,35 @@ def flag_manufactured_home_communities(
     lot = curated[parcel_col]
     counts = is_mh.astype(int).groupby(lot).transform('sum')
     curated[count_column] = counts.fillna(0).astype('int64')
-    if aspect_column in curated.columns:
-        aspect = pd.to_numeric(curated[aspect_column], errors='coerce').where(is_mh)
-        median = aspect.groupby(lot).transform('median')
-    else:
-        median = pd.Series(np.nan, index=curated.index)
+    aligned = pd.Series(0, index=curated.index, dtype='int64')
+    if aligned_homes_at_least is not None and is_mh.any():
+        absent = [
+            c for c in (aspect_column, bearing_column) if c not in curated.columns
+        ]
+        if absent:
+            raise ValueError(
+                f'flag_manufactured_home_communities: {", ".join(absent)} '
+                'missing; derive it with derive_indicators (shape_metric) '
+                'before this step, or leave aligned_homes_at_least unset.'
+            )
+        homes = is_mh.to_numpy()
+        # Positions, not labels: the curated index need not be unique.
+        home_lots = lot[homes].astype(object).reset_index(drop=True)
+        group = aligned_homes(
+            home_lots,
+            curated.loc[homes, aspect_column].reset_index(drop=True),
+            curated.loc[homes, bearing_column].reset_index(drop=True),
+            min_aspect=min_aspect,
+            window_degrees=bearing_window_degrees,
+        )
+        per_lot = group.groupby(home_lots).first()
+        aligned = lot.astype(object).map(per_lot).fillna(0).astype('int64')
     curated[output] = is_manufactured_home_park(
         curated[count_column],
-        median,
+        aligned,
         more_than=min_homes,
         homes_at_least=homes_at_least,
-        min_median_aspect=min_median_aspect,
-        aspect_min_homes=aspect_min_homes,
+        aligned_homes_at_least=aligned_homes_at_least,
     ).to_numpy()
     state.curated = curated
 
