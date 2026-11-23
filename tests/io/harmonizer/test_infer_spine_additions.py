@@ -284,3 +284,19 @@ def test_a_lot_larger_than_the_footprint_lots_is_not_one_outline():
         thresholds={'lot_area_quantile_max': 0.95},
     )
     assert _inferred(state) == {'p20'}
+
+
+@pytest.mark.parametrize('floor', [None, 10.0])
+def test_a_sliver_of_a_lot_is_not_an_outline(floor):
+    # p21 is 4 m2 and dense enough to pass the value gate; only the
+    # size floor keeps it out.
+    ref, linked = _parcels([150_000, 150_000])
+    ref['area_ha'] = 1.0
+    ref.loc['p21', 'area_ha'] = 0.0004
+    thresholds = {} if floor is None else {'lot_area_m2_min': floor}
+    state = infer_spine_additions(
+        _state(ref, linked, with_use_group=False),
+        entity_type='parcel',
+        thresholds=thresholds,
+    )
+    assert _inferred(state) == ({'p20', 'p21'} if floor is None else {'p20'})
