@@ -140,6 +140,10 @@ pipeline:
       # A lot larger than nearly every lot that carries a real footprint
       # is a site, not a building's shape (maintainer, 2026-11-18).
       lot_area_quantile_max: 0.95
+      # The floor resolve_spine holds drawn outlines to (min_area_m2
+      # above): a sliver of an account's land passes the value gate on
+      # the account's density (maintainer, 2026-11-22).
+      lot_area_m2_min: 10.0
 
   - step: resolve_overlaps
 

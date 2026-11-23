@@ -311,10 +311,12 @@ def _excluded_lots(
     area_quantile_max: float | None,
     use_pattern: str | None,
     verbose: bool,
+    area_m2_min: float | None = None,
 ) -> pd.Series:
     """Candidates never made an outline: a land use that improves land
-    without a building (*use_pattern*), or a lot larger than the
-    *area_quantile_max* quantile of the lots that carry a real footprint.
+    without a building (*use_pattern*), a lot larger than the
+    *area_quantile_max* quantile of the lots that carry a real footprint,
+    or a lot smaller than *area_m2_min*.
     """
     out = pd.Series(False, index=candidates)
     if use_pattern:
@@ -346,6 +348,20 @@ def _excluded_lots(
                     f'  Infer: {int(by_area.sum()):,d} candidates over '
                     f'{cap:,.2f} ha excluded'
                 )
+    if area_m2_min is not None and area_col is not None:
+        # A sliver of an account passes the value gate on the account's
+        # density and would stand in as a building of a few square
+        # meters; resolve_spine drops a drawn outline that small. The
+        # land-use exclusion catches most of them today, by chance.
+        # Measured 2026-11-22 on US-FL-LI: 48 candidates under 10 m2.
+        area_m2 = pd.to_numeric(ref_polys[area_col], errors='coerce') * 10_000
+        by_size = area_m2.reindex(candidates).lt(float(area_m2_min)).fillna(False)
+        out |= by_size
+        if verbose:
+            print(
+                f'  Infer: {int(by_size.sum()):,d} candidates under '
+                f'{float(area_m2_min):,.0f} m2 excluded'
+            )
     return out
 
 
@@ -411,6 +427,9 @@ def infer_spine_additions(
         than this quantile of the lot areas that carry a real footprint
         is not made one outline: on a lot that large the parcel's shape
         says nothing about the building's.
+        ``lot_area_m2_min`` (float, optional) - a candidate smaller than
+        this is not made an outline: a sliver of a lot is no building's
+        shape. Set to the floor `resolve_spine` holds drawn outlines to.
     exclude_use_pattern : str, optional
         Regular expression, case-insensitive, over the lot's land use (the
         reference's group and the one the parcel spine states): a match
@@ -675,6 +694,7 @@ def infer_spine_additions(
         thresholds.get('lot_area_quantile_max'),
         exclude_use_pattern,
         state.verbose,
+        area_m2_min=thresholds.get('lot_area_m2_min'),
     )
 
     if skip_beside_drawn_account:

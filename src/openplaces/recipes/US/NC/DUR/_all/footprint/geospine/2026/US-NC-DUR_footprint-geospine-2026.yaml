@@ -34,4 +34,5 @@ pipeline_patch:
         n_per_group_min: 0.2
         value_per_ha_quantile: 0.05
         lot_area_quantile_max: 0.95
+        lot_area_m2_min: 10.0
         group_gate_value_per_m2: 200
