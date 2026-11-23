@@ -28,8 +28,13 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.ingester.access import read_access_table
+from openplaces.io.ingester.download import refuse_empty_source
 
 _UTF16_NAMES = {'utf-16', 'utf16', 'utf_16'}
+
+# Reader keywords that keep only some rows. A read passing one of them
+# says nothing about whether the file holds rows.
+_ROW_FILTER_KWARGS = {'fids', 'bbox', 'mask', 'where', 'sql', 'rows'}
 
 
 def _is_valid_utf8(path, chunk_bytes=1 << 20):
@@ -179,6 +184,10 @@ class _TableReadMixin:
     State lives on the TableIngester instance.
     """
 
+    # Set by the Ingester on the primary table of a non-tile partition:
+    # its first unfiltered read refuses an empty source.
+    refuse_empty_read = False
+
     def _read_recipe_data(
         self, columns=None, data_path_override=None, layer_override=None, **kwargs
     ):
@@ -226,6 +235,7 @@ class _TableReadMixin:
 
         layer = layer_override or self.recipe.get('layer')
         data_path = data_path_override or self.download_partition['data_path']
+        override = data_path_override is not None or layer_override is not None
 
         joined = (getattr(self, 'download_partition', None) or {}).get('join_members')
         if joined and data_path_override is None:
@@ -235,6 +245,8 @@ class _TableReadMixin:
                 joined['members'], joined['key'], kwargs.get('encoding')
             )
             self.timer.mark('Read joined members' + timer_suffix, path=data_path)
+            names = ', '.join(Path(p).name for p, _ in joined['members'])
+            self._refuse_empty_read(df, data_path, detail=f'joined members {names}')
             if columns:
                 df = df[[c for c in columns if c in df.columns]]
             warnings.filterwarnings(
@@ -339,6 +351,11 @@ class _TableReadMixin:
                     )
                     self.download_partition['flat_table_cache'] = cached
                     self.timer.mark('Read data table' + timer_suffix, path=data_path)
+                    # The whole file was parsed before the slice: its
+                    # row count is free here.
+                    self._refuse_empty_read(
+                        cached[1], data_path, layer, overridden=override
+                    )
                 # `fids` (built by `_prepare_table_fid_filter` from a plain
                 # read of this same file, so its index is this file's own
                 # 0-based row order) is applied positionally: row order is
@@ -394,10 +411,93 @@ class _TableReadMixin:
         else:
             raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
 
+        if not _ROW_FILTER_KWARGS & set(kwargs):
+            self._refuse_empty_read(gdf, data_path, layer, overridden=override)
+
         warnings.filterwarnings(
             'default', 'received a polygon with more than 100 parts'
         )
         return gdf
+
+    def _refuse_empty_read(
+        self, table, data_path, layer=None, overridden=False, detail=None
+    ):
+        """Raise when the primary table's unfiltered read holds no rows.
+
+        The download check (`_DownloadMixin._refuse_empty_download`)
+        counts rows before any read only where that is cheap and the
+        partition is one file. Everywhere else the count is taken here,
+        from the frame the ingest reads anyway, so it costs no second
+        parse: a spreadsheet, an Access table, a GeoJSON too large to
+        probe, one unit's `process_by.file_pattern` file or
+        `layer_pattern` layer, and a `read_members` or `join_members`
+        set as a whole (one empty member among others is legal).
+
+        Only a TableIngester the Ingester marked as its primary table
+        checks (`refuse_empty_read`); tiles and additional layers are
+        never checked. A read the pre-download check already counted is
+        skipped, so an accepted empty file prints once.
+
+        Parameters
+        ----------
+        table : pandas.DataFrame
+            The frame read, before any row filter.
+        data_path : pathlib.Path
+            The file read.
+        layer : str, optional
+            The layer read, for the message.
+        overridden : bool, optional
+            True when *data_path* or *layer* is one unit's piece of a
+            shared download (`file_pattern`, `layer_pattern`): the
+            processing unit is then the one checked against
+            `empty_download_ok`, and the files are kept.
+        detail : str, optional
+            What was read, when not one file or layer.
+
+        Raises
+        ------
+        EmptyDownloadError
+            Unless the recipe declares the unit's source may be empty.
+        """
+        if not self.refuse_empty_read or len(table) > 0:
+            return
+        partition = self.download_partition
+        if not overridden and partition.get('rows_counted') == (
+            str(data_path),
+            layer,
+        ):
+            return
+        if detail is None:
+            members_glob = partition.get('read_members_glob')
+            if members_glob and not overridden:
+                detail = f'members matching {members_glob}'
+            elif layer:
+                detail = f'layer {layer}'
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        admin_id = self.recipe.get('admin_id')
+        prefix = (
+            admin_id.to_prefix()
+            if hasattr(admin_id, 'to_prefix')
+            else (f'{admin_id}_' if admin_id else '')
+        )
+        refuse_empty_source(
+            self.recipe,
+            prefix + str(entity_or_dataset),
+            partition,
+            data_path,
+            # A unit's own piece may be declared by that unit; a whole
+            # download only by the unit it was fetched for.
+            (
+                [
+                    (self.processing_chunk or {}).get('admin_id_to_process'),
+                    partition.get('admin_id_to_download'),
+                ]
+                if overridden
+                else [partition.get('admin_id_to_download')]
+            ),
+            detail=detail,
+            keep_files=overridden,
+        )
 
     def _read_flat_table(self, data_path, columns, encoding, member=False):
         """Read one flat (non-spatial) source file in full.
@@ -428,6 +528,13 @@ class _TableReadMixin:
             files = sorted(
                 p for p in Path(data_path).parent.glob(members_glob) if p.is_file()
             )
+            # A blank member holds no rows, which is legal for one
+            # member among others; pandas would refuse to parse it. A
+            # set of blank members reads as an empty table, which the
+            # empty-read check refuses for the primary table.
+            files = [p for p in files if p.stat().st_size > 0]
+            if not files:
+                return pd.DataFrame(columns=list(columns or []))
             return pd.concat(
                 [
                     self._read_flat_table(p, columns, encoding, member=True)
@@ -622,15 +729,23 @@ class _TableReadMixin:
                 lookup = csv_dtype if isinstance(csv_dtype, dict) else {}
                 dtype = {p: lookup[n] for p, n in names.items() if n in lookup}
             dtype.update({p: str for p, n in names.items() if n == key})
-            df = pd.read_csv(
-                path,
-                sep=delimiter,
-                header=None,
-                usecols=sorted(names),
-                dtype=dtype,
-                encoding=encoding,
-                low_memory=False,
-            ).rename(columns=names)
+            if Path(path).stat().st_size == 0:
+                # pandas refuses a blank file outright. Read as no rows,
+                # so the strict join below names a lone empty member and
+                # the empty-read check names an all-empty set.
+                df = pd.DataFrame(
+                    {names[p]: pd.Series(dtype=object) for p in sorted(names)}
+                )
+            else:
+                df = pd.read_csv(
+                    path,
+                    sep=delimiter,
+                    header=None,
+                    usecols=sorted(names),
+                    dtype=dtype,
+                    encoding=encoding,
+                    low_memory=False,
+                ).rename(columns=names)
             if df[key].duplicated().any():
                 raise ValueError(
                     f'join_members: {path.name} repeats {key} values '

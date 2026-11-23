@@ -29,6 +29,7 @@ from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.cleanup import _relative_posix, _walk_dag
 from openplaces.io.ingester.scope import crosswalk_coverage
+from openplaces.io.readers import is_unexplained_empty
 from openplaces.recipe import (
     apply_recipe_patches,
     get_output_path,
@@ -139,12 +140,14 @@ def needs_rerun(outputs, inputs) -> bool:
     unit and marked every consumer of every unit for a rerun. The test
     mirrors the mtime rerun trigger, per unit: an output missing, an
     input missing (another job of the run will write it), or an input
-    newer than the oldest output.
+    newer than the oldest output. An output with no rows and no recorded
+    reason (`readers.is_unexplained_empty`, a footer read) is not a
+    build either, so its unit is ingested again.
 
     Parameters
     ----------
     outputs, inputs : iterable of path-like
-        The unit's own files, sidecars included.
+        The unit's own ingest files, sidecars included.
 
     Returns
     -------
@@ -155,6 +158,12 @@ def needs_rerun(outputs, inputs) -> bool:
         try:
             out_times.append(os.stat(path).st_mtime)
         except FileNotFoundError:
+            return True
+        # A `_geo` sidecar carries no reason of its own; its attribute
+        # file is the one that says.
+        if not Path(path).stem.endswith(('_geo', '_geo_simplified')) and (
+            is_unexplained_empty(path)
+        ):
             return True
     if not out_times:
         return True

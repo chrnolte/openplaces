@@ -466,6 +466,9 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
         self.download_partition = {
             'admin_id_to_download': admin_id_to_download,
             'partition_id_to_download': partition_id_to_download,
+            # One dict for the whole run: why a unit got no output, read
+            # by the after-run fill (outputs.py).
+            'empty_reasons': self.__dict__.setdefault('_empty_reasons', {}),
         }
 
         self._resolve_download_url()
@@ -513,7 +516,12 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
             # Read, reproject, and overlay once for all admin units in this tile.
             self.processing_chunk = {'admin_id_to_process': None}
             table_ingester = self._make_table_ingester(self.recipe)
+            table_ingester.is_primary = True
             gdf = table_ingester._read_recipe_data()
+            table_ingester._note_read(len(gdf))
+            table_ingester._read_note['unit_filter'] = (
+                f'tile {partition_id_to_download}'
+            )
             if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
                 gdf = gdf.to_crs(cfg.crs)
                 self.timer.mark(f'Reproject to {cfg.crs}: {partition_id_to_download}')
@@ -663,6 +671,10 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
             else self.recipe
         )
         primary_table_ingester = self._make_table_ingester(primary_recipe)
+        # Its first unfiltered read refuses an empty source the download
+        # check could not count (download.refuse_empty_source).
+        primary_table_ingester.refuse_empty_read = True
+        primary_table_ingester.is_primary = True
         primary_table_ingester.process(process_in_chunks=process_in_chunks, bbox=bbox)
         self.timer.mark(f'Wrap up{suffix}')
 

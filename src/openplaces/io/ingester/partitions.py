@@ -15,6 +15,7 @@ from openplaces.io.ingester._helpers import (  # noqa: F401
     _transform_partition_key,
     _warn_registry_type_mismatches,
 )
+from openplaces.io.ingester.scope import output_is_built
 from openplaces.io.readers import get_admin
 from openplaces.recipe import (
     find_admin_recipe_id,
@@ -101,11 +102,15 @@ class _PartitionMixin:
         """
         from openplaces.io.aggregate import read_partition_coverage
 
+        # A partition file with no rows and no recorded reason is not
+        # ingested (readers.is_unexplained_empty; footer read only).
         ingested = {
             str(pid)
             for pid in get_partition_ids(self.recipe)
             if pid is not None
-            and get_output_path(self.recipe, admin_id, partition_id=pid).exists()
+            and output_is_built(
+                get_output_path(self.recipe, admin_id, partition_id=pid)
+            )
         }
         agg = self.recipe.get('aggregate_by') or {}
         if agg.get('single_file'):

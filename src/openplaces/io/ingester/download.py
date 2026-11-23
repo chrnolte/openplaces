@@ -26,6 +26,7 @@ from openplaces.io import (
     request_headers,
     unzip,
 )
+from openplaces.io.consent import terms_declines
 from openplaces.io.ingester._helpers import (  # noqa: F401
     _SCRAPER_MODULE_CACHE,
     _match_extracted_file,
@@ -138,6 +139,144 @@ def count_source_rows(path, layer=None) -> int | None:
         # rows; the read that follows raises with the real reason.
         return None
     return None
+
+
+def empty_download_allowed(recipe, units) -> bool:
+    """Does the recipe declare that one of these units may be empty?
+
+    Parameters
+    ----------
+    recipe : dict
+        The loaded recipe (or a table recipe built from it).
+    units : iterable
+        Admin ids the empty file stands for: the download unit and,
+        for a piece read per processing unit, that unit too. None
+        entries are ignored.
+
+    Returns
+    -------
+    bool
+        True when `empty_download_ok` is true, or lists one of *units*.
+    """
+    allowed = recipe.get(EMPTY_DOWNLOAD_OK_KEY)
+    if allowed is True:
+        return True
+    if isinstance(allowed, str):
+        allowed = [allowed]
+    if isinstance(allowed, list | tuple | set):
+        listed = {str(a) for a in allowed}
+        return any(u is not None and str(u) in listed for u in units)
+    return False
+
+
+def download_source_host(recipe, partition) -> str | None:
+    """The host a partition's file was fetched from, for messages."""
+    candidates = [partition.get('download_url')]
+    options = recipe.get('scraper_options') or {}
+    candidates += [options.get('bulk_url'), options.get('layer_url')]
+    entity_or_dataset = recipe.get('entity') or recipe.get('dataset')
+    source = entity_or_dataset.source if entity_or_dataset else None
+    if source is not None:
+        candidates.append(getattr(source, 'portal_url', None))
+    for url in candidates:
+        if url:
+            host = urllib.parse.urlparse(str(url)).netloc
+            if host:
+                return host
+    return None
+
+
+def refuse_empty_source(
+    recipe,
+    recipe_id,
+    partition,
+    path,
+    units,
+    detail=None,
+    keep_files=False,
+):
+    """Raise for a source read that holds no rows, unless declared.
+
+    The one place both checks end: the download check before any read
+    (`_DownloadMixin._refuse_empty_download`) and the check on the
+    primary table's first unfiltered read
+    (`_TableReadMixin._refuse_empty_read`).
+
+    Parameters
+    ----------
+    recipe : dict
+        The recipe (or table recipe) read; `empty_download_ok` and the
+        source come from it.
+    recipe_id : str
+        For the message.
+    partition : dict
+        The download partition (`download_url`, `downloaded_path`,
+        `data_path`, `partition_id_to_download`).
+    path : pathlib.Path
+        The file found empty.
+    units : list
+        Admin ids the file stands for, most specific first; the first
+        one that is not None names the unit in the message.
+    detail : str, optional
+        What inside *path* was read ('layer ParcelsX', 'members
+        matching *.csv'), for the message.
+    keep_files : bool, optional
+        Keep the files even when the source has a download mechanism.
+        Set where the empty piece is one unit's share of a download
+        other units read too (`process_by.file_pattern`,
+        `layer_pattern`): deleting it would refetch everything to
+        repair nothing.
+
+    Raises
+    ------
+    EmptyDownloadError
+        Naming the recipe, the unit, the source host, the file (and
+        layer or members) and how to declare a legitimately empty
+        source.
+    """
+    unit = next((u for u in units if u is not None), None)
+    unit_text = str(unit) if unit is not None else '(whole source)'
+    if partition.get('partition_id_to_download') is not None:
+        unit_text += f', partition {partition["partition_id_to_download"]}'
+    where = f'{path}' + (f', {detail}' if detail else '')
+    if empty_download_allowed(recipe, units):
+        print(
+            f'{recipe_id} [{unit_text}]: download holds no rows '
+            f'({Path(path).name}{", " + detail if detail else ""}); accepted '
+            f'({EMPTY_DOWNLOAD_OK_KEY}).',
+            flush=True,
+        )
+        return
+
+    entity_or_dataset = recipe.get('entity') or recipe.get('dataset')
+    source = entity_or_dataset.source if entity_or_dataset else None
+    fetched = source is not None and bool(
+        source.download_url
+        or source.download_url_source
+        or getattr(source, 'download_url_scraper', None)
+    )
+    downloaded_path = partition.get('downloaded_path')
+    deleted = []
+    if fetched and not keep_files:
+        for target in dict.fromkeys(p for p in (path, downloaded_path) if p):
+            target = Path(target)
+            if target.exists():
+                delete_data(target, delete_empty_parent_dirs=False)
+                deleted.append(target.name)
+    host = download_source_host(recipe, partition) or 'unknown host'
+    if deleted:
+        action = f'Deleted {", ".join(deleted)} so the next run fetches it again.'
+    elif fetched:
+        action = 'The file is part of a download other units read and is kept.'
+    else:
+        action = 'The file was placed by hand and is kept.'
+    raise EmptyDownloadError(
+        f'{recipe_id} [{unit_text}]: the download from {host} holds no '
+        f'rows ({where}). An empty download is not evidence that the '
+        f'unit has none. {action} If this source legitimately ships no '
+        f'rows for the unit, declare {EMPTY_DOWNLOAD_OK_KEY}: true (or a '
+        'list of admin ids) in the recipe.'
+    )
 
 
 class _DownloadMixin:
@@ -539,6 +678,9 @@ class _DownloadMixin:
             )
             if not compatible:
                 self.download_partition['unavailable'] = True
+                # Declined is not "not published": the after-run fill
+                # stamps the unit's table `declined` (outputs.py).
+                self._record_declined('the usage profile (usage_requirement)')
                 return
 
         # Browser-driven acquisition: when the source names a download scraper,
@@ -590,6 +732,9 @@ class _DownloadMixin:
                     stacklevel=2,
                 )
                 self.download_partition['unavailable'] = True
+                unit = self.download_partition.get('admin_id_to_download')
+                if unit is not None:
+                    self.__dict__.setdefault('_unavailable_units', set()).add(str(unit))
                 return
 
             if self.download_partition.get('download_url_error') is not None:
@@ -784,32 +929,25 @@ class _DownloadMixin:
                 + str(self.download_partition['data_path'])
             )
 
+    def _record_declined(self, what: str) -> None:
+        """Remember that *what* declined this partition's download.
+
+        The after-run fill writes the unit's empty table with reason
+        `declined` and this text as its detail. *what* names the
+        mechanism and its key only, never a profile or config value.
+        """
+        unit = self.download_partition.get('admin_id_to_download')
+        self.__dict__.setdefault('_declined_units', {}).setdefault(
+            str(unit) if unit is not None else None, what
+        )
+
     def _empty_download_allowed(self, unit) -> bool:
         """Does the recipe declare this unit's download may be empty?"""
-        allowed = self.recipe.get(EMPTY_DOWNLOAD_OK_KEY)
-        if allowed is True:
-            return True
-        if isinstance(allowed, str):
-            allowed = [allowed]
-        if isinstance(allowed, list | tuple | set):
-            return unit is not None and str(unit) in {str(a) for a in allowed}
-        return False
+        return empty_download_allowed(self.recipe, [unit])
 
     def _download_source_host(self) -> str | None:
         """The host the partition's file was fetched from, for messages."""
-        candidates = [self.download_partition.get('download_url')]
-        options = self.recipe.get('scraper_options') or {}
-        candidates += [options.get('bulk_url'), options.get('layer_url')]
-        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
-        source = entity_or_dataset.source if entity_or_dataset else None
-        if source is not None:
-            candidates.append(getattr(source, 'portal_url', None))
-        for url in candidates:
-            if url:
-                host = urllib.parse.urlparse(str(url)).netloc
-                if host:
-                    return host
-        return None
+        return download_source_host(self.recipe, self.download_partition)
 
     def _refuse_empty_download(self):
         """Raise when the partition's downloaded file holds no rows.
@@ -820,13 +958,18 @@ class _DownloadMixin:
         FeatureCollection, and the cached file was reused by every later
         run, which saved the unit's output without rows.
 
-        Only formats with a cheap row count are checked
-        (`count_source_rows`), and only partitions read from one file:
-        a tile, a `process_by.file_pattern` or `layer_pattern`,
-        `read_members` or `join_members` partition is left alone. A recipe whose source
-        legitimately ships no rows declares `empty_download_ok` (true,
-        or a list of admin ids); the ingest then proceeds and prints one
-        line.
+        This check runs before any read and only where a row count is
+        cheap (`count_source_rows`) and the partition is read from one
+        file. Every other partition except a tile is checked when its
+        primary table is first read in full
+        (`_TableReadMixin._refuse_empty_read`), where the count costs
+        nothing: a spreadsheet, an Access database, a large GeoJSON, a
+        `process_by.file_pattern` file or `layer_pattern` layer, and
+        the `read_members` or `join_members` set as a whole. A tile is
+        never checked, since a tile without features is an observation.
+        A recipe whose source legitimately ships no rows declares
+        `empty_download_ok` (true, or a list of admin ids); the ingest
+        then proceeds and prints one line.
 
         When the source has a download mechanism, the empty file is
         deleted before raising, the way the REST scraper discards a
@@ -851,49 +994,22 @@ class _DownloadMixin:
         data_path = partition.get('data_path')
         if data_path is None or not Path(data_path).exists():
             return
-        if count_source_rows(data_path, self.recipe.get('layer')) != 0:
+        layer = self.recipe.get('layer')
+        n_rows = count_source_rows(data_path, layer)
+        if n_rows is None:
             return
-
-        unit = partition.get('admin_id_to_download')
-        unit_text = str(unit) if unit is not None else '(whole source)'
-        if partition.get('partition_id_to_download') is not None:
-            unit_text += f', partition {partition["partition_id_to_download"]}'
-        recipe_id = self._recipe_id()
-        if self._empty_download_allowed(unit):
-            print(
-                f'{recipe_id} [{unit_text}]: download holds no rows '
-                f'({Path(data_path).name}); accepted ({EMPTY_DOWNLOAD_OK_KEY}).',
-                flush=True,
-            )
+        # Counted here, so the read check does not report the same
+        # file a second time (an accepted empty file prints once).
+        partition['rows_counted'] = (str(data_path), layer)
+        partition['source_rows'] = n_rows
+        if n_rows != 0:
             return
-
-        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
-        source = entity_or_dataset.source if entity_or_dataset else None
-        fetched = source is not None and bool(
-            source.download_url
-            or source.download_url_source
-            or getattr(source, 'download_url_scraper', None)
-        )
-        downloaded_path = partition.get('downloaded_path')
-        deleted = []
-        if fetched:
-            for path in dict.fromkeys(p for p in (data_path, downloaded_path) if p):
-                path = Path(path)
-                if path.exists():
-                    delete_data(path, delete_empty_parent_dirs=False)
-                    deleted.append(path.name)
-        host = self._download_source_host() or 'unknown host'
-        action = (
-            f'Deleted {", ".join(deleted)} so the next run fetches it again.'
-            if deleted
-            else 'The file was placed by hand and is kept.'
-        )
-        raise EmptyDownloadError(
-            f'{recipe_id} [{unit_text}]: the download from {host} holds no '
-            f'rows ({data_path}). An empty download is not evidence that the '
-            f'unit has none. {action} If this source legitimately ships no '
-            f'rows for the unit, declare {EMPTY_DOWNLOAD_OK_KEY}: true (or a '
-            'list of admin ids) in the recipe.'
+        refuse_empty_source(
+            self.recipe,
+            self._recipe_id(),
+            partition,
+            data_path,
+            [partition.get('admin_id_to_download')],
         )
 
     def _run_download_scraper(self, scraper_name, redownload=False):
@@ -954,6 +1070,10 @@ class _DownloadMixin:
             print(f'Scrape download {self._recipe_id()} for {target}')
 
         fetch = self._load_scraper_fetch(scraper_name)
+        # A scraper that returns None after its terms gate refused tells
+        # nothing else apart from "not published"; the consent module's
+        # count of refusals does.
+        declines_before = terms_declines()
         result = fetch(
             partition_id=partition_id,
             target_path=target_path,
@@ -978,6 +1098,9 @@ class _DownloadMixin:
             if self.verbose:
                 print(f'No source file available; skipping partition: {partition_id}')
             self.download_partition['unavailable'] = True
+            if terms_declines() > declines_before:
+                self._record_declined('the terms-of-use consent (accept_terms)')
+                return
             unit = self.download_partition.get('admin_id_to_download')
             if unit is not None:
                 self.__dict__.setdefault('_unavailable_units', set()).add(str(unit))

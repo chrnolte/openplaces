@@ -187,6 +187,89 @@ def is_placeholder_output(path) -> bool:
         return False
 
 
+# Footer keys an ingest stamps on every table it writes without rows,
+# saying why it has none (`io.ingester.empty_outputs.save_empty_table`).
+EMPTY_REASON_KEY = 'openplaces:empty_reason'
+EMPTY_DETAIL_KEY = 'openplaces:empty_detail'
+# not_published: the source does not publish the unit (or partition).
+# not_covered: the source was read and holds rows, none for the unit.
+# source_has_none: the source itself holds no rows, and the recipe
+#   allows it (empty_download_ok) or does not check that table.
+# marker: the rows live elsewhere (the `_all` file or per-partition
+#   files); the file only records that the unit was ingested.
+# nothing_stacked: the stacked-units layer of a parcel table whose
+#   lots each carry one record.
+# declined: the user's usage profile or a withheld terms consent
+#   declined the download; the source was never read.
+EMPTY_REASONS = (
+    'not_published',
+    'not_covered',
+    'source_has_none',
+    'marker',
+    'nothing_stacked',
+    'declined',
+)
+
+
+def _footer(path):
+    """A parquet file's footer metadata, or None when it cannot be read."""
+    try:
+        return pq.read_metadata(path)
+    except (TypeError, OSError, ValueError):
+        return None
+
+
+def empty_reason(path) -> str | None:
+    """Why an ingest output holds no rows, from its parquet footer.
+
+    Reads the footer only, never a row. The reason is one of
+    `EMPTY_REASONS`; the detail beside it is in `EMPTY_DETAIL_KEY`.
+
+    Parameters
+    ----------
+    path : pathlib.Path or str
+        An ingest output file.
+
+    Returns
+    -------
+    str or None
+        The stamped reason, or None for a file without one (a file with
+        rows, an unexplained empty file, or one that cannot be read).
+    """
+    meta = _footer(path)
+    raw = (meta.metadata or {}).get(EMPTY_REASON_KEY.encode()) if meta else None
+    return raw.decode() if raw is not None else None
+
+
+def is_unexplained_empty(path) -> bool:
+    """True for an ingest output with no rows and no recorded reason.
+
+    Every empty table an ingest writes states why it is empty
+    (`empty_reason`). One that does not was written by an older run or
+    an interrupted one, and is not evidence that the unit has none (a
+    stale empty parcel table, written before an empty download raised,
+    let every later run skip the unit). Readers of ingest outputs treat
+    it as not built. Not for harmonize or curate outputs, whose
+    placeholders carry no reason (`is_placeholder_output`).
+
+    Reads the footer only. A missing or unreadable file is not one.
+
+    Parameters
+    ----------
+    path : pathlib.Path or str
+        An ingest output file (the attribute file, not its `_geo`
+        sidecar).
+
+    Returns
+    -------
+    bool
+    """
+    meta = _footer(path)
+    if meta is None or meta.num_rows:
+        return False
+    return EMPTY_REASON_KEY.encode() not in (meta.metadata or {})
+
+
 def get_admin(
     admin_id=None,
     level=None,

@@ -323,7 +323,8 @@ The stages divide the work, and **harmonize keeps redundancy minimal**:
 `src/openplaces/io/harmonizer/README.md`; `RecipeDAG` derives it and a test
 pins it). A script that calls stages by hand has to follow it: **a spine whose
 source covers the unit but was never ingested there raises
-`SourceNotIngestedError`**, while a source saved with no rows reads as none.
+`SourceNotIngestedError`**, while a source saved with no rows reads as none
+only when its file records why (`readers.empty_reason`).
 
 **A property's id is the account number its assessor issued**, scoped by
 its admin unit, and rows sharing an id merge into one. **Relationships

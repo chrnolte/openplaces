@@ -24,8 +24,10 @@ from openplaces.core.schema import AdminId, Entity
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer.source_outputs import (
     SourceNotIngestedError,
+    UnexplainedEmptySourceError,
     require_source_ingested,
 )
+from openplaces.io.ingester.empty_outputs import save_empty_table
 
 ROLL = 'US-ZZ_property-roll-2026'
 LAYER = 'US-ZZ_parcel-layer-2026'
@@ -84,9 +86,14 @@ def world(tmp_path, monkeypatch):
     return {'recipes': recipes, 'paths': paths, 'dir': tmp_path}
 
 
-def _write(world, recipe_id, admin_id='US-ZZ-AAA', rows=1):
+def _write(world, recipe_id, admin_id='US-ZZ-AAA', rows=1, reason='not_covered'):
+    """A source output; an empty one records *reason* (None: no reason)."""
     frame = pd.DataFrame({'parcel_id_local': [f'P{i}' for i in range(rows)]})
-    frame.to_parquet(world['dir'] / f'{admin_id}_{recipe_id}.parquet')
+    path = world['dir'] / f'{admin_id}_{recipe_id}.parquet'
+    if rows == 0 and reason is not None:
+        save_empty_table(path, reason, 'fabricated', frame=frame)
+    else:
+        frame.to_parquet(path)
 
 
 def test_missing_output_of_covering_source_raises(world):
@@ -99,6 +106,22 @@ def test_missing_output_of_covering_source_raises(world):
 def test_saved_table_without_rows_is_an_observed_none(world):
     _write(world, ROLL, rows=0)
     require_source_ingested(ROLL, 'US-ZZ-AAA', 'link_by_id')
+
+
+def test_empty_table_without_a_reason_raises(world):
+    """The Arkansas case, seen by a consumer: not an observed none."""
+    _write(world, ROLL, rows=0, reason=None)
+    with pytest.raises(UnexplainedEmptySourceError) as err:
+        require_source_ingested(ROLL, 'US-ZZ-AAA', 'link_by_id')
+    message = str(err.value)
+    assert ROLL in message and 'US-ZZ-AAA' in message
+    assert 'Rerun this unit' in message and 'link_by_id' in message
+
+
+def test_a_marker_is_never_read_as_data(world):
+    _write(world, ROLL, rows=0, reason='marker')
+    with pytest.raises(SourceNotIngestedError):
+        require_source_ingested(ROLL, 'US-ZZ-AAA', 'link_by_id')
 
 
 def test_unit_outside_the_crosswalk_is_not_owed(world, monkeypatch):

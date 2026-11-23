@@ -559,10 +559,18 @@ auto-discovered `link_by_id` passes check a source when its read
 returns nothing or finds no file. A source covers the unit when its
 admin scope contains it and its `recipe_id`-form crosswalk sidecar, if
 any, lists it (`ingester.scope.crosswalk_lists_unit`, the test
-`RecipeDAG` schedules ingests by). A saved table without rows passes,
-as do held and run-excluded recipes, bundled layers and a `link_by_id`
-naming its `recipe_id` explicitly. A coarser unit read across several
-files is checked only when none of them yields a row.
+`RecipeDAG` schedules ingests by). A saved table without rows passes
+when its footer records why it is empty (`readers.empty_reason`, see
+the ingester README), as do held and run-excluded recipes, bundled
+layers and a `link_by_id` naming its `recipe_id` explicitly. **An
+ingest table with no rows and no recorded reason raises
+`UnexplainedEmptySourceError`** (recipe, unit, file, "rerun this
+unit's ingest"): an older or interrupted ingest wrote it, and it is not
+an observed none. A `marker` (a partitioned recipe's base file, whose
+rows are in `_all` or the per-partition files) is never read as data
+and counts as missing. Harmonize and curate placeholders are not held
+to a reason. A coarser unit read across several files is checked only
+when none of them yields a row.
 **A source saved coarser than the unit has to name the unit in its
 rows**, or the read raises (`readers.UnnarrowableSourceError`). A
 county read of a statewide file keeps the rows whose `admin3_id` is the

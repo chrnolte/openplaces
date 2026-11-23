@@ -18,6 +18,7 @@ import openplaces.io.ingester as ingester_module
 import openplaces.io.ingester.outputs as ingester_outputs
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, save_parquet
+from openplaces.io.readers import empty_reason
 
 ADMIN_IDS = [AdminId('US-NC-TYR'), AdminId('US-NC-CAM')]
 
@@ -38,6 +39,7 @@ def _ingester(monkeypatch, tmp_path, admin_ids):
 
 def test_a_unit_with_no_output_gets_an_empty_table(monkeypatch, tmp_path):
     ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
+    ingester._unavailable_units = {str(a) for a in ADMIN_IDS}
 
     ingester._record_units_the_source_does_not_cover()
 
@@ -45,11 +47,13 @@ def test_a_unit_with_no_output_gets_an_empty_table(monkeypatch, tmp_path):
         out_path = tmp_path / f'{admin_id}.parquet'
         assert out_path.exists(), admin_id
         assert len(read_parquet(out_path)) == 0
+        assert empty_reason(out_path) == 'not_published'
 
 
 def test_a_unit_the_source_did_cover_is_left_alone(monkeypatch, tmp_path):
     """Only a missing output is filled in; real data is never touched."""
     ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
+    ingester._unavailable_units = {'US-NC-TYR'}
     covered = tmp_path / 'US-NC-CAM.parquet'
     save_parquet(
         gpd.GeoDataFrame({'geometry': [box(0, 0, 1, 1)]}, crs='epsg:4326'), covered
@@ -86,7 +90,7 @@ def test_an_unset_save_list_is_tolerated(monkeypatch, tmp_path, admin_ids):
 def test_a_unit_that_became_unavailable_is_emptied_on_reprocess(monkeypatch, tmp_path):
     """A stale output from an earlier run must not read as current."""
     ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
-    ingester._unavailable_units = {'US-NC-CAM'}
+    ingester._unavailable_units = {'US-NC-CAM', 'US-NC-TYR'}
     stale = tmp_path / 'US-NC-CAM.parquet'
     save_parquet(
         gpd.GeoDataFrame({'geometry': [box(0, 0, 1, 1)]}, crs='epsg:4326'), stale
@@ -103,7 +107,7 @@ def test_a_joined_unit_missing_one_table_is_kept_on_reprocess(monkeypatch, tmp_p
     """A fmv county ships boundaries or a crosswalk, so one of its table
     partitions is always unavailable; the join still wrote its output."""
     ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
-    ingester._unavailable_units = {'US-NC-CAM'}
+    ingester._unavailable_units = {'US-NC-CAM', 'US-NC-TYR'}
     ingester._joined_units = {'US-NC-CAM'}
     joined = tmp_path / 'US-NC-CAM.parquet'
     save_parquet(
