@@ -193,7 +193,7 @@ def _run_step(monkeypatch, tables, spine=None, **params):
             if etype == entity_type
         ]
 
-    def fake_get_entities(recipe_id, admin_id, layer=None, missing=None):
+    def fake_get_entities(recipe_id, admin_id, layer=None, missing=None, **kwargs):
         return tables[recipe_id][1]
 
     monkeypatch.setattr(ls, '_expand_auto_discover', fake_discover)

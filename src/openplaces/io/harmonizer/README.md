@@ -563,6 +563,17 @@ any, lists it (`ingester.scope.crosswalk_lists_unit`, the test
 as do held and run-excluded recipes, bundled layers and a `link_by_id`
 naming its `recipe_id` explicitly. A coarser unit read across several
 files is checked only when none of them yields a row.
+**A source saved coarser than the unit has to name the unit in its
+rows**, or the read raises (`readers.UnnarrowableSourceError`). A
+county read of a statewide file keeps the rows whose `admin3_id` is the
+county, or, reading geometry, the rows inside its boundary, or the
+whole file where the county is its state's only one (`US-DC-DC`).
+Returning the whole state instead gave every Indiana county's
+transaction spine the state's parcel-sale rows (Ohio County: 1,017,881
+rows for 847 sales). `union_spine_sources`, `link_by_id`,
+`record_link_method`, `link_address_ranges` and `append_last_sales`
+read with `unnarrowable='whole'` and narrow by an `admin3_name` column
+(`restrict_to_admin_by_name`), which raises when there is none.
 **Discovery lists only sources that cover the unit**: `_expand_auto_discover`
 skips a recipe whose crosswalk sidecar leaves the unit out, since the
 DAG never schedules its ingest there.

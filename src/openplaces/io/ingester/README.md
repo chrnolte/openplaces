@@ -144,6 +144,11 @@ name and the file's layers; it never falls back to the first layer,
 which would save one unit's rows under another unit's id. The recipe's
 `layer` stays the default for every other read.
 
+**A row matching no unit of `process_by.admin_id_crosswalk` is reported**
+(`table_scope._prepare_table_fid_filter`): it falls in no unit's chunk,
+so no file saves it, and the ingest warns with the count and the first
+unmatched codes. When no row matches at all, it raises.
+
 Public entrypoint:
 
 `ingest(recipe, admin_ids, partition_ids, reprocess, redownload, verbose)`.

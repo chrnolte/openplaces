@@ -624,6 +624,8 @@ def append_last_sales(
                     state.admin_id,
                     layer=src.get('layer'),
                     missing='ignore',
+                    # Narrowed by name or refused just below.
+                    unnarrowable='whole',
                 )
             except Exception as exc:
                 warnings.warn(

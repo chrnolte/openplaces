@@ -14,18 +14,32 @@
 # harmonizer step would join back to the sibling recipe's own
 # `instrument_number` to attach a price/date to a parcel.
 #
-# NOTE on why this recipe has no `process_by` (unlike every other
-# Indiana recipe in this state): SALEPARCEL.txt, unlike SALEDISC.txt,
-# carries no county column at all (verified against its full
-# 29-column header) -- Indiana's own schema puts `County_ID` only on
-# the disclosure-header table, not the parcel-link table. Rather than
-# derive a county from the leading digits of `A1_Parcel_Number`
-# (untested in this pass, and process_by's admin-splitting reads raw
-# columns before any transformation runs, so a derived column could
-# not actually be used for it anyway), this recipe simply does not
-# chunk by admin unit: at ~205,000 rows/year it is small enough to
-# hold and process as one statewide file per year, like
-# `US-WI_transaction-widor-2026`'s per-month files.
+# NOTE on the county (`process_by` below): SALEPARCEL.txt, unlike
+# SALEDISC.txt, carries no county column (verified against its full
+# 29-column header); Indiana's schema puts `County_ID` only on the
+# disclosure-header table. The county comes from the first two digits
+# of `A1_Parcel_Number`, through the sibling recipe's zero-padded
+# county crosswalk (DLGF's alphabetical numbering, Adams = 01):
+#   - DLGF's 2020A file layout (50 IAC 26-20-4, SALEPARCEL section)
+#     defines `A1_Parcel_Number` as the "State designated 18 digit
+#     parcel ID (no dots and dashes)";
+#     https://in.gov/dlgf/files/memos/210521-Wood-Memo-SDF-File-Specifications-Required-Fields-CHANGES.pdf
+#   - DLGF's "Real Property Data Compliance Checks" (January 2022):
+#     the state parcel number is 18 digits "with the first two digits
+#     referencing the county code/number";
+#     https://In.gov/dlgf/files/220101-Real-Property-Compliance-Checks.pdf
+#   - the 18-digit numbers of `US-IN_parcel-indianamap-2023` start
+#     with the county number (Adams `01-05-35-...`, county_id 1).
+# Measured 2026-11-22 on US-IN: the parcel number's first two characters equal SALEDISC County_ID in 1,240,427 of 1,240,464 SALEPARCEL rows (2021-2026); 37 rows do not and are not saved for any county.
+# In the same check every SALEPARCEL row found its `SDF_ID` in
+# SALEDISC. A row whose prefix matches no crosswalk code is in no
+# county's file; the ingest warns with its count
+# (`table_scope._prepare_table_fid_filter`). Until 2026-11-22 the
+# recipe had no `process_by` and saved one statewide file, which every
+# Indiana county's transaction spine read whole (Ohio County, 847
+# sales in its own SALEDISC rows, got 1,017,881 spine rows); a read of
+# a statewide file by county now raises instead
+# (`readers.UnnarrowableSourceError`).
 #
 # NOTE on quoting (`all_fields_quoted: true` below): the same export
 # rule as the sibling SALEDISC.txt (see its header): every field
@@ -79,8 +93,8 @@
 # same 'unknown' finding.
 #
 # Validation performed: a real, unmodified `op.ingest()` run was
-# completed end-to-end for the 2025 partition (statewide, since this
-# recipe has no admin-level chunking), reusing the `SDF_2025.zip`
+# completed end-to-end for the 2025 partition (statewide, before the
+# recipe was chunked by county), reusing the `SDF_2025.zip`
 # already downloaded once during this research pass. Final output:
 # 198,475 rows (of 205,068 raw; 6,593 removed by `drop_duplicates`
 # below). `parcel_id_local` populated 100%, 175,275 distinct values
@@ -154,6 +168,23 @@ delimiter: "\t"
 csv_dtype: str
 # Quotes inside fields are not escaped; see the NOTE on quoting.
 all_fields_quoted: true
+
+# County from the parcel number's first two digits; see the NOTE on
+# the county.
+process_by:
+  admin_level: 3
+  admin_id_column: A1_Parcel_Number
+  admin_id_transformation:
+    - output: county_number
+      type: string
+      operation: substring
+      args:
+        start: 0
+        end: 2
+  admin_id_crosswalk:
+    recipe_id: "US-IN_transaction-statsindiana-2026_admin3-crosswalk"
+    # The crosswalk's all-digit codes ("01") would load as int64.
+    dtype: str
 
 # The raw file carries rows that are exact duplicates on every
 # MAPPED column (verified: 6,573 of 205,068 rows in the 2025

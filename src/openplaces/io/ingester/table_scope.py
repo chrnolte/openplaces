@@ -278,6 +278,21 @@ class _TableScopeMixin:
                 f'{admin_level_to_process}. Map the column to that level, '
                 'or chunk the source spatially (process_by.use_spatial_mask).'
             )
+        n_unassigned = int(assigned.isna().sum())
+        if n_unassigned:
+            # A row matching no unit is in no unit's chunk, so no file
+            # saves it. Said here, with its count, rather than left to
+            # surface as a shortfall downstream.
+            unmatched = admin_id_filter[join_column][assigned.isna().to_numpy()]
+            codes = unmatched.dropna().astype(str).unique()
+            warnings.warn(
+                f'{n_unassigned:,} of {len(assigned):,} rows of '
+                f'{self.download_partition["admin_id_to_download"]} match no '
+                f'unit of process_by.admin_id_crosswalk and are not saved '
+                f'({int(unmatched.isna().sum()):,} with no {join_column}; '
+                f'{len(codes):,} other codes, first: {list(codes[:3])}).',
+                stacklevel=2,
+            )
 
         self.download_partition['table_fids'][self.table_name] = assigned
 

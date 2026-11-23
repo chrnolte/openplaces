@@ -37,7 +37,7 @@ def test_union_with_geometry_returns_geodataframe(monkeypatch):
     monkeypatch.setattr(
         spine_module,
         'get_entities',
-        lambda rid, admin_id, layer=None, missing='raise', geom=False: (
+        lambda rid, admin_id, layer=None, missing='raise', geom=False, **kwargs: (
             frames[rid] if geom else pd.DataFrame(frames[rid].drop(columns='geometry'))
         ),
     )

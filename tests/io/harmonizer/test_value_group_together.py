@@ -86,7 +86,7 @@ def _run(monkeypatch, matches, value_group=GROUP, refs=None, spine=None, **kwarg
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
     state = HarmonizeState(
         recipe={}, admin_id=AdminId('US-NC-ZZ'), verbose=False, timer=None

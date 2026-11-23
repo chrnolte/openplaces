@@ -1270,8 +1270,16 @@ def union_spine_sources(
             # one it owes is checked below when nothing was read. layer
             # selects a bundled additional_layers table (e.g. 'property')
             # on a recipe whose own primary entity is a different type.
+            # unnarrowable='whole': a statewide file without a per-row
+            # county id comes back whole, and restrict_to_admin_by_name
+            # below narrows it by name or raises.
             df = get_entities(
-                recipe_id, state.admin_id, layer=layer, missing='ignore', geom=geom
+                recipe_id,
+                state.admin_id,
+                layer=layer,
+                missing='ignore',
+                geom=geom,
+                unnarrowable='whole',
             )
         except Exception as exc:
             if isinstance(exc, FileNotFoundError) and layer is None:

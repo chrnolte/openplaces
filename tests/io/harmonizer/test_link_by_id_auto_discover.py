@@ -374,7 +374,7 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
@@ -426,7 +426,7 @@ def test_link_by_id_auto_discover_track_provenance_records_winning_source(
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
@@ -478,7 +478,9 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
         index=pd.Index(['mh-park', 'canalfront'], name='parcel_id'),
     )
     patch_links(
-        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None, **kwargs: ref,
     )
 
     spine = pd.DataFrame(
@@ -535,7 +537,9 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
         index=pd.Index(['old-house', 'new-house'], name='parcel_id'),
     )
     patch_links(
-        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None, **kwargs: ref,
     )
 
     spine = pd.DataFrame(
@@ -585,7 +589,9 @@ def test_link_by_id_auto_discover_keep_column_fallback_fills_gap_from_other_sour
 
     ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'year_built': [1998.0, 2005.0]})
     patch_links(
-        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None, **kwargs: ref,
     )
 
     spine = pd.DataFrame(
@@ -636,7 +642,9 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
         index=pd.Index(['old-house', 'new-house'], name='parcel_id'),
     )
     patch_links(
-        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None, **kwargs: ref,
     )
 
     spine = pd.DataFrame(
@@ -687,7 +695,7 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
         ),
     }
 
-    def _fake_get_entities(recipe_id, admin_id, layer=None):
+    def _fake_get_entities(recipe_id, admin_id, layer=None, **kwargs):
         return refs[recipe_id]
 
     patch_links(monkeypatch, 'get_entities', _fake_get_entities)
@@ -750,7 +758,7 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})

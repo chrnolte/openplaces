@@ -32,12 +32,16 @@ import warnings
 
 import pandas as pd
 
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer import (
+    HarmonizeState,
+    _register,
+    restrict_to_admin_by_name,
+)
 from openplaces.io.harmonizer.links import (
     _discover_link_sources,
     _neutralize_degenerate_keys,
 )
-from openplaces.io.readers import get_entities
+from openplaces.io.readers import UnnarrowableSourceError, get_entities
 
 
 def _reference_keys(state, recipe_id, ref_key, layer=None, spine_key=None) -> set:
@@ -47,10 +51,24 @@ def _reference_keys(state, recipe_id, ref_key, layer=None, spine_key=None) -> se
     guard exactly as `link_by_id` passes it, so both spare the same keys.
     """
     try:
-        ref = get_entities(recipe_id, state.admin_id, layer=layer, missing='ignore')
+        # Narrowed as link_by_id narrows its reference: a whole coarser
+        # primary table by name below, a layer read not at all.
+        ref = get_entities(
+            recipe_id,
+            state.admin_id,
+            layer=layer,
+            missing='ignore',
+            unnarrowable='whole' if layer is None else 'raise',
+        )
+    except UnnarrowableSourceError:
+        # Not an unreadable source: the whole state would be counted
+        # as this unit's reference.
+        raise
     except Exception as exc:
         warnings.warn(f'record_link_method: could not read {recipe_id}: {exc}')
         return set()
+    if ref is not None and layer is None:
+        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
     if ref is None or ref_key not in getattr(ref, 'columns', ()):
         return set()
     ref = pd.DataFrame(ref[[ref_key]])
