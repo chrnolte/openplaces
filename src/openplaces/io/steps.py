@@ -7,7 +7,10 @@ Until 2026-09-22 each package carried its own copy of the decorator and
 of the loader that imports the step submodules; the copies differed only
 in that the harmonizer's decorator also records a phase. This module is
 the one copy. It sits below the stages in the layer hierarchy and
-imports nothing from openplaces, so any stage may use it.
+imports nothing from openplaces at module level (the audit report's
+default path reads `openplaces.path` when it is written), so any stage
+may use it. It also holds the column declarations and the audit mode
+that checks them against what each step did.
 
 Each stage keeps its registry as a module-level dict of its own
 (``_STEP_REGISTRY``, and the harmonizer's ``_STEP_PHASES``): tests
@@ -25,8 +28,13 @@ import re
 import warnings
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from fnmatch import fnmatchcase
 from importlib import import_module
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 #: The two phases a harmonize step can declare. Geometry-phase steps
 #: mutate spine rows or geometry or run spatial joins, and their configs
@@ -206,13 +214,14 @@ def undeclared_new_columns(
     added = set(after) - set(before)
     if not added:
         return []
-    exact = {name for name in resolved.writes if '*' not in name}
-    patterns = [name for name in resolved.writes if '*' in name]
-    return sorted(
-        name
-        for name in added - exact
-        if not any(fnmatchcase(str(name), pattern) for pattern in patterns)
-    )
+    return sorted(name for name in added if not _is_written(name, resolved.writes))
+
+
+def _is_written(name, writes: frozenset) -> bool:
+    """Whether a column name is among a step's resolved writes."""
+    if name in writes:
+        return True
+    return any(fnmatchcase(str(name), pattern) for pattern in writes if '*' in pattern)
 
 
 def warn_undeclared_columns(
@@ -227,6 +236,211 @@ def warn_undeclared_columns(
             UndeclaredColumnWarning,
             stacklevel=2,
         )
+
+
+#: The columns of a step audit report, in order.
+AUDIT_COLUMNS = (
+    'recipe',
+    'admin_id',
+    'position',
+    'step',
+    'table',
+    'column',
+    'change',
+    'n_rows',
+    'declared',
+    'step_declares',
+)
+
+
+def column_hashes(series: pd.Series) -> np.ndarray:
+    """One 64-bit hash per row of a column, of its values alone.
+
+    Geometry is hashed through its WKB. A column holding unhashable
+    objects (lists, dicts) is hashed through each value's repr.
+    """
+    if series.dtype.name == 'geometry':
+        import shapely
+
+        wkb = shapely.to_wkb(np.asarray(series.array, dtype=object))
+        series = pd.Series(wkb, index=series.index, dtype=object)
+    try:
+        hashed = pd.util.hash_pandas_object(series, index=False)
+    except (TypeError, ValueError):
+        hashed = pd.util.hash_pandas_object(series.map(repr), index=False)
+    return hashed.to_numpy()
+
+
+def _snapshot(frame) -> tuple | None:
+    """A table's index and, per column, its dtype and row hashes."""
+    if frame is None:
+        return None
+    columns: dict = {}
+    for position, name in enumerate(frame.columns):
+        hashes = column_hashes(frame.iloc[:, position])
+        dtype = str(frame.dtypes.iloc[position])
+        if name in columns:
+            # A repeated name: fold the second column into the first,
+            # so a change to either is still seen.
+            held_dtype, held = columns[name]
+            hashes = held ^ (hashes * np.uint64(31))
+            dtype = f'{held_dtype},{dtype}'
+        columns[name] = (dtype, hashes)
+    return frame.index, columns
+
+
+def _compare(before: tuple | None, after: tuple | None) -> list[tuple]:
+    """The changes between two snapshots, as (column, change, n_rows).
+
+    Rows are aligned on the index, so a step that reorders rows changes
+    nothing and a step that drops rows reports one 'rows' entry, not a
+    change in every column. A cell counts as changed when its hash
+    differs on a row both tables hold.
+    """
+    before_index, before_columns = before if before else (pd.Index([]), {})
+    after_index, after_columns = after if after else (pd.Index([]), {})
+    changes = []
+    aligned = before_index.equals(after_index)
+    take = None
+    if not aligned and before_index.is_unique and after_index.is_unique:
+        positions = before_index.get_indexer(after_index)
+        kept = positions >= 0
+        added, removed = int((~kept).sum()), len(before_index) - int(kept.sum())
+        if added or removed:
+            changes.append(('', 'rows', added + removed))
+        take = (positions[kept], np.flatnonzero(kept))
+    for name, (dtype, hashes) in after_columns.items():
+        if name not in before_columns:
+            changes.append((name, 'added', len(hashes)))
+            continue
+        held_dtype, held = before_columns[name]
+        if aligned:
+            n_changed = int((held != hashes).sum())
+        elif take is not None:
+            n_changed = int((held[take[0]] != hashes[take[1]]).sum())
+        else:
+            # A repeated index label with a changed row set: no row
+            # can be paired, so only whether the column changed is told.
+            same = np.array_equal(np.sort(held), np.sort(hashes))
+            n_changed = 0 if same else max(len(held), len(hashes))
+        if n_changed:
+            changes.append((name, 'changed', n_changed))
+        elif held_dtype != dtype:
+            changes.append((name, 'dtype', 0))
+    for name, (_, held) in before_columns.items():
+        if name not in after_columns:
+            changes.append((name, 'removed', len(held)))
+    return changes
+
+
+class StepAudit:
+    """Column hashes before and after every step of one unit's run.
+
+    Audit mode (`audit_steps=True` on a Harmonizer, Enricher or
+    Curator) hashes every cell of the stage's tables after each step
+    and compares the hashes with those taken after the step before.
+    Each column a step added, removed or changed becomes one report
+    row, marked by whether the step's declared `writes` name it. Off,
+    no audit object exists and the dispatch loop does nothing more
+    than check that it is None.
+
+    The cost is one hash pass over every table per step, and memory
+    for one 8-byte hash per cell of the last snapshot, so audit mode
+    runs on panel units, never in a wave.
+
+    Parameters
+    ----------
+    stage : str
+        The stage's timer name ('Harmonizer', 'Enricher', 'Curator'),
+        used in the report's file name.
+    recipe_id : str
+        The recipe being run.
+    admin_id : str or None
+        The unit being run, or a label for a global run.
+    tables : Mapping
+        The stage's tables before the first step, by name (for
+        example {'curated': state.curated}). A table may be None.
+    """
+
+    def __init__(self, stage: str, recipe_id: str, admin_id, tables: Mapping):
+        self.stage = stage
+        self.recipe_id = recipe_id
+        self.admin_id = None if admin_id is None else str(admin_id)
+        self.rows: list[dict] = []
+        self._previous = {name: _snapshot(frame) for name, frame in tables.items()}
+
+    def after_step(
+        self,
+        position: int,
+        step_name: str,
+        fn: Callable,
+        params: Mapping,
+        tables: Mapping,
+    ) -> None:
+        """Record what one step changed in each table.
+
+        Parameters
+        ----------
+        position : int
+            The step's position in the (unrolled) pipeline.
+        step_name : str
+            The step's registered name.
+        fn : Callable
+            The step function, whose declaration decides `declared`.
+        params : Mapping
+            The step's arguments as the recipe gives them.
+        tables : Mapping
+            The stage's tables after the step, by the names given to
+            the constructor.
+        """
+        resolved = resolve_step_columns(fn, params)
+        writes = resolved.writes if resolved is not None else frozenset()
+        for table, frame in tables.items():
+            snapshot = _snapshot(frame)
+            for column, change, n_rows in _compare(self._previous.get(table), snapshot):
+                if change == 'rows':
+                    declared = 'n/a'
+                else:
+                    declared = 'yes' if _is_written(column, writes) else 'no'
+                self.rows.append(
+                    {
+                        'recipe': self.recipe_id,
+                        'admin_id': self.admin_id,
+                        'position': position,
+                        'step': step_name,
+                        'table': table,
+                        'column': column,
+                        'change': change,
+                        'n_rows': n_rows,
+                        'declared': declared,
+                        'step_declares': resolved is not None,
+                    }
+                )
+            self._previous[table] = snapshot
+
+    def report(self) -> pd.DataFrame:
+        """The run's changes, one row per step, table and column."""
+        return pd.DataFrame(self.rows, columns=list(AUDIT_COLUMNS))
+
+    def finish(self, path: Path | str | None = None) -> pd.DataFrame:
+        """Write the report as CSV and return it.
+
+        Parameters
+        ----------
+        path : Path or str, optional
+            Where to write. By default the unit's log folder, beside the
+            stage's timer file: `<Stage>_audit_<timestamp>.csv`.
+        """
+        report = self.report()
+        if path is None:
+            from openplaces.path import logs_path
+
+            stamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            path = logs_path(self.admin_id, filename=f'{self.stage}_audit_{stamp}.csv')
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        report.to_csv(path, index=False)
+        return report
 
 
 def make_register(

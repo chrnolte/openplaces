@@ -18,7 +18,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.steps import make_loader, make_register
+from openplaces.io.steps import StepAudit, make_loader, make_register
 from openplaces.recipe import (
     find_entity_recipe_id,
     get_output_path,
@@ -153,13 +153,41 @@ def expand_year_steps(pipeline: list[dict]) -> list[dict]:
 class Enricher:
     """Run an enrichment recipe for one or more admin units."""
 
+    # Class defaults, so an instance built without __init__ runs as
+    # before: audit mode off, no report.
+    audit_steps = False
+    step_audit = None
+
     def __init__(
         self,
         recipe: str | dict,
         admin_ids: str | list | None = None,
         entity_recipe_id: str | dict | None = None,
         verbose: bool = False,
+        audit_steps: bool = False,
     ):
+        """Set up enrichment of one recipe.
+
+        Parameters
+        ----------
+        recipe : str or dict
+            An enrich recipe, by id or loaded.
+        admin_ids : str, list, or None
+            Units to enrich; deeper ids restrict a unit to those parts.
+        entity_recipe_id : str, dict, or None
+            The harmonize recipe to enrich, when the recipe's own
+            `entity_recipe` is to be replaced.
+        verbose : bool
+            Print progress messages.
+        audit_steps : bool
+            Hash every evidence and spine column after each step and
+            report what a step changed outside its declared writes
+            (`io.steps.StepAudit`). The report is kept on `step_audit`
+            and written beside the unit's timer file. Off by default,
+            and then free.
+        """
+        self.audit_steps = audit_steps
+        self.step_audit = None
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
         if recipe is None:
@@ -445,6 +473,14 @@ class Enricher:
 
     def _run_steps(self, state: EnrichState, pipeline: list[dict]) -> EnrichState:
         """Run the unrolled *pipeline* on *state*, one step after another."""
+        audit = None
+        if self.audit_steps:
+            audit = StepAudit(
+                'Enricher',
+                self.recipe.get('recipe_id', 'recipe'),
+                state.admin_id,
+                {'evidence': state.evidence, 'spine': state.spine},
+            )
         for step_index, step_cfg in enumerate(expand_year_steps(pipeline)):
             step_name = step_cfg.get('step')
             if not step_name:
@@ -469,9 +505,19 @@ class Enricher:
                 )
             params = {k: v for k, v in step_cfg.items() if k not in ('step', 'enabled')}
             state = fn(state, **params)
+            if audit is not None:
+                audit.after_step(
+                    step_index,
+                    step_name,
+                    fn,
+                    params,
+                    {'evidence': state.evidence, 'spine': state.spine},
+                )
             # One mark per recipe step (see the harmonizer's loop).
             if state.timer:
                 state.timer.mark(f'step {step_index:02d} {step_name}')
+        if audit is not None:
+            self.step_audit = audit.finish()
         return state
 
     def _merged_coverage(self, out_path, sub_admin_ids: list[str]) -> list[str]:

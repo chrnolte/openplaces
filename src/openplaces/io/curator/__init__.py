@@ -19,7 +19,12 @@ from openplaces.core.constants import CURATE_PHASES
 from openplaces.core.schema import AdminId
 from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.steps import make_loader, make_register, warn_undeclared_columns
+from openplaces.io.steps import (
+    StepAudit,
+    make_loader,
+    make_register,
+    warn_undeclared_columns,
+)
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
@@ -193,6 +198,11 @@ def require_filled_ids_kept(filled: list[str], curated: pd.DataFrame, label: str
 class Curator:
     """Create a canonical entity dataset from harmonized and enriched inputs."""
 
+    # Class defaults, so an instance built without __init__ runs as
+    # before: audit mode off, no report.
+    audit_steps = False
+    step_audit = None
+
     def __init__(
         self,
         recipe: str | dict,
@@ -200,7 +210,30 @@ class Curator:
         verbose: bool = False,
         save_statistics: bool = False,
         skip_steps: str | list | set | None = None,
+        audit_steps: bool = False,
     ):
+        """Set up curation of one recipe.
+
+        Parameters
+        ----------
+        recipe : str or dict
+            A curate recipe, by id or loaded. Its `entity_recipe` must
+            name a harmonize recipe.
+        admin_ids : str, list, or None
+            Units to curate; coarser ids expand to the process level.
+        verbose : bool
+            Print progress messages.
+        save_statistics : bool
+            Save step statistics (also set by the recipe).
+        skip_steps : str, list, set, or None
+            Step names to skip in this run.
+        audit_steps : bool
+            Hash every column after each step and report what a step
+            changed outside its declared writes
+            (`io.steps.StepAudit`). The report is kept on `step_audit`
+            and written beside the unit's timer file. Off by default,
+            and then free.
+        """
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
         if recipe is None:
@@ -234,6 +267,8 @@ class Curator:
         else:
             self.skip_steps = set(skip_steps)
         self._timer = None
+        self.audit_steps = audit_steps
+        self.step_audit = None
         self.admin_ids = self._resolve_admin_ids(admin_ids)
 
     @property
@@ -361,6 +396,9 @@ class Curator:
             curated=curated,
             save_statistics=self.save_statistics,
         )
+        audit = None
+        if self.audit_steps:
+            audit = StepAudit('Curator', recipe_id, admin_id, {'curated': curated})
 
         for step_index, step_cfg in enumerate(pipeline):
             step_name = step_cfg.get('step')
@@ -399,10 +437,16 @@ class Curator:
             warn_undeclared_columns(
                 step_name, fn, params, columns_before, state.curated.columns
             )
+            if audit is not None:
+                audit.after_step(
+                    step_index, step_name, fn, params, {'curated': state.curated}
+                )
             # One mark per recipe step (see the harmonizer's loop).
             if state.timer:
                 state.timer.mark(f'step {step_index:02d} {step_name}')
 
+        if audit is not None:
+            self.step_audit = audit.finish()
         require_filled_ids_kept(filled_ids, state.curated, label)
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
         save_kwargs = {'combined': combined}
