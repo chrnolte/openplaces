@@ -84,7 +84,14 @@ whose roll share ships as 2 or more has 1, the share kept in
 `n_dwellings_parcel`. The two class rules mark their cells imputed.
 The largest building of a lot keeps its count whatever its class:
 which building is the house there is open
-(`plans/occupancy-and-dwellings-one-decider.md`, question 5).
+(`plans/occupancy-and-dwellings-one-decider.md`, question 5). The
+exception is a lot whose class is one of the recipe's `guard_classes`
+(Vacant, Mostly Vacant, Retail, Commercial, Office, Industrial,
+Institutional, Recreation): no building there is the house, so its
+largest Secondary building stays Secondary and has 0 dwellings, token
+`secondary_nonresidential_lot+imputed`. A lot without a class is not
+guarded.
+Measured 2026-11-22 on US-TX-LAV: simulated on the stored curate, the guard reaches 119 lots, changes 43 buildings and removes 13 dwellings.
 Measured 2026-11-22 on US-MA-SOM: simulated on the stored curate of 2026-10-31 with the stated-zero rule off, 2,292 secondary buildings changed to 0 (225 dwellings), 1 house set to 1, 39,113 dwellings to 38,887.
 
 Steps are organized by the nature of the transformation:

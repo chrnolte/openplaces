@@ -1871,8 +1871,19 @@ pipeline:
   # - A Single-Family building whose roll share ships as 2 or more has
   #   1 dwelling (ruling 1; 11 of 12 labeled single-family), the share
   #   kept in n_dwellings_parcel.
+  # guard_classes: on a lot of these classes no building is the house,
+  # so the largest building stays Secondary like the others and has 0
+  # dwellings (rule 3 of the plan, "the largest building is never
+  # Secondary", does not apply there; maintainer, 2026-11-22). On the
+  # question 5 labels the list covers 10 of 12 lots with no house and
+  # none of 21 lots with a house (10 of the 33 are maintainer labels).
+  # Agricultural and residential classes are left out, and so is a lot
+  # without a class.
   - step: decide_dwellings
     stated_zero_classes: []
+    guard_classes:
+      [Vacant, Mostly Vacant, Retail, Commercial, Office, Industrial,
+       Institutional, Recreation]
 
   # Outlines drawn tall (value per sq ft of outline) that their measured
   # floors do not explain: a building the outline does not hold, or a
