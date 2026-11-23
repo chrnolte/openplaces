@@ -70,6 +70,52 @@ ADMIN_PRIMARY_COLUMNS = {
         'admin4_id_admin1',
     ],
 }
+UNNARROWABLE_POLICIES = ('raise', 'whole')
+UNNARROWED_ATTR = 'openplaces_unnarrowed'
+
+
+class UnnarrowableSourceError(RuntimeError):
+    """A per-unit read of a coarser file cannot be narrowed to the unit.
+
+    Raised by :func:`get_entities` when a unit finer than the recipe's
+    save level is requested (a county from a statewide file) and the
+    rows carry no per-row unit: no admin{level}_id column, no
+    geometry to overlay, and the unit is not the sole child of the file's
+    unit. Returning the whole file instead gave every county of Indiana
+    the state's 1.2 million parcel-sale rows. A RuntimeError, not a
+    ValueError, so that a caller skipping an unavailable source on
+    ValueError does not mistake it for one.
+    """
+
+
+def unnarrowable_error(recipe, admin_ids, save_level) -> UnnarrowableSourceError:
+    """Build the error for a read that cannot be narrowed to its units.
+
+    Parameters
+    ----------
+    recipe : dict or str
+        The recipe read.
+    admin_ids : iterable of str
+        The requested units the rows could not be narrowed to.
+    save_level : int
+        The admin level the recipe saves its files at.
+
+    Returns
+    -------
+    UnnarrowableSourceError
+        Naming the recipe, the units, the file's level and the remedies.
+    """
+    recipe_id = recipe if isinstance(recipe, str) else get_recipe_id(recipe)
+    units = format_list(sorted(str(admin_id) for admin_id in admin_ids))
+    return UnnarrowableSourceError(
+        f'{recipe_id} saves one file per admin{save_level} unit and its rows '
+        f'name no finer unit, so a read for {units} would return the whole '
+        f'admin{save_level} file. Give the recipe a per-row admin id column '
+        '(process_by.admin_id_column with a crosswalk, or a column mapped '
+        'to the admin id), or process and save it by the finer unit '
+        '(process_by.admin_level). A caller that wants the whole file passes '
+        "unnarrowable='whole'."
+    )
 
 
 def _concat_recipe_files(paths, reader=None, **read_kwargs):
@@ -766,12 +812,22 @@ def get_entities(
     columns: Sequence[str] | None = None,
     missing='raise',
     bbox: tuple[float, float, float, float] | None = None,
+    unnarrowable='raise',
 ):
     """Load and combine processed Parquet tables for entities.
 
     Parent administrative IDs are expanded to the recipe's save level.
     Recipes aggregated to a single file read their ``_all`` output by
     default.
+
+    A unit finer than the save level (a county of a statewide file) is
+    read from the file covering it and narrowed to the unit's rows by,
+    in this order: the rows' admin{level}_id column; a spatial overlay
+    with the unit's boundary when geometry is read; and, where the unit
+    is the only one of its level inside the file's unit (the District of
+    Columbia in US-DC), the whole file. A read none of these narrows
+    raises :class:`UnnarrowableSourceError` unless *unnarrowable* says
+    otherwise.
 
     Parameters
     ----------
@@ -799,9 +855,29 @@ def get_entities(
         extent doesn't overlap contribute no rows to the combined result:
         this bounds memory use when loading a recipe across many
         administrative units without loading every file in full.
+    unnarrowable : {'raise', 'whole'}
+        What a read does when a requested unit finer than the save level
+        cannot be narrowed (see above). 'raise' (the default) raises
+        :class:`UnnarrowableSourceError`. 'whole' returns every row of
+        the file covering the unit and records the units it could not
+        narrow to in the result's attrs under 'openplaces_unnarrowed'
+        (recipe_id, admin_ids, save_level), for a caller that narrows
+        by other means (a name column, see
+        :func:`openplaces.io.harmonizer.restrict_to_admin_by_name`) or
+        genuinely wants the coarser unit.
+
+    Raises
+    ------
+    FileNotFoundError
+        When an output file is missing and *missing* is 'raise'.
+    UnnarrowableSourceError
+        When a requested finer unit cannot be narrowed to and
+        *unnarrowable* is 'raise'.
     """
     if missing not in {'raise', 'warn', 'ignore'}:
         raise ValueError("missing must be 'raise', 'warn', or 'ignore'")
+    if unnarrowable not in UNNARROWABLE_POLICIES:
+        raise ValueError("unnarrowable must be 'raise' or 'whole'")
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
 
@@ -839,6 +915,8 @@ def get_entities(
 
     save_level = get_save_admin_level(recipe)
     admin_col = f'admin{save_level}_id' if save_level > 0 else None
+    if isinstance(columns, str):
+        columns = [columns]
     read_columns = columns
     if admin_col is not None and columns is not None:
         if isinstance(columns, str):
@@ -857,6 +935,18 @@ def get_entities(
             str(finer_admin_id)
         )
 
+    # Narrowing needs columns the caller may not have asked for: each
+    # file's own unit, and the finer unit ids its rows carry. A read
+    # naming its columns used to leave them out and so returned the
+    # whole file. They are dropped again before returning.
+    save_col = f'admin{save_level}_id' if save_level > 0 else None
+    fill_col = admin_col
+    added_cols: set[str] = set()
+    if finer_by_level and save_col is not None and admin_col is None:
+        fill_col = save_col
+        added_cols.add(save_col)
+    narrow_cols = [f'admin{level}_id' for level in sorted(finer_by_level)]
+
     frames = []
     output_paths = []
     missing_paths = []
@@ -872,12 +962,17 @@ def get_entities(
         # A placeholder has none of the requested columns, and asking
         # for one raises instead of returning its no rows.
         placeholder = read_columns is not None and is_placeholder_output(path)
-        df = read_parquet(
-            path, geom=geom, columns=None if placeholder else read_columns, bbox=bbox
-        )
-        if admin_col is not None and output_admin_id is not None:
-            if admin_col not in df.columns:
-                df[admin_col] = str(output_admin_id)
+        file_columns = None if placeholder else read_columns
+        if file_columns is not None and narrow_cols:
+            present = _parquet_column_names(path)
+            extra = [c for c in narrow_cols if c in present and c not in file_columns]
+            if extra:
+                file_columns = [*file_columns, *extra]
+                added_cols.update(extra)
+        df = read_parquet(path, geom=geom, columns=file_columns, bbox=bbox)
+        if fill_col is not None and output_admin_id is not None:
+            if fill_col not in df.columns:
+                df[fill_col] = str(output_admin_id)
         frames.append(df)
         output_paths.append(path)
 
@@ -941,6 +1036,7 @@ def get_entities(
             partition_id=requested_partition_id,
             missing=missing,
             bbox=bbox,
+            unnarrowable=unnarrowable,
         )
         # `columns` is deliberately not forwarded even though only
         # the geometry is wanted: a split attribute plus `_geo` pair
@@ -1000,25 +1096,25 @@ def get_entities(
     # the caller didn't ask for. Narrow back down to exactly what was
     # requested, using a stored per-row id column when the recipe happens to
     # carry one, or a spatial fallback (join to just the requested units'
-    # boundary polygons) otherwise.
+    # boundary polygons) otherwise. A unit that is the only one of its
+    # level inside the file's unit (US-DC-DC in US-DC) is the whole
+    # file. What none of these narrows raises, unless the caller asked
+    # for the whole file explicitly: returning it silently gave every
+    # Indiana county's transaction spine the whole state's sales.
     #
     # Everything the caller asked for is kept, so the levels combine
     # as a union and units requested whole at the save level survive.
     # Applying each level as a successive filter instead returned an
     # empty frame for a two-level request, and dropped every row of a
     # county the caller had named alongside a town.
+    unnarrowed_ids: set[str] = set()
     if finer_by_level and not data.empty:
         keep = pd.Series(False, index=data.index)
-        save_col = f'admin{save_level}_id' if save_level > 0 else None
         whole_ids = {str(admin) for admin in whole_output_ids}
-        # A unit asked for whole has to be identifiable before
-        # anything is narrowed, or narrowing drops all of its rows.
-        unresolved_whole = bool(whole_ids) and (
-            save_col is None or save_col not in data.columns
-        )
-        if whole_ids and not unresolved_whole:
+        # Each file's unit is filled in above whenever narrowing is
+        # needed, so a unit asked for whole is always identifiable.
+        if whole_ids:
             keep |= data[save_col].astype(str).isin(whole_ids)
-        unresolved_levels = []
         for level, ids in finer_by_level.items():
             col = f'admin{level}_id'
             if col not in data.columns and geom:
@@ -1030,23 +1126,27 @@ def get_entities(
                 if data.crs is not None and boundaries.crs is not None:
                     boundaries = boundaries.to_crs(data.crs)
                 data = overlay_admin_ids(data, admin_geometries=boundaries)
+            keep = keep.reindex(data.index, fill_value=False)
             if col in data.columns:
-                keep = keep.reindex(data.index, fill_value=False)
                 keep |= data[col].astype(str).isin(ids)
-            else:
-                unresolved_levels.append(level)
-        if unresolved_levels or unresolved_whole:
-            unresolved = unresolved_levels or [save_level]
-            warnings.warn(
-                'Cannot restrict output to the requested '
-                f'{format_list([f"admin{i}" for i in unresolved])} IDs: '
-                "this recipe's saved data has no such column and geom=False "
-                'rules out a spatial fallback; returning unfiltered '
-                f'admin{save_level}-level data instead.',
-                stacklevel=2,
-            )
-        if not unresolved_whole and len(unresolved_levels) < len(finer_by_level):
-            data = data[keep]
+                continue
+            sole = _sole_child_parents(ids, level, save_level)
+            keep |= data[save_col].astype(str).isin(sole.values())
+            unnarrowed_ids.update(set(ids) - set(sole))
+        if unnarrowed_ids and unnarrowable == 'raise':
+            raise unnarrowable_error(recipe, unnarrowed_ids, save_level)
+        if unnarrowed_ids:
+            # Asked for explicitly: the file covering each such unit
+            # stays whole, and the result says so.
+            parents = {
+                str(AdminId(*AdminId(admin_id).levels[:save_level]))
+                for admin_id in unnarrowed_ids
+            }
+            keep |= data[save_col].astype(str).isin(parents)
+        data = data[keep]
+
+    if added_cols:
+        data = data.drop(columns=[col for col in added_cols if col in data.columns])
 
     partition_ids = set()
     if partition_id == 'all':
@@ -1058,7 +1158,55 @@ def get_entities(
     data.attrs['openplaces_output_paths'] = [str(path) for path in output_paths]
     data.attrs['openplaces_missing_paths'] = [str(path) for path in missing_paths]
     data.attrs['openplaces_partition_ids'] = sorted(partition_ids)
+    if unnarrowed_ids:
+        data.attrs[UNNARROWED_ATTR] = {
+            'recipe_id': get_recipe_id(recipe),
+            'admin_ids': sorted(unnarrowed_ids),
+            'save_level': save_level,
+        }
     return data
+
+
+def _parquet_column_names(path) -> set[str]:
+    """Column names stored in a parquet file, or none if unreadable."""
+    try:
+        return set(pq.read_schema(path).names)
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _sole_child_parents(ids, level, save_level) -> dict[str, str]:
+    """The requested units that are the only one of their level in their file.
+
+    Parameters
+    ----------
+    ids : iterable of str
+        Requested units at *level*.
+    level : int
+        Their admin level.
+    save_level : int
+        The level of the file covering them.
+
+    Returns
+    -------
+    dict of str to str
+        Each such unit mapped to its save-level ancestor. That ancestor
+        has no other unit at *level* its file's rows could belong to,
+        so the whole file is the unit's.
+    """
+    parents = {
+        admin_id: str(AdminId(*AdminId(admin_id).levels[:save_level]))
+        for admin_id in ids
+    }
+    sole = {}
+    for admin_id, parent in parents.items():
+        try:
+            children = get_admin(parent, level, columns=[]).index
+        except (FileNotFoundError, KeyError, ValueError):
+            continue
+        if [str(child) for child in children] == [admin_id]:
+            sole[admin_id] = parent
+    return sole
 
 
 def describe_recipe(recipe, admin_id=None, layer=None, partition_id=None):

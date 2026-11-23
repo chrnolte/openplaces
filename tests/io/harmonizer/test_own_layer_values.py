@@ -82,7 +82,7 @@ def _run(monkeypatch, matches, refs=None, entity_type='parcel', spine=None):
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
     state = HarmonizeState(
         recipe={},
@@ -220,7 +220,7 @@ def test_a_filling_layer_decides_a_cell_a_property_copy_occupied(monkeypatch):
     patch_links(
         monkeypatch,
         'get_entities',
-        lambda recipe_id, admin_id, layer=None: refs[recipe_id],
+        lambda recipe_id, admin_id, layer=None, **kwargs: refs[recipe_id],
     )
     state = HarmonizeState(
         recipe={}, admin_id=AdminId('US-NC-ZZ'), verbose=False, timer=None

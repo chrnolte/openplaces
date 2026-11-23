@@ -37,7 +37,9 @@ def _patch(monkeypatch, ref, entity_type):
     patch_links(monkeypatch, '_apply_remap_csvs', lambda state, recipe_id: state)
     patch_links(monkeypatch, 'restrict_to_admin_by_name', lambda df, *a: df)
     patch_links(
-        monkeypatch, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+        monkeypatch,
+        'get_entities',
+        lambda recipe_id, admin_id, layer=None, **kwargs: ref,
     )
     monkeypatch.setattr(entity_links, 'load_unit_lot_pairs', lambda admin_id: None)
 

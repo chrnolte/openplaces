@@ -267,7 +267,15 @@ degenerate source column, empty column — is in
   pre-split file per admin unit inside a shared download) or `layer_pattern`
   (one layer per admin unit inside one geodatabase or GeoPackage, e.g.
   `"Parcels{co_name_file}"`; a missing layer raises and lists the file's
-  layers).
+  layers). `admin_id_transformation` derives the code from the column
+  first (a `substring` of a parcel number whose leading digits are the
+  county); a row matching no crosswalk code is saved in no unit's file,
+  and the ingest warns with the count.
+- **A statewide table consumed by a county spine needs the county per
+  row.** Either `process_by` it by county, or map a column to
+  `admin3_id` (or `admin3_name`, which the spine steps match by name).
+  A county read of a statewide file whose rows name no county raises
+  `UnnarrowableSourceError` rather than handing the county the state.
 - `save_to:` — `data_dir` (`core` for entities you keep, `cache` for
   intermediates such as transactions, `share` for deliverables),
   `admin_level`, optional `retention`.

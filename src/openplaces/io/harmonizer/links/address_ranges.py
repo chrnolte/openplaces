@@ -221,7 +221,8 @@ def link_address_ranges(
     )
 
     try:
-        ref = get_entities(recipe_id, state.admin_id)
+        # Narrowed by name or refused below (restrict_to_admin_by_name).
+        ref = get_entities(recipe_id, state.admin_id, unnarrowable='whole')
     except (FileNotFoundError, OSError, KeyError, ValueError):
         if state.verbose:
             print(

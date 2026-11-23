@@ -35,7 +35,12 @@ from openplaces.io.cleanup import (
     receipt_justifies_skip,
 )
 from openplaces.io.harmonizer.written import journal_writes
-from openplaces.io.readers import get_admin, get_admin_ids
+from openplaces.io.readers import (
+    UNNARROWED_ATTR,
+    get_admin,
+    get_admin_ids,
+    unnarrowable_error,
+)
 from openplaces.io.steps import make_loader, make_register
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
@@ -432,28 +437,42 @@ def normalize_admin_name(names: pd.Series) -> pd.Series:
 
 
 def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
-    """Fall back to a plain-text admin-name filter for an over-broad source.
+    """Narrow an over-broad source to *admin_id* by its admin-name column.
 
-    ``get_entities`` cannot restrict a non-spatial source to *admin_id* when
+    `get_entities` cannot narrow a non-spatial source to *admin_id* when
     the source has no matching admin-id column of its own (e.g. a statewide
     transaction table with only a free-text county name column, no
-    ``admin3_id``) -- it returns the whole unfiltered table instead, which
-    would otherwise duplicate that entire table into every child admin unit's
-    output (or pool every admin unit's counts/aggregates together). Shared by
-    :mod:`spine` (``union_spine_sources``) and :mod:`links` (``link_by_id``'s
-    reference load), since both can hit the same over-broad source.
+    `admin3_id`). It raises then, unless the caller passes
+    `unnarrowable='whole'`, as the callers of this function do: it
+    returns the whole file and records the units it could not narrow to
+    in `df.attrs['openplaces_unnarrowed']`, and this function narrows by
+    name. Used by `union_spine_sources`, `link_by_id`,
+    `record_link_method`, `link_address_ranges` and `append_last_sales`.
 
-    When *df* carries an ``admin{level}_name`` column and its own recipe is
+    When *df* carries an `admin{level}_name` column and its own recipe is
     scoped coarser than *admin_id*, filter locally by matching that column
     (case/whitespace-insensitively) against *admin_id*'s registered name. A
-    no-op when no such column exists or the source is already scoped at or
-    finer than *admin_id*.
+    no-op when no such column exists and the read was narrowed, or the
+    source is already scoped at or finer than *admin_id*.
+
+    Raises
+    ------
+    openplaces.io.readers.UnnarrowableSourceError
+        When *df* is a whole coarser file its read could not narrow to
+        *admin_id* and it has no `admin{level}_name` column either.
     """
     if not isinstance(admin_id, AdminId):
         admin_id = AdminId(admin_id)
     level = admin_id.get_level()
     name_col = f'admin{level}_name'
     if name_col not in df.columns:
+        unnarrowed = df.attrs.get(UNNARROWED_ATTR)
+        if unnarrowed and len(df):
+            raise unnarrowable_error(
+                unnarrowed['recipe_id'],
+                unnarrowed['admin_ids'],
+                unnarrowed['save_level'],
+            )
         return df
     source_admin_id = get_recipe_by_id(recipe_id)['admin_id']
     if not isinstance(source_admin_id, AdminId):

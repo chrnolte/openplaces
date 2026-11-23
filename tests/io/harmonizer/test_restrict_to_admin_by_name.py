@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from openplaces.io import harmonizer as hz
+from openplaces.io.readers import UNNARROWED_ATTR, UnnarrowableSourceError
 
 
 class _Admin(str):
@@ -61,6 +62,34 @@ def test_dropping_every_row_warns_instead_of_looking_like_no_coverage(_spine):
     with pytest.warns(UserWarning, match='no row of'):
         kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
     assert len(kept) == 0
+
+
+def _unnarrowed(df):
+    df.attrs[UNNARROWED_ATTR] = {
+        'recipe_id': 'XX-YY_transaction-test-2026',
+        'admin_ids': ['XX-YY-ZZ'],
+        'save_level': 2,
+    }
+    return df
+
+
+def test_a_whole_file_without_a_name_column_raises(_spine):
+    # get_entities(unnarrowable='whole') handed back the whole state;
+    # with no name column either, nothing can narrow it.
+    df = _unnarrowed(pd.DataFrame({'v': [1, 2, 3]}))
+    with pytest.raises(UnnarrowableSourceError, match='XX-YY-ZZ'):
+        hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+
+
+def test_a_whole_file_with_a_name_column_is_narrowed(_spine):
+    df = _unnarrowed(_frame(['St. Quillby', 'Marlowe']))
+    kept = hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))
+    assert kept['v'].tolist() == [0]
+
+
+def test_a_narrowed_read_without_a_name_column_passes(_spine):
+    df = pd.DataFrame({'v': [1, 2]})
+    assert len(hz.restrict_to_admin_by_name(df, 'r', _Admin('XX-YY-ZZ'))) == 2
 
 
 def test_a_source_already_scoped_to_the_unit_is_left_alone(monkeypatch, _spine):

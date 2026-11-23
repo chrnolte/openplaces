@@ -1494,7 +1494,15 @@ def link_by_id(
         return state
 
     try:
-        ref = get_entities(recipe_id, state.admin_id, layer=layer)
+        # A whole coarser file is narrowed by name or refused below
+        # (restrict_to_admin_by_name), which runs for the primary table
+        # only; a layer read raises at once instead.
+        ref = get_entities(
+            recipe_id,
+            state.admin_id,
+            layer=layer,
+            unnarrowable='whole' if layer is None else 'raise',
+        )
     except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
         # The reference is not available for this admin (e.g. a source-specific
         # roll listed in a shared pipeline that does not apply here, including
@@ -1509,9 +1517,9 @@ def link_by_id(
     if ref is not None and layer is None:
         # A reference scoped coarser than state.admin_id with no matching
         # admin-id column (e.g. a statewide transaction table keyed only by a
-        # free-text county name) comes back unfiltered from get_entities --
-        # restrict it here so a per-county aggregate isn't silently pooled
-        # across the whole state.
+        # free-text county name) comes back whole from get_entities, as
+        # asked: narrow it by name here, or raise, so a per-county
+        # aggregate is never pooled across the whole state.
         ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
     if ref is not None and _latest_vintage:
         # A roll holding several tax years describes each property once
