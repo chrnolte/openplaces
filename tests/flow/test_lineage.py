@@ -1,9 +1,14 @@
 """Declared step columns resolved across the recipe tree (flow.lineage)."""
 
+from functools import cache
+from types import SimpleNamespace
+
 import pytest
 
+from openplaces.core.attribute_registry import load_registry
 from openplaces.flow import lineage
 from openplaces.flow.lineage import StepUse
+from openplaces.recipe import apply_recipe_patches
 
 
 def test_every_declaration_resolves_in_every_recipe():
@@ -295,6 +300,211 @@ def test_a_reviewed_correction_is_listed_as_writing_the_chain():
     building = 'US_building-openplaces-2026'
     for column in ('occupancy_type', 'n_dwellings'):
         assert ('apply_reviewed_corrections', False) in writers[(building, column)]
+
+
+@cache
+def _every_pipeline() -> tuple:
+    """Every recipe's steps, unpatched and as each patch scope runs it."""
+    return tuple(lineage.all_steps() + lineage.patched_steps())
+
+
+#: Registry columns with more than one deciding step for one entity
+#: type in recipes some unit runs together, with those steps and why
+#: they are allowed for now
+#: (plans/one-decider-per-column-test.md). Only shrinks: an entry that
+#: is no longer needed fails the test as a new violation does.
+_MULTI_DECIDER_ALLOWLIST = {
+    ('parcel', column): (
+        frozenset(
+            {
+                'US_parcel-geospine-2026:link_by_id',
+                'US_parcel-openplaces-2026:divide_account_values',
+            }
+        ),
+        'V1 to V4: the roll pass decides the harmonized value, the curate '
+        'divides it per lot; one has to become a named second pass',
+    )
+    for column in ('improvement_value', 'land_value', 'total_value')
+}
+
+
+def test_one_decider_per_registry_column_and_entity():
+    # Target architecture 2.1: a delivered registry column has one
+    # deciding step per entity. Recipes no unit runs together (US and
+    # CO) are not compared.
+    found = lineage.entity_deciders(_every_pipeline(), load_registry().index)
+    allowed = {key: steps for key, (steps, _) in _MULTI_DECIDER_ALLOWLIST.items()}
+    new = {key: found[key] for key in found.keys() - allowed.keys()}
+    resolved = sorted(allowed.keys() - found.keys())
+    changed = {
+        key: found[key]
+        for key in found.keys() & allowed.keys()
+        if found[key] != allowed[key]
+    }
+    assert not new, f'new columns with several deciders: {new}'
+    assert not resolved, f'resolved, remove from the allowlist: {resolved}'
+    assert not changed, f'deciders changed, update the allowlist: {changed}'
+
+
+#: Steps used by a recipe (patches included) that declare no columns,
+#: and why. Only shrinks: a step that starts declaring, or leaves every
+#: recipe, fails the test until its entry is removed.
+_UNDECLARED_STEP_ALLOWLIST = {
+    ('harmonize', 'merge_global'): 'the spine becomes the sources tables',
+    ('harmonize', 'union_spine_sources'): 'the spine becomes the sources tables',
+    ('harmonize', 'load_geospine'): 'the spine becomes the geospine table',
+    ('harmonize', 'assign_entity_ids'): 'merges rows; a source column on any column',
+    ('harmonize', 'append_last_sales'): 'appends rows carrying the roll columns',
+    ('harmonize', 'aggregate_multi_parcel_sales'): 'rewrites folded rows whole',
+    ('harmonize', 'assign_transaction_ids'): 'writes the index only',
+    ('harmonize', 'link_geographic_ids'): 'nested output columns not checked yet',
+    ('harmonize', 'carve_lumped_territories'): 'edits geometry, drops rows',
+    ('harmonize', 'resolve_overlaps'): 'rewrites geometry; not checked yet',
+    ('enrich', 'enrich_footprints_from_reference_buildings'): (
+        'without columns, every reference column'
+    ),
+    ('enrich', 'overlay_reference_polygons'): 'year columns and suffix not checked',
+    ('enrich', 'enrich_parcels_from_reference_crosswalk'): (
+        'names come from a column-notes file'
+    ),
+    ('curate', 'merge_enrichments'): 'columns of another recipe; reads_from to do',
+    ('curate', 'collect_link_ids'): 'curate roll-out (step 4) not done',
+    ('curate', 'keep_curated_ids'): 'curate roll-out (step 4) not done',
+    ('curate', 'declare_columns'): 'curate roll-out (step 4) not done',
+    ('curate', 'keep_registered_columns'): 'drops columns; curate roll-out',
+    ('curate', 'cast_categoricals'): 'changes dtypes only; curate roll-out',
+    ('curate', 'order_columns'): 'orders columns only; curate roll-out',
+    ('curate', 'derive_indicators'): 'curate roll-out (step 4) not done',
+    ('curate', 'apportion_common_land'): 'curate roll-out (step 4) not done',
+    ('curate', 'classify_manufactured_homes'): 'curate roll-out (step 4) not done',
+    ('curate', 'collapse_double_closings'): 'curate roll-out (step 4) not done',
+    ('curate', 'derive_admin_attribute'): 'curate roll-out (step 4) not done',
+    ('curate', 'derive_duplicate_columns'): 'curate roll-out (step 4) not done',
+    ('curate', 'derive_group_count'): 'curate roll-out (step 4) not done',
+    ('curate', 'derive_group_rank'): 'curate roll-out (step 4) not done',
+    ('curate', 'fill_missing_numeric'): 'curate roll-out (step 4) not done',
+    ('curate', 'filter_by_range'): 'drops rows; curate roll-out',
+    ('curate', 'flag_sales_matching_other_kind'): 'curate roll-out (step 4)',
+    ('curate', 'flag_unconfirmed_height'): 'curate roll-out (step 4) not done',
+    ('curate', 'join_temporal_snapshot'): 'in a patch only; curate roll-out',
+    ('curate', 'report_lot_value_sharing'): 'curate roll-out (step 4) not done',
+    ('curate', 'take_next_roll_when_built'): 'in a patch only; curate roll-out',
+}
+
+
+def test_every_used_step_declares_its_columns():
+    # A step that declares nothing is invisible to lineage: it may
+    # write a decided column and no test would see it.
+    found = {(use.stage, use.step) for use in _every_pipeline() if not use.declared}
+    new = sorted(found - _UNDECLARED_STEP_ALLOWLIST.keys())
+    resolved = sorted(_UNDECLARED_STEP_ALLOWLIST.keys() - found)
+    assert not new, f'undeclared steps in use: {new}'
+    assert not resolved, (
+        f'declared or unused now, remove from the allowlist: {resolved}'
+    )
+
+
+#: Patch recipes whose anchor names no step of the pipeline they
+#: patch, or which insert an unregistered step. Only shrinks.
+_PATCH_ERROR_ALLOWLIST: dict[str, str] = {}
+
+
+def test_patch_anchors_name_existing_steps():
+    # Without this a broken anchor fails only when the unit runs.
+    errors = lineage.patch_errors()
+    assert lineage.patch_recipes()
+    new = {k: v for k, v in errors.items() if k not in _PATCH_ERROR_ALLOWLIST}
+    resolved = sorted(_PATCH_ERROR_ALLOWLIST.keys() - errors.keys())
+    assert not new, f'patches that do not apply: {new}'
+    assert not resolved, f'patches apply now, remove from the allowlist: {resolved}'
+
+
+def test_patch_errors_names_a_missing_anchor(monkeypatch):
+    patch = {
+        'recipe_id': 'fabricated',
+        'patches': 'US_building-openplaces-2026',
+        'admin_id': 'US-MA-SOM',
+        'stage': 'curate',
+        'entity': SimpleNamespace(entity_type='building'),
+        'pipeline_patch': [{'remove': 'no_such_step'}],
+    }
+
+    def apply_fabricated(recipe, admin_id):
+        return apply_recipe_patches(recipe, admin_id, patches=[patch])
+
+    monkeypatch.setattr(lineage, 'patch_recipes', lambda: {'fabricated': patch})
+    monkeypatch.setattr(lineage, 'apply_recipe_patches', apply_fabricated)
+    errors = lineage.patch_errors()
+    assert list(errors) == ['fabricated']
+    assert 'no_such_step' in errors['fabricated']
+
+
+def test_entity_deciders_compare_only_overlapping_scopes():
+    def decider(recipe_id, step):
+        return StepUse(
+            recipe_id,
+            'harmonize',
+            1,
+            step,
+            True,
+            writes=frozenset({'x'}),
+            decides=frozenset({'x'}),
+            entity_type='parcel',
+        )
+
+    us = decider('US_parcel-spine-2026', 'a')
+    co = decider('CO_parcel-spine-2026', 'b')
+    florida = decider('US-FL_parcel-roll-2026', 'c')
+    assert lineage.entity_deciders([us, co], ['x']) == {}
+    assert lineage.entity_deciders([us, florida, co], ['x']) == {
+        ('parcel', 'x'): frozenset(
+            {
+                'US_parcel-spine-2026:a',
+                'US-FL_parcel-roll-2026:c',
+                'CO_parcel-spine-2026:b',
+            }
+        )
+    }
+    assert lineage.entity_deciders([us, florida], ['y']) == {}
+
+
+def test_reconcile_attributes_declares_its_evidence_columns():
+    # The step names its columns after the link the recipe builds and
+    # the spine's entity type; the declaration reads both off the
+    # recipe. A point reference writes suffixed evidence, a polygon
+    # overlay also its two relational counts, which it decides.
+    steps = [use for use in lineage.all_steps() if use.step == 'reconcile_attributes']
+    by_recipe = {}
+    for use in steps:
+        by_recipe.setdefault(use.recipe_id, set()).update(use.writes)
+    building = by_recipe['US_building-spine-2026']
+    assert {
+        'occupancy_type_building_nsi',
+        'occupancy_type_building_nsi_all',
+        'n_buildings_nsi',
+        'n_dwellings_overture',
+        'n_dwellings_nsi',
+        'use_group_combined_parcel',
+        'n_parcels_per_building',
+        'n_buildings_per_parcel',
+        'parcel_id_local',
+    } <= building
+    parcel = by_recipe['US_parcel-spine-2026']
+    assert {
+        'address_street_dwelling_overture',
+        'group_building_nsi',
+        'occupancy_type_footprint_fema',
+        'height_footprint_fema',
+        'n_footprints_fema_per_parcel',
+    } <= parcel
+    assert 'height_footprint_fema_all' not in parcel
+    decided = {c for use in steps for c in use.decides}
+    assert decided == {
+        'n_parcels_per_building',
+        'n_buildings_per_parcel',
+        'n_footprints_fema_per_parcel',
+        'n_parcels_per_footprint_fema',
+    }
 
 
 def test_writers_readers_and_repeated_deciders():

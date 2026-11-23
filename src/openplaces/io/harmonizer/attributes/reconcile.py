@@ -6,18 +6,30 @@ rename_columns.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable, Mapping
+from functools import cache
 
 import pandas as pd
 
+from openplaces.core.attribute_registry import get_data_type
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer.apportion import APPORTIONED_VALUE_COLUMNS
 from openplaces.io.harmonizer.attributes._shared import (
+    _ID_COLUMN,
     _POINT_REF_COLS,
+    _POLYGON_REF_COLS,
 )
 from openplaces.io.harmonizer.attributes.point import (
     _attribute_point_reference,
 )
 from openplaces.io.harmonizer.attributes.polygon import (
     _attribute_polygon_reference,
+)
+from openplaces.io.steps import RECIPE_ARGUMENT
+from openplaces.recipe import (
+    get_recipe_by_id,
+    resolve_attribute_name,
+    source_id_from_recipe_id,
 )
 
 
@@ -107,7 +119,233 @@ def _attribute_absent_point_reference(
     )
 
 
-@_register('reconcile_attributes')
+def _entity_type_of(recipe) -> str | None:
+    """A recipe's entity type, parsed YAML or loaded, or None."""
+    entity = recipe.get('entity') if isinstance(recipe, Mapping) else None
+    if isinstance(entity, Mapping):
+        entity_type = entity.get('entity_type')
+    else:
+        entity_type = getattr(entity, 'entity_type', None)
+    return str(entity_type) if entity_type is not None else None
+
+
+def _reference_entity_type(recipe_id: str) -> str:
+    """The entity type a link step derives from a reference recipe id."""
+    # The rule of links.spatial._resolve_reference_recipe, restated:
+    # importing it here would pull the link modules into a declaration.
+    return recipe_id.split('_')[-1].split('-')[0]
+
+
+def _link_joins(pipeline, follow: Callable) -> dict:
+    """The join each link step of *pipeline* builds, by reference.
+
+    Keys are a reference recipe id or `('entity_type', <type>)`;
+    values are `'spatial_overlay'` or `'spatial_point'`. *follow* is
+    called with each recipe id whose links the pipeline restores.
+    """
+    joins: dict = {}
+    for entry in pipeline or ():
+        if not isinstance(entry, Mapping) or entry.get('enabled', True) is False:
+            continue
+        step = entry.get('step')
+        if step == 'link_to_reference':
+            join = entry.get('join', 'spatial_overlay')
+            if entry.get('recipe_id'):
+                joins[entry['recipe_id']] = join
+            elif entry.get('entity_type'):
+                joins[('entity_type', entry['entity_type'])] = join
+        elif step == 'split_outlines_at_parcel_lines':
+            joins[('entity_type', entry.get('entity_type', 'parcel'))] = (
+                'spatial_overlay'
+            )
+        elif step == 'load_links' and entry.get('links_recipe_id'):
+            joins = {**follow(entry['links_recipe_id']), **joins}
+    return joins
+
+
+@cache
+def _restored_joins(recipe_id: str) -> dict:
+    """The joins a recipe's output carries, its entity recipe's included."""
+    try:
+        recipe = get_recipe_by_id(recipe_id)
+    except (ValueError, KeyError, FileNotFoundError):
+        return {}
+    return _recipe_joins(recipe)
+
+
+def _recipe_joins(recipe) -> dict:
+    """The joins a recipe builds or restores before its attribute steps."""
+    joins = {}
+    if recipe.get('entity_recipe'):
+        joins.update(_restored_joins(recipe['entity_recipe']))
+    joins.update(_link_joins(recipe.get('pipeline'), _restored_joins))
+    return joins
+
+
+def _reconcile_sources(arguments) -> list[dict]:
+    """Each source entry resolved to what names its evidence columns.
+
+    A recipe id names its source and entity type; an `entity_type`
+    entry is resolved per unit at run time, so its source id is `*`.
+    The join is the one a link step of the recipe (or of the recipe
+    whose links it restores) builds; without the recipe, or with no
+    such step, a point join, which is what the step assumes of a
+    reference that has no crosswalk.
+    """
+    recipe = arguments.get(RECIPE_ARGUMENT)
+    joins = _recipe_joins(recipe) if isinstance(recipe, Mapping) else {}
+    spine_entity_type = _entity_type_of(recipe)
+    resolved = []
+    for source in arguments.get('sources') or ():
+        recipe_id = source.get('recipe_id')
+        entity_type = source.get('entity_type')
+        if recipe_id is not None:
+            entity_type = entity_type or _reference_entity_type(recipe_id)
+            source_id = source_id_from_recipe_id(recipe_id)
+            join = joins.get(recipe_id) or joins.get(('entity_type', entity_type))
+        elif entity_type is not None:
+            source_id = '*'
+            join = joins.get(('entity_type', entity_type))
+        else:
+            continue
+        columns = [c for c in source.get('columns') or () if isinstance(c, str)]
+        resolved.append(
+            {
+                'source_id': source_id,
+                'entity_type': entity_type,
+                'spine_entity_type': spine_entity_type or '*',
+                'join': join or 'spatial_point',
+                'columns': columns,
+                'collect_ids': bool(source.get('collect_ids')),
+            }
+        )
+    return resolved
+
+
+def _polygon_suffix(source: dict) -> str:
+    """`_resolve_suffix` for a declared source (see `_shared`)."""
+    entity_type = source['entity_type']
+    if entity_type == source['spine_entity_type']:
+        return f'_{source["source_id"]}'
+    if entity_type == 'parcel':
+        return '_parcel'
+    return f'_{entity_type}_{source["source_id"]}'
+
+
+def _polygon_counts(source: dict) -> list[str]:
+    """The two relational counts of a polygon overlay."""
+    suffix = _polygon_suffix(source)
+    label = suffix.lstrip('_')
+    entity_type = source['entity_type']
+    plural = (
+        entity_type + 's' + label[len(entity_type) :]
+        if label.startswith(entity_type)
+        else f'{label}s'
+    )
+    spine = source['spine_entity_type']
+    return [f'n_{plural}_per_{spine}', f'n_{spine}s_per_{label}']
+
+
+def _is_numeric_attribute(column: str) -> bool:
+    """Whether the registry types *column* as a number."""
+    data_type = get_data_type(resolve_attribute_name(column))
+    return data_type in ('int', 'float', 'bool', 'Int64', 'int64', 'float64')
+
+
+def _polygon_writes(source: dict) -> list[str]:
+    """The evidence columns `_attribute_polygon_reference` writes."""
+    suffix = _polygon_suffix(source)
+    label = suffix.lstrip('_')
+    columns = source['columns'] or list(_POLYGON_REF_COLS)
+
+    def named(column: str) -> str:
+        # An id column is written bare (`_attributed_name`); the step
+        # suffixes it only where the spine already holds the name.
+        same_entity = source['entity_type'] == source['spine_entity_type']
+        if _ID_COLUMN.match(column) and not same_entity:
+            return column
+        return f'{column}{suffix}'
+
+    names = [f'{label}_id_all', f'overlap_fraction{suffix}']
+    if source['entity_type'] == 'parcel':
+        names += [named('parcel_id'), f'area_intersection_m2{suffix}']
+    names += [f'{c}{suffix}' for c in columns if c in APPORTIONED_VALUE_COLUMNS]
+    skipped = {'use_group', 'use_subgroup', 'purpose_group', 'purpose_subgroup'}
+    for column in columns:
+        if column in skipped or column in APPORTIONED_VALUE_COLUMNS:
+            continue
+        names.append(named(column))
+        # Only a column whose values are not numbers gets the summary
+        # of every value; the registry stands in for the data here.
+        if not _is_numeric_attribute(column):
+            names.append(f'{named(column)}_all')
+    return names
+
+
+def _point_writes(source: dict) -> list[str]:
+    """The evidence columns `_attribute_point_reference` writes."""
+    entity_type = source['entity_type']
+    source_id = source['source_id']
+    columns = source['columns'] or list(_POINT_REF_COLS)
+
+    def named(column: str) -> str:
+        # `_point_suffix` with its column, and the n_dwellings rename.
+        if column == 'n_dwellings':
+            return f'n_dwellings_{source_id}'
+        if entity_type in column:
+            return f'{column}_{source_id}'
+        return f'{column}_{entity_type}_{source_id}'
+
+    names = [named(c) for c in columns]
+    count = f'n_{entity_type}s_{source_id}'
+    if count not in names:
+        names.append(count)
+    has_value = any('structure_value' in c for c in columns)
+    group = next(
+        (c for c in columns if 'purpose_subgroup' in c or 'occupancy_type' in c),
+        None,
+    )
+    if has_value:
+        names += [f'{named(c)}_all' for c in (group, 'group') if c in columns]
+    if source['collect_ids']:
+        # The reference's index, an ingest table's `{entity_type}_id`.
+        names.append(f'{entity_type}_id')
+    return names
+
+
+def _reconcile_writes(arguments) -> list[str]:
+    """Every evidence column `reconcile_attributes` writes, but the
+    relational counts (`_reconcile_counts`)."""
+    names = []
+    for source in _reconcile_sources(arguments):
+        if source['join'] == 'spatial_overlay':
+            names += _polygon_writes(source)
+        else:
+            names += _point_writes(source)
+    return names
+
+
+def _reconcile_counts(arguments) -> list[str]:
+    """The relational counts of each polygon overlay. Each is rebuilt
+    on every spine row, so the step decides them."""
+    return [
+        name
+        for source in _reconcile_sources(arguments)
+        if source['join'] == 'spatial_overlay'
+        for name in _polygon_counts(source)
+    ]
+
+
+# What this step writes depends on its sources, on whether the recipe
+# links each one as points or as an overlay, and on the spine's entity
+# type: the callables read the last two off the recipe
+# (`steps.RECIPE_ARGUMENT`). A name that hangs on a unit's own
+# reference (an `entity_type` source) carries `*` for its source id.
+@_register(
+    'reconcile_attributes',
+    writes=[_reconcile_writes, _reconcile_counts],
+    decides=[_reconcile_counts],
+)
 def reconcile_attributes(
     state: HarmonizeState,
     sources: list[dict] | None = None,
