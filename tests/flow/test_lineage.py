@@ -181,28 +181,7 @@ def test_the_value_curates_add_no_undeclared_step_unseen():
         for use in _value_chain_steps()
         if not use.declared and use.recipe_id in (parcel, building)
     }
-    assert undeclared == {
-        (parcel, 'declare_columns'),
-        (parcel, 'merge_enrichments'),
-        (parcel, 'apportion_common_land'),
-        (parcel, 'derive_indicators'),
-        (parcel, 'cast_categoricals'),
-        (parcel, 'order_columns'),
-        (building, 'declare_columns'),
-        (building, 'collect_link_ids'),
-        (building, 'keep_curated_ids'),
-        (building, 'merge_enrichments'),
-        (building, 'derive_admin_attribute'),
-        (building, 'fill_missing_numeric'),
-        (building, 'derive_indicators'),
-        (building, 'classify_manufactured_homes'),
-        (building, 'derive_group_count'),
-        (building, 'derive_group_rank'),
-        (building, 'flag_unconfirmed_height'),
-        (building, 'report_lot_value_sharing'),
-        (building, 'cast_categoricals'),
-        (building, 'order_columns'),
-    }
+    assert undeclared == set()
 
 
 #: The columns of the occupancy and dwelling chain
@@ -238,10 +217,12 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
     # The building class has one decider (the base class) and four
     # correcting writers; the dwelling count is decided before the
     # class. A step that starts or stops deciding one of these columns
-    # changes this map on purpose.
+    # changes this map on purpose. cast_categoricals declares every
+    # registry categorical it may cast, present in the recipe or not.
     parcel = 'US_parcel-openplaces-2026'
     building = 'US_building-openplaces-2026'
     assert _chain_writers() == {
+        (parcel, 'occupancy_type'): [('cast_categoricals', False)],
         (parcel, 'n_dwellings'): [
             ('aggregate_from_entities', False),
             ('divide_account_values', True),
@@ -249,8 +230,12 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
         (parcel, 'land_use_class'): [
             ('resolve_by_vote', True),
             ('reconcile_land_use', False),
+            ('cast_categoricals', False),
         ],
-        (parcel, 'group_parcel'): [('impute_from_group_statistic', True)],
+        (parcel, 'group_parcel'): [
+            ('impute_from_group_statistic', True),
+            ('cast_categoricals', False),
+        ],
         (parcel, 'manufactured_home_community'): [('resolve_by_vote', True)],
         (building, 'occupancy_type'): [
             ('impute_occupancy_type', True),
@@ -258,12 +243,18 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
             ('resolve_by_vote', False),
             ('resolve_by_vote', False),
             ('resolve_by_vote', False),
+            ('cast_categoricals', False),
         ],
         (building, 'n_dwellings'): [
             ('decide_dwellings', True),
             ('cast_integers', False),
         ],
-        (building, 'group_parcel'): [('link_curated_entity', False)],
+        (building, 'land_use_class'): [('cast_categoricals', False)],
+        (building, 'group_parcel'): [
+            ('link_curated_entity', False),
+            ('cast_categoricals', False),
+            ('order_columns', False),
+        ],
         (building, 'manufactured_home_community'): [
             ('link_curated_entity', False),
             ('flag_manufactured_home_communities', True),
@@ -284,8 +275,13 @@ def test_one_step_decides_the_building_dwelling_count(admin_id):
     deciders = [use for use in uses if 'n_dwellings' in use.decides]
     assert [use.step for use in deciders] == ['decide_dwellings']
     class_writers = [use.position for use in lineage.writers('occupancy_type', uses)]
+    # A reviewed correction may set any cell, and the format cast
+    # changes the class's dtype, not a value: neither is a class
+    # writer here.
     corrections = [
-        use.position for use in uses if use.step == 'apply_reviewed_corrections'
+        use.position
+        for use in uses
+        if use.step in ('apply_reviewed_corrections', 'cast_categoricals')
     ]
     last_class_writer = max(p for p in class_writers if p not in corrections)
     assert deciders[0].position > last_class_writer
@@ -367,28 +363,9 @@ _UNDECLARED_STEP_ALLOWLIST = {
     ('enrich', 'enrich_parcels_from_reference_crosswalk'): (
         'names come from a column-notes file'
     ),
-    ('curate', 'merge_enrichments'): 'columns of another recipe; reads_from to do',
-    ('curate', 'collect_link_ids'): 'curate roll-out (step 4) not done',
-    ('curate', 'keep_curated_ids'): 'curate roll-out (step 4) not done',
-    ('curate', 'declare_columns'): 'curate roll-out (step 4) not done',
-    ('curate', 'keep_registered_columns'): 'drops columns; curate roll-out',
-    ('curate', 'cast_categoricals'): 'changes dtypes only; curate roll-out',
-    ('curate', 'order_columns'): 'orders columns only; curate roll-out',
-    ('curate', 'derive_indicators'): 'curate roll-out (step 4) not done',
-    ('curate', 'apportion_common_land'): 'curate roll-out (step 4) not done',
-    ('curate', 'classify_manufactured_homes'): 'curate roll-out (step 4) not done',
-    ('curate', 'collapse_double_closings'): 'curate roll-out (step 4) not done',
-    ('curate', 'derive_admin_attribute'): 'curate roll-out (step 4) not done',
-    ('curate', 'derive_duplicate_columns'): 'curate roll-out (step 4) not done',
-    ('curate', 'derive_group_count'): 'curate roll-out (step 4) not done',
-    ('curate', 'derive_group_rank'): 'curate roll-out (step 4) not done',
-    ('curate', 'fill_missing_numeric'): 'curate roll-out (step 4) not done',
-    ('curate', 'filter_by_range'): 'drops rows; curate roll-out',
-    ('curate', 'flag_sales_matching_other_kind'): 'curate roll-out (step 4)',
-    ('curate', 'flag_unconfirmed_height'): 'curate roll-out (step 4) not done',
-    ('curate', 'join_temporal_snapshot'): 'in a patch only; curate roll-out',
-    ('curate', 'report_lot_value_sharing'): 'curate roll-out (step 4) not done',
-    ('curate', 'take_next_roll_when_built'): 'in a patch only; curate roll-out',
+    ('curate', 'keep_registered_columns'): (
+        'drops every unregistered column, a set no name list can state'
+    ),
 }
 
 

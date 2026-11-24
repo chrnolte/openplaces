@@ -54,7 +54,21 @@ names the columns). So the building class is decided once, by
 the main vote, the second pass, the height bands) are writers of it.
 Where a state patch puts a translation table in place of the cohort
 statistic (`group_parcel` in MA and WI), that column has no declared
-decider in the patched recipe.
+decider in the patched recipe. The steps that build a column of their
+own on every row decide it too: `collect_link_ids`,
+`derive_admin_attribute`, `apportion_common_land`, `derive_group_count`,
+`derive_group_rank`, `flag_unconfirmed_height`,
+`classify_manufactured_homes` (`p_manufactured_home`),
+`derive_duplicate_columns`, a `derive_indicators` spec without
+`fill_only`, and `flag_sales_matching_other_kind` and
+`collapse_double_closings` where they write a flag column. The format
+steps write what they change: `cast_categoricals` every registry
+categorical it may cast (a dtype change), `order_columns` the columns
+it drops. One used curate step declares nothing:
+`keep_registered_columns` drops every column the registry does not
+know, a set no list of names can state. `merge_enrichments` declares
+the columns it fills but not the enrichment columns it reads, since
+those recipes are named inside its list of specs.
 
 **A lot is a manufactured-home park by one rule, on the building
 side.** `flag_manufactured_home_communities`, after the class votes,

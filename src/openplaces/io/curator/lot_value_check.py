@@ -152,7 +152,22 @@ def lot_value_sharing_counts(
     return counts
 
 
-@_register('report_lot_value_sharing', phase='infer')
+def _sharing_reads(args) -> list[str]:
+    """The columns `lot_value_sharing_counts` reads, as configured."""
+    import inspect
+
+    defaults = {
+        name: parameter.default
+        for name, parameter in inspect.signature(
+            lot_value_sharing_counts
+        ).parameters.items()
+        if name.endswith('_column')
+    }
+    return [args.get(name, default) for name, default in defaults.items()]
+
+
+# A report: it reads the table and changes no column.
+@_register('report_lot_value_sharing', phase='infer', reads=[_sharing_reads], writes=[])
 def report_lot_value_sharing(state: CurateState, **params) -> CurateState:
     """Report how a lot's roll value is spread over its buildings.
 

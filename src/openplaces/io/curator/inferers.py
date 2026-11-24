@@ -572,7 +572,66 @@ _INDICATOR_DERIVATIONS = {
 }
 
 
-@_register('derive_indicators', phase='infer')
+#: Spec keys of `derive_indicators` that name input columns.
+_INDICATOR_INPUT_KEYS = (
+    'column',
+    'columns',
+    'numerator',
+    'denominator',
+    'group_column',
+    'value_column',
+    'threshold_column',
+    'tiebreaker',
+    'cohort_column',
+)
+
+
+def _indicator_specs(args) -> list[dict]:
+    return [s for s in args.get('indicators') or () if isinstance(s, dict)]
+
+
+def _indicator_outputs(args) -> list[str]:
+    """Every output a `derive_indicators` call may write."""
+    return [s['output'] for s in _indicator_specs(args) if 'output' in s]
+
+
+def _indicator_decides(args) -> list[str]:
+    """The outputs a spec rebuilds on every row: all but `fill_only`."""
+    return [
+        s['output']
+        for s in _indicator_specs(args)
+        if 'output' in s and not s.get('fill_only')
+    ]
+
+
+def _indicator_reads(args) -> list[str]:
+    """The input columns the specs name (a ratio's `own_area` is none)."""
+    names = []
+    for spec in _indicator_specs(args):
+        for key in _INDICATOR_INPUT_KEYS:
+            value = spec.get(key)
+            items = value if isinstance(value, list | tuple) else [value]
+            for item in items:
+                if isinstance(item, dict):
+                    item = item.get('column')
+                if isinstance(item, str) and item != 'own_area':
+                    names.append(item)
+        restrict = spec.get('restrict')
+        if isinstance(restrict, dict) and isinstance(restrict.get('column'), str):
+            names.append(restrict['column'])
+    return names
+
+
+# A spec without `fill_only` writes its output on every row (missing
+# where its inputs are), so the step decides it; a `fill_only` spec
+# keeps what an earlier spec wrote and only writes.
+@_register(
+    'derive_indicators',
+    phase='infer',
+    reads=[_indicator_reads],
+    writes=[_indicator_outputs, _indicator_decides],
+    decides=[_indicator_decides],
+)
 def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState:
     """Compute the named precursor columns the voting steps score against.
 

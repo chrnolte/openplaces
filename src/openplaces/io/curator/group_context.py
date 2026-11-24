@@ -148,7 +148,22 @@ def _rows_where(curated: pd.DataFrame, where: list[dict] | None) -> pd.Series:
     return matched.fillna(False).astype(bool)
 
 
-@_register('derive_group_count', phase='infer')
+def _where_reads(args) -> list[str]:
+    """The group column and the columns of the *where* indicators."""
+    from openplaces.io.curator.indicators import indicator_columns
+
+    return [args['group_column'], *indicator_columns(args.get('where'))]
+
+
+# Each writes its output on every row (missing where the row has no
+# group), so each decides it.
+@_register(
+    'derive_group_count',
+    phase='infer',
+    reads=[_where_reads],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def derive_group_count(
     state: CurateState,
     group_column: str,
@@ -211,7 +226,13 @@ def derive_group_count(
     return state
 
 
-@_register('derive_group_rank', phase='infer')
+@_register(
+    'derive_group_rank',
+    phase='infer',
+    reads=[_where_reads, '{rank_by}', '{id_column}'],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def derive_group_rank(
     state: CurateState,
     group_column: str,

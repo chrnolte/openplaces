@@ -134,7 +134,17 @@ def exclude_numeric_above(state: CurateState, column: str, max: float) -> Curate
 _RANGE_KEYS = {'column', 'min', 'max', 'inclusive', 'keep_null'}
 
 
-@_register('filter_by_range', phase='standardize')
+def _range_columns(args) -> list[str]:
+    """The columns `filter_by_range` tests."""
+    return [
+        spec['column']
+        for spec in args.get('filters') or ()
+        if isinstance(spec, dict) and isinstance(spec.get('column'), str)
+    ]
+
+
+# A row filter: it declares the columns it tests and writes none.
+@_register('filter_by_range', phase='standardize', reads=[_range_columns])
 def filter_by_range(state: CurateState, filters: list[dict]) -> CurateState:
     """Drop rows whose numeric value falls outside a declared range.
 

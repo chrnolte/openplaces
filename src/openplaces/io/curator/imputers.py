@@ -8,7 +8,10 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-@_register('fill_missing_numeric', phase='infer')
+# A fill and a cast: stated values stay, so it writes, never decides.
+@_register(
+    'fill_missing_numeric', phase='infer', reads=['{columns}'], writes=['{columns}']
+)
 def fill_missing_numeric(
     state: CurateState,
     columns: list[str],

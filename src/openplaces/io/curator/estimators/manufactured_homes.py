@@ -620,7 +620,35 @@ def _score_manufactured_home_candidates(
     }
 
 
-@_register('classify_manufactured_homes', phase='infer')
+def _classifier_writes(args) -> list[str]:
+    """The class and its sidecar, where the step is told to write them."""
+    if not args.get('update_occupancy'):
+        return []
+    return ['occupancy_type', 'occupancy_type_source']
+
+
+# The probability is rebuilt on every row, so it is decided; area_m2
+# is written only where absent, and the class only on request, as a
+# correction of the rows the classifier claims.
+@_register(
+    'classify_manufactured_homes',
+    phase='infer',
+    reads=[
+        'occupancy_type',
+        'area_m2',
+        'use_group_combined_labeled_parcel',
+        'use_group_combined_labeled',
+        'use_subgroup_parcel',
+        'use_group_combined_parcel',
+        'use_group_parcel',
+        'use_subgroup',
+        'use_group_combined',
+        'use_group',
+        'purpose_group',
+    ],
+    writes=['p_manufactured_home', 'area_m2', _classifier_writes],
+    decides=['p_manufactured_home'],
+)
 def classify_manufactured_homes(
     state: CurateState,
     ruleset: str | None = None,
