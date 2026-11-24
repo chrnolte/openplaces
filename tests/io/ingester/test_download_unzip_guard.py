@@ -3,8 +3,9 @@
 `_download_and_unzip_recipe_data` once read `if redownload or _is_archive`,
 so re-running any flat-file recipe (a .geojson/.csv fetched straight from
 `download_url`) handed a non-archive to `unzip` and raised BadZipFile --
-after paying for the download. Archives must still extract on every run,
-with or without the flag, because `unzip` has no skip-if-extracted branch.
+after paying for the download. Archives must still reach `unzip` on every
+run, with or without the flag: `unzip` itself decides whether a complete
+extraction of the same archive can be reused.
 """
 
 from __future__ import annotations
@@ -94,6 +95,32 @@ def test_archive_still_unzips_with_redownload(tmp_path, monkeypatch):
     ing._download_and_unzip_recipe_data(redownload=True)
 
     assert len(calls) == 1
+
+
+def test_a_data_path_beside_another_jobs_extraction_is_not_reused(
+    tmp_path, monkeypatch, capsys
+):
+    """Another job is still renaming its extraction into the heap.
+
+    The data path exists, but no marker names it yet and a live staging
+    folder sits beside it, so its siblings may still be on their way.
+    """
+    from openplaces.io import archives
+
+    ing, calls = _make_ingester(
+        tmp_path,
+        downloaded_name='parcels.zip',
+        data_name='parcels.shp',
+        monkeypatch=monkeypatch,
+    )
+    ing.download_partition['data_path'].write_text('half')
+    staging = ing.recipe_heap_dir / f'{archives._STAGING_PREFIX}{archives._owner_tag()}'
+    staging.mkdir()
+
+    ing._download_and_unzip_recipe_data(redownload=False)
+
+    assert len(calls) == 1
+    assert 'another job is still extracting' in capsys.readouterr().out
 
 
 def test_archive_still_unzips_without_redownload(tmp_path, monkeypatch):

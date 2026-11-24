@@ -18,6 +18,7 @@ from shapely.geometry import Point
 
 import openplaces.io.ingester.download as ingester_download
 from openplaces.io import unzip
+from openplaces.io.archives import INTERNAL_PREFIX
 from openplaces.io.ingester import Ingester
 
 _TABLE = 'id,area\n"R001",1200\n"R002",950\n'
@@ -34,6 +35,11 @@ def _zip_bytes(members: dict[str, bytes | str]) -> bytes:
 def _write_zip(path, members):
     path.write_bytes(_zip_bytes(members))
     return path
+
+
+def _data(paths):
+    """Names of the extracted data, without unzip's own marker."""
+    return sorted(p.name for p in paths if not p.name.startswith(INTERNAL_PREFIX))
 
 
 def test_nested_zip_is_extracted_and_its_table_read(tmp_path):
@@ -74,7 +80,7 @@ def test_members_select_inside_nested_archives(tmp_path):
 
     out = unzip(outer, tmp_path / 'heap', members=['export1.TXT'], verbose=False)
 
-    assert sorted(p.name for p in out.iterdir()) == ['Export1.txt']
+    assert _data(out.iterdir()) == ['Export1.txt']
 
 
 def test_members_accept_glob_patterns(tmp_path):
@@ -85,7 +91,7 @@ def test_members_accept_glob_patterns(tmp_path):
 
     out = unzip(outer, tmp_path / 'heap', members=['*_appraisal_*'], verbose=False)
 
-    assert [p.name for p in out.iterdir()] == ['X_APPRAISAL_INFO.TXT']
+    assert _data(out.iterdir()) == ['X_APPRAISAL_INFO.TXT']
 
 
 def test_same_file_in_two_nested_archives_raises(tmp_path):
@@ -129,7 +135,7 @@ def test_shapefile_in_zip_is_unchanged(tmp_path):
 
     out = unzip(outer, tmp_path / 'heap', verbose=False)
 
-    assert sorted(p.name for p in out.iterdir()) == sorted(members)
+    assert _data(out.iterdir()) == sorted(members)
     assert gpd.read_file(out / 'parcels.shp')['parcel_id'].tolist() == ['A1', 'A2']
 
 
@@ -183,4 +189,4 @@ def test_ingester_finds_a_member_of_a_nested_archive(tmp_path, monkeypatch):
     ing._download_and_unzip_recipe_data()
 
     assert ing.download_partition['data_path'] == heap / 'Export1.txt'
-    assert sorted(p.name for p in heap.rglob('*') if p.is_file()) == ['Export1.txt']
+    assert _data(p for p in heap.rglob('*') if p.is_file()) == ['Export1.txt']

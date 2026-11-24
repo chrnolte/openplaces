@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from openplaces.core.attribute_registry import load_registry as _load_attr_registry
+from openplaces.io.archives import is_internal
 
 
 def _match_extracted_file(heap_dir: Path, expected_path: Path) -> Path | None:
@@ -33,11 +34,18 @@ def _match_extracted_file(heap_dir: Path, expected_path: Path) -> Path | None:
     Path or None
         The resolved file, or ``None`` if no unambiguous match exists.
     """
-    exact = next(heap_dir.rglob(expected_path.name), None)
+    # Another job's staging folder holds a half-written copy of the
+    # same archive; a recursive search must not find a file in it.
+    exact = next(
+        (p for p in heap_dir.rglob(expected_path.name) if not is_internal(p, heap_dir)),
+        None,
+    )
     if exact is not None:
         return exact
     candidates = sorted(
-        p for p in heap_dir.rglob(expected_path.stem + '*') if p.is_file()
+        p
+        for p in heap_dir.rglob(expected_path.stem + '*')
+        if p.is_file() and not is_internal(p, heap_dir)
     )
     return candidates[0] if len(candidates) == 1 else None
 

@@ -13,6 +13,7 @@ import pyogrio
 
 from openplaces.core.schema import AdminId
 from openplaces.geo import get_crs
+from openplaces.io.archives import is_internal
 from openplaces.io.readers import get_admin
 from openplaces.io.transform import (
     apply_transformation,
@@ -205,7 +206,11 @@ class _TableScopeMixin:
         pattern = self._fill_unit_pattern(file_pattern, 'file name')
         admin_id_to_process = self.processing_chunk['admin_id_to_process']
 
-        matches = list(self.recipe_heap_dir.glob(pattern))
+        matches = [
+            p
+            for p in self.recipe_heap_dir.glob(pattern)
+            if not is_internal(p, self.recipe_heap_dir)
+        ]
         if len(matches) == 0 and (
             (self.recipe.get('process_by') or {}).get('file_pattern_missing') == 'skip'
         ):

@@ -106,6 +106,21 @@ current code. -->
    reads the base marker, so a new partition (a new year) is not picked
    up without `reprocess`, and a unit with truly no sales never gets an
    `_all` file, so its consumers raise `SourceNotIngestedError`.
+   **The heap is shared between jobs, so extraction and cleanup never
+   leave a half-written entry** (`io.archives`). Recipes reading one
+   archive (a cadastre's rural and urban tables) extract it into the same
+   heap folder, on a cluster at the same time. `unzip` extracts into a
+   staging folder inside the heap and renames each top-level entry into
+   place when the archive is done, then writes a marker naming them; a
+   later call for the same archive reuses a complete extraction. Two jobs
+   extracting at once each extract a copy and the first to finish wins.
+   The "already extracted" skip (`extracted_path_ready`) does not trust
+   an entry no marker names while a live staging folder sits beside it;
+   a heap from before markers is trusted as before. Each partition holds
+   a read lease (an empty file) in its heap folder from download to
+   cleanup, and the cleanup (`delete_extracted`) deletes nothing while
+   another job's lease is there. Nothing locks: the cluster's network
+   filesystem renames atomically but does not lock reliably across hosts.
 3. After tile partitions: merges per-tile partials into per-admin files
 4. In aggregate mode: calls `aggregate_to_admin_level()` to merge process-level chunks
    into save-level files

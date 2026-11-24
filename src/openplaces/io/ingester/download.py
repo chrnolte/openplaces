@@ -26,6 +26,7 @@ from openplaces.io import (
     request_headers,
     unzip,
 )
+from openplaces.io.archives import extracted_path_ready, is_internal
 from openplaces.io.consent import terms_declines
 from openplaces.io.ingester._helpers import (  # noqa: F401
     _SCRAPER_MODULE_CACHE,
@@ -567,7 +568,9 @@ class _DownloadMixin:
 
         # Identify path of file that has been downloaded
         downloaded_path = None
-        if data_path is None or not data_path.exists():
+        if data_path is None or not extracted_path_ready(
+            data_path, self.recipe_heap_dir
+        ):
             # Find the path of the downloaded file.
             if compressed_file_name is not None:
                 downloaded_path = self.recipe_external_dir / compressed_file_name
@@ -645,15 +648,23 @@ class _DownloadMixin:
             )
             return
 
-        # Skip if the data path exists and no redownload is requested
-        if (
-            self.download_partition['data_path'] is not None
-            and self.download_partition['data_path'].exists()
-            and not redownload
-        ):
+        # Skip if the data path exists and no redownload is requested.
+        # A path in the heap that another job is still extracting
+        # (io.archives.extracted_path_ready) does not count: this job
+        # then extracts too, and keeps whichever copy is complete first.
+        data_path = self.download_partition['data_path']
+        data_ready = data_path is not None and extracted_path_ready(
+            data_path, getattr(self, 'recipe_heap_dir', None)
+        )
+        if data_ready and not redownload:
             if self.verbose:
                 print('Data file found. Download and unzipping skipped.')
             return
+        if data_path is not None and data_path.exists() and not data_ready:
+            print(
+                f'{data_path} exists, but another job is still extracting next '
+                'to it; not reading it until that extraction is complete.'
+            )
 
         # Usage gate: a source whose terms condition access on who is
         # asking (non-commercial only, a restricted environment, a
@@ -705,10 +716,7 @@ class _DownloadMixin:
                 self.download_partition['downloaded_path'] is None
                 or not self.download_partition['downloaded_path'].exists()
             )
-            and (
-                self.download_partition['data_path'] is None
-                or not self.download_partition['data_path'].exists()
-            )
+            and not data_ready
         ):
             # A partitioned recipe (e.g. one zip per year) with no download
             # mechanism at all -- typically request-only historical data,
@@ -797,10 +805,11 @@ class _DownloadMixin:
             and bool(_archive_suffixes & ZIP_EXTENSIONS)
         )
         # Extraction is driven purely by whether the download IS an archive.
-        # `redownload` must not force it: unzip() has no
-        # skip-if-already-extracted branch, so archives re-extract on every
-        # run regardless, and forcing it on a flat file (a .geojson or .csv
-        # fetched directly) fed unzip a non-archive and raised BadZipFile.
+        # `redownload` must not force it: unzip() itself reuses a
+        # complete extraction of the same archive (its marker) and
+        # re-extracts otherwise, and forcing it on a flat file (a
+        # .geojson or .csv fetched directly) fed unzip a non-archive
+        # and raised BadZipFile.
         if _is_archive:
             if self.verbose:
                 print('Unzipping...')
@@ -838,7 +847,11 @@ class _DownloadMixin:
             self.download_partition['read_members_glob'] = members_glob
             heap = self.recipe_heap_dir
             matched = (
-                sorted(p for p in heap.glob(members_glob) if p.is_file())
+                sorted(
+                    p
+                    for p in heap.glob(members_glob)
+                    if p.is_file() and not is_internal(p, heap)
+                )
                 if heap.exists()
                 else []
             )

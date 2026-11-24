@@ -75,6 +75,11 @@ class OpenPlacesConfig:
         # keeps a run started outside the repository, where no
         # project config file is found, from failing on a missing key.
         'download_timeout': 600,
+        # Hours after which an extraction staging folder or a read
+        # lease left in the heap by a job on another host counts as
+        # abandoned (io.archives). Longer than any one extraction or
+        # read; a stale entry costs only a redundant extraction.
+        'extraction_abandoned_after_hours': 24,
         # Who to say you are when downloading from someone else's
         # server. Both unset means the User-Agent says 'unidentified'
         # rather than guessing: a wrong identity is worse than none.
