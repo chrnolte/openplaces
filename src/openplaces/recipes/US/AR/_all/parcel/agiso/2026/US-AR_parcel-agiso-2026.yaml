@@ -47,20 +47,32 @@
 # requests to scrape in one pass. Rather than do that, this recipe
 # filters the shared service server-side, one county at a time, via
 # `arcgis_rest_scraper`'s generic `where_admin_column` option
-# (`where_admin_column: countyfips`, `admin_key_column:
-# admin3_id_admin1` below): it builds `where: countyfips = '<5-digit
-# FIPS>'` itself from the admin unit currently being downloaded, so no
-# recipe-specific wrapper module is needed for what is otherwise a
-# fully generic "one shared service, filtered by an in-data admin
-# column" shape. Combined with `download_by: admin_level: 3` so the
-# Ingester downloads (and can be asked to ingest) one county at a
-# time -- from 200 rows (Newton) up to 180,264 (Pulaski) -- rather
-# than one monolithic whole-state crawl. `countyfips` is a standard
-# 5-digit Census FIPS (state prefix `05` + county code, e.g. Newton
-# `05101`, Pulaski `05119`), spot-checked against this repo's own
-# Census admin3 spine for all 75 counties (exact match, 0 leftover on
-# either side) -- so no `admin_id_transformation` is needed, only a
-# crosswalk (see below).
+# (`where_admin_column: countyfips`, `admin_key_crosswalk` below): it
+# builds `where: countyfips = '<code>'` itself from the admin unit
+# currently being downloaded, so no recipe-specific wrapper module is
+# needed for what is otherwise a fully generic "one shared service,
+# filtered by an in-data admin column" shape. Combined with
+# `download_by: admin_level: 3` so the Ingester downloads (and can be
+# asked to ingest) one county at a time -- from 200 rows (Newton) up
+# to 180,264 (Pulaski) -- rather than one monolithic whole-state
+# crawl.
+#
+# NOTE on `countyfips` (changed at the source): when this recipe was
+# written, `countyfips` held the 5-digit Census FIPS (state prefix
+# `05` + county code, e.g. Newton `05101`). The service now stores
+# only the 3-digit county part (Newton `101`), still declared
+# String(5), so a 5-digit filter matches nothing and every county's
+# download came back empty.
+# Measured 2026-11-24 on US-AR: countyfips '05101' matches 0 features, county 'Newton' 5,971; countyfips has 75 values, all 3 characters.
+# The crosswalk sidecar therefore carries the 3-digit county code
+# (`fips_county_part`, the Census admin3 spine's `admin3_id_admin1`
+# without its `05` prefix, generated from the spine, not typed), and
+# serves both the download filter (`admin_key_crosswalk`) and the
+# unit assignment (`process_by`). `process_by` keeps the last three
+# characters of `countyfips` before the lookup, so a cached download
+# from before the change (`05101`) and a new one (`101`) both land on
+# the same county. File names still use the 5-digit
+# `admin3_id_admin1` from the admin spine, so they did not change.
 #
 # NOTE on county coverage (a real, load-bearing question here): the
 # shop's own product description text is dated ("3-Jul-14") and lists
@@ -206,7 +218,10 @@
 # Esri bookkeeping / geometry-derived, recomputed by this repo's own
 # pipeline).
 #
-# Measured (live REST, `gis.arkansas.gov`, current as of this recipe):
+# Measured 2026-11-24 on US-AR: statewide returnCountOnly 2,149,447 features.
+#
+# Measured (live REST, `gis.arkansas.gov`, when this recipe was
+# written; the figures below predate the 2026-11-24 count above):
 # statewide `returnCountOnly` 2,117,780, matching the sum of all 75
 # counties' own grouped counts exactly. `OwnerName` not null
 # 2,117,752/2,117,780 (>99.9%); `TotalValue`/`LandValue`/`ImpValue` not
@@ -265,11 +280,11 @@ uncompressed_file_name: "ar_parcel_camp_{admin3_id_admin1}.geojson"
 scraper_options:
   layer_url: "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer/6"
   out_fields: "*"
-  # Resolves each admin3 unit's own 5-digit FIPS (from the Census admin3
-  # table's own GEOID column) and queries the shared service with
-  # `where: countyfips = '<fips>'` -- see header.
+  # Takes each admin3 unit's 3-digit county code from the crosswalk
+  # sidecar and queries the shared service with
+  # `where: countyfips = '<code>'` -- see header.
   where_admin_column: countyfips
-  admin_key_column: admin3_id_admin1
+  admin_key_crosswalk: "US-AR_parcel-agiso-2026_admin3-crosswalk"
 
 # One filtered download per county (see header).
 download_by:
@@ -282,17 +297,26 @@ download_by:
 # unit -- mirrors the Wisconsin/Indiana/Maryland statewide recipes'
 # use of process_by for this even when download_by already scopes the
 # file.
+#
+# The last three characters of countyfips are the county code in both
+# the current 3-digit form and the 5-digit form of downloads cached
+# before the source changed (see header).
 process_by:
   admin_level: 3
   admin_id_column: countyfips
+  admin_id_transformation:
+    - output: fips_county_part
+      type: string
+      operation: substring
+      args:
+        start: -3
   admin_id_crosswalk:
     recipe_id: "US-AR_parcel-agiso-2026_admin3-crosswalk"
-    # Without this, the crosswalk CSV's own all-digit admin3_id_admin1
-    # column loads as int64 (pandas' default for a pure-digit column),
-    # dropping FIPS leading zeros ('05001' -> 5001) and failing to
-    # match the genuinely-string `countyfips` source column -- the
-    # exact trap documented in the Indiana statewide recipe's own
-    # crosswalk.
+    # Without this, the crosswalk CSV's all-digit fips_county_part column
+    # loads as int64 (pandas' default for a pure-digit column),
+    # dropping leading zeros ('001' -> 1) and failing to match the
+    # string `countyfips` source column -- the same trap documented in
+    # the Indiana statewide recipe's own crosswalk.
     dtype: str
 
 columns:
