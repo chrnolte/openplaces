@@ -445,7 +445,21 @@ def _measured_floors(frame, stories_column, height_column, story_height_m):
     return np.ceil(floors.where(floors > 0)).clip(lower=1)
 
 
-@_register('flag_unconfirmed_height', phase='infer')
+# The flag is rebuilt on every row, so the step decides it.
+@_register(
+    'flag_unconfirmed_height',
+    phase='infer',
+    reads=[
+        '{value_column}',
+        '{area_column}',
+        '{stories_column}',
+        '{height_column}',
+        '{reconciled_stories_column}',
+        '{lot_column}',
+    ],
+    writes=['{output_column}'],
+    decides=['{output_column}'],
+)
 def flag_unconfirmed_height(
     state: CurateState,
     output_column: str = 'height_unconfirmed',
@@ -1182,7 +1196,15 @@ def _join_link_ids(links: pd.DataFrame, id_col: str, ref_key: str) -> pd.Series:
     return reduce_groups(links[ref_key], links[id_col], join_distinct_text)
 
 
-@_register('collect_link_ids', phase='gather')
+# Rebuilds its column on every row from the link table, so it decides
+# it; it reads the base id column to blank a repeat of it.
+@_register(
+    'collect_link_ids',
+    phase='gather',
+    reads=[lambda args: [args['column'].removesuffix('_all')]],
+    writes=['{column}'],
+    decides=['{column}'],
+)
 def collect_link_ids(
     state: CurateState,
     entity_type: str | None = None,
@@ -1306,7 +1328,15 @@ def collect_link_ids(
     return state
 
 
-@_register('keep_curated_ids', phase='gather')
+# Blanks the ids another curate dropped and keeps the rest, so it
+# writes its columns and decides none.
+@_register(
+    'keep_curated_ids',
+    phase='gather',
+    reads=['{columns}'],
+    writes=['{columns}'],
+    reads_from={'recipe_id': ['{ref_key}']},
+)
 def keep_curated_ids(
     state: CurateState,
     recipe_id: str,
@@ -1384,7 +1414,38 @@ def keep_curated_ids(
     return state
 
 
-@_register('merge_enrichments', phase='gather')
+def _merged_columns(args) -> list[str]:
+    """The curated columns `merge_enrichments` fills, with sidecars."""
+    names = []
+    for spec in args.get('recipes') or ():
+        if not isinstance(spec, dict):
+            continue
+        columns = [c for c in (spec.get('columns') or {}).values() if c]
+        names += columns
+        if spec.get('record_source'):
+            names += [f'{c}_source' for c in columns]
+    return names
+
+
+def _merge_keys(args) -> list[str]:
+    """The curated columns the specs join on."""
+    return [
+        spec['key']
+        for spec in args.get('recipes') or ()
+        if isinstance(spec, dict) and isinstance(spec.get('key'), str)
+    ]
+
+
+# A fill: a stated value stays, so it writes and decides nothing. The
+# evidence columns it reads come from enrich recipes named inside the
+# list of specs, which `reads_from` (keyed by a recipe-id parameter)
+# cannot reach, so they are not declared.
+@_register(
+    'merge_enrichments',
+    phase='gather',
+    reads=[_merge_keys],
+    writes=[_merged_columns],
+)
 def merge_enrichments(
     state: CurateState,
     recipes: list[dict],
@@ -1538,7 +1599,14 @@ def merge_enrichments(
     return state
 
 
-@_register('derive_admin_attribute', phase='gather')
+# Rewrites its output on every row from the admin spine: decides it.
+@_register(
+    'derive_admin_attribute',
+    phase='gather',
+    reads=['{admin_id_column}'],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def derive_admin_attribute(
     state: CurateState,
     output: str,

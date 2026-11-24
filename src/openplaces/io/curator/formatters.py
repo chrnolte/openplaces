@@ -18,7 +18,24 @@ from openplaces.recipe import resolve_attribute_name
 from openplaces.recipe import split_provenance_suffix as _split_source
 
 
-@_register('declare_columns', phase='gather')
+def _categorical_columns(args) -> list[str]:
+    """Names `cast_categoricals` may cast, as patterns.
+
+    A registry categorical, the same name with any suffix, and every
+    sidecar. The suffix pattern also matches a registered attribute
+    that only starts with a categorical's name, which the step leaves
+    alone, so the declaration states more than the step writes.
+    """
+    from openplaces.core.attribute_registry import get_categorical_attrs
+
+    names = [f'*{SOURCE_SUFFIX}']
+    for attribute in sorted(get_categorical_attrs()):
+        names += [attribute, f'{attribute}_*']
+    return names
+
+
+# Fills only the columns that are absent, so it writes, never decides.
+@_register('declare_columns', phase='gather', writes=['{columns}'])
 def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
     """Ensure the listed columns exist, writing missing ones as all-null.
 
@@ -119,7 +136,9 @@ def keep_registered_columns(
     return state
 
 
-@_register('cast_categoricals', phase='format')
+# A cast changes a column's dtype, not its values; the audit counts it
+# as a change, so the cast columns are declared as written.
+@_register('cast_categoricals', phase='format', writes=[_categorical_columns])
 def cast_categoricals(state: CurateState) -> CurateState:
     """Cast registry-defined categoricals and provenance sidecars to Categorical.
 
@@ -335,7 +354,8 @@ def sort_rows(state: CurateState, by: list[str]) -> CurateState:
     return state
 
 
-@_register('order_columns', phase='format')
+# Reordering changes no column; the columns it drops are its writes.
+@_register('order_columns', phase='format', writes=['{drop}'])
 def order_columns(
     state: CurateState,
     overrides: list[str] | None = None,

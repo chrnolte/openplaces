@@ -73,7 +73,18 @@ def derive_sale_period(
     return state
 
 
-@_register('flag_sales_matching_other_kind', phase='standardize')
+def _unless_fill_only(args) -> list[str]:
+    """The output, where the pass rebuilds it rather than filling it."""
+    return [] if args.get('fill_only') else [args['output']]
+
+
+@_register(
+    'flag_sales_matching_other_kind',
+    phase='standardize',
+    reads=['{key_column}', '{kind_column}', 'sale_year', 'sale_month', 'price'],
+    writes=['{output}', _unless_fill_only],
+    decides=[_unless_fill_only],
+)
 def flag_sales_matching_other_kind(
     state: CurateState,
     key_column: str | list[str],
@@ -156,7 +167,23 @@ def flag_sales_matching_other_kind(
     return state
 
 
-@_register('collapse_double_closings', phase='standardize')
+# With an output it flags every row, so it decides the flag; without
+# one it drops rows, which no column declaration can say.
+@_register(
+    'collapse_double_closings',
+    phase='standardize',
+    reads=[
+        '{key_column}',
+        '{within}',
+        'sale_year',
+        'sale_month',
+        'price',
+        'sale_book',
+        'sale_page',
+    ],
+    writes=['{output}'],
+    decides=['{output}'],
+)
 def collapse_double_closings(
     state: CurateState,
     key_column: str,
@@ -259,7 +286,20 @@ def collapse_double_closings(
     return state
 
 
-@_register('derive_duplicate_columns', phase='standardize')
+#: The columns `derive_duplicate_columns` rebuilds on every row.
+_DUPLICATE_SUMMARY = (
+    'sale_duplicate_of',
+    'sale_duplicate_reason',
+    'sale_resale_within_window',
+)
+
+
+@_register(
+    'derive_duplicate_columns',
+    phase='standardize',
+    writes=list(_DUPLICATE_SUMMARY),
+    decides=list(_DUPLICATE_SUMMARY),
+)
 def derive_duplicate_columns(
     state: CurateState, spine_recipe_id: str | None = None
 ) -> CurateState:
@@ -324,7 +364,32 @@ def derive_duplicate_columns(
     return state
 
 
-@_register('join_temporal_snapshot', phase='gather')
+def _snapshot_sidecars(args) -> list[str]:
+    """The sidecars a roll join writes, where it is given a token."""
+    if args.get('source_token') is None:
+        return []
+    prefix = args.get('prefix') or ''
+    return [
+        f'{prefix}{column}_source'
+        for column in args['columns']
+        if column != args['vintage_column']
+    ]
+
+
+def _restrict_column(args) -> list[str]:
+    restrict = args.get('restrict_to')
+    return [restrict['column']] if isinstance(restrict, dict) else []
+
+
+# A pass fills the rows it matches and leaves the rest for a later
+# pass, so it writes and decides nothing.
+@_register(
+    'join_temporal_snapshot',
+    phase='gather',
+    reads=['{join_key}', '{date_column}', '{match_type_column}', _restrict_column],
+    writes=['{prefix}{columns}', '{match_type_column}', _snapshot_sidecars],
+    reads_from={'recipe_id': ['{join_key}', '{vintage_column}', '{columns}']},
+)
 def join_temporal_snapshot(
     state: CurateState,
     recipe_id: str,
@@ -683,7 +748,35 @@ def join_temporal_snapshot(
     return state
 
 
-@_register('take_next_roll_when_built', phase='gather')
+# Replaces the join's values on the rows it qualifies: writes only.
+@_register(
+    'take_next_roll_when_built',
+    phase='gather',
+    reads=[
+        '{join_key}',
+        '{date_column}',
+        '{match_type_column}',
+        '{prefix}{market_column}',
+        '{prefix}{land_column}',
+        _restrict_column,
+    ],
+    writes=[
+        '{prefix}{vintage_column}',
+        '{prefix}{columns}',
+        '{match_type_column}',
+        _snapshot_sidecars,
+    ],
+    reads_from={
+        'recipe_id': [
+            '{join_key}',
+            '{vintage_column}',
+            '{columns}',
+            '{market_column}',
+            '{land_column}',
+            '{year_built_column}',
+        ]
+    },
+)
 def take_next_roll_when_built(
     state: CurateState,
     recipe_id: str,

@@ -76,7 +76,17 @@ def apportion_common_land_area(
     return shares, commons
 
 
-@_register('apportion_common_land', phase='gather')
+#: The four columns, rebuilt on every row, so the step decides them.
+_WRITTEN = (SHARE_COLUMN, LOTS_AREA_COLUMN, LOT_COUNT_COLUMN, PLAT_ID_COLUMN)
+
+
+@_register(
+    'apportion_common_land',
+    phase='gather',
+    reads=['{area_column}', '{subdivision_column}', '{plat_column}'],
+    writes=list(_WRITTEN),
+    decides=list(_WRITTEN),
+)
 def apportion_common_land(
     state: CurateState,
     area_column: str = 'area_ha',
