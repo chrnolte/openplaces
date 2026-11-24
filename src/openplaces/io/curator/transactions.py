@@ -11,11 +11,13 @@ wrappers over the same functions, for a recipe that still lists them;
 
 from __future__ import annotations
 
+import json
 import warnings
 
 import pandas as pd
+import pyarrow.parquet as pq
 
-from openplaces.io import sale_records
+from openplaces.io import read_parquet, sale_records
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import record_source
 from openplaces.io.readers import get_entities
@@ -23,6 +25,12 @@ from openplaces.io.sale_records import (  # noqa: F401  (kept importable)
     REPEATED_DOCUMENT_SHARE,
     TRANSACTION_FINGERPRINT_TIERS,
 )
+from openplaces.io.tables import (
+    SERIES_METADATA_KEY,
+    answering_periods,
+    request_years,
+)
+from openplaces.recipe import get_output_path, get_recipe_by_id
 
 _normalized = sale_records.normalized_text
 
@@ -410,6 +418,8 @@ def join_temporal_snapshot(
     mark_unmatched: str | None = None,
     normalize_key: bool = True,
     source_token: str | None = None,
+    period_rule: str | None = None,
+    entity_recipe: str | None = None,
 ) -> CurateState:
     """Attach a dated reference snapshot valid at (or near) each row's date.
 
@@ -500,6 +510,19 @@ def join_temporal_snapshot(
         (`provenance.mark_imputed`). The attached *vintage_column* is
         left unmarked: which roll was read is stated either way. Without
         *source_token* no sidecar is written.
+    period_rule : {'before', 'at_or_before', 'now'}, optional
+        For a series enrichment as *recipe_id* (an enrich recipe with
+        `series: true`): the rule that picks each row's period,
+        overriding the rule the enrichment declared for *columns*.
+        Such a reference is read from its long table, *vintage_column*
+        is 'period', the period the rule names is joined exactly
+        (*direction* and *offset_years* do not apply), a match is
+        'exact', a row whose date precedes the series is 'no_period',
+        and *source_token* marks no cell imputed, since the rule is the
+        definition of the value at the date, not a fill.
+    entity_recipe : str, optional
+        The spine a series enrichment ran on, where it is not the one
+        its entity type resolves to.
     """
     # Validate the request before reading the reference, so a recipe
     # error is reported as one rather than as a missing data file.
@@ -589,6 +612,32 @@ def join_temporal_snapshot(
         if state.verbose:
             print(f'  join_temporal_snapshot ({recipe_id}): {value}')
         return state
+
+    if _is_enrichment(recipe_id):
+        return _join_series_table(
+            state,
+            active,
+            keys,
+            key_form,
+            _mark_all,
+            recipe_id=recipe_id,
+            date_column=date_column,
+            vintage_column=vintage_column,
+            columns=columns,
+            period_rule=period_rule,
+            entity_recipe=entity_recipe,
+            match_type_column=match_type_column,
+            prefix=prefix,
+            require_panel=require_panel,
+            no_panel_value=no_panel_value,
+            mark_unmatched=mark_unmatched,
+            source_token=source_token,
+        )
+    if period_rule is not None or entity_recipe is not None:
+        raise ValueError(
+            'period_rule and entity_recipe apply to a series enrichment only; '
+            f'{recipe_id} is not one.'
+        )
 
     try:
         ref = get_entities(recipe_id, admin_id=state.admin_id)
@@ -744,6 +793,148 @@ def join_temporal_snapshot(
         print(
             f'  join_temporal_snapshot ({recipe_id}, {direction}): '
             f'matched {int(matched.sum()):,} / {len(active):,} active rows'
+        )
+    return state
+
+
+def _is_enrichment(recipe_id: str) -> bool:
+    """Whether *recipe_id* names an enrich recipe.
+
+    An id no recipe has is left to the reference read, which reports it
+    in the terms it always did.
+    """
+    try:
+        recipe = get_recipe_by_id(recipe_id)
+    except (KeyError, ValueError, OSError):
+        return False
+    return bool(recipe) and recipe.get('stage') == 'enrich'
+
+
+def _join_series_table(
+    state: CurateState,
+    active: pd.DataFrame,
+    keys: list[str],
+    key_form,
+    mark_all,
+    *,
+    recipe_id: str,
+    date_column: str,
+    vintage_column: str,
+    columns: list,
+    period_rule: str | None,
+    entity_recipe: str | None,
+    match_type_column: str | None,
+    prefix: str,
+    require_panel: bool,
+    no_panel_value: str,
+    mark_unmatched: str | None,
+    source_token: str | None,
+) -> CurateState:
+    """`join_temporal_snapshot` on a series enrichment table.
+
+    The long table (`io.enricher.series`) holds the (entity, period)
+    pairs its requests asked for, not every period. An as-of merge over
+    its rows would take whatever earlier period some other request
+    happened to ask for, so the period each row needs is computed
+    instead: by the rule the enrichment declared for the columns (or
+    *period_rule*), from the periods the series has, and joined exactly.
+    A pair the enrichment was not asked for stays unmatched rather than
+    borrowing a neighbor's period.
+    """
+    curated = state.curated
+    path = get_output_path(
+        get_recipe_by_id(recipe_id), state.admin_id, entity_recipe_id=entity_recipe
+    )
+    if not path.exists():
+        if not require_panel:
+            raise FileNotFoundError(f'No {recipe_id} series table at {path}.')
+        return mark_all(no_panel_value)
+    raw = (pq.read_metadata(path).metadata or {}).get(SERIES_METADATA_KEY.encode())
+    if raw is None:
+        raise ValueError(
+            f'{recipe_id} is not a series table; merge_enrichments joins a wide '
+            'enrichment.'
+        )
+    if vintage_column != 'period':
+        raise ValueError("A series table's vintage_column is 'period'.")
+    layers = json.loads(raw)['layers']
+    attached = [c for c in columns if c not in ('period', 'period_start')]
+    unknown = [c for c in attached if c not in layers]
+    if unknown:
+        raise KeyError(f'{recipe_id} has no series column {unknown}.')
+    specs = {
+        (period_rule or layers[c]['rule'], tuple(layers[c]['periods']))
+        for c in attached
+    }
+    if len(specs) != 1:
+        raise ValueError(
+            f'{attached} differ in period rule or periods; join each group '
+            'with its own join_temporal_snapshot.'
+        )
+    rule, (first, last) = specs.pop()
+
+    ref = read_parquet(path).reset_index()
+    ref_keys = [k for k in keys if k in ref.columns]
+    if not ref_keys:
+        raise KeyError(f'{recipe_id} carries none of {keys!r} as its entity id.')
+    for key in ref_keys:
+        ref[key] = key_form(ref[key])
+    ref['period'] = pd.to_numeric(ref['period']).astype('int64')
+
+    years = request_years(curated.loc[active.index, date_column])
+    target = answering_periods(years, range(int(first), int(last) + 1), rule)
+    undated = years.isna() & (rule != 'now')
+    no_period = target.isna() & ~undated
+    if match_type_column and match_type_column not in curated.columns:
+        curated[match_type_column] = pd.NA
+    if match_type_column:
+        curated.loc[undated.index[undated], match_type_column] = 'no_sale_date'
+        curated.loc[no_period.index[no_period], match_type_column] = 'no_period'
+
+    left = active.loc[target.notna(), keys].assign(_period=target[target.notna()])
+    values = [c for c in columns if c != 'period' and c in ref.columns]
+    pieces = []
+    remaining = left
+    for key in ref_keys:
+        part = remaining.loc[remaining[key].notna(), [key, '_period']]
+        if part.empty:
+            continue
+        right = ref[[key, 'period', *values]].dropna(subset=[key])
+        right = right.drop_duplicates(subset=[key, 'period'])
+        found = part.reset_index().merge(
+            right,
+            left_on=[key, '_period'],
+            right_on=[key, 'period'],
+            how='inner',
+        )
+        found = found.set_index(curated.index.name or 'index')
+        pieces.append(found)
+        remaining = remaining.drop(index=found.index)
+    matched = pd.concat(pieces) if pieces else pd.DataFrame(columns=['period'])
+
+    for source_column in columns:
+        dest_column = f'{prefix}{source_column}'
+        if dest_column not in curated.columns:
+            curated[dest_column] = pd.NA
+        if len(matched):
+            curated.loc[matched.index, dest_column] = matched[source_column].to_numpy()
+    if match_type_column:
+        # The rule names one period, so a match is that period exactly.
+        curated.loc[matched.index, match_type_column] = 'exact'
+        if mark_unmatched is not None:
+            curated.loc[curated[match_type_column].isna(), match_type_column] = (
+                mark_unmatched
+            )
+    if source_token is not None and len(matched):
+        for source_column in attached:
+            curated = record_source(
+                curated, f'{prefix}{source_column}', matched.index, source_token
+            )
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  join_temporal_snapshot ({recipe_id}, series, {rule}): '
+            f'matched {len(matched):,} / {len(active):,} active rows'
         )
     return state
 

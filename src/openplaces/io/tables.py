@@ -1204,3 +1204,89 @@ def read_parquet(
         df = df.drop(columns='_join_id')
 
     return df
+
+
+# A series table (an enrich recipe with `series: true`) is long: one
+# row per entity and period. Its footer says what the rows answer, so
+# the curate join that reads it applies the same period rule as the
+# enrich run that wrote it. The enricher writes it, the curator reads
+# it; both are stages, so the helpers live here.
+SERIES_METADATA_KEY = 'openplaces:series'
+
+#: Which period of a series answers a date (maintainer, 2026-11-15):
+#: 'before' the latest period that ended before the date (a sale in
+#: 2016 takes 2015 of a yearly product); 'at_or_before' also admits
+#: the period containing the date; 'now' the latest period whatever
+#: the date. A date before the first period gets none.
+PERIOD_RULES = ('before', 'at_or_before', 'now')
+
+
+def request_years(values: pd.Series) -> pd.Series:
+    """The calendar year of each request date, as float with NaN.
+
+    A numeric column is read as a year already (`sale_year`); anything
+    else is parsed as a date. A period of a series is labeled by the
+    year it ends in, and every period ends on December 31, so the year
+    of a date is all a period rule needs: a period ended before a date
+    exactly when it ended before that date's year began.
+
+    Parameters
+    ----------
+    values : pandas.Series
+        Years or dates; missing or unparsable values become NaN.
+
+    Returns
+    -------
+    pandas.Series
+        Float years on the same index.
+    """
+    if pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(values):
+        years = pd.to_numeric(values, errors='coerce').astype('float64')
+        return years.where(years.isna(), years // 1)
+    dates = pd.to_datetime(values, errors='coerce')
+    return dates.dt.year.astype('float64')
+
+
+def answering_periods(years: pd.Series, periods, rule: str) -> pd.Series:
+    """The period of a series that answers each year under *rule*.
+
+    Parameters
+    ----------
+    years : pandas.Series
+        Request years (see `request_years`); ignored by 'now'.
+    periods : iterable of int
+        The periods the series holds, labeled by the year each ends in.
+    rule : {'before', 'at_or_before', 'now'}
+        See `PERIOD_RULES`.
+
+    Returns
+    -------
+    pandas.Series
+        Nullable integer periods on the index of *years*; missing where
+        the year is missing or precedes every period of the rule.
+
+    Raises
+    ------
+    ValueError
+        For an unknown rule or a series without periods.
+    """
+    import numpy as np
+
+    if rule not in PERIOD_RULES:
+        raise ValueError(
+            f'Unknown period rule {rule!r}; expected one of {PERIOD_RULES}.'
+        )
+    ordered = np.array(sorted({int(p) for p in periods}), dtype='int64')
+    if ordered.size == 0:
+        raise ValueError('A series needs at least one period.')
+    if rule == 'now':
+        return pd.Series(int(ordered[-1]), index=years.index, dtype='Int64')
+    values = pd.to_numeric(years, errors='coerce').to_numpy(dtype='float64')
+    # The latest period at or below the bound: 'before' bounds at the
+    # year before the date's, 'at_or_before' at the date's own year.
+    bound = values - 1 if rule == 'before' else values
+    position = np.searchsorted(ordered, np.nan_to_num(bound, nan=-1), side='right')
+    found = (position > 0) & ~np.isnan(values)
+    out = pd.Series(pd.NA, index=years.index, dtype='Int64')
+    out[found] = ordered[position[found] - 1]
+    return out

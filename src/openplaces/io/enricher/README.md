@@ -77,6 +77,38 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   (EfficientDet/EfficientNet ports; torch is conda-only)
 - `models.py` — pretrained-model download and cache handling
 
+**A recipe with `series: true` writes a long table, and only what its
+requests ask for** (`series.py`). One row per entity and period
+(index `{entity id}`, `period`; `period_start` too where a step sets
+`period_length_years` above 1), one column per variable. Every enabled
+step carries `years`, and its `column` has no `{year}`: the year is the
+row. The `requests` block names where requests come from: a recipe's
+output (`recipe_id`, whose key gives the DAG its edge; another entity's
+rows reach this one through their harmonize link table) or the spine
+(`from: spine`), each with a `date` column or `now`, and
+`offsets_years`. Each step's `period_rule` (default `before`, the
+latest period that ended before the date: a sale in 2016 takes 2015;
+`at_or_before`; `now`) maps a request to a period; a date before the
+first period gets no row, and two requests one period answers cost one.
+A series recipe without `requests` refuses to run; `requests: all`
+asks for every entity at every period and prints the row count.
+
+- **The rows are the record of done.** A rerun computes the pairs the
+  file lacks and appends them; with none missing it writes nothing.
+  `reprocess` recomputes everything. The footer
+  (`openplaces:series`) records the request sources with their row
+  counts, the periods present and each column's periods and rule, which
+  `join_temporal_snapshot` reads. A stored wide file is refused, not
+  appended to. A unit whose requests name no pair is saved without rows
+  and with the empty reason `nothing_requested`.
+- **Each period is sampled on the whole spine**, not on the requested
+  entities: the rasterized back end gives a pixel under two overlapping
+  polygons to one of them, so a frame without the other gives it to the
+  first, and a pair's value would depend on what else was requested.
+  Measured 2026-11-24 on CO-AN-CV: the long table of `requests: all` pivoted equals the wide output in all 1,872,584 cells.
+  Measured 2026-11-24 on CO-AN-CV: transaction requests plus every parcel at now give 9,619 rows in 8.4 s and 0.43 MB against the wide 9,554 by 190 in 14.7 s and 3.23 MB.
+- `merge_enrichments` refuses a series recipe; curate joins it by date.
+
 Raster-consuming steps name their raster by a path relative to the configured
 `external` directory, resolved by `path.resolve_raster_path()`, so a recipe
 stays portable across machines. An absolute path passes through unchanged.

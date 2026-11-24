@@ -122,6 +122,26 @@ def _resolve_entity_recipe(
     return get_recipe_by_id(recipe_id)
 
 
+def lookup_step(step_name: str) -> Callable:
+    """The registered enrich step named *step_name*.
+
+    Raises
+    ------
+    ValueError
+        For a name no step module registers.
+    """
+    fn = _STEP_REGISTRY.get(step_name)
+    if fn is None:
+        _load_steps()
+        fn = _STEP_REGISTRY.get(step_name)
+    if fn is None:
+        raise ValueError(
+            f"Unknown enrich step: '{step_name}'. "
+            f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
+        )
+    return fn
+
+
 def expand_year_steps(pipeline: list[dict]) -> list[dict]:
     """Unroll pipeline steps that declare ``years: [first, last]``.
 
@@ -202,6 +222,15 @@ class Enricher:
             )
 
         self.recipe = recipe
+        if recipe.get('series'):
+            # Refuse a malformed series recipe (above all one without
+            # requests) before any spine is read.
+            from openplaces.io.enricher.series import request_sources, series_layers
+
+            series_layers(recipe)
+            request_sources(recipe)
+            if audit_steps:
+                raise ValueError('audit_steps covers the wide mode only.')
         self.entity_recipe = _resolve_entity_recipe(recipe, entity_recipe_id)
         if self.entity_recipe.get('stage') != 'harmonize':
             raise ValueError(
@@ -312,9 +341,13 @@ class Enricher:
                 admin_id,
                 entity_recipe_id=self.entity_recipe,
             )
+            # A series table is never "covered" as a whole: its rows are
+            # the record of done, and the run itself finds the missing
+            # pairs (io.enricher.series).
             if (
                 not reprocess
                 and not rerun_covered
+                and not self.recipe.get('series')
                 and self._is_covered(out_path, sub_admin_ids)
             ):
                 if self.verbose:
@@ -440,6 +473,15 @@ class Enricher:
             reprocess=reprocess,
         )
 
+        if self.recipe.get('series'):
+            from openplaces.io.enricher.series import run_series
+
+            try:
+                run_series(self, state, sub_admin_ids, reprocess)
+            finally:
+                state.grid_cache.clear()
+            return
+
         try:
             state = self._run_steps(state, pipeline)
         finally:
@@ -494,15 +536,7 @@ class Enricher:
                 if self.verbose:
                     print(f'  [skip] {step_name}')
                 continue
-            fn = _STEP_REGISTRY.get(step_name)
-            if fn is None:
-                _load_steps()
-                fn = _STEP_REGISTRY.get(step_name)
-            if fn is None:
-                raise ValueError(
-                    f"Unknown enrich step: '{step_name}'. "
-                    f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
-                )
+            fn = lookup_step(step_name)
             params = {k: v for k, v in step_cfg.items() if k not in ('step', 'enabled')}
             state = fn(state, **params)
             if audit is not None:
@@ -598,6 +632,7 @@ __all__ = [
     'EnrichState',
     'Enricher',
     'enrich',
+    'lookup_step',
     '_STEP_REGISTRY',
     '_register',
 ]

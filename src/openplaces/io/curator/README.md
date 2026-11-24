@@ -375,6 +375,12 @@ Steps are organized by the nature of the transformation:
   (Lake FL has no `land_area_sqft`), a `restrict_to` on an absent column
   selects nothing (`sale_vacant` is Florida's word), and a sale with no year
   is set aside as `no_sale_date` because `merge_asof` refuses null keys.
+  Its reference may also be a series enrichment (`io/enricher/README.md`),
+  read from its long table: the period each row needs is computed by the
+  rule the enrichment declared (or `period_rule`) and joined exactly, so
+  a pair the enrichment was not asked for stays unmatched instead of
+  taking an earlier period some other request asked for; a date before
+  the series is `no_period`.
 
 Alongside the step modules sit support modules that register no steps of their
 own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),

@@ -1516,6 +1516,13 @@ def merge_enrichments(
         enrichment_recipe = get_recipe_by_id(recipe_id)
         if enrichment_recipe.get('stage') != 'enrich':
             raise ValueError(f"Evidence recipe '{recipe_id}' must have stage 'enrich'.")
+        if enrichment_recipe.get('series'):
+            # One row per entity and period: joined by date, never by id
+            # alone, which would attach an arbitrary period.
+            raise ValueError(
+                f"'{recipe_id}' is a series table; join it with "
+                'join_temporal_snapshot, not merge_enrichments.'
+            )
         key = recipe_spec.get('key')
         if key is not None and key not in curated.columns:
             raise ValueError(
