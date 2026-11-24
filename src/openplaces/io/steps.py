@@ -50,6 +50,12 @@ _COLUMNS_ATTRIBUTE = '__step_columns__'
 #: `{mapping:keys}` / `{mapping:values}` for a mapping parameter.
 _PARAMETER_REFERENCE = re.compile(r'\{([A-Za-z_][A-Za-z0-9_]*)(?::(keys|values))?\}')
 
+#: The key under which a declaration callable finds the recipe that runs
+#: the step, where the caller passes one (`resolve_step_columns`). Not
+#: an identifier, so it never shadows a step parameter and no template
+#: can name it.
+RECIPE_ARGUMENT = '@recipe'
+
 
 class UndeclaredColumnWarning(UserWarning):
     """A step added a column that its declaration does not list."""
@@ -155,7 +161,9 @@ def _expand_all(entries: Iterable, arguments: Mapping) -> frozenset:
     return frozenset(name for entry in entries for name in _expand(entry, arguments))
 
 
-def resolve_step_columns(fn: Callable, params: Mapping) -> ResolvedColumns | None:
+def resolve_step_columns(
+    fn: Callable, params: Mapping, recipe: Mapping | None = None
+) -> ResolvedColumns | None:
     """The columns a step reads and writes under one recipe entry.
 
     Parameters
@@ -165,6 +173,12 @@ def resolve_step_columns(fn: Callable, params: Mapping) -> ResolvedColumns | Non
     params : Mapping
         The step's arguments as the recipe gives them (control keys
         such as `step` and `enabled` removed).
+    recipe : Mapping, optional
+        The recipe whose pipeline holds the step. A declaration
+        callable finds it under `RECIPE_ARGUMENT`, for a name that
+        depends on the recipe rather than on the step's arguments (the
+        spine's entity type, a link an earlier step built). Without
+        it, such a callable states what it can from the arguments.
 
     Returns
     -------
@@ -184,6 +198,8 @@ def resolve_step_columns(fn: Callable, params: Mapping) -> ResolvedColumns | Non
     if declared is None:
         return None
     arguments = _arguments(fn, params)
+    if recipe is not None:
+        arguments[RECIPE_ARGUMENT] = recipe
     reads_from: dict[str, frozenset] = {}
     for recipe_parameter, entries in declared.reads_from.items():
         columns = _expand_all(_as_entries(entries), arguments)

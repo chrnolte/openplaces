@@ -275,6 +275,16 @@ so one county's spine cannot ship a narrower schema than its neighbors'.
 An absent *polygon* reference warns instead, since its evidence is derived
 from the reference geometry and cannot be named without loading it.
 
+**Its column declaration reads the recipe.** The names depend on the
+source entries, on whether the recipe (or the geospine whose links it
+restores) links each reference as points or as an overlay, and on the
+spine's entity type. Its declaration callables read the last two off
+the recipe that `flow.lineage` passes (`io.steps.RECIPE_ARGUMENT`). An
+`entity_type` source is resolved per unit, so its names carry `*` for
+the source id. The step decides the two relational counts of each
+overlay (`n_parcels_per_building`, `n_buildings_per_parcel`), which it
+rebuilds on every row, and only writes the suffixed evidence.
+
 ---
 
 ##### `_attribute_polygon_reference` (attributes/polygon.py)
