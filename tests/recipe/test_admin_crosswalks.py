@@ -38,6 +38,31 @@ def test_crosswalk_ids_are_in_the_spine_and_codes_agree(path):
         expected = table['admin3_id'].map(code_of)
         wrong = table[expected != table[source]]
         assert wrong.empty, f'{path.name}: FIPS disagrees with the spine:\n{wrong}'
+    if source == 'fips_county_part':
+        # The county part of the FIPS, without the state prefix, for a
+        # source that stores only that (Arkansas' parcel service).
+        expected = table['admin3_id'].map(code_of).str[2:]
+        wrong = table[expected != table[source]]
+        assert wrong.empty, f'{path.name}: county code is not the spine:\n{wrong}'
+
+
+def test_arkansas_parcels_assign_both_county_code_forms():
+    """The service changed countyfips from 05101 to 101; cached files
+    keep the old form, so process_by must map both to one county."""
+    from openplaces.io.transform import apply_transformation, get_crosswalk
+    from openplaces.recipe import get_recipe_by_id
+
+    process_by = get_recipe_by_id('US-AR_parcel-agiso-2026')['process_by']
+    frame = pd.DataFrame({'countyfips': ['05101', '101', '05009', '009']})
+    for step in process_by['admin_id_transformation']:
+        step = dict(step, input=step.get('input', process_by['admin_id_column']))
+        frame = apply_transformation(frame, step)
+    crosswalk = get_crosswalk(
+        dict(process_by['admin_id_crosswalk'], admin_id='US-AR'), flip=True
+    )
+    key = process_by['admin_id_transformation'][-1]['output']
+    joined = frame.join(crosswalk, on=key)
+    assert list(joined['admin3_id']) == ['US-AR-NE', 'US-AR-NE', 'US-AR-BO', 'US-AR-BO']
 
 
 def test_every_crosswalk_is_named_for_a_recipe_beside_it():
