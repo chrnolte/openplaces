@@ -201,6 +201,8 @@ EMPTY_DETAIL_KEY = 'openplaces:empty_detail'
 #   lots each carry one record.
 # declined: the user's usage profile or a withheld terms consent
 #   declined the download; the source was never read.
+# nothing_requested: a series enrichment whose requests named no
+#   (entity, period) pair the series answers for the unit.
 EMPTY_REASONS = (
     'not_published',
     'not_covered',
@@ -208,6 +210,7 @@ EMPTY_REASONS = (
     'marker',
     'nothing_stacked',
     'declined',
+    'nothing_requested',
 )
 
 

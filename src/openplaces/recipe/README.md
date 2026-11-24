@@ -67,6 +67,20 @@ record, "the best source available at build time" is not reproducible.
   deliver a parcel crosswalk in place of restricted boundaries).
 - `additional_layers` - list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
 - `entity_recipe` - predecessor entity recipe used by enrichment or curation
+- `series: true` and `requests` - an enrich recipe whose steps all carry
+  `years` writes one row per entity and period instead of one column
+  per year, for the (entity, period) pairs its `requests` name, and
+  refuses to run without them (`io/enricher/README.md`). One boolean
+  declares the mode because the long shape changes what the file is
+  (its index, its readers, what counts as done) for the whole recipe,
+  not per step; `requests` is kept apart so its absence can refuse.
+
+  ```yaml
+  series: true
+  requests:
+    - {recipe_id: CO_transaction-spine-2026, date: sale_year, offsets_years: [0]}
+    - {from: spine, date: now}
+  ```
 - `pipeline` - ordered named steps for harmonization, enrichment, or curation
 - `patches` / `pipeline_patch` - a patch recipe: a file at a county's or
   state's scope that names a national harmonize or curate recipe and
