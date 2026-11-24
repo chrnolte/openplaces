@@ -41,7 +41,7 @@ from openplaces.io.readers import (
     get_admin_ids,
     unnarrowable_error,
 )
-from openplaces.io.steps import make_loader, make_register
+from openplaces.io.steps import StepAudit, make_loader, make_register
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
@@ -690,7 +690,17 @@ class Harmonizer:
         all children of the recipe's ``admin_id`` at the process level.
     verbose : bool
         Print progress messages.
+    audit_steps : bool
+        Hash every spine column after each step and report what a step
+        changed outside its declared writes (`io.steps.StepAudit`). The
+        report is kept on `step_audit` and written beside the unit's
+        timer file. Off by default, and then free.
     """
+
+    # Class defaults, so an instance built without __init__ runs as
+    # before: audit mode off, no report.
+    audit_steps = False
+    step_audit = None
 
     def __init__(
         self,
@@ -698,7 +708,10 @@ class Harmonizer:
         admin_ids: str | list | None = None,
         verbose: bool = False,
         save_statistics: bool = False,
+        audit_steps: bool = False,
     ):
+        self.audit_steps = audit_steps
+        self.step_audit = None
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
         if recipe is None:
@@ -919,6 +932,9 @@ class Harmonizer:
                 state.spine, f'harmonize {recipe_id} for {admin_id} (checkpoint)'
             )
             spine_checked = True
+        audit = None
+        if self.audit_steps:
+            audit = StepAudit('Harmonizer', recipe_id, admin_id, {'spine': state.spine})
 
         # The journal collects the side files the steps write, so the
         # checkpoint can stamp those of the steps a restore would skip.
@@ -945,6 +961,10 @@ class Harmonizer:
                     k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
                 }
                 state = fn(state, **params)
+                if audit is not None:
+                    audit.after_step(
+                        step_index, step_name, fn, params, {'spine': state.spine}
+                    )
                 # One mark per recipe step, so a step's time is never
                 # folded into the next label a step happens to set
                 # itself. Marks a step sets inside itself still split
@@ -970,6 +990,8 @@ class Harmonizer:
                         verbose=self.verbose,
                     )
 
+        if audit is not None:
+            self.step_audit = audit.finish()
         if state.spine is None:
             self._save_empty_spine(admin_id)
             return
