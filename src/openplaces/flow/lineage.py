@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from importlib import import_module
 from itertools import combinations
@@ -45,6 +45,9 @@ class StepUse:
     `declared` is False for a step that declares nothing; its column
     sets are then empty and say nothing about what it touches.
     `entity_type` is the recipe's, None for a recipe of a dataset.
+    `drops` names the columns the step removes and `drop_rules` holds
+    (rule name, test of a column name) pairs for removals stated as a
+    rule (`io.steps.DropRule`); neither counts as a write.
     """
 
     recipe_id: str
@@ -57,6 +60,8 @@ class StepUse:
     decides: frozenset = frozenset()
     reads_from: tuple = ()
     entity_type: str | None = None
+    drops: frozenset = frozenset()
+    drop_rules: tuple = field(default=(), compare=False)
 
 
 def _step_registry(stage: str) -> dict:
@@ -148,6 +153,8 @@ def recipe_steps(recipe: dict, admin_id=None) -> list[StepUse]:
                 decides=resolved.decides,
                 reads_from=tuple(sorted(resolved.reads_from.items())),
                 entity_type=entity_type,
+                drops=resolved.drops,
+                drop_rules=resolved.drop_rules,
             )
         )
     return uses
@@ -187,6 +194,17 @@ def _matches(column: str, names: Iterable[str]) -> bool:
 def writers(column: str, steps: Iterable[StepUse]) -> list[StepUse]:
     """The steps that declare writing *column*."""
     return [use for use in steps if _matches(column, use.writes)]
+
+
+def droppers(column: str, steps: Iterable[StepUse]) -> list[StepUse]:
+    """The steps that declare removing *column*: where it leaves the
+    table. A removal is not a write, so `writers` does not list them."""
+    return [
+        use
+        for use in steps
+        if _matches(column, use.drops)
+        or any(test(column) for _, test in use.drop_rules)
+    ]
 
 
 def readers(column: str, steps: Iterable[StepUse]) -> list[StepUse]:
@@ -336,6 +354,8 @@ def writes_after_decider(
         (recipe id, column, deciding step, later writer) for each
         column of *columns* a recipe decides. A writer declaring every
         column (`*`) is listed too; it may or may not touch the column.
+        A step that only removes the column (`drops`) is not a writer
+        and is not listed; `droppers` finds it.
     """
     wanted = frozenset(columns)
     by_recipe: dict[str, list[StepUse]] = {}
@@ -355,6 +375,7 @@ def _print_chain(column: str, steps: list[StepUse]) -> None:
     for title, found in (
         ('written by', writers(column, steps)),
         ('read by', readers(column, steps)),
+        ('dropped by', droppers(column, steps)),
     ):
         print(f'{column} {title}:')
         for use in found:

@@ -63,10 +63,14 @@ own on every row decide it too: `collect_link_ids`,
 `fill_only`, and `flag_sales_matching_other_kind` and
 `collapse_double_closings` where they write a flag column. The format
 steps write what they change: `cast_categoricals` every registry
-categorical it may cast (a dtype change), `order_columns` the columns
-it drops. One used curate step declares nothing:
-`keep_registered_columns` drops every column the registry does not
-know, a set no list of names can state. `merge_enrichments` declares
+categorical it may cast (a dtype change). A step that removes columns
+declares them under `drops`, which is no write: `order_columns` its
+`drop` list, and `keep_registered_columns` a rule
+(`io.steps.DropRule`) that holds for every column the registry does
+not know, plus excluded and personal ones, since no list of names can
+state that set. `flow.lineage.droppers` names where a column leaves
+the table, and the audit counts such a removal as declared.
+`merge_enrichments` declares
 the columns it fills but not the enrichment columns it reads, since
 those recipes are named inside its list of specs.
 

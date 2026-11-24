@@ -5,6 +5,7 @@ import warnings
 import pytest
 
 from openplaces.io.steps import (
+    DropRule,
     UndeclaredColumnWarning,
     make_register,
     resolve_step_columns,
@@ -125,6 +126,49 @@ def test_new_columns_outside_writes_are_reported():
     with warnings.catch_warnings():
         warnings.simplefilter('error')
         warn_undeclared_columns('adds', adds, {}, before, ['id', 'x'])
+
+
+def test_drops_resolve_names_templates_callables_and_rules():
+    registry, register = _registry()
+    rule = DropRule('kept list', lambda column, args: column not in args['keep'])
+
+    @register(
+        'trim',
+        drops=['tmp', '{drop}', lambda args: [f'{c}_x' for c in args['drop']], rule],
+    )
+    def trim(state, drop=(), keep=()):
+        return state
+
+    resolved = resolve_step_columns(trim, {'drop': ['a', 'b'], 'keep': ['id']})
+    assert resolved.drops == {'tmp', 'a', 'b', 'a_x', 'b_x'}
+    assert resolved.writes == frozenset()
+    assert [name for name, _ in resolved.drop_rules] == ['kept list']
+    assert resolved.drops_column('a_x')
+    assert resolved.drops_column('anything')
+    assert not resolved.drops_column('id')
+
+
+def test_a_drops_only_declaration_declares_the_step():
+    registry, register = _registry()
+    rule = DropRule('none', lambda column, args: False)
+
+    @register('only_rule', drops=rule)
+    def only_rule(state):
+        return state
+
+    declared = step_columns(only_rule)
+    assert declared is not None and declared.drops == (rule,)
+    resolved = resolve_step_columns(only_rule, {})
+    assert resolved.drops == frozenset() and not resolved.drops_column('x')
+
+
+def test_a_drop_rule_outside_drops_is_refused():
+    registry, register = _registry()
+    with pytest.raises(TypeError, match='drops only'):
+
+        @register('misplaced', writes=[DropRule('r', lambda column, args: True)])
+        def misplaced(state):
+            return state
 
 
 def test_wildcard_writes_reports_nothing():
