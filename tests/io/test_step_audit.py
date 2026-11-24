@@ -17,7 +17,7 @@ from openplaces.io import steps as steps_module
 from openplaces.io.curator import Curator
 from openplaces.io.enricher import Enricher
 from openplaces.io.harmonizer import Harmonizer
-from openplaces.io.steps import StepAudit, make_register
+from openplaces.io.steps import DropRule, StepAudit, make_register
 
 ADMIN_ID = AdminId('US-XX-AAA')
 _COLUMN_HASHES = steps_module.column_hashes
@@ -111,6 +111,38 @@ def test_rows_are_aligned_on_the_index():
 
     filtered = _audit_one(plain, {}, lambda frame: frame.drop(index='e2'))
     assert filtered[['column', 'change', 'n_rows']].values.tolist() == [['', 'rows', 1]]
+
+
+def test_a_removal_named_by_drops_is_declared():
+    @_register()('trim', drops=['{drop}'])
+    def trim(state, drop=()):
+        return state
+
+    def mutate(frame):
+        frame['height'] = frame['height'] + 1
+        return frame.drop(columns=['label', 'tags'])
+
+    report = _audit_one(trim, {'drop': ['label']}, mutate).set_index('column')
+    assert report.loc['label', ['change', 'declared']].tolist() == ['removed', 'yes']
+    assert report.loc['tags', ['change', 'declared']].tolist() == ['removed', 'no']
+    # drops covers removal only: a changed column it names is no write.
+    assert report.loc['height', 'declared'] == 'no'
+
+
+def test_a_removal_a_drop_rule_holds_for_is_declared():
+    keep_listed = DropRule('not kept', lambda column, args: column not in args['keep'])
+
+    @_register()('allow', drops=keep_listed)
+    def allow(state, keep=()):
+        return state
+
+    def mutate(frame):
+        return frame.drop(columns=['label', 'tags'])
+
+    report = _audit_one(allow, {'keep': ['tags', 'height']}, mutate)
+    report = report.set_index('column')
+    assert report.loc['label', 'declared'] == 'yes'
+    assert report.loc['tags', 'declared'] == 'no'
 
 
 def test_a_cast_without_a_value_change_is_a_dtype_change():

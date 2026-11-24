@@ -62,18 +62,47 @@ class UndeclaredColumnWarning(UserWarning):
 
 
 @dataclass(frozen=True)
+class DropRule:
+    """A named test for the columns a step removes, for a `drops` entry.
+
+    A step that keeps an allow-list (every column the attribute
+    registry knows) removes a set that no list of names or patterns
+    can state, since patterns cannot negate. The rule states it as a
+    test instead: `test(column, arguments)` is True for a column the
+    step removes under those arguments. The audit asks it about each
+    column a step removed; lineage asks it about the column queried.
+    A rule is not callable itself, so a `drops` entry that is a rule
+    is never mistaken for a callable returning names.
+
+    Parameters
+    ----------
+    name : str
+        A short label for reports and lineage output.
+    test : Callable
+        Takes a column name and the step's arguments (as a callable
+        entry receives them) and returns True where the step removes
+        that column.
+    """
+
+    name: str
+    test: Callable = field(compare=False)
+
+
+@dataclass(frozen=True)
 class StepColumns:
     """The columns a step declares, as written on its registration.
 
     Entries are column names, templates naming the step's parameters
     (`'{column}_source'`), or callables taking the step's arguments
-    and returning names. See :func:`resolve_step_columns`.
+    and returning names. A `drops` entry may also be a `DropRule`.
+    See :func:`resolve_step_columns`.
     """
 
     reads: tuple = ()
     writes: tuple = ()
     decides: tuple = ()
     reads_from: Mapping = field(default_factory=dict)
+    drops: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -81,13 +110,23 @@ class ResolvedColumns:
     """A step's declared columns for one recipe entry, as plain names.
 
     `reads_from` maps an upstream recipe id to the columns read from
-    its table. A name in `writes` may hold `*` as a wildcard.
+    its table. A name in `writes` or `drops` may hold `*` as a
+    wildcard. `drop_rules` holds each `DropRule` with the arguments
+    bound, as (rule name, test of one column name).
     """
 
     reads: frozenset
     writes: frozenset
     decides: frozenset
     reads_from: Mapping
+    drops: frozenset = frozenset()
+    drop_rules: tuple = ()
+
+    def drops_column(self, name) -> bool:
+        """Whether the declaration says the step removes *name*."""
+        if _is_written(name, self.drops):
+            return True
+        return any(test(str(name)) for _, test in self.drop_rules)
 
 
 def _identity(fn: Callable) -> tuple[str, str]:
@@ -99,7 +138,7 @@ def _as_entries(value) -> tuple:
     """A declaration argument as a tuple of entries."""
     if value is None:
         return ()
-    if isinstance(value, str) or callable(value):
+    if isinstance(value, str | DropRule) or callable(value):
         return (value,)
     return tuple(value)
 
@@ -186,7 +225,8 @@ def resolve_step_columns(
         None when the step declares nothing. A template is filled from
         *params*, then from the function's defaults: a list parameter
         stands for each of its items, a mapping parameter for its keys
-        or values, a parameter that is None for nothing.
+        or values, a parameter that is None for nothing. A `DropRule`
+        in `drops` is kept as a test bound to these arguments.
 
     Raises
     ------
@@ -207,12 +247,21 @@ def resolve_step_columns(
             arguments.get(recipe_parameter), 'keys', recipe_parameter
         ):
             reads_from[recipe_id] = reads_from.get(recipe_id, frozenset()) | columns
+    rules = [entry for entry in declared.drops if isinstance(entry, DropRule)]
+    named = [entry for entry in declared.drops if not isinstance(entry, DropRule)]
     return ResolvedColumns(
         reads=_expand_all(declared.reads, arguments),
         writes=_expand_all(declared.writes, arguments),
         decides=_expand_all(declared.decides, arguments),
         reads_from=reads_from,
+        drops=_expand_all(named, arguments),
+        drop_rules=tuple((rule.name, _bound(rule, arguments)) for rule in rules),
     )
+
+
+def _bound(rule: DropRule, arguments: Mapping) -> Callable[[str], bool]:
+    """A rule's test of one column name, under fixed arguments."""
+    return lambda column: bool(rule.test(column, arguments))
 
 
 def undeclared_new_columns(
@@ -356,7 +405,9 @@ class StepAudit:
     Curator) hashes every cell of the stage's tables after each step
     and compares the hashes with those taken after the step before.
     Each column a step added, removed or changed becomes one report
-    row, marked by whether the step's declared `writes` name it. Off,
+    row, marked by whether the step's declared `writes` name it; a
+    removed column also counts as declared where the step's `drops`
+    name it or one of its drop rules holds for it. Off,
     no audit object exists and the dispatch loop does nothing more
     than check that it is None.
 
@@ -416,8 +467,12 @@ class StepAudit:
             for column, change, n_rows in _compare(self._previous.get(table), snapshot):
                 if change == 'rows':
                     declared = 'n/a'
+                elif _is_written(column, writes):
+                    declared = 'yes'
+                elif change == 'removed' and resolved is not None:
+                    declared = 'yes' if resolved.drops_column(column) else 'no'
                 else:
-                    declared = 'yes' if _is_written(column, writes) else 'no'
+                    declared = 'no'
                 self.rows.append(
                     {
                         'recipe': self.recipe_id,
@@ -495,7 +550,10 @@ def make_register(
         parameters), ``decides`` (the written columns that are the
         final value of a registry column, a subset of ``writes``) and
         ``reads_from`` (a recipe-id parameter mapped to the columns
-        read from that recipe's table). See `resolve_step_columns`.
+        read from that recipe's table) and ``drops`` (the columns the
+        step removes, as names, templates, callables or a `DropRule`;
+        a removal is not a write, so lineage never counts it as one).
+        See `resolve_step_columns`.
     """
 
     def _register(
@@ -505,15 +563,28 @@ def make_register(
         writes=None,
         decides=None,
         reads_from: Mapping | None = None,
+        drops=None,
     ) -> Callable:
         declared = None
-        if any(value is not None for value in (reads, writes, decides, reads_from)):
+        given = (reads, writes, decides, reads_from, drops)
+        if any(value is not None for value in given):
             declared = StepColumns(
                 reads=_as_entries(reads),
                 writes=_as_entries(writes),
                 decides=_as_entries(decides),
                 reads_from=dict(reads_from or {}),
+                drops=_as_entries(drops),
             )
+            misplaced = [
+                entry
+                for entry in declared.reads + declared.writes + declared.decides
+                if isinstance(entry, DropRule)
+            ]
+            if misplaced:
+                raise TypeError(
+                    f'{names[0]!r}: a DropRule belongs in drops only, '
+                    f'got {misplaced[0].name!r} elsewhere'
+                )
             unwritten = [
                 entry for entry in declared.decides if entry not in declared.writes
             ]

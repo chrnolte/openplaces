@@ -253,7 +253,6 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
         (building, 'group_parcel'): [
             ('link_curated_entity', False),
             ('cast_categoricals', False),
-            ('order_columns', False),
         ],
         (building, 'manufactured_home_community'): [
             ('link_curated_entity', False),
@@ -362,9 +361,6 @@ _UNDECLARED_STEP_ALLOWLIST = {
     ('enrich', 'overlay_reference_polygons'): 'year columns and suffix not checked',
     ('enrich', 'enrich_parcels_from_reference_crosswalk'): (
         'names come from a column-notes file'
-    ),
-    ('curate', 'keep_registered_columns'): (
-        'drops every unregistered column, a set no name list can state'
     ),
 }
 
@@ -482,6 +478,52 @@ def test_reconcile_attributes_declares_its_evidence_columns():
         'n_footprints_fema_per_parcel',
         'n_parcels_per_footprint_fema',
     }
+
+
+def test_a_dropped_column_is_not_written_and_says_where_it_leaves():
+    # order_columns removes scratch columns; that is no write, so it
+    # follows no decider, and lineage still names where they leave.
+    building = 'US_building-openplaces-2026'
+    uses = [use for use in lineage.all_steps() if use.recipe_id == building]
+    scratch = 'p_manufactured_home'
+    assert [use.step for use in lineage.droppers(scratch, uses)] == ['order_columns']
+    assert 'order_columns' not in [use.step for use in lineage.writers(scratch, uses)]
+    later = lineage.writes_after_decider(_every_pipeline(), load_registry().index)
+    assert not [found for found in later if found[3] == 'order_columns']
+
+
+def test_keep_registered_columns_drops_by_its_rule():
+    # The allow-list's removals are stated as a rule over the
+    # registry: an unregistered header leaves, a registered attribute
+    # and a column the recipe keeps by name stay.
+    property_curate = 'US_property-openplaces-2026'
+    uses = [use for use in lineage.all_steps() if use.recipe_id == property_curate]
+    (keep,) = [use for use in uses if use.step == 'keep_registered_columns']
+    assert keep.declared and not keep.writes
+    assert [name for name, _ in keep.drop_rules] == ['unregistered or withheld']
+    assert lineage.droppers('fabricated_raw_header', [keep]) == [keep]
+    assert lineage.droppers('year_built', [keep]) == []
+    assert lineage.droppers('construction_class', [keep]) == []
+
+
+def test_droppers_match_names_patterns_and_rules():
+    steps = [
+        StepUse('r', 'curate', 1, 'a', True, drops=frozenset({'x', 'tmp_*'})),
+        StepUse(
+            'r',
+            'curate',
+            2,
+            'b',
+            True,
+            drop_rules=(('starts with z', lambda column: column.startswith('z')),),
+        ),
+        StepUse('r', 'curate', 3, 'c', True, writes=frozenset({'x'})),
+    ]
+    assert [use.step for use in lineage.droppers('x', steps)] == ['a']
+    assert [use.step for use in lineage.droppers('tmp_1', steps)] == ['a']
+    assert [use.step for use in lineage.droppers('zeta', steps)] == ['b']
+    assert lineage.droppers('y', steps) == []
+    assert [use.step for use in lineage.writers('x', steps)] == ['c']
 
 
 def test_writers_readers_and_repeated_deciders():

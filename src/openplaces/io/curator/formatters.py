@@ -13,6 +13,7 @@ import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import SOURCE_SUFFIX
+from openplaces.io.steps import DropRule
 from openplaces.recipe import provenance_suffixes as _provenance_suffixes
 from openplaces.recipe import resolve_attribute_name
 from openplaces.recipe import split_provenance_suffix as _split_source
@@ -69,7 +70,46 @@ def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
     return state
 
 
-@_register('keep_registered_columns', phase='format')
+def _withheld_columns(columns, exclude=None, keep=None) -> list:
+    """The columns `keep_registered_columns` removes, in their order.
+
+    The one statement of the step's rule: the step removes what this
+    returns, and its `drops` declaration asks the same question.
+    """
+    from openplaces.config import get_keep_personal_columns
+    from openplaces.core.attribute_registry import (
+        is_personal_attribute,
+        load_registry,
+    )
+
+    registered = set(load_registry().index)
+    excluded = set(exclude or [])
+    kept = set(keep or [])
+    keep_personal = get_keep_personal_columns()
+    dropped = []
+    for col in columns:
+        if col == 'geometry' or col in kept:
+            continue
+        base = col.removesuffix(SOURCE_SUFFIX) if col not in registered else col
+        attr = resolve_attribute_name(base)
+        personal = is_personal_attribute(attr) and not keep_personal
+        if attr not in registered or attr in excluded or base in excluded or personal:
+            dropped.append(col)
+    return dropped
+
+
+#: The columns `keep_registered_columns` removes: every one the
+#: registry does not know, plus excluded and personal ones. Stated as
+#: a test, since no list of names or patterns can state a complement.
+UNREGISTERED_OR_WITHHELD = DropRule(
+    'unregistered or withheld',
+    lambda column, args: bool(
+        _withheld_columns([column], args.get('exclude'), args.get('keep'))
+    ),
+)
+
+
+@_register('keep_registered_columns', phase='format', drops=UNREGISTERED_OR_WITHHELD)
 def keep_registered_columns(
     state: CurateState,
     exclude: list[str] | None = None,
@@ -110,26 +150,8 @@ def keep_registered_columns(
     keep : list of str, optional
         Unregistered columns to keep (an internal join id).
     """
-    from openplaces.config import get_keep_personal_columns
-    from openplaces.core.attribute_registry import (
-        is_personal_attribute,
-        load_registry,
-    )
-
-    registered = set(load_registry().index)
-    excluded = set(exclude or [])
-    kept = set(keep or [])
-    keep_personal = get_keep_personal_columns()
     curated = state.curated
-    dropped = []
-    for col in curated.columns:
-        if col == 'geometry' or col in kept:
-            continue
-        base = col.removesuffix(SOURCE_SUFFIX) if col not in registered else col
-        attr = resolve_attribute_name(base)
-        personal = is_personal_attribute(attr) and not keep_personal
-        if attr not in registered or attr in excluded or base in excluded or personal:
-            dropped.append(col)
+    dropped = _withheld_columns(curated.columns, exclude, keep)
     state.curated = curated.drop(columns=dropped)
     if state.verbose:
         print(f'  keep_registered_columns: dropped {len(dropped)} column(s)')
@@ -354,8 +376,8 @@ def sort_rows(state: CurateState, by: list[str]) -> CurateState:
     return state
 
 
-# Reordering changes no column; the columns it drops are its writes.
-@_register('order_columns', phase='format', writes=['{drop}'])
+# Reordering changes no column; removing one is not a write.
+@_register('order_columns', phase='format', drops=['{drop}'])
 def order_columns(
     state: CurateState,
     overrides: list[str] | None = None,
