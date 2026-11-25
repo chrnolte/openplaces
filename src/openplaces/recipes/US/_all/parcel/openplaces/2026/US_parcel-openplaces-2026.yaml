@@ -509,6 +509,11 @@ pipeline:
               - {type: equals, column: keyword_class, value: RV Park}
               - {type: equals, column: style_class, value: RV Park}
           - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
+          # A lot with an RV keyword needs 4 or more buildings (or the
+          # recreation group) for its second point; without it the
+          # keyword alone makes a 1 to 3 building lot a park. Largest
+          # unit of the 13 in plans/rule-thresholds-inventory.md:
+          # Measured 2026-11-24 on US-NC-NHA: off, 28 lots change.
           - {type: count_at_least, column: n_buildings_per_parcel, min: 4}
 
       # Standalone Manufactured Home (excludes multi-unit parks).
@@ -570,10 +575,16 @@ pipeline:
               - {type: in_set, column: group_parcel, values: [Single Family]}
               - {type: in_set, column: group_footprint_fema, values: [Single Family]}
           # Minimum land value share to filter out condominiums.
+          # negligible_value_share is the one 1% cutoff for "almost
+          # none of the recorded value": anchored here, aliased by the
+          # Condominium, Townhome, Vacant and Mostly Vacant decisions.
+          # Three read the land share, two the improvement share. The
+          # building curate's 0.025 (mh_value_share_max) is a separate
+          # value, not aligned with this one.
           - type: value_share_at_least
             value: land_value
             total: [land_value, improvement_value]
-            min_ratio: 0.01
+            min_ratio: &negligible_value_share 0.01
 
       # Condominiums: characterized by near-zero land value and non-zero improvement value.
       - class: Condominium
@@ -582,7 +593,7 @@ pipeline:
           - type: value_share_below
             value: land_value
             total: [land_value, improvement_value]
-            max_ratio: 0.01
+            max_ratio: *negligible_value_share
             include_zero: true
           - type: any_of
             indicators:
@@ -627,7 +638,7 @@ pipeline:
           - type: value_share_at_least
             value: land_value
             total: [land_value, improvement_value]
-            min_ratio: 0.01
+            min_ratio: *negligible_value_share
 
       # Multi-Family where the assessor's own land use says so: a unit
       # count or building type (two/three family, duplex, decker,
@@ -707,7 +718,7 @@ pipeline:
           - type: value_share_below
             value: improvement_value
             total: [improvement_value, land_value]
-            max_ratio: 0.01
+            max_ratio: *negligible_value_share
             include_zero: true
           - type: any_of
             indicators:
@@ -742,7 +753,7 @@ pipeline:
           - type: value_share_below
             value: improvement_value
             total: [improvement_value, land_value]
-            max_ratio: 0.01
+            max_ratio: *negligible_value_share
             include_zero: true
 
       # The coarse non-residential classes below keep min_score 1 (assessor
@@ -853,6 +864,11 @@ pipeline:
     footprint_area_column: footprint_area_m2_in_parcel
     parcel_area_column: area_ha
     peer_group_column: use_group_combined
+    # A non-residential lot gets an imputed land value only where its
+    # buildings cover more than a quarter of the median for its use
+    # group. Largest unit of the 13 in
+    # plans/rule-thresholds-inventory.md, section 8:
+    # Measured 2026-11-24 on US-NC-NHA: off, 70 lots change.
     footprint_ratio_threshold: 0.25
     city_column: city
     # Per-area rate where it is reliable, land share of the record's own

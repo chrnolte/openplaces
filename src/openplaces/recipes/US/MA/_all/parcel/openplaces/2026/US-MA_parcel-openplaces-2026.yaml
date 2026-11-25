@@ -131,6 +131,11 @@ pipeline_patch:
         land-use vote has filled the class
       column: [land_use_class]
       indicators:
+        # Empties the class where protected open space covers half
+        # the lot or more and no roll row states the lot. Run on
+        # US-MA-SOM and US-MA-CAM (plans/rule-thresholds-inventory.md,
+        # section 8):
+        # Measured 2026-11-24 on US-MA-SOM: 0.5 off, 7 lots change.
         - type: numeric_at_least
           column: protected_open_space_share
           min: 0.5

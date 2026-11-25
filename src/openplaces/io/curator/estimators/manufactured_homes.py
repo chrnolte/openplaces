@@ -682,10 +682,26 @@ def classify_manufactured_homes(
     min_training_samples : int, optional
         Minimum number of assessor-labeled structures for each class to train
         the local morphology model. If not met, falls back to a rule-based
-        scoring model.
+        scoring model. With 0 labels of a class the fit fails and the fixed
+        score is used anyway, so the number matters only for a unit with 1
+        to 9 labels of a class. No recipe sets it, and set to 0 it changed
+        nothing on the 13 units of plans/rule-thresholds-inventory.md:
+
+        Measured 2026-11-24 on US-PA-HU: at 0, 0 of 54,297 rows change.
+
+        To settle: a national count of roll labels per class and unit; if
+        no unit has 1 to 9, the number does no work.
     plausible_aspect_min, plausible_area_max_m2 : float, optional
         Relaxed geometry envelope (aspect ratio at least, area at most) used to
-        gate imagery/morphology overrides of assessor labels.
+        gate imagery/morphology overrides of assessor labels. The trained
+        model may overrule a roll's Single-Family label only on an outline
+        at least *plausible_aspect_min* times as long as wide; below 1.8 the
+        fixed score cannot exceed 0.75, so only the trained model is affected.
+        It is looser than the recipe's aspect_min (2.5) on purpose and is not
+        aligned with it (plans/rule-thresholds-inventory.md, section 8.4).
+        Largest unit of the 13 in that plan, with the aspect minimum at 0:
+
+        Measured 2026-11-24 on US-TX-GAL: at 0, 14 buildings change.
     update_occupancy : bool, optional
         If True, also writes the manufactured/single-family call straight into
         ``occupancy_type``. Default False: leave that to ``resolve_by_vote``.

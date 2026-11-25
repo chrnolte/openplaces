@@ -778,6 +778,13 @@ pipeline:
         cohort_column: occupancy_type_nsi_class
         cohort_value: Manufactured Home
         fraction: 0.5
+        # The reference never drops below 25 m2. It binds only where
+        # NSI's manufactured homes average under 50 m2, and with 3 or
+        # more of them. Switched off, nothing changed on the 13 units
+        # of plans/rule-thresholds-inventory.md, section 8:
+        # Measured 2026-11-24 on US-PA-HU: off, 0 of 54,297 rows change.
+        # To settle: the cohort mean per unit, nationally; if no unit
+        # is under 50 m2, the floor can go.
         floor: 25
         fallback: 90
         min_samples: 3
@@ -879,6 +886,13 @@ pipeline:
     roll_column: n_stories_parcel
     floor_area_column: living_area_sqft_parcel
     min_share: 0.7
+    # A county may fill missing counts from its roll only after the
+    # 70% test ran on at least 100 test buildings. The knock-out set
+    # it to 0, which also lets a county with no test building adopt
+    # its roll (0 of 0 passes), so it switched off the whole sample
+    # guard, not only the number 100. Largest unit of the 13 in
+    # plans/rule-thresholds-inventory.md, section 8 (totals there):
+    # Measured 2026-11-24 on US-DC-DC: guard off, 4,480 rows change.
     min_rows: 100
 
   # Reconcile canonical roof shape, foundation and construction type.
@@ -1055,6 +1069,14 @@ pipeline:
                   - type: equals
                     column: style_keyword_class
                     value: Multi-Family
+              # The guard: the keyword counts on 2 or more stories, 2 or
+              # more Overture addresses, NSI agreeing, or a count
+              # missing. The knock-out set the stories minimum to minus
+              # infinity, which with "stories missing" holds on every
+              # row, so it switched off the whole guard, not only the
+              # 2. Largest unit of the 13 in
+              # plans/rule-thresholds-inventory.md, section 8:
+              # Measured 2026-11-24 on US-NC-NHA: off, 2,854 rows change
               - type: any_of
                 indicators:
                   - {type: numeric_at_least, column: n_dwellings_overture, min: 2}
@@ -1145,6 +1167,15 @@ pipeline:
         source: rv_dwelling
         min_score: 2
         require:
+          # An outline under 12 m2 cannot be an RV Dwelling. Without
+          # it the footprint geospine's 10 m2 floor decides, so only
+          # 10 to 12 m2 outlines are at stake. Nothing changed when
+          # it was switched off on the 13 units of
+          # plans/rule-thresholds-inventory.md, section 8, where the
+          # class comes only from RV Park lots:
+          # Measured 2026-11-24 on US-PA-HU: 0 of 54,297 rows change.
+          # To settle: rerun on US-TX-CAM, the one roll with trailer
+          # counts (the roll route).
           - {type: numeric_at_least, column: area_m2, min: 12}
           # One dwelling, or a context that makes the footprint a unit
           # whatever its dwelling count: an RV park, or a roll listing
@@ -1212,10 +1243,22 @@ pipeline:
             label: rv_park
             indicators:
               - *rv_park_parcel
+              # Only outlines up to 45 m2 on a park lot count as an RV;
+              # without it the park's other buildings would. Largest
+              # unit of the 13 in plans/rule-thresholds-inventory.md:
+              # Measured 2026-11-24 on US-NC-NHA: off, 30 rows change.
               - {type: numeric_at_most, column: area_m2, max: 45}
           # Towable dimensions: a travel trailer body is about 2.4 to
           # 2.6 m wide, a park model 3.5 to 4 m, both elongated. Shared
           # with sheds and containers, hence weight 1.
+          #
+          # The 40 m2 cap adds a point only to a row already eligible;
+          # on a park lot the 45 m2 cap above already binds, so it can
+          # matter only on the roll route. Nothing changed when it was
+          # switched off on the 13 units of
+          # plans/rule-thresholds-inventory.md, section 8:
+          # Measured 2026-11-24 on US-PA-HU: 0 of 54,297 rows change.
+          # To settle: rerun on US-TX-CAM (trailer counts on its roll).
           - type: all_of
             label: towable_size
             indicators:
@@ -1662,6 +1705,14 @@ pipeline:
                   - type: numeric_below
                     column: area_m2
                     max: *small_secondary_mh_m2
+                  # The 55 m2 needs a roll mobile-home unit count,
+                  # which no unit of the 13 in
+                  # plans/rule-thresholds-inventory.md carries, so
+                  # switching it off changed nothing there:
+                  # Measured 2026-11-24 on US-PA-HU: 0 of 54,297 changed
+                  # To settle: rerun on a county whose roll fills the
+                  # count (TX: CAM, SAP, NUE, LIB, JEF, BRA; NC: WAK,
+                  # HAR).
                   - type: all_of
                     indicators:
                       - {type: not_null, column: n_manufactured_home_units_parcel}
@@ -1859,11 +1910,12 @@ pipeline:
   # rule 2, the same rule with 4 aligned homes 15. Both arms need 3
   # homes: no label covers a lot under 3, and two homes on a lot are
   # the plan's family lot. Until 2026-11-22 a lot was a park from 4
-  # homes of any shape.
+  # homes of any shape. The 2.5 is the class rule's own (mh_aspect_min):
+  # the homes counted here are those that shape rule calls long.
   - step: flag_manufactured_home_communities
     homes_at_least: 8
     aligned_homes_at_least: 3
-    min_aspect: 2.5
+    min_aspect: *mh_aspect_min
     bearing_window_degrees: 15
 
   # The one step that decides n_dwellings, after the last writer of the

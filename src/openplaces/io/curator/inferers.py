@@ -530,6 +530,16 @@ def _derive_nominal_floor(state: CurateState, spec: dict) -> pd.Series | None:
     spike is 0.6% of rows and 69% arm's length, Wilson's 1,000 dollar
     spike 0.5%. A 0.5% share would have called those conventions and
     hidden real sales; at 5% only the recorder's own value qualifies.
+
+    The isolation (20) keeps a low price from becoming the floor where a
+    price within ten percent of it carries more than a twentieth of its
+    rows. Set to 0 it removes the
+    isolation test entirely: every price up to ``cap`` carrying 5% of
+    rows qualifies and the largest wins. Since the floor is one value
+    written on every row, a changed floor changes every row of the
+    county (plans/rule-thresholds-inventory.md, section 8.3):
+
+    Measured 2026-11-24 on US-NJ-CU: isolation 0, 63,334 rows change.
     """
     curated = state.curated
     column = spec['column']
