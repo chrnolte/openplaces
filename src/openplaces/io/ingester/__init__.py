@@ -13,15 +13,21 @@ module the method lives in: `openplaces.io.ingester.download.unzip`, not
 """
 
 import re
-import shutil
 import warnings
 from itertools import product
+from pathlib import Path
 
 import geopandas as gpd
 
 from openplaces.config import cfg
+from openplaces.core.constants import ZIP_EXTENSIONS
 from openplaces.core.schema import AdminId
-from openplaces.io import delete_data
+from openplaces.io.archives import (
+    acquire_read_lease,
+    delete_extracted,
+    is_internal,
+    release_read_lease,
+)
 from openplaces.io.ingester._helpers import (  # noqa: F401
     _SCRAPER_MODULE_CACHE,
     _match_extracted_file,
@@ -482,6 +488,21 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
             print('Downloaded path:', self.download_partition['downloaded_path'])
             print('Data path:', self.download_partition['data_path'])
 
+        self._acquire_heap_lease()
+        try:
+            self._process_download_partition(
+                admin_id_to_download,
+                partition_id_to_download,
+                redownload,
+                keep_unzipped,
+            )
+        finally:
+            self._release_heap_lease()
+
+    def _process_download_partition(
+        self, admin_id_to_download, partition_id_to_download, redownload, keep_unzipped
+    ):
+        """Download, extract, process and clean up one download partition."""
         if self.recipe.get('dataset') and self.recipe['dataset'].is_raster:
             fetch_rasters_by_admin(self)
             return
@@ -563,8 +584,16 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
         # file matching this partition instead, regardless of which admin
         # subset was actually requested (the source zip stays on disk, so a
         # later run touching a different admin unit just re-extracts).
+        #
+        # The heap is shared by every recipe reading the same archive,
+        # and another job may be reading it right now. delete_extracted
+        # deletes nothing while another job's read lease is in the
+        # folder, and moves each path aside before deleting it, so a
+        # reader never sees half of a geodatabase.
         if not keep_unzipped:
+            heap = self.recipe_heap_dir
             process_by = self.recipe.get('process_by') or {}
+            to_delete = []
             if process_by.get('file_pattern'):
                 partition_glob = process_by['file_pattern'].replace(
                     '{partition_id}',
@@ -577,42 +606,71 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
                 # absorbing the rest of a filename) -- pathlib rejects '**'
                 # unless it's an entire path component on its own.
                 partition_glob = re.sub(r'\*+', '*', partition_glob)
-                if self.verbose:
-                    print('Deleting unzipped data.')
-                for matched_path in self.recipe_heap_dir.glob(partition_glob):
-                    delete_data(matched_path)
+                to_delete = list(heap.glob(partition_glob))
             elif self.download_partition.get('read_members_glob'):
                 # Every member read, not only the one standing in as
                 # `data_path`.
-                if self.verbose:
-                    print('Deleting unzipped data.')
-                for matched_path in self.recipe_heap_dir.glob(
-                    self.download_partition['read_members_glob']
-                ):
-                    delete_data(matched_path)
+                read_glob = self.download_partition['read_members_glob']
+                to_delete = list(heap.glob(read_glob))
             elif self.download_partition.get('join_members'):
-                if self.verbose:
-                    print('Deleting unzipped data.')
-                for member_path, _ in self.download_partition['join_members'][
-                    'members'
-                ]:
-                    if member_path.is_relative_to(self.recipe_heap_dir):
-                        delete_data(member_path)
-            elif self.download_partition['data_path'].is_relative_to(
-                self.recipe_heap_dir
-            ):
-                if self.verbose:
-                    print('Deleting unzipped data.')
-                delete_data(self.download_partition['data_path'])
+                to_delete = [
+                    member_path
+                    for member_path, _ in self.download_partition['join_members'][
+                        'members'
+                    ]
+                    if member_path.is_relative_to(heap)
+                ]
+            elif self.download_partition['data_path'].is_relative_to(heap):
+                to_delete = [self.download_partition['data_path']]
             # A partition's own extraction folder holds only what its
             # archive unpacked, so the members no recipe reads (Indiana's
             # buyer and seller contacts beside the sales) go with it
             # rather than lingering in the heap.
-            if (
-                self.download_partition.get('partition_heap_dir')
-                and self.recipe_heap_dir.exists()
-            ):
-                shutil.rmtree(self.recipe_heap_dir)
+            if self.download_partition.get('partition_heap_dir') and heap.exists():
+                to_delete = list(heap.iterdir())
+            to_delete = [p for p in to_delete if not is_internal(p, heap)]
+            if to_delete:
+                delete_extracted(
+                    to_delete,
+                    heap,
+                    own_lease=self.download_partition.get('heap_lease'),
+                    verbose=self.verbose,
+                )
+
+    def _acquire_heap_lease(self):
+        """Hold a read lease on the heap folder this partition reads.
+
+        Taken only when the partition reads from the heap (an archive
+        to extract, or a data path inside the heap), so a recipe of flat
+        files creates no heap folder. Taken before the "already
+        extracted" check decides, and that check is repeated once the
+        lease is in place: another job's cleanup may have deleted the
+        extraction between the path resolution and the lease.
+        """
+        heap = getattr(self, 'recipe_heap_dir', None)
+        data_path = self.download_partition.get('data_path')
+        downloaded_path = self.download_partition.get('downloaded_path')
+        uses_heap = heap is not None and (
+            (data_path is not None and Path(data_path).is_relative_to(heap))
+            or (
+                downloaded_path is not None
+                and bool(
+                    {s.lower() for s in Path(downloaded_path).suffixes} & ZIP_EXTENSIONS
+                )
+            )
+        )
+        if not uses_heap:
+            return
+        self.download_partition['heap_lease'] = acquire_read_lease(heap)
+        if data_path is not None and downloaded_path is None and not data_path.exists():
+            self._resolve_downloaded_and_data_paths()
+
+    def _release_heap_lease(self):
+        """Drop this partition's read lease and any heap folder emptied."""
+        lease = (getattr(self, 'download_partition', None) or {}).pop(
+            'heap_lease', None
+        )
+        release_read_lease(lease, stop_at=cfg.heap_dir)
 
     def _process_recipe_data(self, admin_id_to_process=None):
         """Process data from a downloaded (and unzipped) data file"""

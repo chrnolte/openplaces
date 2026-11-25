@@ -158,7 +158,12 @@ def test_backslash_member_names_extract_as_folders(tmp_path):
             archive.writestr(info, 'id\n1\n')
 
     out_dir = unzip(path, tmp_path / 'out')
-    assert sorted(p.name for p in out_dir.iterdir()) == [
+    # unzip's own marker aside, the data are the two tables.
+    assert sorted(
+        p.name
+        for p in out_dir.iterdir()
+        if not p.name.startswith(archives.INTERNAL_PREFIX)
+    ) == [
         'NAL_2002_11Alachua_F.csv',
         'NAL_2002_47Leon_F.csv',
     ]
