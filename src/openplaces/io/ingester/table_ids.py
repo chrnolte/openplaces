@@ -357,9 +357,20 @@ class _TableIdMixin:
         result = split_stacked_units(
             gdf, lot_key=lot_key, unit_key=unit_key_of(self.recipe)
         )
-        if self.verbose or result.n_stacks:
-            print(f'  stacked units{suffix}: {result.summary()}')
-        self.timer.mark(f'Split stacked units{suffix}')
+        # Whenever the split merged, dropped or moved a row, not only
+        # when it found stacks: a lot whose record the source ships twice
+        # is merged without any stack, and until 2026-11-24 that left
+        # 246 fewer rows in Newton County, Arkansas, with no line saying
+        # why.
+        rows_in, rows_out = len(gdf), len(result.parcels)
+        if self.verbose or result.n_stacks or rows_out != rows_in:
+            print(
+                f'  stacked units{suffix}: rows {rows_in:,} to {rows_out:,}; '
+                f'{result.summary()}'
+            )
+        # The line above already gives the counts and their cause.
+        self._rows_after('stacked units', result.parcels, report=False)
+        self.timer.mark(f'Split stacked units{suffix}', rows=rows_out)
         parcels = result.parcels
         if not any(
             key in self.recipe

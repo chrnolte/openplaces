@@ -13,6 +13,7 @@ from openplaces.io.ingester.empty_outputs import (
     UnexplainedEmptyIngestError,
     save_empty_table,
 )
+from openplaces.io.steps import RowTrail
 from openplaces.recipe import (
     get_output_path,
 )
@@ -80,6 +81,31 @@ class _TableSaveMixin:
             'rows_in_source': rows_in_source,
             'unit_filter': unit_filter,
         }
+        # The rows each later step leaves, for the run record of every
+        # file this read is saved to (`_save_recipe_data`).
+        where = f' ({unit})' if unit is not None else ''
+        self._row_trail = RowTrail(
+            'ingest', rows_read=int(rows_read), prefix=f'{self.table_name}{where}: '
+        )
+
+    def _rows_after(self, step, df, report=True):
+        """Record the rows *df* holds after a preprocessing *step*.
+
+        Prints one line when the step changed the count (`RowTrail`),
+        unless *report* is False because the step prints its own. A
+        table preprocessed without a noted read (a test driving
+        `_preprocess_recipe_data` directly) starts its trail here.
+        """
+        if getattr(self, '_row_trail', None) is None:
+            self._row_trail = RowTrail('ingest', prefix=f'{self.table_name}: ')
+        return self._row_trail.after(step, df, report=report)
+
+    def _run_record(self, recipe, admin_id, saved):
+        """The run record of one saved file (`io.steps.RowTrail.record`)."""
+        trail = getattr(self, '_row_trail', None) or RowTrail('ingest')
+        return trail.record(
+            recipe.get('recipe_id'), admin_id, recipe, saved=int(len(saved))
+        )
 
     def _empty_save_reason(self, admin_id):
         """The reason and detail for saving *admin_id*'s table without rows.
@@ -265,13 +291,20 @@ class _TableSaveMixin:
                 self.download_partition.get('partition_id_to_download'),
             )
 
+            run_record = self._run_record(recipe, admin_id_to_save, gdf_to_save)
             if output_path.suffix == '.parquet' and gdf_to_save.empty:
                 reason, detail = empty_reason or self._empty_save_reason(
                     admin_id_to_save
                 )
-                save_empty_table(output_path, reason, detail, frame=gdf_to_save)
+                save_empty_table(
+                    output_path,
+                    reason,
+                    detail,
+                    frame=gdf_to_save,
+                    run_record=run_record,
+                )
             elif output_path.suffix == '.parquet':
-                save_parquet(gdf_to_save, output_path)
+                save_parquet(gdf_to_save, output_path, run_record=run_record)
             else:
                 raise NotImplementedError(
                     f'Output file type not yet supported: {output_path.suffix}'

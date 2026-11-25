@@ -217,7 +217,9 @@ class TableIngester(
             self.timer.mark(f'Reproject to {cfg.crs}{suffix}')
 
         gdf = self._preprocess_recipe_data(gdf)
-        self.timer.mark(f'Preprocess{suffix}')
+        self.timer.mark(
+            f'Preprocess{suffix}', rows_read=self._read_note['rows_read'], rows=len(gdf)
+        )
 
         gdf, properties = self._split_stacked_units(gdf, suffix)
         self._save_recipe_data(gdf)

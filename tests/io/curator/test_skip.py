@@ -98,9 +98,12 @@ def test_save_to_combined_true_passed_to_save_parquet(monkeypatch):
     _, _, _, save_kwargs = _run_pipeline(
         monkeypatch, [{'step': 't_a'}], save_to={'data_dir': 'core', 'combined': True}
     )
+    assert save_kwargs.pop('run_record')['stage'] == 'curate'
     assert save_kwargs == {'combined': True}
 
 
 def test_save_to_combined_defaults_to_false(monkeypatch):
     _, _, _, save_kwargs = _run_pipeline(monkeypatch, [{'step': 't_a'}])
+    record = save_kwargs.pop('run_record')
+    assert record['steps'] == [['read', 1], ['step 00 t_a', 1]]
     assert save_kwargs == {'combined': False}

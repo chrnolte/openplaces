@@ -21,8 +21,10 @@ that fills them is shared.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import itertools
+import json
 import pkgutil
 import re
 import warnings
@@ -512,6 +514,157 @@ class StepAudit:
         path.parent.mkdir(parents=True, exist_ok=True)
         report.to_csv(path, index=False)
         return report
+
+
+def _canonical(value):
+    """*value* as plain JSON types, with every mapping and set ordered."""
+    if isinstance(value, Mapping):
+        items = sorted((str(k), _canonical(v)) for k, v in value.items())
+        return dict(items)
+    if isinstance(value, list | tuple):
+        return [_canonical(v) for v in value]
+    if isinstance(value, set | frozenset):
+        return sorted(json.dumps(_canonical(v), sort_keys=True) for v in value)
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    # Entity, DataSet, AdminId and the like print as their identifier.
+    return str(value)
+
+
+def recipe_digest(recipe: Mapping) -> str:
+    """A 12-character digest of a recipe as a stage ran it.
+
+    The recipe is serialized as JSON with every mapping sorted by key
+    and every set sorted, and objects (an `Entity`, an `AdminId`)
+    written as their string form, so the digest is the same in every
+    process for the same resolved recipe. Pass the recipe after its
+    patches are applied (`recipe.apply_recipe_patches`): two units of
+    one national recipe that different county patches amend get
+    different digests. Nothing is left out; a key the loader adds is
+    part of the recipe the stage ran.
+
+    Parameters
+    ----------
+    recipe : Mapping
+        The resolved recipe.
+
+    Returns
+    -------
+    str
+        The first 12 hexadecimal characters of a SHA-256 digest.
+    """
+    text = json.dumps(_canonical(recipe), separators=(',', ':'))
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+class RowTrail:
+    """The rows a stage's main table holds after each of its steps.
+
+    One `len()` per step, kept as (step, rows) pairs and written into
+    the output's footer as its run record (`record`, saved through
+    `io.tables.save_parquet`, read with `readers.run_record`). A step
+    after which the count differs from the last known count prints one
+    line, whatever the verbosity: a row a step removed or added is
+    always worth a line, and before this a merge of 246 repeated rows
+    left no trace in the log or the file.
+
+    Parameters
+    ----------
+    stage : str
+        'ingest', 'harmonize', 'enrich' or 'curate'.
+    rows_read : int, optional
+        Rows the stage read before its first step (the source table of
+        an ingest, the entity table of a curate). Recorded first, as
+        'read'.
+    prefix : str, optional
+        Put before the step name in the printed line (an ingest names
+        its table and unit there).
+    """
+
+    def __init__(self, stage: str, rows_read: int | None = None, prefix: str = ''):
+        self.stage = stage
+        self.prefix = prefix
+        self.steps: list[list] = []
+        self._last: int | None = None
+        if rows_read is not None:
+            self.after('read', rows_read)
+
+    @property
+    def rows(self) -> int | None:
+        """The last known row count, or None before any."""
+        return self._last
+
+    def after(self, step: str, table, report: bool = True) -> int | None:
+        """Record the rows *table* holds after *step*.
+
+        Parameters
+        ----------
+        step : str
+            The step's label ('step 07 drop_empty', 'query').
+        table : DataFrame, int or None
+            The main table after the step, or its row count. None (a
+            harmonize spine not built yet) records no count.
+        report : bool
+            Print the line for a changed count. False for a step that
+            prints its own line with the cause.
+
+        Returns
+        -------
+        int or None
+            The row count recorded.
+        """
+        if table is None:
+            rows = None
+        elif isinstance(table, int):
+            rows = table
+        else:
+            rows = len(table)
+        self.steps.append([step, rows])
+        if rows is None:
+            return None
+        if report and self._last is not None and rows != self._last:
+            print(f'  {self.prefix}{step}: rows {self._last:,} to {rows:,}')
+        self._last = rows
+        return rows
+
+    def record(self, recipe_id, admin_id=None, recipe=None, **extra) -> dict:
+        """The run record of one output file.
+
+        Parameters
+        ----------
+        recipe_id : str
+            The recipe that wrote the file.
+        admin_id : str, optional
+            The unit the file holds.
+        recipe : Mapping, optional
+            The resolved recipe the stage ran, digested
+            (`recipe_digest`).
+        **extra
+            Further (step, rows) pairs appended after the trail, in
+            order (an ingest's 'saved' count, which a split by unit
+            makes differ from the last step's).
+
+        Returns
+        -------
+        dict
+            Keys: stage, recipe_id, admin_id, version and commit (of
+            the bundled recipe root, as `openplaces:recipe_roots`
+            records them), recipe_digest, and steps, a list of
+            [step, rows] pairs.
+        """
+        from openplaces.path import recipe_root_records
+
+        bundled = recipe_root_records()[0]
+        steps = [*self.steps, *([k, v] for k, v in extra.items())]
+        return {
+            'stage': self.stage,
+            'recipe_id': None if recipe_id is None else str(recipe_id),
+            'admin_id': None if admin_id is None else str(admin_id),
+            'version': bundled.get('version'),
+            'commit': bundled.get('commit'),
+            'recipe_digest': None if recipe is None else recipe_digest(recipe),
+            'steps': steps,
+        }
 
 
 def make_register(

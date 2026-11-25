@@ -170,6 +170,11 @@ def parquet_columns(parquet_path: str | Path) -> list[str]:
 # and takes no footer of their own), keyed by the sidecar's suffix.
 COLUMN_DIGESTS_KEY = 'openplaces:column_digests'
 SIDECAR_DIGESTS_KEY = 'openplaces:sidecar_digests'
+# Footer key: how the stage that wrote the table ran (its recipe, the
+# commit, the rows after each step; `io.steps.RowTrail`). It describes
+# the run, not the table, so two runs that write the same table differ
+# here and must still compare as the same file (`_VOLATILE_METADATA`).
+RUN_RECORD_KEY = 'openplaces:run_record'
 # Pseudo columns: a file's list of column names, for a reader that
 # branches on which columns exist, and its footer metadata, for one
 # that reads the footer (keys every rewrite changes left out).
@@ -182,6 +187,9 @@ _VOLATILE_METADATA = (
     b'openplaces:recipe_roots',
     COLUMN_DIGESTS_KEY.encode(),
     SIDECAR_DIGESTS_KEY.encode(),
+    # the commit, the recipe digest and the per-step counts of the
+    # run; a job compares what a table holds, not how it was built
+    RUN_RECORD_KEY.encode(),
 )
 
 
@@ -831,7 +839,12 @@ def coerce_mixed_object_columns(df):
 
 
 def save_parquet(
-    gdf, parquet_path, simplified_geometry=None, combined=False, file_metadata=None
+    gdf,
+    parquet_path,
+    simplified_geometry=None,
+    combined=False,
+    file_metadata=None,
+    run_record=None,
 ):
     """Save parquet file (with geometries in joinable geoparquet file)
 
@@ -858,9 +871,20 @@ def save_parquet(
         metadata. Applied to plain frames and to the attribute half of the
         split two-file layout (never to the `_geo` sidecar, whose geoparquet
         writer manages its own footer); see `to_parquet`.
+    run_record : dict, optional
+        How the stage that built *gdf* ran (`io.steps.RowTrail.record`),
+        written as compact JSON under `RUN_RECORD_KEY` beside
+        *file_metadata*, and read back with `readers.run_record`. None
+        writes no record. Like *file_metadata*, it is not written to a
+        *combined* geoparquet file.
     """
     if isinstance(parquet_path, str):
         parquet_path = Path(parquet_path)
+    if run_record is not None:
+        file_metadata = {
+            **(file_metadata or {}),
+            RUN_RECORD_KEY: json.dumps(run_record, separators=(',', ':')),
+        }
 
     # Break link to avoid warnings of setting on slice
     gdf = gdf.copy()

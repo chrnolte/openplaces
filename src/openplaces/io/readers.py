@@ -3,6 +3,7 @@ Low-level data-access functions for admin units and entities.
 Imported by internal modules (io/*, geo/*). Also re-exported from api.py.
 """
 
+import json
 import re
 import warnings
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from openplaces.core.attribute_registry import load_registry
 from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
+from openplaces.io.tables import RUN_RECORD_KEY
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -242,6 +244,36 @@ def empty_reason(path) -> str | None:
     meta = _footer(path)
     raw = (meta.metadata or {}).get(EMPTY_REASON_KEY.encode()) if meta else None
     return raw.decode() if raw is not None else None
+
+
+def run_record(path) -> dict | None:
+    """How the stage that wrote a table ran, from its parquet footer.
+
+    Reads the footer only, never a row. The record is written by
+    `io.tables.save_parquet` when a stage passes one
+    (`io.steps.RowTrail.record`): the stage, recipe id, unit, package
+    version and commit, a digest of the resolved recipe, and the rows
+    the stage's main table held after each step, rows read first.
+
+    Parameters
+    ----------
+    path : pathlib.Path or str
+        A parquet file (the attribute file, not its `_geo` sidecar).
+
+    Returns
+    -------
+    dict or None
+        The record, or None for a file without one (written before the
+        record existed, by a writer that passes none, or unreadable).
+    """
+    meta = _footer(path)
+    raw = (meta.metadata or {}).get(RUN_RECORD_KEY.encode()) if meta else None
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
 
 
 def is_unexplained_empty(path) -> bool:

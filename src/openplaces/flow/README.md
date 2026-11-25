@@ -296,6 +296,18 @@ as current: 70 Massachusetts towns kept parcels curated on 2026-11-02,
 with empty census tract and block-group ids, through the 2026-11-05
 wave, though their spines had since been rebuilt with the ids filled.
 
+**Each output says how its stage ran, and that never counts as a
+change.** Ingest, harmonize, enrich and curate pass a run record to
+`save_parquet` (`io.steps.RowTrail`): stage, recipe, unit, version and
+commit, a digest of the resolved recipe, and the rows the main table
+held after each step, rows read first. It sits in the footer under
+`openplaces:run_record` (read with `readers.run_record`, printed with
+`python -m openplaces.flow.run_record <path>`), and is one of the
+footer keys `file_digests` leaves out of `METADATA`, so a job record
+compares a rewritten table by what it holds, not by the run that
+wrote it. A step that changes the row count prints one line, at every
+verbosity.
+
 **A footprint geospine depends on its neighbors' footprint ingests.** It
 reconciles buildings crossing the unit line (harmonizer README,
 `spine.py`), so the graph adds, for each touching unit, the ingest jobs

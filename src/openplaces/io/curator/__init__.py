@@ -20,6 +20,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids, get_entities
 from openplaces.io.steps import (
+    RowTrail,
     StepAudit,
     make_loader,
     make_register,
@@ -399,6 +400,7 @@ class Curator:
         audit = None
         if self.audit_steps:
             audit = StepAudit('Curator', recipe_id, admin_id, {'curated': curated})
+        trail = RowTrail('curate', rows_read=len(curated))
 
         for step_index, step_cfg in enumerate(pipeline):
             step_name = step_cfg.get('step')
@@ -441,15 +443,21 @@ class Curator:
                 audit.after_step(
                     step_index, step_name, fn, params, {'curated': state.curated}
                 )
-            # One mark per recipe step (see the harmonizer's loop).
+            # One mark per recipe step (see the harmonizer's loop),
+            # with the rows the step left (io.steps.RowTrail).
+            step_label = f'step {step_index:02d} {step_name}'
+            rows = trail.after(step_label, state.curated)
             if state.timer:
-                state.timer.mark(f'step {step_index:02d} {step_name}')
+                state.timer.mark(step_label, rows=rows)
 
         if audit is not None:
             self.step_audit = audit.finish()
         require_filled_ids_kept(filled_ids, state.curated, label)
         combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
-        save_kwargs = {'combined': combined}
+        save_kwargs = {
+            'combined': combined,
+            'run_record': trail.record(recipe_id, admin_id, recipe),
+        }
         if applied_patches:
             save_kwargs['file_metadata'] = {
                 RECIPE_PATCHES_METADATA_KEY: json.dumps(applied_patches)
