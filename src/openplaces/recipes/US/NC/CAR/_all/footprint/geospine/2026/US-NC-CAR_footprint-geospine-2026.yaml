@@ -16,7 +16,7 @@
 # Overlap stays strict, with no distance, and the lots that decide which
 # footprints stay whole are counted as nationally (half or more).
 #
-# Measured 2026-11-16 on US-NC-CAR (footprint geospine dry run): the
+# Measured 2026-11-16 on US-NC-CAR: in a footprint geospine dry run, the
 # 149 footprints kept whole link 3,981 lots, 227 more than without this
 # patch. On the earlier pass B, 223 of those 227 had no labeled link
 # to any footprint (plans/buildings-from-parcel-pieces.md, section 6.9).

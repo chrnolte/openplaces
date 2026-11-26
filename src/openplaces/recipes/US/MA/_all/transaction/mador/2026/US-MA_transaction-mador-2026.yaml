@@ -24,7 +24,7 @@
 # COMPLETENESS PER YEAR. A sale is reported in the LA3 of the fiscal
 # year it is tested against, mostly sale year + 2 (2,455,313 of
 # 2,929,914 rows; + 3 on 400,947, + 1 on 72,539), so the latest years
-# fill in late. Measured 2026-10-23 on US-MA (rows read, towns): 2000
+# fill in late. Measured 2026-10-23 on US-MA: (rows read, towns) 2000
 # 1 row, 1 town; 2001 4,725, 129; 2002 55,713, 263; 2003 56,459, 231;
 # 2004 178,327, 347; 2005 66,362, 286; 2006 177,743, 352; 2007 51,420,
 # 349; 2008 to 2024 between 101,371 and 154,221 rows and 351 to 353

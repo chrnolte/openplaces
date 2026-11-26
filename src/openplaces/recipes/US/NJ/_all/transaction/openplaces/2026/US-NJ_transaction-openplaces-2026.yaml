@@ -50,8 +50,8 @@
 # codes get no group, since none of the registry's groups describes
 # them; the confidence carries them.
 #
-# Measured 2026-10-22 on US-NJ-CU (27,305 SR1A deeds, 2019-07 to
-# 2026-06): 1.0 on 8,821 (32.3%), 0.7 on 4,811, 0.0 on 13,673; every
+# Measured 2026-10-22 on US-NJ-CU: of 27,305 SR1A deeds (2019-07 to
+# 2026-06), 1.0 on 8,821 (32.3%), 0.7 on 4,811, 0.0 on 13,673; every
 # code present is listed, so none is left missing. Categories 22, 27
 # and 36 do not occur in the county.
 

@@ -383,7 +383,7 @@ share:
     #   36 counties 0.23 to 0.86, Hyde 0.27 and Tyrrell 0.23 flagged
     #   (no county price index; their scale is a fallback median).
     #
-    # Measured 2026-10-24 on cheer-eastern-nc, v0.6, 14 counties held
+    # Measured 2026-10-24 on cheer-eastern-nc: v0.6, 14 counties held
     # out whole, held-out buildings as incomplete as the real gaps
     # (Stage 2b; NSI is the inventory before imputation):
     # - structure value: county totals -12.8% at the median county
