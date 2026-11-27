@@ -46,7 +46,7 @@ def _run(monkeypatch, chunk_admin_id, tmp_path):
     def fake_get_output_path(recipe, admin_id, partition_id=None, **kwargs):
         return tmp_path / f'{admin_id}.parquet'
 
-    def fake_save_parquet(gdf, output_path):
+    def fake_save_parquet(gdf, output_path, run_record=None):
         saved[output_path.stem] = gdf
 
     monkeypatch.setattr(table_save, 'get_output_path', fake_get_output_path)

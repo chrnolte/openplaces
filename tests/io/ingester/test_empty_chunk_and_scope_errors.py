@@ -26,7 +26,9 @@ def _ingester(tmp_path, monkeypatch, recipe):
         lambda _r, admin_id, partition_id=None: tmp_path / f'{admin_id}.parquet',
     )
     monkeypatch.setattr(
-        table_save, 'save_parquet', lambda gdf, path: written.append(path)
+        table_save,
+        'save_parquet',
+        lambda gdf, path, run_record=None: written.append(path),
     )
 
     ingester = TableIngester.__new__(TableIngester)

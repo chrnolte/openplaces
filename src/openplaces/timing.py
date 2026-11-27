@@ -100,7 +100,12 @@ class Timer:
             )
 
     def mark(self, label: str, **metadata) -> tuple[float, float]:
-        """Record a milestone. Duration = time since last mark (or creation)."""
+        """Record a milestone. Duration = time since last mark (or creation).
+
+        Keyword arguments are kept with the record and saved in its
+        `metadata` (the stages pass `rows`, the rows their main table
+        holds after the step, and an ingest also `rows_read`).
+        """
         now = perf_counter()
         cpu_now = process_time()
         record = TimerRecord(

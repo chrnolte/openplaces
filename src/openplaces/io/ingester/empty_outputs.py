@@ -73,7 +73,9 @@ def empty_table_metadata(reason: str, detail: str) -> dict[str, str]:
     }
 
 
-def save_empty_table(path, reason: str, detail: str, frame=None) -> None:
+def save_empty_table(
+    path, reason: str, detail: str, frame=None, run_record=None
+) -> None:
     """Write an ingest table without rows, stamped with why it has none.
 
     Parameters
@@ -87,6 +89,9 @@ def save_empty_table(path, reason: str, detail: str, frame=None) -> None:
     frame : DataFrame or GeoDataFrame, optional
         The empty frame to write, keeping its columns; an empty
         GeoDataFrame in the project CRS when omitted.
+    run_record : dict, optional
+        The run record of the ingest that left no rows, which names the
+        step that removed the last of them (`io.tables.save_parquet`).
 
     Raises
     ------
@@ -104,4 +109,4 @@ def save_empty_table(path, reason: str, detail: str, frame=None) -> None:
     # run with rows would otherwise sit beside the empty table.
     for old in (path, path.with_stem(path.stem + '_geo')):
         old.unlink(missing_ok=True)
-    save_parquet(frame, path, file_metadata=metadata)
+    save_parquet(frame, path, file_metadata=metadata, run_record=run_record)

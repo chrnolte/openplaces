@@ -18,7 +18,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.steps import StepAudit, make_loader, make_register
+from openplaces.io.steps import RowTrail, StepAudit, make_loader, make_register
 from openplaces.recipe import (
     find_entity_recipe_id,
     get_output_path,
@@ -482,8 +482,11 @@ class Enricher:
                 state.grid_cache.clear()
             return
 
+        # The evidence table is indexed on the spine, so its rows start
+        # as the spine's (io.steps.RowTrail).
+        trail = RowTrail('enrich', rows_read=len(evidence))
         try:
-            state = self._run_steps(state, pipeline)
+            state = self._run_steps(state, pipeline, trail)
         finally:
             # Burned grids are worth keeping across the years of one
             # unit only; release them before the save and the next unit.
@@ -504,17 +507,27 @@ class Enricher:
                     evidence,
                     state.metadata.get('attempted_keys'),
                 )
+                trail.after('merged with the saved evidence', evidence)
         save_parquet(
             evidence,
             out_path,
             file_metadata={'openplaces:partitions': json.dumps(sorted(coverage))},
+            run_record=trail.record(recipe_id, admin_id, self.recipe),
         )
         # Resume checkpoints are superseded by the saved evidence.
         for checkpoint in state.metadata.get('checkpoints', []):
             checkpoint.delete()
 
-    def _run_steps(self, state: EnrichState, pipeline: list[dict]) -> EnrichState:
-        """Run the unrolled *pipeline* on *state*, one step after another."""
+    def _run_steps(
+        self, state: EnrichState, pipeline: list[dict], trail: RowTrail | None = None
+    ) -> EnrichState:
+        """Run the unrolled *pipeline* on *state*, one step after another.
+
+        *trail* records the evidence rows after each step; a new one is
+        used when none is given.
+        """
+        if trail is None:
+            trail = RowTrail('enrich', rows_read=len(state.evidence))
         audit = None
         if self.audit_steps:
             audit = StepAudit(
@@ -548,8 +561,10 @@ class Enricher:
                     {'evidence': state.evidence, 'spine': state.spine},
                 )
             # One mark per recipe step (see the harmonizer's loop).
+            step_label = f'step {step_index:02d} {step_name}'
+            rows = trail.after(step_label, state.evidence)
             if state.timer:
-                state.timer.mark(f'step {step_index:02d} {step_name}')
+                state.timer.mark(step_label, rows=rows)
         if audit is not None:
             self.step_audit = audit.finish()
         return state

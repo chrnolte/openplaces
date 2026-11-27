@@ -108,8 +108,11 @@
 # `parcel_id_local` values for 6,024 rows (92.4%), 454 duplicate-key
 # groups (453 pairs, one triple) covering 909 rows. Every sampled
 # duplicate group shares an identical raw `parcelid`, identical
-# `TotalValue`, and identical `ParcelType`, but geometrically distinct,
-# non-overlapping polygons -- consistent with one CAMA assessment
+# `TotalValue`, and identical `ParcelType`. Most of them are one
+# record drawn twice on nearly the same polygon, not distinct tracts:
+# Measured 2026-11-24 on US-AR-NE: 295 of the 456 polygon pairs sharing a parcelid (cached download of 2026-08-20, 6,024 rows) overlap by more than 99% of the larger polygon's area; 246 of them share a geometry id and merge at ingest.
+# The other pairs are geometrically distinct polygons, consistent
+# with one CAMA assessment
 # record covering more than one physical land tract (common for rural
 # agricultural/timber holdings), not a `simple`-conversion collision or
 # a broken key. `parcel_id_admin2`/`parcel_id_admin3` are NOT mapped

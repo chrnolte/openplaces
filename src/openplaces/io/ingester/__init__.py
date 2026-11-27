@@ -547,7 +547,11 @@ class Ingester(_OutputMixin, _AdminScopeMixin, _PartitionMixin, _DownloadMixin):
                 gdf = gdf.to_crs(cfg.crs)
                 self.timer.mark(f'Reproject to {cfg.crs}: {partition_id_to_download}')
             gdf = table_ingester._preprocess_recipe_data(gdf)
-            self.timer.mark(f'Preprocess: {partition_id_to_download}')
+            self.timer.mark(
+                f'Preprocess: {partition_id_to_download}',
+                rows_read=table_ingester._read_note['rows_read'],
+                rows=len(gdf),
+            )
 
             # Save one file per admin unit.
             # Mutate processing_chunk in place so table_ingester sees the updated value.

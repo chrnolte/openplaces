@@ -41,7 +41,7 @@ from openplaces.io.readers import (
     get_admin_ids,
     unnarrowable_error,
 )
-from openplaces.io.steps import StepAudit, make_loader, make_register
+from openplaces.io.steps import RowTrail, StepAudit, make_loader, make_register
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
@@ -935,6 +935,11 @@ class Harmonizer:
         audit = None
         if self.audit_steps:
             audit = StepAudit('Harmonizer', recipe_id, admin_id, {'spine': state.spine})
+        # The spine is built by the first steps, so there is no count
+        # read before them unless a checkpoint was restored.
+        trail = RowTrail('harmonize')
+        if state.spine is not None:
+            trail.after(f'checkpoint after step {resume_from - 1:02d}', state.spine)
 
         # The journal collects the side files the steps write, so the
         # checkpoint can stamp those of the steps a restore would skip.
@@ -968,9 +973,12 @@ class Harmonizer:
                 # One mark per recipe step, so a step's time is never
                 # folded into the next label a step happens to set
                 # itself. Marks a step sets inside itself still split
-                # its own work.
+                # its own work. Each mark carries the rows the step
+                # left (io.steps.RowTrail).
+                step_label = f'step {step_index:02d} {step_name}'
+                rows = trail.after(step_label, state.spine)
                 if state.timer:
-                    state.timer.mark(f'step {step_index:02d} {step_name}')
+                    state.timer.mark(step_label, rows=rows)
                 if state.spine is None and state.metadata.get(NOTHING_TO_BUILD_KEY):
                     break
                 if not spine_checked and state.spine is not None:
@@ -1046,6 +1054,7 @@ class Harmonizer:
             out_path,
             simplified_geometry=state.simplified_geometry,
             file_metadata=file_metadata,
+            run_record=trail.record(recipe_id, admin_id, recipe),
         )
 
     def _save_empty_spine(self, admin_id):

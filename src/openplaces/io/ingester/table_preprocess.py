@@ -73,9 +73,12 @@ class _TablePreprocessMixin:
                 if i_has_na_value.sum():
                     df.loc[i_has_na_value, col] = None
 
-        # Filter rows
+        # Filter rows. Each step below that can remove or add rows
+        # records the count it left (`_rows_after`), which prints a line
+        # when the count changed.
         if 'query' in self.recipe:
             df = df.query(self.recipe['query'])
+            self._rows_after('query', df)
             if df.empty:
                 # Nothing survived, so there is nothing to attribute, index
                 # or save for this partition. Returning here rather than
@@ -125,6 +128,7 @@ class _TablePreprocessMixin:
         if self.recipe.get('drop_duplicates'):
             subset = self.recipe['drop_duplicates']
             df = df.drop_duplicates(subset=None if subset is True else subset)
+            self._rows_after('drop_duplicates', df)
 
         # Apply variable transformations
         # (Before categorical casting and crosswalks, so that derived columns
@@ -239,6 +243,7 @@ class _TablePreprocessMixin:
 
             if (~df.geometry.is_valid).any():
                 df = fix_polygons(df)
+                self._rows_after('geometry repair', df)
             self.timer.mark(f'Clean geometries{_suffix}')
 
             # One row per source record where the source draws a record
@@ -260,6 +265,7 @@ class _TablePreprocessMixin:
                         'records; left missing where the rows of a record '
                         f'disagreed: {disagree.to_dict() or "none"}.'
                     )
+                self._rows_after('dissolve_by', df)
                 self.timer.mark(f'Dissolve by key{_suffix}')
 
             if self.recipe.get('resolve_overlaps', False):
@@ -278,6 +284,7 @@ class _TablePreprocessMixin:
                     compare_cols=compare_cols,
                     snippet_cols=snippet_cols,
                 )
+                self._rows_after('resolve_overlaps', df)
                 self.timer.mark(f'Resolve overlaps{_suffix}')
 
         # Attribute entities to administrative unit IDs via crosswalk
@@ -342,6 +349,7 @@ class _TablePreprocessMixin:
                 if isinstance(admin_id_crosswalk, pd.Series)
                 else list(admin_id_crosswalk)
             )
+            self._rows_after('admin ids by crosswalk', df)
             self.timer.mark('Attribute admin IDs: crosswalk join')
 
         elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
@@ -423,6 +431,7 @@ class _TablePreprocessMixin:
             # added no column at all and the drop never ran.
             if use_spatial_mask and _admin_col in df.columns:
                 df = df[df[_admin_col].notna()]
+            self._rows_after('admin ids by overlay', df)
 
         # Set index
         _entity = self.recipe.get('entity')
@@ -472,6 +481,7 @@ class _TablePreprocessMixin:
                 )
                 index_function_kwargs = self.recipe['create_index'].get('args', {})
                 df = index_function(df, **index_function_kwargs)
+                self._rows_after('create_index', df)
             elif 'method' in self.recipe['create_index']:
                 if self.recipe['create_index']['method'] == 'prefix':
                     df.index = pd.Index(
@@ -487,11 +497,13 @@ class _TablePreprocessMixin:
                 )
             index_function = self._load_function(self.recipe['index_function'])
             df = index_function(df)
+            self._rows_after('index_function', df)
             self.timer.mark('Generate indices')
 
         # Drop observations by index
         if 'drop' in self.recipe:
             df = df.drop(self.recipe['drop'])
+            self._rows_after('drop', df)
 
         # Double-check that the index has no duplicates
         if df.index.duplicated().any():
