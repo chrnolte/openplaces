@@ -8,8 +8,8 @@
 # Texas. In Boston and its neighbours the footprint layer (OBM) draws
 # each unit of a row of attached houses as its own building, a narrow
 # deep box of the same shape as a single-wide, and narrow detached
-# houses look the same. Measured 2026-10-18 on boston-inner-core
-# (14 towns with Malden and Melrose): 2,021 outlines were Manufactured Home, 81 with a source stating it.
+# houses look the same. Measured 2026-10-18 on boston-inner-core:
+# of its 14 towns with Malden and Melrose, 2,021 outlines were Manufactured Home, 81 with a source stating it.
 # Of Boston's 1,125, 62% share a wall of 3 m or more with another
 # outline. With this guard 81 remain, the 67 on code-103 lots among them. Massachusetts records manufactured homes in its own use code
 # (103, group Manufactured Home), so here the vote's Manufactured Home

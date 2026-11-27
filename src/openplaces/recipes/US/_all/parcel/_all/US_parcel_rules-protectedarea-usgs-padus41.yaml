@@ -22,8 +22,8 @@
 #
 # Overlaps are dissolved (dissolve: true) in all three steps. Both
 # layers overlap themselves: an easement recorded by two sources, a
-# federal tract over a state one. Measured 2026-10-24 on US-NC-TYR
-# (4,250 parcels): summing overlaps instead changes the fee share by
+# federal tract over a state one. Measured 2026-10-24 on US-NC-TYR:
+# of its 4,250 parcels, summing overlaps instead changes the fee share by
 # more than 0.01 on 146 parcels and puts 164 rather than 150 at or
 # above one half; for easements 5 parcels change, none across one
 # half.
@@ -52,7 +52,7 @@
 # non-governmental owners), NGO, PVT and UNK. Land trust preserves
 # count in protected_area_share, not in public_land_share.
 #
-# Measured 2026-10-24 on US-NC-TYR (Tyrrell County, 4,250 parcels):
+# Measured 2026-10-24 on US-NC-TYR: of Tyrrell County's 4,250 parcels,
 # 270 touch an easement, 62 flagged (designation of the dominant
 # easement CONE 255 of 270; holder STAT 205); 591 touch fee land, 554
 # public fee land, 144 flagged public land. Year established on 82 of

@@ -100,8 +100,8 @@
 # Measured (2025 vintage, the full statewide annual file --
 # confirmed complete/statewide by county coverage, not the partial-
 # county-coverage "current year" file the source's own documentation
-# warns about). Measured 2026-11-21 on US-IN (2025 vintage, read
-# with all_fields_quoted): 199,906 rows, all 92 County_ID values.
+# warns about). Measured 2026-11-21 on US-IN: the 2025 vintage, read
+# with all_fields_quoted, has 199,906 rows, all 92 County_ID values.
 # `E1_Sales_Price` > 0: 184,624/199,906 (92.4%).
 # `C7_Conveyance_Date` populated 199,906/199,906, a clean ISO
 # `YYYY-MM-DD` string (not an epoch-ms or sentinel value). `SDF_ID`

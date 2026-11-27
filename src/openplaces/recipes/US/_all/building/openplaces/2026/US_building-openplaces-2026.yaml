@@ -338,7 +338,7 @@ pipeline:
     # took the tower's value per sq ft and stood as a needle (US-MA-BOS
     # `4|1134`: 387 m2 annex at $15,687 per sq ft, $568 after). A lot
     # with an unmeasured outline of 100 m2 or more keeps the area split.
-    # Measured 2026-10-16 on US-NC-NHA (simulated): of 42 outliers above
+    # Measured 2026-10-16 on US-NC-NHA: simulated, of 42 outliers above
     # $3,500 per sq ft, 7 fell below it and 7 were explained by floors.
     floor_weight:
       recipe_id: US_footprint_footprint-overture-2026
@@ -1958,7 +1958,7 @@ pipeline:
   # Outlines drawn tall (value per sq ft of outline) that their measured
   # floors do not explain: a building the outline does not hold, or a
   # box no other layer maps. A value page draws them as unconfirmed.
-  # Measured 2026-10-16 on US-NC-NHA (simulated): about 28 of 42 outliers
+  # Measured 2026-10-16 on US-NC-NHA: simulated, about 28 of 42 outliers
   # above $3,500 per sq ft flagged, 23 of them buildings no footprint
   # layer maps.
   - step: flag_unconfirmed_height

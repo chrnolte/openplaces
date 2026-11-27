@@ -49,8 +49,8 @@
 # a field at the wrong place, and the row's later values
 # (`P2_5_Total_AV`, `P2_6_Prop_Class_Code` among them) land in
 # another column (`A5_Street1` differs in 4 rows).
-# Measured 2026-11-21 on US-IN (2025
-# vintage, 205,069 lines): every line has 31 fields on the
+# Measured 2026-11-21 on US-IN: in the 2025 vintage (205,069
+# lines) every line has 31 fields on the
 # quote-tab-quote split; 946 lines hold a quote inside a field
 # (`A7_Legal_Description` 934 cells, `A1_Subdiv_Name` 30,
 # `A5_Street1` 4, `A6_Street1` 1), 4 a tab; the reader reports 950
