@@ -106,10 +106,10 @@ transformations:
   # number in PARCELID behind the prefix 221 (45.8% of the county's
   # rows, and no other prefix occurs); version 4 stored it bare, which
   # the pattern also accepts. So `parcel_id_assessor` is the city number
-  # where PARCELID has that shape and TAXPARCELID otherwise. Measured
-  # 2026-09-21 on 40,930 returns of 2014 to 2026: 0.938 find their
-  # parcel (0.924 for 2014 to 2016), against 0.000 on PARCELID and 0.408
-  # on TAXPARCELID alone. The county's own server
+  # where PARCELID has that shape and TAXPARCELID otherwise.
+  # Measured 2026-09-21 on US-WI-EC: of 40,930 returns of 2014 to 2026,
+  # 0.938 find their parcel (0.924 for 2014 to 2016), against 0.000 on
+  # PARCELID and 0.408 on TAXPARCELID alone. The county's own server
   # (gis.eauclairecounty.gov, Tax_Parcel) was checked and adds nothing:
   # it holds the 28,275 parcels outside the city, with the same 19-digit
   # number.

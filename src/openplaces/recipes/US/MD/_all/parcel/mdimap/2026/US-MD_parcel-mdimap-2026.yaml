@@ -323,12 +323,14 @@
 # joined, contain COMMON AREA(S) or OPEN SPACE(S). The legal text is
 # free text and may hold a name, so it is joined in memory, read for
 # those phrases and dropped (drop_columns); none of it is kept.
-# Measured 2026-10-24 on the PRIN and MONT download: is_common_area
-# true on 4,849 of 275,126 Prince George's rows and 11 of 290,458
-# Montgomery rows, whose common areas read "PAR <letter>" instead.
-# SUBDIVSN, four digits, is filled on 257,401 Prince George's and
-# 279,705 Montgomery rows; PLAT is missing on 6.4% of Prince George's
-# rows and 54.7% of Montgomery's.
+# Measured 2026-10-24 on US-MD-PG: is_common_area true on 4,849 of
+# 275,126 Prince George's rows of the PRIN download. SUBDIVSN, four
+# digits, is filled on 257,401 Prince George's rows; PLAT is missing on
+# 6.4% of Prince George's rows.
+# Measured 2026-10-24 on US-MD-MO: is_common_area true on 11 of 290,458
+# Montgomery rows of the MONT download, whose common areas read "PAR
+# <letter>" instead. SUBDIVSN is filled on 279,705 Montgomery rows;
+# PLAT is missing on 54.7% of Montgomery's.
 #
 # License: the ArcGIS item's own `licenseInfo` (fetched directly via
 # the AGOL sharing API, not just its rendered Hub page) states: "The
@@ -540,11 +542,12 @@ drop_columns:
 # instruction, so their keys match this one exactly. ACCTID length
 # varies by county (10 digits in most, 11 Prince George's, 12
 # Montgomery, 13 with letters in Baltimore City); 'simple' keeps it
-# whole and only drops spaces and punctuation. Measured 2026-10-23 on
-# US-MD-PG: the old keys ('9|99999'-like) matched none of the
-# 197,506 accounts in the valuation sales file; the whole ACCTID
-# matches all of them, and 86.6% of SDAT segment-1 accounts find a
-# polygon. Montgomery (US-MD-MO): 39,082 of 39,082, and 78.8%.
+# whole and only drops spaces and punctuation.
+# Measured 2026-10-23 on US-MD-PG: the old keys ('9|99999'-like)
+# matched none of the 197,506 accounts in the valuation sales file;
+# the whole ACCTID matches all of them, and 86.6% of SDAT segment-1
+# accounts find a polygon. Montgomery (US-MD-MO): 39,082 of 39,082,
+# and 78.8%.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

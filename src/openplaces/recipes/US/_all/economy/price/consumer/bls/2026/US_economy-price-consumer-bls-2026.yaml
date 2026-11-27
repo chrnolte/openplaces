@@ -11,7 +11,7 @@
 # Periods: M01 to M12 are months and M13 is the annual average BLS
 # publishes; the annual row is kept as published, not recomputed.
 #
-# Measured 2026-10-18: 1,478 rows, January 1913 to September 2026
+# Measured 2026-10-18 on US: 1,478 rows, January 1913 to September 2026
 # (annual averages from 1913 to 2025). One value is missing: October
 # 2025, published as "-" with footnote code X. It is the only
 # non-numeric value of any series in the file (62 rows, all 2025

@@ -17,7 +17,7 @@
 # (US-NC-NHA_property-nhcgov-2026) already carries values, owner,
 # situs, sale and year built, and its fixed-width file has no area.
 #
-# Measured 2026-09-16:
+# Measured 2026-09-16 on US-NC-NHA:
 # - Export 115,651 rows against 115,833 on the live service
 #   (`returnCountOnly`); the 182-row deficit is export-snapshot lag.
 #   `SFLA` > 0 on 93,328 rows in both.

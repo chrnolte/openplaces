@@ -22,7 +22,7 @@
 # features) mixes them with proclamation, designation and marine
 # boundaries that are not ownership.
 #
-# Measured 2026-10-24 on the 4.1 release: 296,456 Fee polygons;
+# Measured 2026-10-24 on US: the 4.1 release, 296,456 Fee polygons;
 # Category Fee 290,985, Other 5,471. Own_Type LOC 167,174, STAT
 # 63,599, NGO 26,702, PVT 16,369, DIST 12,641, FED 4,452, UNK 4,007,
 # JNT 1,421, TERR 50, TRIB 41. GAP_Sts 4: 173,199, 3: 72,900, 2:

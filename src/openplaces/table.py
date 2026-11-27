@@ -110,7 +110,7 @@ def normalize_issued_id(values: pd.Series) -> pd.Series:
     `12_a  3`, `12-A-3` and `12 A 3` converge. The separators' positions
     are kept, unlike in `geo.ids.add_parcel_id_alnum`: an id is not a
     fallback match key, and in a map-block-lot number the positions
-    carry meaning. Measured on Somerville MA, 2026-09-20: dropping
+    carry meaning. Measured 2026-09-20 on US-MA-SOM: dropping
     separators made 426 of 19,013 account numbers collide (`12_A_1_2`
     with `12_A_12`) where 24 repeat as published. The cost is that a
     source publishing the same number with no separators at all does

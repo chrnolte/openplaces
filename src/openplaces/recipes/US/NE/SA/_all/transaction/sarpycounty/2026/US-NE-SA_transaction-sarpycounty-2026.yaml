@@ -18,9 +18,10 @@
 # geometry (the rows are points), so the names are never downloaded.
 #
 # LINKING. PIN, 9 digits, is the PARCELID of the county's CC0 tax
-# parcel layer, US-NE-SA_parcel-sarpycountygis-2026. Measured
-# 2026-10-23 on the live services: 99.3% of PINs are found there, 99.9%
-# of priced sales from 2016 on; 98.3% of parcels have a sale row.
+# parcel layer, US-NE-SA_parcel-sarpycountygis-2026.
+# Measured 2026-10-23 on US-NE-SA: on the live services, 99.3% of PINs
+# are found there, 99.9% of priced sales from 2016 on; 98.3% of parcels
+# have a sale row.
 #
 # MAPPED. PIN -> parcel_id_assessor; SaleDate -> recorded_date (the
 # sale date, as the Adams CO and North Carolina county recipes map

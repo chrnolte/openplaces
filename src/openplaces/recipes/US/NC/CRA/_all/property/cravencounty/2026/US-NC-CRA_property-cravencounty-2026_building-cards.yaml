@@ -248,9 +248,9 @@ aggregation_function:
 # themselves: the property spine's union skips them, and its
 # `supplements_only` link_by_id joins them onto the roll's rows by
 # parcel_id_local, reduced per property as above. Before this key the
-# property spine counted each card as a property. Measured 2026-09-12:
-# the 1,000 published cards carry 385 distinct keys, all 385 found in
-# the roll.
+# property spine counted each card as a property.
+# Measured 2026-09-12 on US-NC-CRA: the 1,000 published cards carry 385
+# distinct keys, all 385 found in the roll.
 supplements: US-NC-CRA_property-cravencounty-2026
 
 # Standardized cross-comparable matching key from the assessor id (same raw

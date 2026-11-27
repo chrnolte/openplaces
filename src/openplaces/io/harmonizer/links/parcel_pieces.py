@@ -811,9 +811,9 @@ def lot_structure_evidence(
     The rows are the raw reference, not the prepared one the overlay
     attributes from: preparing sums a lot's rows per id, and a sum of
     nothing is 0, so a lot whose row states no value would start at 0
-    and a later pass could no longer fill it. Measured 2026-11-08 on
-    US-WI-VI: starting from the prepared reference left 146 lots at 0
-    that the parcel spine values at 5,000 or more.
+    and a later pass could no longer fill it.
+    Measured 2026-11-08 on US-WI-VI: starting from the prepared reference
+    left 146 lots at 0 that the parcel spine values at 5,000 or more.
 
     Parameters
     ----------

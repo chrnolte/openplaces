@@ -327,8 +327,8 @@ def _cut_at_unit_lines(spine, admin_id, min_m2=10.0, min_share=0.05):
     unit's source and, longer, by a neighbor's). The piece is one
     building in this unit and is kept once, from the larger envelope
     (then the lower envelope code): a copy has no geometry to tell it
-    apart, and a sequence number may not (design limit L3). Measured
-    2026-11-20 on US-TX-COL: 3 of 298 pieces repeated another.
+    apart, and a sequence number may not (design limit L3).
+    Measured 2026-11-20 on US-TX-COL: 3 of 298 pieces repeated another.
 
     A cut piece takes its own centroid's code as its id, lengthened on
     a collision (`geo.ids.distinct_centroid_codes`, never a sequence
@@ -604,8 +604,8 @@ def _overlap_share_reject_ids(spine, candidate, share_max: float) -> pd.Index:
     The share is the candidate's area inside accepted outlines over its own
     area. Unlike IoU it does not shrink when the accepted outline is large,
     so a sliver along a big building is caught; unlike a keep-out distance
-    it leaves a separate building alone however close it stands. Measured
-    2026-10-18 on US-NC-NHA: lower-ranked outlines kept by the IoU test that
+    it leaves a separate building alone however close it stands.
+    Measured 2026-10-18 on US-NC-NHA: lower-ranked outlines kept by the IoU test that
     touch an OBM outline overlap it by under 0.05 of their area at the 90th
     percentile, and 0.1 rejects 3 of 105 of them.
     """

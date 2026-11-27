@@ -13,12 +13,12 @@
 # The rule acts on exempt use codes (9xx) only, and only where the
 # linked outlines total under 500 m2: on a campus whose outlines are
 # thousands of m2 they are the buildings the value belongs to, even
-# though the roll states no floor area for them. Measured 2026-10-16 on
-# US-MA-BOS: 435 lots, $203M of improvements (without the size cap 512
-# lots and $467M, among them an 8.9 ha school with 7,402 m2 of
-# outline; without the use filter 721 lots and $696M, offices whose
-# floor area the roll omits). Boston only: elsewhere a roll without
-# floor area says nothing about whether a building exists.
+# though the roll states no floor area for them.
+# Measured 2026-10-16 on US-MA-BOS: 435 lots, $203M of improvements
+# (without the size cap 512 lots and $467M, among them an 8.9 ha school
+# with 7,402 m2 of outline; without the use filter 721 lots and $696M,
+# offices whose floor area the roll omits). Boston only: elsewhere a
+# roll without floor area says nothing about whether a building exists.
 
 admin_id: US-MA-BOS
 stage: curate

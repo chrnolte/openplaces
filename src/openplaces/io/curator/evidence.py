@@ -341,11 +341,11 @@ def _readmittable_trimmed_links(links, id_col, ref_key, min_area_m2, orphaned_re
     *orphaned_refs*: that building's outline was linked and then left
     the spine (`resolve_overlaps` drops a roof tier nested in the lower
     tier around it, and the link sidecar is written before that), so
-    the evidence the snap rested on is gone. Measured 2026-10-16 on
-    US-MA-BOS: a 13-story office lot whose 1,264 m2 tower roof was
-    dropped in favor of the 3,084 m2 lower tier around it (which the
-    snap had assigned to the neighboring lot) held $52.4M on a 185 m2
-    remnant. So does every pair on a
+    the evidence the snap rested on is gone.
+    Measured 2026-10-16 on US-MA-BOS: a 13-story office lot whose 1,264
+    m2 tower roof was dropped in favor of the 3,084 m2 lower tier around
+    it (which the snap had assigned to the neighboring lot) held $52.4M
+    on a 185 m2 remnant. So does every pair on a
     parcel with no linked footprint at all: such a parcel carries the
     harmonize stage's whole-parcel stand-in where it is improved, and
     a neighbor's edge readmitted there took the stand-in's value away

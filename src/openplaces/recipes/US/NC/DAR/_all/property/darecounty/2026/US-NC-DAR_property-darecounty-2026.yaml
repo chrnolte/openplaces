@@ -117,10 +117,10 @@ transformations:
 
 # NC OneMap's Dare parcel_id_local comes from altparno, which has the
 # same nine-digit form as Parcel; the bundled per-county conversion
-# applies to both, so the keys agree. Measured 2026-09-16 after
-# ingest: 99.96% of NC OneMap's distinct Dare keys are here, and
-# 91.4% of this recipe's rows find a parcel (the rest are the unit
-# rows described under ROW SHAPE).
+# applies to both, so the keys agree.
+# Measured 2026-09-16 on US-NC-DAR: after ingest, 99.96% of NC OneMap's
+# distinct Dare keys are here, and 91.4% of this recipe's rows find a
+# parcel (the rest are the unit rows described under ROW SHAPE).
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

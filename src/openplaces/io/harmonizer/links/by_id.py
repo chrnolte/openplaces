@@ -213,10 +213,11 @@ def _neutralize_degenerate_keys(
     its spine rows (Brazoria's $7.5 billion key sits on 2,443 reference
     rows **and** 2,443 parcel rows, and is as well formed as any other,
     so its shape could not have told it apart). With one spine row the
-    sum lands once, where it belongs. Measured 2026-09-20 on New Hanover
-    County NC: 16 roll keys over the cutoff, 116 to 327 accounts each, 15
-    of them on exactly one parcel of 0.6 to 10 ha (parks and condominium
-    complexes), 2,853 roll rows that were being left off their parcel.
+    sum lands once, where it belongs.
+    Measured 2026-09-20 on US-NC-NHA: 16 roll keys over the cutoff, 116
+    to 327 accounts each, 15 of them on exactly one parcel of 0.6 to 10
+    ha (parks and condominium complexes), 2,853 roll rows that were being
+    left off their parcel.
 
     Returns *ref* unchanged when nothing is degenerate.
     """

@@ -91,8 +91,8 @@ occupancy:
       #
       # The cutoffs above were calibrated where narrow outlines are
       # single-wides (NC, TX). Where rowhouses are drawn one unit per
-      # outline, the same shape is an attached house. Measured
-      # 2026-10-22 on US-VA-AL: 2,424 of 28,563 footprints were
+      # outline, the same shape is an attached house.
+      # Measured 2026-10-22 on US-VA-AL: 2,424 of 28,563 footprints were
       # Manufactured Home, 2,407 on shape and keyword_probability
       # alone, and on 1,979 of the 2,424 the roll and NSI both named
       # Single-Family or Multi-Family. With this entry 449 remain
@@ -144,10 +144,12 @@ occupancy:
       # unit on a condominium or unvalued lot). The guard above needs
       # the roll and NSI to speak; this one also holds where NSI is
       # absent (Alexandria, Arlington) or silent (5,299 DC rows).
-      # Measured 2026-10-24 (plans/findings/dc-rowhouses-classed-
-      # manufactured.md): 35,114 of DC's 36,858 Manufactured Homes
-      # share such a wall (median run 14.1 m), against 14 of 9,755 in
-      # Pender and 3 of 15,555 in Robeson.
+      # (plans/findings/dc-rowhouses-classed-manufactured.md)
+      # Measured 2026-10-24 on US-DC-DC: 35,114 of DC's 36,858
+      # Manufactured Homes share such a wall (median run 14.1 m),
+      # against:
+      # Measured 2026-10-24 on US-NC-PEN: 14 of 9,755 in Pender.
+      # Measured 2026-10-24 on US-NC-ROB: 3 of 15,555 in Robeson.
       #
       # Why 3 m. A party wall runs the depth of a house, 8 m and more;
       # a corner touch or a digitizing sliver is well under 1 m. A

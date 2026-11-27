@@ -19,10 +19,10 @@
 # LINKING. maptaxlot (13 characters) is the county's map number padded
 # with zeros to 8 characters followed by the tax lot number padded to
 # 5; US-OR-JA_parcel-jacksoncountygis-2026 builds the same key from the
-# Tax Lots layer. Measured 2026-10-23 on the live services: every
-# maptaxlot is among the keys built from the tax lots, and on the
-# 60,299 accounts found in both layers the rebuilt key equals maptaxlot
-# on every one.
+# Tax Lots layer.
+# Measured 2026-10-23 on US-OR-JA: on the live services, every maptaxlot
+# is among the keys built from the tax lots, and on the 60,299 accounts
+# found in both layers the rebuilt key equals maptaxlot on every one.
 #
 # MAPPED. AccountId -> property_id_assessor; maptaxlot ->
 # parcel_id_assessor; DocumentNumber -> instrument_number (year and

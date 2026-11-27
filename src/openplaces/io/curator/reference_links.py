@@ -25,10 +25,11 @@ fixed order, each only on the records the previous ones left:
    keys spine addresses, equal one parcel's, again unique keys only.
 
 The point comes first because it is the only one of the three that does
-not depend on two publishers agreeing on an identifier format. Measured
-on 44 eastern North Carolina counties (2026-09-16), exact parcel-number
-equality linked no permits at all in 38 of them, while 94-96% of permit
-points lay within 50 m of a footprint.
+not depend on two publishers agreeing on an identifier format.
+Measured 2026-09-16 on cheer-eastern-nc: across its 44 eastern North
+Carolina counties, exact parcel-number equality linked no permits at all
+in 38 of them, while 94-96% of permit points lay within 50 m of a
+footprint.
 
 Why this shape and not a scored match: each link is decided by one
 exact rule, the rule is recorded in `matched_via` as a label rather than

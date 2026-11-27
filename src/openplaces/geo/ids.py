@@ -1009,10 +1009,11 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         # 2014 to 2016 write a parcel as '29028TNE0867.0100' (county and
         # district, a 3-letter municipality code, the parcel, a 4-digit
         # suffix) where the parcel layer, and later returns, write
-        # '290280867.01'. Measured 2026-09-21: 0.246 of those early
-        # returns find their parcel as written, 0.825 cleaned, and the
-        # county overall goes from 0.821 to 0.945. The rule merges 58 of
-        # the layer's 31,304 distinct ids (0.2%). The county's own
+        # '290280867.01'.
+        # Measured 2026-09-21 on US-WI-JU: 0.246 of those early returns
+        # find their parcel as written, 0.825 cleaned, and the county
+        # overall goes from 0.821 to 0.945. The rule merges 58 of the
+        # layer's 31,304 distinct ids (0.2%). The county's own
         # server was checked for an old-number field; its OLDPIN is a
         # third spelling (the parcel's leading zero dropped) that fewer
         # returns match than PIN does (0.310 against 0.821).
@@ -1025,10 +1026,11 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         # Neenah parcels carry 11 digits in the parcel layer and the
         # returns write the first 7 or 9, the rest being '0000' or '00'
         # (a base parcel; its splits are numbered 0100, 0200). Towns
-        # write 7 digits on both sides. Measured 2026-09-21: the county
-        # goes from 0.530 to 0.843, Oshkosh from 0.298 to 0.960, and the
-        # rule merges none of the layer's 79,934 distinct ids. The
-        # county's own server was checked and carries the same number.
+        # write 7 digits on both sides. Measured 2026-09-21 on US-WI-WI:
+        # the county goes from 0.530 to 0.843, Oshkosh from 0.298 to
+        # 0.960, and the rule merges none of the layer's 79,934 distinct
+        # ids. The county's own server was checked and carries the same
+        # number.
         flags = set(p['simple_clean'].split())
         known = {'drop_inner_letters', 'trim_suffix_zeros', 'trim_zero_pairs'}
         if flags - known:

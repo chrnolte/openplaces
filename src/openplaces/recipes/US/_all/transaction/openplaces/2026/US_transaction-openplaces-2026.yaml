@@ -195,10 +195,10 @@ pipeline:
   # floor is read off the county's own sales as the largest low-price
   # mass point (a value carrying 5% of all rows and 20 times its
   # neighbors), so a consumer can see what "disclosed" meant here.
-  # Measured 2026-09-12: Florida's 1.9M SDF sales and 10.7M last sales
-  # have mass points at 0 (11%) and 100 (24%), both 0% arm's length,
-  # and the 101 to 1,000 band is 28% to 61% arm's length, so the floor
-  # sits at the convention itself, not a round number above it.
+  # Measured 2026-09-12 on US: Florida's 1.9M SDF sales and 10.7M last
+  # sales have mass points at 0 (11%) and 100 (24%), both 0% arm's
+  # length, and the 101 to 1,000 band is 28% to 61% arm's length, so the
+  # floor sits at the convention itself, not a round number above it.
   # Currituck, Nash and Wilson NC and Wisconsin have 0 alone. The 5%
   # is what keeps real cheap sales that cluster on round numbers out
   # of the floor: Polk's 700 dollar spike is 0.6% of rows and 69%

@@ -112,16 +112,16 @@ additional_layers:
       # RES_AREA <= BLD_AREA on 97.4% of residential rows carrying
       # both). They were mapped to building_area_m2 and
       # residential_area_m2 before: outside the registry, and wrong on
-      # the unit. Zeros are kept as published. Measured 2026-09-13 on
-      # the 2025 layer, in memory (the table recipe's reader and
-      # _preprocess_recipe_data): on residential rows (use codes
-      # 101-105, 109, 111, 112) living area > 0 on 98.3%, gross area
-      # on 85.4%. About half the gross-area zeros are Boston's, where
-      # BLD_AREA is 0 on 96.7% of residential rows; the Boston city
-      # recipe supplies it. L3 carries no other building feature (no
-      # condition, heating, cooling, garage, basement or amenity
-      # field); the city recipes under US/MA/{BOS,CAM,ARL,SOM,FAR}
-      # add them for their towns.
+      # the unit. Zeros are kept as published.
+      # Measured 2026-09-13 on US-MA: on the 2025 layer, in memory (the
+      # table recipe's reader and _preprocess_recipe_data), on
+      # residential rows (use codes 101-105, 109, 111, 112) living area
+      # > 0 on 98.3%, gross area on 85.4%. About half the gross-area
+      # zeros are Boston's, where BLD_AREA is 0 on 96.7% of residential
+      # rows; the Boston city recipe supplies it. L3 carries no other
+      # building feature (no condition, heating, cooling, garage,
+      # basement or amenity field); the city recipes under
+      # US/MA/{BOS,CAM,ARL,SOM,FAR} add them for their towns.
       gross_floor_area_sqft: BLD_AREA
       living_area_sqft: RES_AREA
       building_style: STYLE

@@ -8,8 +8,9 @@
 # (aa502nccur-dwelling-layout.pdf): one row per residential building
 # card, record type RES_BLDG on every row.
 #
-# Measured 2026-09-16: 17,918 cards on 17,723 distinct `Parcel ID`s
-# (17,537 parcels with one card, 179 with two, 7 with three or four).
+# Measured 2026-09-16 on US-NC-CUR: 17,918 cards on 17,723 distinct
+# `Parcel ID`s (17,537 parcels with one card, 179 with two, 7 with
+# three or four).
 # Card numbers are in `Card # ` (trailing space in the header).
 # 17,722 of the 17,723 keys are in the roll, 99.63% in the parcel layer
 # recipe (US-NC-CUR_parcel-currituckcounty-2026). Summed per property,

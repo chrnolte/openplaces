@@ -19,17 +19,17 @@
 # Values: the layer carries an assessed family (LandASVCur, ImproveASV,
 # TotalASVCu), a fair-market family (LandFMVCur, ImprovFMVC) and the
 # land's present-use value (LandLUVCur), plus a revaluation family
-# (LandFMVRev, ImprovFMVR, LandLUVRev) that is not mapped. Measured
-# 2026-11-19 on US-NC-BLA, all 33,335 rows: TotalASVCu = LandASVCur +
-# ImproveASV, and TotalFMVRe = LandFMVCur + ImprovFMVC, so TotalFMVRe
-# is the fair-market total despite its truncated name (TotalFMV_1 is
-# the revaluation total). LandLUVCur differs from LandFMVCur on 4,001
-# rows; there LandASVCur follows LandLUVCur, elsewhere LandFMVCur, to
-# within a few dollars of rounding. So the assessed family is the
-# present-use (taxable) basis. The fair-market family goes to
-# land_value, improvement_value and total_value; LandLUVCur goes to
-# current_use_value only where it differs from the market land. No
-# use-basis total is carried.
+# (LandFMVRev, ImprovFMVR, LandLUVRev) that is not mapped.
+# Measured 2026-11-19 on US-NC-BLA: on all 33,335 rows, TotalASVCu =
+# LandASVCur + ImproveASV, and TotalFMVRe = LandFMVCur + ImprovFMVC, so
+# TotalFMVRe is the fair-market total despite its truncated name
+# (TotalFMV_1 is the revaluation total). LandLUVCur differs from
+# LandFMVCur on 4,001 rows; there LandASVCur follows LandLUVCur,
+# elsewhere LandFMVCur, to within a few dollars of rounding. So the
+# assessed family is the present-use (taxable) basis. The fair-market
+# family goes to land_value, improvement_value and total_value;
+# LandLUVCur goes to current_use_value only where it differs from the
+# market land. No use-basis total is carried.
 
 description: >-
   Bladen County, NC parcel tax roll (market and present-use values, year

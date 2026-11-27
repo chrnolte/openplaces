@@ -8,7 +8,7 @@
 # (January 2025) carries NCED's records; kept apart from the Fee layer
 # so that "under an easement" and "owned outright" stay distinct.
 #
-# Measured 2026-10-24 on the 4.1 release: 341,954 polygons, all
+# Measured 2026-10-24 on US: the 4.1 release, 341,954 polygons, all
 # Category Easement. Des_Tp CONE 182,708, AGRE 68,183, UNKE 49,244,
 # FORE 20,314, OTHE 11,869, RECE 6,912, HCAE 1,929, RANE 772, PCON 23.
 # EHoldTyp LOC 111,924, STAT 81,824, NGO 80,244, FED 46,641, JNT

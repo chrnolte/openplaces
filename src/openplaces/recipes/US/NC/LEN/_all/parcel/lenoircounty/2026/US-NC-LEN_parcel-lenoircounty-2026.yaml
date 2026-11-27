@@ -101,11 +101,11 @@ columns:
   last_sale_year: DeedYear
   last_sale_price: SalesAmt
   # Values: land, improvement and total are the fair-market (FMV)
-  # family; LandLUVCur is the land's present-use value. Measured
-  # 2026-11-19 on US-NC-LEN: TotalFMVCu = LandFMVCur + ImproveFMV on
-  # all 36,115 valued rows; LandLUVCur equals LandFMVCur except on
-  # 3,475 rows, the rows LandUseCur marks Y. current_use_value is kept
-  # only where it differs from the market land.
+  # family; LandLUVCur is the land's present-use value.
+  # Measured 2026-11-19 on US-NC-LEN: TotalFMVCu = LandFMVCur +
+  # ImproveFMV on all 36,115 valued rows; LandLUVCur equals LandFMVCur
+  # except on 3,475 rows, the rows LandUseCur marks Y. current_use_value
+  # is kept only where it differs from the market land.
   land_value: LandFMVCur
   improvement_value: ImproveFMV
   total_value: TotalFMVCu

@@ -114,7 +114,7 @@ def flag_sales_matching_other_kind(
     records the month only (every last-sale date of Pitt County NC falls
     on the first of a month, and the matching deed follows within 30
     days). Nothing is fuzzy, scored or tuned, and no row is removed or
-    relinked. Measured on Pitt County NC, 2026-09-20: 89.9% of
+    relinked. Measured 2026-09-20 on US-NC-PIT: 89.9% of
     last-sale rows whose parcel has any recorded deed match one this way.
 
     Parameters

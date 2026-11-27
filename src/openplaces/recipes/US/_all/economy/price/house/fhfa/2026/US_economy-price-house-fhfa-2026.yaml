@@ -9,7 +9,7 @@
 # five note rows above the header (header row index 5). The .csv URL
 # beside it serves the same xlsx bytes, so the xlsx is read directly.
 #
-# Measured 2026-10-18 on the file "last updated March 31, 2026":
+# Measured 2026-10-18 on US: the file "last updated March 31, 2026":
 # 106,252 rows, 2,795 counties, years 1975 to 2025 (2,795 rows in each
 # of 2023 to 2025), keyed by a 5-digit FIPS code.
 #

@@ -108,9 +108,9 @@ held Shovels ingest. `region_verify` fails a region with any such job
 unless `--allow-stale` is passed, and fails a unit whose
 `--input-layer` does not load, naming the layer and the error;
 `python -m openplaces.flow.freshness RECIPE --region REGION` (or admin
-ids) runs the check alone, before fitting on a bundle. Measured
-2026-10-24 on US-MA-SOM: 5 of 50 built footprint jobs out of date, the
-parcel spine older than the new MA DOR sales ingest.
+ids) runs the check alone, before fitting on a bundle.
+Measured 2026-10-24 on US-MA-SOM: 5 of 50 built footprint jobs out of
+date, the parcel spine older than the new MA DOR sales ingest.
 
 **A staging recipe's ingest is one job for all its units**
 (`ingest_<recipe>_batch` in the Snakefile, for recipes that stage a

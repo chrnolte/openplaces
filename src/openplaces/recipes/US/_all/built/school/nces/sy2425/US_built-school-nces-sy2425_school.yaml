@@ -15,7 +15,7 @@
 # NCES open-data hub's shapefile export of that layer (one 14.6 MB
 # zip) rather than paging the MapServer 2,000 rows at a time.
 #
-# Measured 2026-10-18 on the national export (101,110 rows,
+# Measured 2026-10-18 on US: the national export (101,110 rows,
 # EPSG:4269): NCESSCH unique on every row; LEAID 7 digits, matching
 # the district layer's GEOID. US-MA: 1,824 schools. US-NC: 2,736
 # schools. The state is read from LSTATE (postal code). LEAID is an

@@ -482,9 +482,9 @@ def manufactured_home_listing(frame: pd.DataFrame) -> pd.Series:
     label), and NA for rows that are not primary manufactured homes.
 
     A low value is read as "not on the roll" only without a building
-    record, because rolls differ in what a low value means. Measured
-    2026-10-18 on cheer-eastern-nc: of single-home parcels, homes at $1-50
-    per m2 have a parcel year built 6% of the time and those at $400 or
+    record, because rolls differ in what a low value means.
+    Measured 2026-10-18 on cheer-eastern-nc: of single-home parcels, homes
+    at $1-50 per m2 have a parcel year built 6% of the time and those at $400 or
     more 75% of the time. Measured 2026-10-19 on cheer-coastal-tx: 54% at
     $1-50 and 79% at $50-100 (median year 1985), so most low-valued
     Texas homes are listed homes valued cheaply, not missing ones.
@@ -543,7 +543,7 @@ def park_value_factor(
     enough. *observed* and *predicted* are on the same value scale and
     index the park homes whose roll value is in the listed range.
 
-    Measured 2026-10-18 on cheer-eastern-nc, out of sample: 0.531 across
+    Measured 2026-10-18 on cheer-eastern-nc: out of sample, 0.531 across
     26 counties (IQR 0.378-0.723); rental clusters of 2-4 homes 0.942.
     """
     ratio = observed / predicted.where(predicted > 0)
@@ -1982,7 +1982,7 @@ class Imputer:
         filled total of those rows to it and applies to all filled
         values. Same inputs as :meth:`_price_anchor`.
 
-        Measured 2026-10-24 on cheer-eastern-nc, 14 counties held out:
+        Measured 2026-10-24 on cheer-eastern-nc: 14 counties held out,
         NSI's county totals were 0.75 to 2.70 times the roll's (Pender
         1.02), where the donor model alone gave Pender 0.52.
         """

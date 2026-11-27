@@ -114,12 +114,12 @@ columns:
 # id 95.8%, 98.3%, 99.7%; via QuickRefID 54.6%, 60.5%, 1.8%). MKT_VALUE
 # follows neither: zero on 25.3% of rows and within 10% of LAND_VALUE +
 # IMP_VALUE on 18.6%, while the CAD's market value is land plus
-# improvement on 100% of accounts. Measured 2026-09-16, Orange CAD 2026
-# export against TxGIO 2025
-# (plans/txgio-orange-attributes-on-wrong-parcels.md); the other
-# checked counties (Jefferson, Liberty, San Patricio, Nueces, Victoria)
-# agree. So the three misplaced columns are blanked, the state class
-# and year built come from the Orange CAD roll recipes
+# improvement on 100% of accounts.
+# Measured 2026-09-16 on US-TX-ORA: Orange CAD 2026 export against
+# TxGIO 2025 (plans/txgio-orange-attributes-on-wrong-parcels.md); the
+# other checked counties (Jefferson, Liberty, San Patricio, Nueces,
+# Victoria) agree. So the three misplaced columns are blanked, the
+# state class and year built come from the Orange CAD roll recipes
 # (US-TX-ORA_property-orangecad-2026*), keyed on QuickRefID, and the
 # total is rebuilt from TxGIO's own land and improvement values.
 transformations:

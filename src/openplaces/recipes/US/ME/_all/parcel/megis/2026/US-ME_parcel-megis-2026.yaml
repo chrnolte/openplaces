@@ -269,15 +269,15 @@ scraper_options:
     key:
       - GEOCODE
       - MAP_BK_LOT
-    # Compare the key through `pipe` rather than literally. Measured
-    # 2026-08-25 against the live service: a town's geometry submission
-    # and its own ADB submission routinely agree on the map-lot and
-    # disagree on how they punctuate it (Kennebunk writes `999-999` in
-    # one and `999_999` in the other), which a literal comparison scores
-    # at zero. Over the six largest towns that submit ADB rows and match
-    # none of them -- 30,204 parcels -- `pipe` on STATE_ID recovers
-    # 29.7%: China 0.994, Kennebunk 0.784, and nothing for the other
-    # four.
+    # Compare the key through `pipe` rather than literally.
+    # Measured 2026-08-25 on US-ME: against the live service, a town's
+    # geometry submission and its own ADB submission routinely agree on
+    # the map-lot and disagree on how they punctuate it (Kennebunk
+    # writes `999-999` in one and `999_999` in the other), which a
+    # literal comparison scores at zero. Over the six largest towns that
+    # submit ADB rows and match none of them -- 30,204 parcels -- `pipe`
+    # on STATE_ID recovers 29.7%: China 0.994, Kennebunk 0.784, and
+    # nothing for the other four.
     #
     # `pipe` rather than `simple` because it collapses each run of
     # separators to one marker instead of deleting it, so `12-3` and

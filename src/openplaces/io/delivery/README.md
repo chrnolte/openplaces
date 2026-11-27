@@ -314,9 +314,9 @@ Location Code, lengthened on a collision); the evidence file's
 `footprint_id_parent` (`{id}_parent`, `slicing.parent_column`) names the kept
 outline. A piece under 10 m2 or 5% of the outline is not cut: the majority
 copy stays and the other copy's value stays on its parcel. An outline only
-one unit delivered stays whole. Curated files are untouched. Measured
-2026-10-17 on boston-inner-core: 150 outline pairs drawn in two towns became 87
-cut outlines (174 pieces) and 63 kept whole, none lost. And it leaves its four
+one unit delivered stays whole. Curated files are untouched.
+Measured 2026-10-17 on boston-inner-core: 150 outline pairs drawn in two towns
+became 87 cut outlines (174 pieces) and 63 kept whole, none lost. And it leaves its four
 outputs read-only, unlocking them itself on the next run -- deliberately not
 Snakemake's `protected()`, which additionally refuses to ever regenerate a file
 and would abort the workflow on every reship.

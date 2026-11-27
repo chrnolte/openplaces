@@ -52,9 +52,10 @@
 # sale and still read the other quote-bearing lines by the wrong
 # rule. A field boundary in this export is exactly quote-tab-quote,
 # so the reader splits there and escapes the quotes before parsing;
-# it prints how many lines it so read. Measured 2026-11-21 on
-# US-IN (2025 vintage, 199,907 lines): every line has 111 fields on
-# that split; 1,063 lines hold a quote inside a field
+# it prints how many lines it so read.
+# Measured 2026-11-21 on US-IN: in the 2025 vintage (199,907 lines),
+# every line has 111 fields on that split; 1,063 lines hold a quote
+# inside a field
 # (`P2_15_Special_Circum` 1,027 cells, `C5_Other` 23,
 # `P2_10_Physical_Changes` 12, `B6_Partial_Description` 2,
 # `D3_Planned_Use` 1) and 1 a tab; the read matches the

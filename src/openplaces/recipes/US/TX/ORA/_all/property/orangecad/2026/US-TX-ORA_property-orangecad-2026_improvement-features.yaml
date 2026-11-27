@@ -25,8 +25,9 @@
 # GAR1 ('Garage, Detached') and MGAR1 ('Garage, MH Detached'), kept out
 # of gross area because a detached garage is usually its own
 # footprint; curate adds it back where the parcel has no separate
-# footprint for it. Measured 2026-09-16: > 0 on 14.8% of class A
-# accounts, median 660.
+# footprint for it.
+# Measured 2026-09-16 on US-TX-ORA: > 0 on 14.8% of class A accounts,
+# median 660.
 #
 # MAIN AREA. quality_grade is Class (the district's construction class,
 # e.g. an R or MH grade), year_built is ActYrBuilt and

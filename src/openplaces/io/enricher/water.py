@@ -645,8 +645,8 @@ def link_parcels_to_waterbodies(
         Boolean sidecar column naming which FCodes count as rivers.
     tolerance_m : float
         Largest gap between a parcel and a shoreline segment for the
-        segment to count as that parcel's frontage. Measured 2026-09-29
-        on US-TX-ARA: against the roll's waterfront land types, 20 m
+        segment to count as that parcel's frontage.
+        Measured 2026-09-29 on US-TX-ARA: against the roll's waterfront land types, 20 m
         gives F1 0.798 (precision 0.807, recall 0.788) for frontage on
         water >= 1 ha; F1 plateaus beyond 20 m while view-only lots
         flagged as frontage rise from 7% to 14% at 30 m.

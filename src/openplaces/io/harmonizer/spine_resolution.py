@@ -5,9 +5,9 @@ outline enters only where it overlaps nothing already accepted. Any
 outline of an earlier source therefore blocks every later source at its
 spot, however small or out of date it is: a 14 m2 roof piece or the
 outline of a building since replaced blocks the 4,000 m2 building
-another source draws around it. Measured 2026-10-16 on
-boston-inner-core: against OBM, the ranked MassGIS layer held 113 such
-fragments in Boston.
+another source draws around it.
+Measured 2026-10-16 on boston-inner-core: against OBM, the ranked MassGIS
+layer held 113 such fragments in Boston.
 
 This module looks at the outlines of the accepted spine and of the next
 source that overlap each other (the intersection of a pair is at least
@@ -20,9 +20,9 @@ later outline crosses more lots than the accepted pieces do. No outline
 is created, enlarged, unioned or clipped, and each switch carries a
 fixed label (`spine_resolution`), never a score.
 
-**Off by default, because its test failed.** Measured 2026-10-16 on
-US-NC-CAR, against layers that never enter the spine: of the 261
-outlines the rule switched to (mostly NC DPS over OBM), Microsoft's
+**Off by default, because its test failed.**
+Measured 2026-10-16 on US-NC-CAR: against layers that never enter the
+spine, of the 261 outlines the rule switched to (mostly NC DPS over OBM), Microsoft's
 global layer matches 2.2% of the area at IoU >= 0.5 and OpenStreetMap
 4.4%, against 82.2% and 7.4% of the outlines it dropped. The larger
 outline is not reliably the truer one where the earlier source is
