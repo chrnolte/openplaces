@@ -1,9 +1,37 @@
 import logging
-import time
 
 import pytest
 
+import openplaces.timing as timing
 from openplaces.timing import Timer, clear_timers, get_timer
+
+
+class _Clock:
+    """Wall and CPU clocks that move only when a test advances them."""
+
+    def __init__(self):
+        self.wall = 1000.0
+        self.cpu = 10.0
+
+    def advance(self, wall: float = 0.0, cpu: float = 0.0) -> None:
+        self.wall += wall
+        self.cpu += cpu
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    # Patch the names the Timer looks up in its own module, so no real
+    # time passing between two calls can change what a test sees.
+    fake = _Clock()
+    monkeypatch.setattr(timing, 'perf_counter', lambda: fake.wall)
+    monkeypatch.setattr(timing, 'process_time', lambda: fake.cpu)
+    return fake
+
+
+def _timer_on(clock: _Clock, **kwargs) -> Timer:
+    # The dataclass default factories hold the real clock functions,
+    # bound at class definition, so the start is passed explicitly.
+    return Timer(_created=clock.wall, _cpu_created=clock.cpu, **kwargs)
 
 
 def test_mark_calls_are_contiguous_and_sum_to_total():
@@ -18,12 +46,12 @@ def test_mark_calls_are_contiguous_and_sum_to_total():
         assert prev.end == nxt.start
 
 
-def test_finish_is_idempotent_and_freezes_total_duration():
-    timer = Timer(name='test_finish')
+def test_finish_is_idempotent_and_freezes_total_duration(clock):
+    timer = _timer_on(clock, name='test_finish')
     timer.mark('a')
     timer.finish()
     frozen = timer.total_duration
-    time.sleep(0.01)
+    clock.advance(wall=5.0, cpu=5.0)
     timer.finish()  # no-op: already finished
     assert timer.total_duration == frozen
 
@@ -47,12 +75,17 @@ def _collect_log_messages(name):
     return logger, handler, messages
 
 
-def test_finish_logs_a_nontrivial_gap_record_like_mark():
+@pytest.mark.parametrize(
+    ('wall', 'cpu'),
+    [(0.02, 0.0), (0.0, 0.02)],
+    ids=['wall', 'cpu'],
+)
+def test_finish_logs_a_nontrivial_gap_record_like_mark(clock, wall, cpu):
     logger, handler, messages = _collect_log_messages('test_finish_logs_nonzero')
     try:
-        timer = Timer(name='test_finish_logs_nonzero', logger=logger)
+        timer = _timer_on(clock, name='test_finish_logs_nonzero', logger=logger)
         timer.mark('a')
-        time.sleep(0.02)
+        clock.advance(wall=wall, cpu=cpu)
         timer.finish()
     finally:
         logger.removeHandler(handler)
@@ -62,11 +95,17 @@ def test_finish_logs_a_nontrivial_gap_record_like_mark():
     assert messages[1].startswith('_final')
 
 
-def test_finish_does_not_log_a_zero_length_gap():
+@pytest.mark.parametrize(
+    ('wall', 'cpu'),
+    [(0.0, 0.0), (0.004, 0.004)],
+    ids=['zero', 'below-display-resolution'],
+)
+def test_finish_does_not_log_a_zero_length_gap(clock, wall, cpu):
     logger, handler, messages = _collect_log_messages('test_finish_logs_zero')
     try:
-        timer = Timer(name='test_finish_logs_zero', logger=logger)
+        timer = _timer_on(clock, name='test_finish_logs_zero', logger=logger)
         timer.mark('a')
+        clock.advance(wall=wall, cpu=cpu)
         timer.finish()
     finally:
         logger.removeHandler(handler)
