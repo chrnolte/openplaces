@@ -96,8 +96,8 @@ def duplicate_document_mask(
     two adjacent SDF years in 23 counties while the clerk instrument,
     price and date stayed the same; compared as spelled, both copies of
     each deed survived, and the multi-parcel fold then blanked the
-    deed's parcel number because its two copies "disagreed". Measured
-    2026-10-24 on US-FL-BA: in sale year 2024, the raw spelling differed
+    deed's parcel number because its two copies "disagreed".
+    Measured 2026-10-24 on US-FL-BA: in sale year 2024, the raw spelling differed
     on 9,111 of 9,111 deeds listed in both files, the stripped number on
     0.2%. The comparison is still exact, on a deterministic rewrite of
     the string: no tolerance, no similarity score.
@@ -204,8 +204,8 @@ def count_parcels_per_document(
     spelling: a source published over several years spells one parcel
     two ways (Lake County FL's deed feed writes `01-18-24-...` in one
     vintage and the bare digits in another), and counted on the
-    spelling those rows read as a two-parcel deed. Measured 2026-10-01
-    on US-FL-LA: 119,027 of 157,087 multi-parcel documents were one
+    spelling those rows read as a two-parcel deed.
+    Measured 2026-10-01 on US-FL-LA: 119,027 of 157,087 multi-parcel documents were one
     parcel under two spellings.
 
     Run after the source's duplicate rows are removed, or a document

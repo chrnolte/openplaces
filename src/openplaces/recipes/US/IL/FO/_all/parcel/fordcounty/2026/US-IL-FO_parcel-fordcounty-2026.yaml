@@ -19,18 +19,19 @@
 # US_parcel_id-overrides.csv (US-IL-FO, fordcounty, parcel:
 # string_lengths 2 2 2 3 3, drop_cols 0) that cuts the same five
 # groups by width and yields the tax side's key. 16 rows carry a word
-# instead of a number and 12 none; they get no key. Measured
-# 2026-10-21 on the export (10,691 rows): parcel_id_local filled
-# 99.7%, 10,496 distinct (ParcelNumber has 10,497, the extra one a
-# word); the conversion adds no duplicate.
+# instead of a number and 12 none; they get no key.
+# Measured 2026-10-21 on US-IL-FO: on the export (10,691 rows),
+# parcel_id_local filled 99.7%, 10,496 distinct (ParcelNumber has
+# 10,497, the extra one a word); the conversion adds no duplicate.
 #
-# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026). Measured
-# 2026-10-21: 85.8% of the 730 ingested Ford declarations (all
-# 2018-2019) find their parcel. The misses are retired PINs: 92.3% of
-# them share their 9-digit block with a current parcel, farm (line 8
-# J: 56%) and land (A: 71%) declarations carry most of them, residences
-# (B) match 93.8%, and the portal's later Ford declarations match
-# 86-89% for 2020-2024 and 93.5% for 2025-2026 (residences 97%).
+# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026).
+# Measured 2026-10-21 on US-IL-FO: 85.8% of the 730 ingested Ford
+# declarations (all 2018-2019) find their parcel. The misses are
+# retired PINs: 92.3% of them share their 9-digit block with a
+# current parcel, farm (line 8 J: 56%) and land (A: 71%) declarations
+# carry most of them, residences (B) match 93.8%, and the portal's
+# later Ford declarations match 86-89% for 2020-2024 and 93.5% for
+# 2025-2026 (residences 97%).
 #
 # VALUES (assessed; Illinois assesses non-farm property at one third of
 # market value and farmland at its use value). LandValue and

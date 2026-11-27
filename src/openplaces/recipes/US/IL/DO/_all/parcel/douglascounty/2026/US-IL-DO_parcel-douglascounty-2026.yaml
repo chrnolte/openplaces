@@ -12,18 +12,20 @@
 # record), and the bundled Douglas parcel conversion (2-2-3-3 digit
 # groups) fits it, producing the same key as the bundled tax conversion
 # applied to MyDec's 12-digit PIN (the township prefix dropped on both
-# sides). No override row is needed. Measured 2026-10-21 on the export
-# (15,448 rows): parcel_id_local filled 99.99%, 15,233 distinct.
+# sides). No override row is needed.
+# Measured 2026-10-21 on US-IL-DO: on the export (15,448 rows),
+# parcel_id_local filled 99.99%, 15,233 distinct.
 #
-# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026). Measured
-# 2026-10-21: 84.4% of the 1,029 ingested Douglas declarations (all of
-# them 2018-2019; MyDec has no earlier Douglas filing in the
-# recipe's years) find their parcel. The misses are retired PINs, not a
-# format mismatch: 97.5% of them share their 9-digit block with a
-# current parcel, they concentrate in farm (line 8 J: 54% matched) and
-# land (A: 66%) declarations, residences (B) match 93%, and the
-# portal's later Douglas declarations match 82-90% for 2020-2024 and
-# 98.8% for 2025 and 2026 (PIN column only, read from the portal).
+# KEY OVERLAP WITH THE SALES (US-IL_transaction-ildor-2026).
+# Measured 2026-10-21 on US-IL-DO: 84.4% of the 1,029 ingested Douglas
+# declarations (all of them 2018-2019; MyDec has no earlier Douglas
+# filing in the recipe's years) find their parcel. The misses are
+# retired PINs, not a format mismatch: 97.5% of them share their
+# 9-digit block with a current parcel, they concentrate in farm (line 8
+# J: 54% matched) and land (A: 66%) declarations, residences (B) match
+# 93%, and the portal's later Douglas declarations match 82-90% for
+# 2020-2024 and 98.8% for 2025 and 2026 (PIN column only, read from the
+# portal).
 #
 # VALUES (assessed, the 2025 assessment year on every row; Illinois
 # assesses non-farm property at one third of market value and farmland

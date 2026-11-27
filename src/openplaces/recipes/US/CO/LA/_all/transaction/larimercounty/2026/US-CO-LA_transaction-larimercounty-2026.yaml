@@ -26,10 +26,11 @@
 #
 # JOIN KEY. PARCELNO is the ten-digit parcel number the statewide
 # OIT layer (US-CO_parcel-cooit-2026) carries as parcel_id for
-# Larimer; both recipes key on it with the same conversion. Measured
-# 2026-10-22 against that layer's Larimer rows (180,961): 99.64% of
-# sales rows and 99.33% of distinct sale parcel numbers are found
-# there, and 90.5% of its parcel ids have at least one sale.
+# Larimer; both recipes key on it with the same conversion.
+# Measured 2026-10-22 on US-CO-LA: against that layer's Larimer rows
+# (180,961), 99.64% of sales rows and 99.33% of distinct sale parcel
+# numbers are found there, and 90.5% of its parcel ids have at least
+# one sale.
 #
 # DATES. Every row has a date, 1875-12-07 to 2026-10-20. Sales of the
 # 1990s are dated to the month: the five commonest dates are the 1st

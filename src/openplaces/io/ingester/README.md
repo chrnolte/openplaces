@@ -199,11 +199,12 @@ that. The pair (unit key, lot key) the split records is read three times:
 and falls back to the key column otherwise: on a lot any roll describes,
 rows whose `link_source` is only `:units` are left out, so a roll and the
 units split off the parcel layer are never summed together; shares scale
-summed columns; `*_shared_key` links are skipped. Measured on Galveston,
-rebuilt end to end 2026-09-21: curated parcel `total_value` $151.4bn to
-$79.2bn against a roll of $75.9bn, roll rows on a parcel unchanged at
-173,697. A lot with a single record yields no property row, so where no
-roll exists the property spine holds stacked units only (all of Wisconsin:
+summed columns; `*_shared_key` links are skipped.
+Measured 2026-09-21 on US-TX-GAL: rebuilt end to end, curated parcel
+`total_value` $151.4bn to $79.2bn against a roll of $75.9bn, roll rows on
+a parcel unchanged at 173,697. A lot with a single record yields no
+property row, so where no roll exists the property spine holds stacked
+units only (all of Wisconsin:
 Dane County's layer is 218,093 rows, 188,518 lots and 31,285 units, value
 conserved to the dollar). The module docstring
 records the design: the split groups all rows by the source's own lot

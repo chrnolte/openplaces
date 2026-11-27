@@ -16,8 +16,8 @@
 # S3 Last-Modified 2026-07-28, newest ATT_DATE 2026-07-28, page
 # "Last updated: August 10, 2026".
 #
-# Measured 2026-10-17 on the 2026-07-28 release (61,486 polygons,
-# EPSG:26986, MultiPolygon):
+# Measured 2026-10-17 on US-MA: the 2026-07-28 release (61,486
+# polygons, EPSG:26986, MultiPolygon):
 #   OS_ID (TOWN_ID-POLY_ID) is unique and never empty; it is the key.
 #   A site split by a town line is one polygon per town, each with
 #   its own OS_ID and the same SITE_NAME (Middlesex Fells

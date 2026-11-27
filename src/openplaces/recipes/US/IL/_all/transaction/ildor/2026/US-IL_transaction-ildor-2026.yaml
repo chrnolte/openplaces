@@ -34,9 +34,9 @@
 # (`L10:` alone when none is checked, `L10:hk` for bank REO by a
 # financial institution), mapped to `sale_qualification_code`. Composed
 # in SoQL (case() and ||) so that no ingest operation is needed; the
-# curate patch (US-IL_transaction-openplaces-2026) grades it. Measured
-# 2026-10-19 on 2016: 104,068 of 122,738 rows have no box checked;
-# 10h alone 8,695, 10r alone 2,242, 10h with 10k 1,295.
+# curate patch (US-IL_transaction-openplaces-2026) grades it.
+# Measured 2026-10-19 on US-IL: in 2016, 104,068 of 122,738 rows have
+# no box checked; 10h alone 8,695, 10r alone 2,242, 10h with 10k 1,295.
 #
 # MAPPED. declaration_id is the source's id; document_number the
 # recorder's; date_recorded the recording date; line 1 primary PIN the

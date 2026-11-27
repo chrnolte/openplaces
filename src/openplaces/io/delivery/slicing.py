@@ -21,9 +21,9 @@ pieces are never merged again.
 - **Slivers.** Where the smaller piece is under `MIN_PIECE_M2` or under
   `MIN_PIECE_SHARE` of the outline, nothing is cut: the copy of the unit
   holding most of the building stays as it is, and the other copy is
-  left out, its value staying on that unit's parcel. Measured
-  2026-10-17 on boston-inner-core: 62 of 150 pairs, among them 34 whose
-  smaller piece is under 1 m2 (a building wholly in one town that the
+  left out, its value staying on that unit's parcel.
+  Measured 2026-10-17 on boston-inner-core: 62 of 150 pairs, among them
+  34 whose smaller piece is under 1 m2 (a building wholly in one town that the
   other drew too).
 - **Ids.** A piece's id is the Open Location Code of its centroid, the
   way every footprint id is made; a code that collides with another id

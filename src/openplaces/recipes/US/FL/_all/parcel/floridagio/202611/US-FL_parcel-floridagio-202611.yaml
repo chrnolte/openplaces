@@ -13,8 +13,9 @@
 # takes the newest version: the spine unions and link_by_id discovery,
 # but also the single-reference resolvers (find_reference_recipe_id,
 # find_entity_recipe_id), which do not read
-# `exclude_from_auto_discover`. Measured 2026-11-17 on US-FL and its 67
-# counties with that key alone: the footprint geospine
+# `exclude_from_auto_discover`.
+# Measured 2026-11-17 on US-FL: on the state and its 67 counties with
+# that key alone, the footprint geospine
 # (link_to_reference, consolidate_condo_cluster_footprints,
 # infer_spine_additions), the building geospine
 # (split_outlines_at_parcel_lines), the building spine

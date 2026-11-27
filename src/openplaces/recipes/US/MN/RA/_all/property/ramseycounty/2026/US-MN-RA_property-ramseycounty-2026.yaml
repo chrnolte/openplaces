@@ -27,11 +27,12 @@
 # The measurements below were taken on the March 2026 Commons file.
 #
 # WHY THE POINT LAYER. Points are one per tax parcel, condominium units
-# and manufactured homes included, while polygons can stack. Measured
-# 2026-09-12: 167,643 points, 167,629 distinct ParcelID; 164,624 real
-# property (RollType RP) and 2,995 manufactured homes (MH, their own
-# 10-character ids). 8 ids repeat (22 rows); drop_duplicates keeps the
-# first so the roll holds one row per property.
+# and manufactured homes included, while polygons can stack.
+# Measured 2026-09-12 on US-MN-RA: 167,643 points, 167,629 distinct
+# ParcelID; 164,624 real property (RollType RP) and 2,995 manufactured
+# homes (MH, their own 10-character ids). 8 ids repeat (22 rows);
+# drop_duplicates keeps the first so the roll holds one row per
+# property.
 #
 # COVERAGE on improved rows (EMVBuildin > 0) by DwellingType: single
 # family (112,724), two-family, townhome (outer, inner, TICO) all carry

@@ -25,9 +25,10 @@
 # MAPNUMBER padded with zeros to 8 characters, then TAXLOT padded to 5
 # digits. MAPNUMBER is 4, 6, 7 or 8 characters long, so appending four
 # zeros and keeping the first 8 pads it; TAXLOT is never empty and
-# never above 99,999. Measured 2026-10-23 on the live services: the
-# rebuilt key equals the sales table's maptaxlot on all 60,299 accounts
-# found in both layers, and every one of its 60,508 keys is found here.
+# never above 99,999.
+# Measured 2026-10-23 on US-OR-JA: on the live services, the rebuilt
+# key equals the sales table's maptaxlot on all 60,299 accounts found
+# in both layers, and every one of its 60,508 keys is found here.
 # MAPLOT (the unpadded form) -> parcel_id_admin3.
 #
 # MAPPED. ACCOUNT -> property_id_assessor (the account each stacked row

@@ -185,8 +185,8 @@ Steps are organized by the nature of the transformation:
   and the units split off the parcel layer both describe, the units'
   rows are left out of a column wherever the roll's rows state it, so
   nothing is summed twice, and give the lot its value where only they
-  state it. Measured on Victoria County, TX,
-  2026-09-12: the curate-side reduction reproduces the old copy's
+  state it.
+  Measured 2026-09-12 on US-TX-VIC: the curate-side reduction reproduces the old copy's
   coverage exactly (63.9% `year_built` and floor area, the PACS segment
   sum now named `gross_floor_area_sqft`), so a county
   whose geospine predates the change loses nothing. An all-missing group

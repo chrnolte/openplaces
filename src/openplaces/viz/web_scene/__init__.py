@@ -1863,8 +1863,9 @@ def _write_content_file(data_dir: Path, stem: str, data: bytes) -> str:
     unchanged data reuses the file: it is neither rewritten here nor
     uploaded again (`deploy_web_scene` copies data with
     `--ignore-existing`). gzip's header timestamp is fixed at 0, so the
-    same data also gives the same file. Measured 2026-10-16 on
-    boston-inner-core: palette, lighting and control changes left every
+    same data also gives the same file.
+    Measured 2026-10-16 on boston-inner-core: palette, lighting and
+    control changes left every
     one of 1,589 data files unchanged, yet each publish re-sent them
     all (about 220 MB for the four scenes) under a new build folder.
     """
@@ -3294,8 +3295,8 @@ def lot_total_value(gdf, value_column) -> np.ndarray:
     stops: the roll's `total_value` where it has one, else land plus
     improvement value where both are known, else `value_column`.
 
-    A roll may leave `total_value` empty throughout. Measured 2026-10-18
-    on US-MA-NTC: 0 of 13,803 lots carry it, against 97% with a land
+    A roll may leave `total_value` empty throughout.
+    Measured 2026-10-18 on US-MA-NTC: 0 of 13,803 lots carry it, against 97% with a land
     value; the tour then summed nothing and its stops fell arbitrarily
     on the island's west end.
     """
@@ -3352,10 +3353,10 @@ def tour_foci(
     cell_m : float
         Cell size in meters; about a few city blocks.
     min_separation_m : float
-        Least distance between two points. Measured 2026-10-15 on
-        boston-inner-core: at 2500 m, Kendall Square (2.4 km from
-        downtown Boston) was refused and Cambridge's stop fell on its
-        edge.
+        Least distance between two points.
+        Measured 2026-10-15 on boston-inner-core: at 2500 m, Kendall
+        Square (2.4 km from downtown Boston) was refused and Cambridge's
+        stop fell on its edge.
     min_parcels : int
         Least parcels in a cell. A center is many parcels; without
         this, one vast parcel (an airport, a rail yard) wins its cell.
@@ -3479,10 +3480,10 @@ def contrast_focus(
     column : str
         The per-dwelling value column.
     cell_m : float
-        Cell size in meters; about a neighborhood. Measured 2026-10-17
-        on boston-inner-core: 500 m cells put the stop between Bay State
-        Road and the Fenway's edge, two blocks of institutional and
-        student housing, not two neighborhoods.
+        Cell size in meters; about a neighborhood.
+        Measured 2026-10-17 on boston-inner-core: 500 m cells put the
+        stop between Bay State Road and the Fenway's edge, two blocks of
+        institutional and student housing, not two neighborhoods.
     radius_m : float
         Farthest apart two cells may be; about what one view shows.
     min_homes : int

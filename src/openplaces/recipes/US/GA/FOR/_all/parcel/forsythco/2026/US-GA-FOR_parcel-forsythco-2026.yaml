@@ -26,8 +26,8 @@
 # FLOOR AREA. The layer follows Esri's tax-parcel schema and carries
 # RESFLRAREA ("Residential Floor Area"), BLDGAREA ("Building Area")
 # and FLOORCOUNT ("Number of Floors"), none with a field description.
-# Measured 2026-09-13 on the bulk export (42,507 rows with both
-# areas):
+# Measured 2026-09-13 on US-GA-FOR: the bulk export (42,507 rows with
+# both areas):
 #   - RESFLRAREA x FLOORCOUNT / BLDGAREA has median 0.93 at two
 #     floors (IQR 0.88-1.00) and 1.02 at three;
 #   - RESFLRAREA falls as floors rise: SF RESIDENTIAL medians 1,910,

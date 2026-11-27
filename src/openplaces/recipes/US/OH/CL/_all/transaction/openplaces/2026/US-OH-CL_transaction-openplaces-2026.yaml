@@ -3,8 +3,9 @@
 #
 # The Auditor states a validity for every sale, with a label; the
 # ingest keeps the label as received. A county's vocabulary, so a
-# county patch. Measured 2026-10-22 on the 62,650 sales rows; counts
-# in brackets.
+# county patch.
+# Measured 2026-10-22 on US-OH-CL: the 62,650 sales rows; counts in
+# brackets.
 #
 # Grades, on the national scale (0, 0.7, 1):
 #   1.0  VALID SALE (27,405); SALE GOOD FOR MKT MODEL NOT FOR RATIO

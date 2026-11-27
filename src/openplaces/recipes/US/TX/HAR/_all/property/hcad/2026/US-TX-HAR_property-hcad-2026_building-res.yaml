@@ -23,11 +23,12 @@
 #
 # QUOTING. The free-text notes field holds unbalanced double quotes, and
 # the ingester's reader parses with default quoting, which merges a
-# quoted note with the lines after it. Measured 2026-09-13: 1,316,267
-# rows read from 1,318,822 physical lines, so 2,555 buildings (0.19%)
-# are lost; on every building that is read, the mapped fields equal a
-# read with quoting off exactly (100.000%). A recipe key passing
-# `quoting` to read_csv would recover them; the reader has none today.
+# quoted note with the lines after it.
+# Measured 2026-09-13 on US-TX-HAR: 1,316,267 rows read from 1,318,822
+# physical lines, so 2,555 buildings (0.19%) are lost; on every
+# building that is read, the mapped fields equal a read with quoting
+# off exactly (100.000%). A recipe key passing `quoting` to read_csv
+# would recover them; the reader has none today.
 #
 # MEASURED (2026-09-13): 1,316,267 rows read, every account in the
 # roll. Share of the 1,157,703 single-family (state class A1) accounts

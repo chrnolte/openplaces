@@ -4,10 +4,10 @@
 #
 # SOURCE MEMBER. building_other.txt in Real_building_land.zip:
 # tab-delimited with header, one row per commercial, apartment, exempt
-# or utility building (acct, bld_num). Measured 2026-10-18 on
-# US-TX-HAR: 162,359 rows over 70,629 accounts (state class F1 58,518,
-# B1 5,809, X1 to X3 4,768, F2 885); none of them is in
-# building_res.txt.
+# or utility building (acct, bld_num).
+# Measured 2026-10-18 on US-TX-HAR: 162,359 rows over 70,629 accounts
+# (state class F1 58,518, B1 5,809, X1 to X3 4,768, F2 885); none of
+# them is in building_res.txt.
 #
 # WHAT IS MAPPED:
 #   impr_tp   building_type_code, HCAD's building type ("Building

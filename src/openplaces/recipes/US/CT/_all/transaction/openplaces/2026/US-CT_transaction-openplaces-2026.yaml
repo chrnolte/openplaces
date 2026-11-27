@@ -11,7 +11,7 @@
 #
 # Towns spell a code two ways, the number with its label ('07 -
 # Change in Property') or the bare number ('7'); both are listed.
-# Measured 2026-10-21, statewide: 852,839 of 1,188,997 rows carry no
+# Measured 2026-10-21 on US-CT: 852,839 of 1,188,997 rows carry no
 # code; every code 1 to 30 occurs in both spellings, code 13 in two
 # label spellings ('Bankrupcy', 'Bankruptcy'). Values outside the
 # list (bare numbers 31 to 88 and 'Single Family', 35 rows statewide,

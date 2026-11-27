@@ -113,16 +113,16 @@ transformations:
 
 # NC OneMap's Brunswick parcel_id_local comes from altparno under the
 # bundled `simple` conversion; PIN has altparno's twelve-digit form.
-# Measured 2026-09-16 after ingest: 97.8% of NC OneMap's Brunswick
-# parcels find a key here, but only 85.9% of this recipe's keys find
-# a parcel. The gap is not the key: 7,198 are condominium unit PINs,
-# which have no polygon of their own (and whose twelve-digit parent
-# is a statewide parcel for only 1% of them), and the other 17,075
-# are twelve-digit PINs absent from the statewide snapshot (dated
-# 2025-07-11), skewed to new construction (median year built 2023
-# against 2006 for matched rows; 21% built 2024 or later against
-# 6.1%). None of them is found in the statewide parno or nparno
-# either.
+# Measured 2026-09-16 on US-NC-BRU: after ingest, 97.8% of NC OneMap's
+# Brunswick parcels find a key here, but only 85.9% of this recipe's
+# keys find a parcel. The gap is not the key: 7,198 are condominium
+# unit PINs, which have no polygon of their own (and whose
+# twelve-digit parent is a statewide parcel for only 1% of them), and
+# the other 17,075 are twelve-digit PINs absent from the statewide
+# snapshot (dated 2025-07-11), skewed to new construction (median year
+# built 2023 against 2006 for matched rows; 21% built 2024 or later
+# against 6.1%). None of them is found in the statewide parno or
+# nparno either.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

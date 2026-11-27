@@ -51,8 +51,9 @@
 #   garage types (DG1A to DG3L, DG2E, DG3E, DGU, DGU1 to DGU3, DGF1 to
 #   DGF3, DGAR, GAR), kept out of gross area because a detached garage
 #   is usually its own footprint; curate adds it back where the parcel
-#   has no separate footprint for it. Measured 2026-09-16: > 0 on
-#   21.2% of class A properties, median 576.
+#   has no separate footprint for it.
+#   Measured 2026-09-16 on US-TX-LAV: > 0 on 21.2% of class A
+#   properties, median 576.
 # - An area of 0 or 1 reads as missing, as for the other areas.
 # - MEASURED 2026-09-16 on the 2026 export, per property with state
 #   class A (4,907): living_area_sqft 94.3%, p10/p50/p90 884, 1,491,

@@ -73,8 +73,10 @@
 # city's ten words (wood frame, frame with concrete, reinforced
 # concrete, steel frame and so on), first building's per parcel,
 # kept as published; construction_type stays NSI-coded for curate to
-# translate into. Measured 2026-09-13 as above: 99.5% of the 109,552
-# residential properties, 87.5% of all; no padding, no blanks.
+# translate into.
+# Measured 2026-09-13 on US-MN-HE_property-minneapoliscity-2026: as
+# above, 99.5% of the 109,552 residential properties, 87.5% of all; no
+# padding, no blanks.
 #
 # NOT MAPPED: ROOF holds roof shapes (gable, hip, flat), not a
 # material, and roof_shape is an enrich-stage registry name.

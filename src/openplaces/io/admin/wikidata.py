@@ -273,9 +273,10 @@ GENERIC_NOUNS = frozenset(
     }
 )
 
-#: Parents per SPARQL request. Measured 2026-09-12: 47 Kenyan counties in
-#: one request take 3 s; 100 Thai districts 2 s. Larger batches risk the
-#: endpoint's 60 s limit on a busy day.
+#: Parents per SPARQL request. Measured 2026-09-12 on KE: 47 Kenyan
+#: counties in one request take 3 s. Measured 2026-09-12 on TH: 100 Thai
+#: districts 2 s. Larger batches risk the endpoint's 60 s limit on a
+#: busy day.
 PARENT_BATCH_SIZE = 50
 
 #: Items per detail request in the two-pass fallback. The items are

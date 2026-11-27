@@ -8,7 +8,7 @@
 # dataset rather than a second table of one download. Same layout as
 # the county file: one sheet, five note rows above the header.
 #
-# Measured 2026-10-18 on the file "last updated March 31, 2026":
+# Measured 2026-10-18 on US: the file "last updated March 31, 2026":
 # 2,601 rows, 51 states (DC included), 1975 to 2025, one row per state
 # and year; both index columns kept are filled on every row, and the
 # annual change is missing only in 1975. Every admin2_id is in the

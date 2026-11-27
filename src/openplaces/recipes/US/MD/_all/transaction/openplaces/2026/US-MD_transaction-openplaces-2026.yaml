@@ -3,10 +3,10 @@
 #
 # SDAT states for each transfer whether it was at arm's length, in
 # five labelled values; the ingest keeps the label as received. A
-# state's vocabulary, so a state patch. Measured 2026-10-22 on the
-# four salisbury-md counties, segment 1 (154,903 accounts):
-# non-arms-length 67,760, arms-length improved 59,560, multiple parcel
-# 13,337, vacant 6,845, No Data 7,401.
+# state's vocabulary, so a state patch.
+# Measured 2026-10-22 on salisbury-md: its four counties, segment 1
+# (154,903 accounts): non-arms-length 67,760, arms-length improved
+# 59,560, multiple parcel 13,337, vacant 6,845, No Data 7,401.
 #
 # Grades, on the national scale (0, 0.7, 1):
 #   1.0  arms-length, improved (1) or vacant at the time of sale (2).

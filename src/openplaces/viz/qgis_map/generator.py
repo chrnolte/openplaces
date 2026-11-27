@@ -938,11 +938,12 @@ def _split_observed_imputed(
     symbol, because a rule renderer keys symbols one per rule.
 
     The test is strpos over the coalesced field, which QGIS evaluates
-    itself, rather than LIKE. Measured 2026-10-26 on cheer-eastern-nc
-    (QGIS 3.44, 2.46 million points, region view): 28 s per redraw
-    with strpos, 80 s with LIKE. A rule renderer is still several
-    times slower than a classified one, so it serves only layers whose
-    source field comes through a join (see _apply_imputed_split).
+    itself, rather than LIKE.
+    Measured 2026-10-26 on cheer-eastern-nc: 28 s per redraw with strpos,
+    80 s with LIKE (QGIS 3.44, 2.46 million points, region view). A rule
+    renderer is still several times slower than a classified one, so it
+    serves only layers whose source field comes through a join (see
+    _apply_imputed_split).
 
     Parameters
     ----------
@@ -1144,10 +1145,11 @@ def _apply_imputed_split(
     A layer that reads its source column from its own file keeps its
     classified renderer and gets a provider subset string listing the
     imputed tokens found in *data_path*, which GDAL applies while
-    reading. Measured 2026-10-26 on cheer-eastern-nc (QGIS 3.44,
-    structure value points, region view): 9.7 s for both layers, 2.8 s
+    reading.
+    Measured 2026-10-26 on cheer-eastern-nc: 9.7 s for both layers, 2.8 s
     for the imputed one alone, against 14 s with LIKE subsets and 28 s
-    for an Observed/Imputed rule tree. A layer whose source column
+    for an Observed/Imputed rule tree (QGIS 3.44, structure value points,
+    region view). A layer whose source column
     comes through a join (a subset string cannot reach it) gets a rule
     renderer instead, one top-level rule each (_split_observed_imputed).
 

@@ -245,8 +245,8 @@ transformation_patterns:
 # conversion; New Hanover resolves to `simple`, as NC OneMap's own key
 # does), linking each account to its NC OneMap lot parcel.
 #
-# Measured 2026-09-13 on the local files (115,028 roll rows, 103,114
-# NC OneMap parcels in the county):
+# Measured 2026-09-13 on US-NC-NHA: the local files (115,028 roll rows,
+# 103,114 NC OneMap parcels in the county):
 # - lot key: 97.7% of roll rows find a OneMap parcel and 94.5% of
 #   OneMap parcels find a roll row; 2,621 parcels carry more than one
 #   account (17,545 rows, the largest lot 327).

@@ -20,8 +20,8 @@
 # is an earlier snapshot of the same sampling year as `Sales2026`
 # (2026-09-24): the same 3,510 Cumberland deeds, with 114 fewer
 # marked usable in the later file, so it is not read.
-# Measured 2026-10-21, statewide rows per file: 2020 204,689; 2021
-# 244,019; 2022 246,261; 2023 194,389; 2024 167,598; 2025 171,949;
+# Measured 2026-10-21 on US-NJ: statewide rows per file, 2020 204,689;
+# 2021 244,019; 2022 246,261; 2023 194,389; 2024 167,598; 2025 171,949;
 # 2026 170,664 (1,399,569 in all); SERIAL-NUMBER is unique across all
 # of them.
 #

@@ -21,10 +21,11 @@
 #   BOS bill of sale (personal property).
 # Left missing: WD, SWD, D, BS, TTD, PRD, CD, GD, AD, BLK (blanket
 # deed, one deed of several lots), CON, AGR, ASN, STA, TTL, OTH, UNW,
-# UNC, UND. Measured 2026-10-22 on the 769,293 sales rows: QC 145,600,
-# PTD 32,969, DTH 26,165, AFF 11,010, MRG 2,447 and the rest smaller
-# among the 0.0 codes; WD 266,335, SWD 150,654 and BLK 93,344 among the
-# missing.
+# UNC, UND.
+# Measured 2026-10-22 on US-CO-AD: on the 769,293 sales rows, QC
+# 145,600, PTD 32,969, DTH 26,165, AFF 11,010, MRG 2,447 and the rest
+# smaller among the 0.0 codes; WD 266,335, SWD 150,654 and BLK 93,344
+# among the missing.
 
 admin_id: US-CO-AD
 stage: curate

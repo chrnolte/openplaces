@@ -25,8 +25,9 @@
 # `source_id: nconemap` at US-NC-CRA points it at parcel_id_admin3
 # (PARNO) instead. PARNO holds the same PID this roll's key uses,
 # spacing included ('9-999   -999'), so both sides resolve under the
-# bundled `no_conv`. Measured 2026-09-12 on the local files: 99.9% of
-# NC OneMap's 59,752 Craven rows find this roll's key, and 99.6% of the
+# bundled `no_conv`.
+# Measured 2026-09-12 on US-NC-CRA: on the local files, 99.9% of NC
+# OneMap's 59,752 Craven rows find this roll's key, and 99.6% of the
 # roll's 59,965 rows find a parcel. Every PID is unique in the roll, so
 # each property links to exactly one parcel.
 #

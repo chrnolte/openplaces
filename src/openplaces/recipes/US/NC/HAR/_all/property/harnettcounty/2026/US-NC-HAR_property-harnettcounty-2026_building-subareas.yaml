@@ -57,7 +57,8 @@
 # ActualArea of FDG and UDG ('Garage, Finished/Unfinished, Detached'),
 # kept out of gross area because a detached garage is usually its own
 # footprint; curate adds it back where the parcel has no separate
-# footprint for it. Measured 2026-09-16: > 0 on 207 properties (0.3% of
+# footprint for it.
+# Measured 2026-09-16 on US-NC-HAR: > 0 on 207 properties (0.3% of
 # residential ones), median 576.
 
 description: >-

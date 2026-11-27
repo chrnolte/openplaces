@@ -50,8 +50,9 @@
 #   gross area because a detached garage is usually its own footprint;
 #   curate adds it back where the parcel has no separate footprint for
 #   it. GAR 'GARAGE' stays in gross area: it is built in the house's
-#   year on 99% of rows (the detached types 25% to 60%). Measured
-#   2026-09-16: > 0 on 10.2% of class A properties, median 560.
+#   year on 99% of rows (the detached types 25% to 60%).
+#   Measured 2026-09-16 on US-TX-VIC: > 0 on 10.2% of class A
+#   properties, median 560.
 # - An area of 0 or 1 reads as missing, as for the other areas.
 # - MEASURED 2026-09-16 on the 2026 export, per property with state
 #   class A (28,149): living_area_sqft 95.3%, p10/p50/p90 954, 1,520,

@@ -496,7 +496,7 @@ def measure_parcel_id_fit(pc: pd.Series, admin_id) -> dict:
     second source, and many places have only one: Maine ships a statewide
     parcel layer and no tax roll. A conversion can still be shown not to
     fit from one side alone, because a pattern written for differently
-    formatted ids matches nothing at all. Measured 2026-08-25, the
+    formatted ids matches nothing at all. Measured 2026-08-25 on US-ME: the
     bundled rules convert 0% of Maine's 557,000 ingested parcel ids,
     whose shape is `S_S-S_S-S` where those rules expect `Sx-Sx_Sx-Sx`.
 

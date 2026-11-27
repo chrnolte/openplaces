@@ -521,8 +521,8 @@ def _derive_nominal_floor(state: CurateState, spec: dict) -> pd.Series | None:
     for this source.
 
     The share is what tells a convention from a cluster, and it is set
-    high on purpose. Measured 2026-09-12 across every ingested source
-    with a price: Florida's SDF sales (1.9M rows) and last sales (10.7M
+    high on purpose. Measured 2026-09-12 on US: across every ingested
+    source with a price, Florida's SDF sales (1.9M rows) and last sales (10.7M
     parcels) carry 11% to 88% of their rows at 0 and 4% to 28% at 100,
     both 0% arm's length; Currituck, Nash and Wilson NC and Wisconsin's
     RETR carry 13% to 46% at 0 and nothing else. Real cheap sales also
@@ -702,7 +702,8 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       geometry -- ``aspect_ratio`` (default), ``length``, ``width``,
       ``orientation`` (long side, degrees counterclockwise from east), or
       ``bearing`` (long side, degrees clockwise from grid north), both
-      modulo 180. Measured on a locally-projected metric copy.
+      modulo 180. The shape is measured on a locally-projected metric
+      copy.
     - ``shared_wall``: in meters, the longest run of each outline's
       boundary that lies on or inside another outline of at least
       ``partner_min_m2`` (default 20 m2): per partner, the length of

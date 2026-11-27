@@ -9,9 +9,10 @@
 # feature_code_tiger) says which kind a row is, G5400 elementary, G5410
 # secondary, G5420 unified.
 #
-# Measured 2026-10-18 on the national file (13,368 rows, EPSG:4269):
-# GEOID unique on every row and identical to the NCES LEAID, so it
-# joins US_built-school-nces-sy2425_school's school_district_id_nces.
+# Measured 2026-10-18 on US: the national file (13,368 rows,
+# EPSG:4269): GEOID unique on every row and identical to the NCES
+# LEAID, so it joins US_built-school-nces-sy2425_school's
+# school_district_id_nces.
 # US-MA: 306 rows (212 unified, 64 elementary, 30 secondary). US-NC:
 # 118 rows, all unified (county and city systems).
 #
