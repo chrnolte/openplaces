@@ -1326,8 +1326,7 @@ def test_the_size_band_tier_prices_a_candidate_by_its_own_lot_size():
 
 def test_a_density_bin_is_no_longer_in_the_default_share_tiers():
     # It needs a roll floor area, which Florida and Wisconsin do not
-    # record at all, so the tier could never fire there. A recipe may
-    # still ask for it by name.
+    # record at all, so the tier could never fire there.
     dense = [
         _row(
             land_use_class='Multi-Family',

@@ -34,7 +34,6 @@ _DEFAULT_RESIDENTIAL_CLASSES = [
 
 _RATE_STATISTICS = ('mean', 'median', 'min', 'max')
 _ESTIMATORS = ('rate', 'land_share', 'hybrid')
-_DEFAULT_DENSITY_BINS = [0.5, 1.0, 1.5, 2.0, 3.0]
 #: Built share of a lot: footprint area over lot area. Bin edges chosen
 #: to separate an empty lot from a suburban house from a covered urban
 #: one; the residual signal it carries is monotonic across all five
@@ -457,13 +456,11 @@ class _Bands:
     formed; `far` is the floor-area ratio the hybrid switch reads."""
 
     far: pd.Series
-    density_bin: pd.Series | None
     size_band: pd.Series | None
     coverage_band: pd.Series | None
 
     def derived(self) -> dict:
         return {
-            '_density_bin': self.density_bin,
             '_size_band': self.size_band,
             '_coverage_band': self.coverage_band,
         }
@@ -475,7 +472,6 @@ def _derive_bands(
     *,
     use_share: bool,
     floor_area_columns: list[str] | None,
-    density_bins: list[float] | None,
     city_column: str,
     size_bands: int,
     footprint_area_column: str,
@@ -484,7 +480,6 @@ def _derive_bands(
     """Floor-area ratio, lot-size band and built coverage per row."""
     parcel_area, has_area = inputs.parcel_area, inputs.has_area
     far = pd.Series(np.nan, index=curated.index)
-    density_bin = None
     present_floor_columns = [
         c for c in (floor_area_columns or []) if c in curated.columns
     ]
@@ -494,8 +489,6 @@ def _derive_bands(
             value = pd.to_numeric(curated[col], errors='coerce')
             floor_sqft = floor_sqft.fillna(value.where(value > 0))
         far = (floor_sqft * _SQFT_TO_M2) / (parcel_area * 10_000).where(has_area)
-        edges = [0.0, *(density_bins or _DEFAULT_DENSITY_BINS), np.inf]
-        density_bin = pd.cut(far, edges, right=False, labels=False)
 
     # Lot-size band and built coverage, the two stratifiers the default
     # share tiers use. Size is cut *inside* the city, so "small" means
@@ -535,7 +528,7 @@ def _derive_bands(
                 right=False,
                 labels=False,
             )
-    return _Bands(far, density_bin, size_band, coverage_band)
+    return _Bands(far, size_band, coverage_band)
 
 
 class _TierLearner:
@@ -986,7 +979,6 @@ def _impute_frame(
     stated_zero_column,
     rate_exponent,
     floor_area_columns,
-    density_bins,
     share_group_tiers,
     size_bands,
     coverage_bins,
@@ -1025,7 +1017,6 @@ def _impute_frame(
         inputs,
         use_share=use_share,
         floor_area_columns=floor_area_columns,
-        density_bins=density_bins,
         city_column=city_column,
         size_bands=size_bands,
         footprint_area_column=footprint_area_column,
@@ -1207,7 +1198,6 @@ def impute_land_value(
     estimator: str = 'rate',
     rate_exponent: float | str = 1.0,
     floor_area_columns: list[str] | None = None,
-    density_bins: list[float] | None = None,
     share_group_tiers: list[list[str]] | None = None,
     size_bands: int = 5,
     coverage_bins: list[float] | None = None,
@@ -1438,9 +1428,9 @@ def impute_land_value(
         and each record prices only its own value, so the shared-lot
         split and the total cap do not apply. Its default tiers are
         class-aware: ``[street, city, land_use]``, ``[city, land_use]``,
-        ``[land_use]``, then ``[city, density bin]`` where
-        *floor_area_columns* supplies a floor area, ``[city,
-        _is_residential]`` and finally ``[_is_residential]``.
+        ``[land_use]``, then ``[city, _size_band, _coverage_band]``,
+        ``[city, _size_band]``, ``[city, _is_residential]`` and finally
+        ``[_is_residential]``.
 
         Why not the rate: a per-area rate ignores how much building
         stands on the lot, and a residential rate learned mostly from
@@ -1471,14 +1461,16 @@ def impute_land_value(
     floor_area_columns : list of str, optional
         Parcel floor-area columns in square feet, first non-missing
         wins (``'land_share'`` and ``'hybrid'``). Divided by lot area
-        they give the
-        floor-area ratio binned by *density_bins*. Omitted or absent
-        columns skip the density tier.
-    density_bins : list of float, optional
-        Floor-area-ratio bin edges for the density tier (default
-        ``[0.5, 1, 1.5, 2, 3]``).
+        they give the floor-area ratio that
+        *share_min_floor_area_ratio* reads.
     size_bands : int, optional
         Quantile bands of lot area, cut inside each city (default 5).
+        The land share groups lots by city and lot-size band; banding by
+        size was chosen on the 2026-09-22 holdout, the count 5 was not
+        measured. With one band (the city alone), largest unit of the 13
+        in plans/rule-thresholds-inventory.md:
+
+        Measured 2026-11-24 on US-WI-VI: one band, 6 imputed values change.
     coverage_bins : list of float, optional
         Bin edges for built coverage, footprint area over lot area
         (default ``[0.02, 0.05, 0.1, 0.2, 0.4]``).
@@ -1640,7 +1632,6 @@ def impute_land_value(
         stated_zero_column=stated_zero_column,
         rate_exponent=rate_exponent,
         floor_area_columns=floor_area_columns,
-        density_bins=density_bins,
         share_group_tiers=share_group_tiers,
         size_bands=size_bands,
         coverage_bins=coverage_bins,

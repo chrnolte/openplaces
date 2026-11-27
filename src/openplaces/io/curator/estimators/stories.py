@@ -308,7 +308,15 @@ def decide_stories(
         or above the processing level, the whole chunk is one unit.
     max_roll_stories : float, optional
         Largest plausible roll count (default 60); larger values and
-        zeros are treated as missing.
+        zeros are treated as missing. *valid_range* does not apply to
+        the roll, so this is the only cap on it: a sentinel such as 99
+        would pass without it. No recipe sets it, and no roll on the 13
+        units of plans/rule-thresholds-inventory.md states more than 60
+        in a filled county:
+
+        Measured 2026-11-24 on US-PA-HU: no cap, 0 of 54,297 rows change.
+
+        To settle: a national count of roll values above 60.
     roll_token : str, optional
         Source token recorded on roll fills (default parcel).
     """
