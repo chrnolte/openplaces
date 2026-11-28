@@ -136,7 +136,7 @@ Anything with a threshold, a priority order or a vote belongs in curate.
 | `resolve_spine` | build the primary geometry, merging sources with IoU dedup |
 | `link_by_id` | join a source by a shared key (`attributes`, `aggregate`, `count` modes) |
 | `link_to_reference` | spatial join to a reference dataset (points, overlay) |
-| `reconcile_attributes` | attach a reference's columns as suffixed evidence |
+| `add_source_evidence` | add each linked source's suffixed evidence columns |
 | `derive_geometry_attributes` | centroid lat/long and area, computed once |
 | `rename_columns` | preserve a raw value before a later step overwrites it |
 | `summarize_footprint_morphology` | per-parcel footprint shape counts |

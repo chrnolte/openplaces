@@ -19,7 +19,7 @@ from shapely.geometry import Polygon
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.group_context import derive_group_count, derive_group_rank
 from openplaces.io.curator.inferers import derive_indicators
-from openplaces.io.curator.reconcilers import resolve_by_vote, suppress_where
+from openplaces.io.curator.reconcilers import empty_selected_cells, resolve_by_vote
 from openplaces.recipe import get_recipe_by_id
 from openplaces.recipe.patches import apply_recipe_patches
 
@@ -49,7 +49,7 @@ DEFAULTS = {
     # The roll's structure description; most rolls publish none.
     'building_style_parcel': None,
     'group_parcel': None,
-    # The roll's class as resolve_occupancy writes it before the vote.
+    # The roll's class as override_occupancy_by_keywords writes it before the vote.
     'occupancy_type_parcel': None,
     'group_footprint_fema': None,
     'occupancy_type_building_nsi': None,
@@ -159,15 +159,15 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
         curated=frame,
     )
     # Every derivation, in pipeline order (the second reads the roll's
-    # class that resolve_occupancy writes, which the fixture supplies),
+    # class that override_occupancy_by_keywords writes, which the fixture supplies),
     # and the suppression a county patch may insert before the vote.
     for step in recipe['pipeline']:
         if step['step'] == 'derive_indicators':
             state = derive_indicators(state, step['indicators'])
-        elif step['step'] == 'suppress_where' and step.get('column') in (
+        elif step['step'] == 'empty_selected_cells' and step.get('column') in (
             STATEMENT_COLUMNS
         ):
-            state = suppress_where(
+            state = empty_selected_cells(
                 state, column=step['column'], indicators=step.get('indicators')
             )
 
@@ -267,8 +267,8 @@ def test_every_vote_input_is_available(recipe):
             if isinstance(value, str):
                 written.add(value)
         # A step that maps reference columns onto the spine provides its
-        # output names (the mapping's values), e.g. link_curated_entity and
-        # apportion_curated_values.
+        # output names (the mapping's values), e.g. copy_from_curated_entity and
+        # split_curated_values.
         columns = step.get('columns')
         if isinstance(columns, dict):
             written.update(str(v) for v in columns.values())
@@ -611,7 +611,8 @@ def test_habitable_home_in_a_community_outscores_the_secondary_residual(recipe):
     # A manufactured-home community's own dwellings are frequently marked
     # non-primary on their parcel. They are homes, not accessory structures,
     # so the paired community/size indicator has to beat Secondary -- this is
-    # the carve-out that used to be a special case inside impute_occupancy_type.
+    # the carve-out that used to be a special case inside
+    # classify_occupancy_by_source_vote.
     result = _classify(
         recipe,
         [
@@ -1193,12 +1194,12 @@ def test_raw_code_does_not_fire_a_text_rule(recipe):
 def test_section_count_survives_the_integer_cast(recipe):
     """resolve_by_vote writes a Categorical, so the recipe casts it back.
 
-    Without n_sections in cast_integers the delivered column would be a
+    Without n_sections in round_to_integers the delivered column would be a
     category of '1'/'2'/'3' strings rather than a number.
     """
-    from openplaces.io.curator.formatters import cast_integers
+    from openplaces.io.curator.formatters import round_to_integers
 
-    step = next(s for s in recipe['pipeline'] if s['step'] == 'cast_integers')
+    step = next(s for s in recipe['pipeline'] if s['step'] == 'round_to_integers')
     assert 'n_sections' in step['columns']
 
     out = _run(
@@ -1219,7 +1220,7 @@ def test_section_count_survives_the_integer_cast(recipe):
         timer=None,
         curated=out,
     )
-    cast = cast_integers(state, step['columns']).curated
+    cast = round_to_integers(state, step['columns']).curated
     assert cast['n_sections'].dtype == 'Int64'
     assert cast['n_sections'].iloc[0] == 2
 

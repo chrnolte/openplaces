@@ -41,7 +41,13 @@ from openplaces.io.readers import (
     get_admin_ids,
     unnarrowable_error,
 )
-from openplaces.io.steps import RowTrail, StepAudit, make_loader, make_register
+from openplaces.io.steps import (
+    RowTrail,
+    StepAudit,
+    find_step,
+    make_loader,
+    make_register,
+)
 from openplaces.recipe import (
     RECIPE_PATCHES_METADATA_KEY,
     apply_recipe_patches,
@@ -953,10 +959,9 @@ class Harmonizer:
                     raise ValueError(
                         f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
                     )
-                fn = _STEP_REGISTRY.get(step_name)
-                if fn is None:
-                    _load_steps()
-                    fn = _STEP_REGISTRY.get(step_name)
+                # A retired name runs its replacement, with a warning,
+                # and the timer and audit carry the current name.
+                step_name, fn = find_step(_STEP_REGISTRY, _load_steps, step_name)
                 if fn is None:
                     raise ValueError(
                         f"Unknown pipeline step: '{step_name}'. "

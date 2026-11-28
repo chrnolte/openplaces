@@ -187,7 +187,7 @@ def decide_dwellings(
                 & ~stated_zero
             )
 
-    # Rule 3. A share that ships as 2 or more: cast_integers rounds
+    # Rule 3. A share that ships as 2 or more: round_to_integers rounds
     # half to even, as numpy's round does, so the test is the shipped
     # value, not the raw share.
     single = pd.Series(False, index=index)

@@ -1,4 +1,4 @@
-"""Tests for `reconcile_values`."""
+"""Tests for `pick_first_value`."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.reconcilers import reconcile_values
+from openplaces.io.curator.reconcilers import pick_first_value
 
 
 def _state(df: pd.DataFrame) -> CurateState:
@@ -27,7 +27,7 @@ def test_first_non_null_source_wins_in_priority_order():
             'value_nsi': [10.0, 20.0],
         }
     )
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df), priority={'value': ['value_parcel', 'value_nsi']}
     ).curated
     assert out['value'].tolist() == [10.0, 5.0]
@@ -35,7 +35,7 @@ def test_first_non_null_source_wins_in_priority_order():
 
 def test_missing_source_column_is_skipped_not_raised():
     df = pd.DataFrame({'value_parcel': [1.0]})
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df), priority={'value': ['value_parcel', 'value_missing']}
     ).curated
     assert out['value'].tolist() == [1.0]
@@ -43,7 +43,7 @@ def test_missing_source_column_is_skipped_not_raised():
 
 def test_provenance_token_is_registered_suffix_for_normal_source():
     df = pd.DataFrame({'value_parcel': [1.0]})
-    out = reconcile_values(_state(df), priority={'value': ['value_parcel']}).curated
+    out = pick_first_value(_state(df), priority={'value': ['value_parcel']}).curated
     assert out['value_source'].iloc[0] == 'parcel'
 
 
@@ -58,7 +58,7 @@ def test_provenance_token_is_imputed_not_suffix_for_imputed_source():
             'land_value_imputed_parcel': [42_000.0],
         }
     )
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df),
         priority={'land_value': ['land_value_parcel', 'land_value_imputed_parcel']},
     ).curated
@@ -73,7 +73,7 @@ def test_real_source_still_wins_over_imputed_when_present():
             'land_value_imputed_parcel': [42_000.0],
         }
     )
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df),
         priority={'land_value': ['land_value_parcel', 'land_value_imputed_parcel']},
     ).curated
@@ -86,9 +86,9 @@ def test_imputed_source_wins_when_listed_first():
     # bfill regardless of which of the two columns is "real" vs. "imputed" --
     # order alone decides. (US_footprint-cheer-2026 no longer reconciles
     # improvement_value this way -- land_value.py now computes the
-    # real-or-imputed coalesce directly, and apportion_curated_values writes
+    # real-or-imputed coalesce directly, and split_curated_values writes
     # the footprint's bare land_value/improvement_value straight from that;
-    # this test just pins down reconcile_values' own priority-order
+    # this test just pins down pick_first_value' own priority-order
     # semantics in isolation.)
     df = pd.DataFrame(
         {
@@ -96,7 +96,7 @@ def test_imputed_source_wins_when_listed_first():
             'improvement_value_imputed_parcel': [380_000.0],
         }
     )
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df),
         priority={
             'improvement_value': [

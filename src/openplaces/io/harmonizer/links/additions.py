@@ -404,7 +404,7 @@ def infer_spine_additions(
 
     The inferred GeoDataFrame is stored in
     ``state.metadata['inferred_from_<recipe_id>']`` for use by
-    ``reconcile_attributes``.
+    ``add_source_evidence``.
 
     Parameters
     ----------

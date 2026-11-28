@@ -31,7 +31,7 @@ entity:
 
 patches: US_building-openplaces-2026
 pipeline_patch:
-  - set: apportion_curated_values
+  - set: split_curated_values
     params:
       lot_area_when_unstated:
         column: use_group_code

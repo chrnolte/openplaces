@@ -104,7 +104,7 @@ def enrich_footprints_from_reference_buildings(
         unit has reference coverage: curate's merge_enrichments skips a
         column it cannot find, and a later curate step reading that
         column then fails, unless the recipe declares it through
-        declare_columns. The columns are the declared `columns`, or, when
+        add_empty_columns. The columns are the declared `columns`, or, when
         the recipe relies on the default of every reference column, the
         reference's own columns whenever it was loaded (*known*). With
         neither, nothing can be written: the reference is absent and its

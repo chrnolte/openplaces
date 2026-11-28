@@ -1,4 +1,4 @@
-"""suppress_where: the equality condition and the indicator condition.
+"""empty_selected_cells: the equality condition and the indicator condition.
 
 Fabricated values only.
 """
@@ -8,7 +8,7 @@ import pytest
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.reconcilers import suppress_where
+from openplaces.io.curator.reconcilers import empty_selected_cells
 from openplaces.recipe import get_recipe_by_id
 
 
@@ -47,7 +47,7 @@ SLIVER = [
 
 
 def test_sliver_cluster_loses_its_value_and_its_source():
-    out = suppress_where(
+    out = empty_selected_cells(
         _state(_footprints()),
         column=['structure_value', 'structure_value_per_area'],
         indicators=SLIVER,
@@ -58,7 +58,7 @@ def test_sliver_cluster_loses_its_value_and_its_source():
 
 
 def test_every_indicator_has_to_hold():
-    out = suppress_where(
+    out = empty_selected_cells(
         _state(_footprints()), column='structure_value', indicators=SLIVER
     ).curated
     # A large cluster and a small ordinary footprint both keep theirs.
@@ -69,7 +69,7 @@ def test_every_indicator_has_to_hold():
 
 def test_equality_condition_still_works():
     df = pd.DataFrame({'n_dwellings': [2.0, 3.0], 'land_use': ['Vacant', 'Retail']})
-    out = suppress_where(
+    out = empty_selected_cells(
         _state(df),
         column='n_dwellings',
         condition_column='land_use',
@@ -81,7 +81,7 @@ def test_equality_condition_still_works():
 
 def test_both_conditions_combine():
     df = _footprints().assign(flag=[True, True, True, False])
-    out = suppress_where(
+    out = empty_selected_cells(
         _state(df),
         column='structure_value',
         condition_column='flag',
@@ -92,11 +92,11 @@ def test_both_conditions_combine():
 
 def test_no_condition_is_an_error():
     with pytest.raises(ValueError, match='condition_column or indicators'):
-        suppress_where(_state(_footprints()), column='structure_value')
+        empty_selected_cells(_state(_footprints()), column='structure_value')
 
 
 def test_absent_column_is_skipped():
-    out = suppress_where(
+    out = empty_selected_cells(
         _state(_footprints()),
         column=['not_there', 'structure_value'],
         indicators=SLIVER,
@@ -110,10 +110,11 @@ def test_the_footprint_recipe_guards_sliver_clusters_after_the_ratio_exists():
     guard = next(
         i
         for i, s in enumerate(steps)
-        if s['step'] == 'suppress_where' and 'structure_value' in str(s.get('column'))
+        if s['step'] == 'empty_selected_cells'
+        and 'structure_value' in str(s.get('column'))
     )
     assert names.index('derive_metrics') < guard
-    assert names.index('apportion_curated_values') < guard
+    assert names.index('split_curated_values') < guard
     assert 'structure_value_per_area' in steps[guard]['column']
 
 
@@ -127,12 +128,12 @@ def test_structure_value_is_the_roll_figure_only():
     """
     steps = get_recipe_by_id('US_building-openplaces-2026')['pipeline']
     for step in steps:
-        if step['step'] == 'reconcile_values':
+        if step['step'] == 'pick_first_value':
             assert 'structure_value' not in step.get('priority', {})
     writers = [
         s
         for s in steps
-        if s['step'] == 'apportion_curated_values'
+        if s['step'] == 'split_curated_values'
         and 'structure_value' in s['columns'].values()
     ]
     assert len(writers) == 1

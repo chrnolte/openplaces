@@ -46,18 +46,19 @@ def _source_token(col: str, default: str | None = None) -> str:
 
 
 @_register(
-    'reconcile_values',
+    'pick_first_value',
     phase='reconcile',
     reads=[lambda args: [c for cols in args['priority'].values() for c in cols]],
     writes=['{priority:keys}', '{priority:keys}_source'],
     decides=['{priority:keys}'],
+    deprecated=('reconcile_values',),
 )
-def reconcile_values(
+def pick_first_value(
     state: CurateState,
     priority: dict[str, list[str]],
     valid_range: dict[str, list[float]] | None = None,
 ) -> CurateState:
-    """Select each canonical value from competing source columns by priority.
+    """Pick each target's first present value from source columns, in order.
 
     For every target feature, the first non-null value across the listed
     source columns wins. Source columns are given by their explicit,
@@ -171,11 +172,11 @@ def _resolve_admin_group(
 
 # Emptying a cell is a decision about it, but the column is decided by
 # the step that wrote it (in the building curate,
-# apportion_curated_values), and a recipe declares one decider per
+# split_curated_values), and a recipe declares one decider per
 # column, so this gate declares only that it writes
 # (plans/account-values-one-deciding-step.md, V1).
 @_register(
-    'suppress_where',
+    'empty_selected_cells',
     phase='reconcile',
     reads=[
         '{condition_column}',
@@ -186,20 +187,21 @@ def _resolve_admin_group(
         ],
     ],
     writes=['{column}', '{column}_source'],
+    deprecated=('suppress_where',),
 )
-def suppress_where(
+def empty_selected_cells(
     state: CurateState,
     column: str | list[str],
     condition_column: str | None = None,
     condition_value: object = True,
     indicators: list[dict] | None = None,
 ) -> CurateState:
-    """Null *column* where a condition holds.
+    """Empty the listed cells, and their source labels, where a condition holds.
 
     A generic evidence-validity gate: some upstream determination (e.g. a
     land-use classification) can invalidate an otherwise-present value
     without itself being a competing source to reconcile against. Distinct
-    from ``reconcile_values`` (picks among several present sources) and
+    from ``pick_first_value`` (picks among several present sources) and
     imputation (fills a *missing* value) — this only removes a value that
     should not have been trusted in the first place.
 
@@ -230,7 +232,7 @@ def suppress_where(
     from openplaces.io.curator.provenance import source_column
 
     if condition_column is None and not indicators:
-        raise ValueError('suppress_where needs a condition_column or indicators.')
+        raise ValueError('empty_selected_cells needs a condition_column or indicators.')
 
     curated = state.curated
     if condition_column is not None and condition_column not in curated.columns:
@@ -260,7 +262,7 @@ def suppress_where(
     state.curated = curated
 
     if state.verbose:
-        print(f'  suppress_where: suppressed {n_suppressed}.')
+        print(f'  empty_selected_cells: suppressed {n_suppressed}.')
     return state
 
 
@@ -357,7 +359,7 @@ def apply_reviewed_corrections(
 # A gate, declared as writing: it empties a value it finds invalid and
 # chooses none. In the parcel curate divide_account_values decides the
 # value columns it gates (plans/account-values-one-deciding-step.md),
-# as suppress_where gates structure_value after its decider.
+# as empty_selected_cells gates structure_value after its decider.
 @_register(
     'null_out_of_range',
     phase='reconcile',
@@ -372,7 +374,7 @@ def null_out_of_range(
 ) -> CurateState:
     """Treat a value outside inclusive plausibility bounds as unknown.
 
-    A validity gate on the value itself, the sibling of ``suppress_where``
+    A validity gate on the value itself, the sibling of ``empty_selected_cells``
     (which gates on another column). An out-of-range value is nulled and
     its provenance sidecar cleared, so imputation may fill and mark it
     rather than a sentinel shipping as a figure.
@@ -433,20 +435,23 @@ def null_out_of_range(
 # covers the parcel proposal, the conflict summary and the review
 # flag it writes under occupancy_type_*.
 @_register(
-    'resolve_occupancy',
+    'override_occupancy_by_keywords',
     phase='infer',
     reads=['occupancy_type', '{parcel_column}'],
     writes=['occupancy_type', 'occupancy_type_*'],
+    deprecated=('resolve_occupancy',),
 )
-def resolve_occupancy(
+def override_occupancy_by_keywords(
     state: CurateState,
     ruleset: str,
     parcel_column: str = 'use_group_combined_parcel',
 ) -> CurateState:
-    """Apply parcel-side corrections over the base occupancy and flag conflicts.
+    """Override the occupancy class where a reviewed keyword names another.
 
-    The base ``occupancy_type`` (from ``impute_occupancy_type``) follows the
-    recipe's evidence priority. This step applies the high-confidence reviewed
+    It also writes the parcel's proposed class, a review flag and a
+    summary of disagreeing sources. The base ``occupancy_type`` (from
+    ``classify_occupancy_by_source_vote``) follows the recipe's evidence
+    priority. This step applies the high-confidence reviewed
     keyword override, records the parcel-proposed class, sets a review flag, and
     summarizes evidence disagreements. All thresholds, columns, and class labels
     come from the recipe ``occupancy`` block; the keyword rules come from
@@ -597,7 +602,8 @@ def resolve_occupancy(
 
     if state.verbose:
         print(
-            f'  resolve_occupancy: {int(apply_kw.sum()):,} keyword overrides, '
+            f'  override_occupancy_by_keywords: {int(apply_kw.sum()):,} '
+            'keyword overrides, '
             f'{int(has_conflict.sum()):,} evidence conflicts, '
             f'{int(review.sum()):,} review-flagged'
             + (f' (report: {report_path})' if report_path is not None else '')
@@ -774,7 +780,7 @@ def _vote_decides(args) -> list[str]:
     it is the column's decider. A vote that keeps the base value where
     no decision is eligible corrects an earlier decision and only
     writes, so the target keeps the decider that set its base
-    (`impute_occupancy_type` for the building class). Listed in
+    (`classify_occupancy_by_source_vote` for the building class). Listed in
     `writes` as well, which the declaration requires of `decides`.
     """
     if args.get('preserve_base', True):

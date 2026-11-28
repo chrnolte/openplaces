@@ -3,7 +3,7 @@
 Covers:
 - classify_parcel_land_use: manufactured-home park vs RV park vs other from the
   assessor keyword + linked-NSI group + footprint-morphology mix.
-- link_curated_entity: joining another curated entity's attributes onto the
+- copy_from_curated_entity: joining another curated entity's attributes onto the
   current one by a shared parcel id.
 - flag_manufactured_home_communities: per-parcel manufactured-home count + flag.
 """
@@ -126,7 +126,7 @@ def test_link_curated_entity_joins_by_parcel_id(monkeypatch):
     monkeypatch.setattr(ev, 'get_output_path', lambda recipe, admin_id: 'parcels.pq')
     monkeypatch.setattr(ev, 'read_parquet', lambda path: parcels)
 
-    out = ev.link_curated_entity(
+    out = ev.copy_from_curated_entity(
         _state(footprints),
         recipe_id='US_parcel-openplaces-2026',
         columns={

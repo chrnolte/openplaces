@@ -250,7 +250,7 @@ def test_the_footprint_spine_is_its_geospine_and_the_counts_fold():
     assert 'persist_links' not in building['pipeline'][0]
     for moved in (
         'classify_footprint_priority',
-        'reconcile_attributes',
+        'add_source_evidence',
         'reconcile_addresses',
         'reconcile_postal_code',
         'impute_postal_city',

@@ -161,7 +161,15 @@ def _apply_patch_operation(pipeline: list, operation: dict, patch_id: str) -> li
     name = operation[kind]
     positions = [i for i, s in enumerate(pipeline) if s.get('step') == name]
     if not positions:
-        raise ValueError(f'{patch_id}: no step {name!r} to {kind} in the pipeline.')
+        # The map of renamed steps lives in io.steps, a layer above
+        # this one, so a patch and its pipeline must spell a renamed
+        # step alike; the message points to the table of renames.
+        raise ValueError(
+            f'{patch_id}: no step {name!r} to {kind} in the pipeline. If the '
+            'step was renamed, write the name the pipeline uses; old and new '
+            "names are listed under 'Renamed steps' in "
+            'src/openplaces/io/curator/README.md.'
+        )
     occurrence = operation.get('occurrence')
     if len(positions) > 1 and occurrence is None:
         raise ValueError(

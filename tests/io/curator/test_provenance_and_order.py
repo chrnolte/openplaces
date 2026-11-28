@@ -10,10 +10,10 @@ import openplaces.io.curator.reconcilers as rec
 import openplaces.path as op_path
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
-from openplaces.io.curator.formatters import cast_integers, order_columns
+from openplaces.io.curator.estimators.occupancy import classify_occupancy_by_source_vote
+from openplaces.io.curator.formatters import order_columns, round_to_integers
 from openplaces.io.curator.imputers import impute_n_dwellings
-from openplaces.io.curator.reconcilers import reconcile_values
+from openplaces.io.curator.reconcilers import pick_first_value
 
 CLASS_MAP = [
     {
@@ -189,7 +189,7 @@ def test_cast_integers_rounds_and_preserves_missing():
     # truncate so early years aren't systematically biased down. A missing
     # value stays missing (pd.NA), not a misleading year 0.
     df = pd.DataFrame({'year_built': [1964.0, 1998.6, None]})
-    out = cast_integers(_state(df), columns=['year_built']).curated
+    out = round_to_integers(_state(df), columns=['year_built']).curated
 
     assert out['year_built'].dtype == 'Int64'
     assert out['year_built'].tolist() == [1964, 1999, pd.NA]
@@ -197,7 +197,7 @@ def test_cast_integers_rounds_and_preserves_missing():
 
 def test_cast_integers_skips_missing_columns():
     df = pd.DataFrame({'other': [1.0]})
-    out = cast_integers(_state(df), columns=['year_built']).curated
+    out = round_to_integers(_state(df), columns=['year_built']).curated
     assert 'year_built' not in out.columns
 
 
@@ -206,8 +206,8 @@ def test_order_columns_drops_transient_manufactured_home_inputs():
     # an earlier step (refine_occupancy_height, the manufactured-home vote
     # respectively) in US_footprint-cheer-2026.yaml, so the recipe drops them
     # here too. (manufactured_home_community, formerly manufactured_home_park,
-    # is a different case: link_curated_entity seeds it from the parcel lane,
-    # impute_occupancy_type consumes that seed, and
+    # is a different case: copy_from_curated_entity seeds it from the parcel lane,
+    # classify_occupancy_by_source_vote consumes that seed, and
     # flag_manufactured_home_communities later overwrites it under the same
     # name with its own refinement -- no drop needed, see that step's
     # docstring.)
@@ -235,7 +235,7 @@ def test_reconcile_records_winning_source():
             'structure_value_building_nsi': [200.0, 50.0],
         }
     )
-    out = reconcile_values(
+    out = pick_first_value(
         _state(df),
         priority={
             'value': ['improvement_value_parcel', 'structure_value_building_nsi']
@@ -260,7 +260,7 @@ def test_impute_records_evidence_source(monkeypatch):
             'group_parcel': ['Single Family', 'Single Family'],
         }
     )
-    out = impute_occupancy_type(
+    out = classify_occupancy_by_source_vote(
         _state(df, recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC})
     ).curated
     assert out['occupancy_type'].astype(object).tolist() == [
@@ -280,7 +280,7 @@ def test_impute_no_longer_gap_fills_single_family_from_dwellings(monkeypatch):
     # decided later, on competing evidence.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     df = pd.DataFrame({'n_dwellings': [1.0]})
-    out = impute_occupancy_type(
+    out = classify_occupancy_by_source_vote(
         _state(df, recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC})
     ).curated
     assert out['occupancy_type'].isna().all()
@@ -355,12 +355,12 @@ def _resolve_frame(**overrides):
 
 
 def test_resolve_correction_tokens(monkeypatch, tmp_path):
-    # resolve_occupancy records only the reviewed-keyword correction. The
+    # override_occupancy_by_keywords records only the reviewed-keyword correction. The
     # value-share and dwelling-count class decisions moved to resolve_by_vote
     # (covered by test_resolve_by_vote), so they leave no occupancy_type_source
     # token here.
     _patch_resolve(monkeypatch, tmp_path, keyword_rules=[])
-    out = rec.resolve_occupancy(
+    out = rec.override_occupancy_by_keywords(
         _state(
             _resolve_frame(improvement_value_parcel=[0.0]),
             recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC},
@@ -382,7 +382,7 @@ def test_resolve_correction_tokens(monkeypatch, tmp_path):
             }
         ],
     )
-    out = rec.resolve_occupancy(
+    out = rec.override_occupancy_by_keywords(
         _state(
             _resolve_frame(use_group_combined_parcel=['MANUFACTURED HOUSING']),
             recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC},

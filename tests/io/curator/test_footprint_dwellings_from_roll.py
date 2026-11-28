@@ -2,7 +2,7 @@
 
 The roll's dwelling count is split over a lot's footprints by the
 weights its improvement value uses, and it is the first lane of
-`n_dwellings_preliminary` in the building recipe's `reconcile_values`
+`n_dwellings_preliminary` in the building recipe's `pick_first_value`
 (the count `decide_dwellings` starts from), ahead of
 Overture's address points and NSI. One Overture point on a building
 whose roll states several units counted one dwelling, so the building's
@@ -114,7 +114,7 @@ def _step(name, occurrence=1, **match):
 
 
 def test_the_recipe_apportions_the_roll_count():
-    step = _step('apportion_curated_values')
+    step = _step('split_curated_values')
     assert step['columns']['n_dwellings'] == 'n_dwellings_parcel'
 
 
@@ -124,7 +124,7 @@ def test_the_roll_count_is_the_first_lane():
     step = next(
         s
         for s in get_recipe_by_id(RECIPE)['pipeline']
-        if s.get('step') == 'reconcile_values'
+        if s.get('step') == 'pick_first_value'
         and 'n_dwellings_preliminary' in (s.get('priority') or {})
     )
     assert step['priority']['n_dwellings_preliminary'] == [
@@ -158,11 +158,12 @@ def test_a_zero_from_the_roll_falls_through_to_overture_and_nsi():
     gate = next(
         s
         for s in get_recipe_by_id(RECIPE)['pipeline']
-        if s.get('step') == 'suppress_where' and s.get('column') == 'n_dwellings_parcel'
+        if s.get('step') == 'empty_selected_cells'
+        and s.get('column') == 'n_dwellings_parcel'
     )
     params = {k: v for k, v in gate.items() if k != 'step'}
-    state = reconcilers.suppress_where(state, **params)
-    state = reconcilers.reconcile_values(
+    state = reconcilers.empty_selected_cells(state, **params)
+    state = reconcilers.pick_first_value(
         state,
         priority={
             'n_dwellings': [

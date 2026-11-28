@@ -166,7 +166,7 @@ def reconcile_addresses_df(
     and mark the row 'reconciled'. Disagreeing sources are excluded from
     selection but summarized in *conflict_column* (null when the sources
     agree or only one is present; see :func:`_summarize_conflicts`). Missing
-    columns are skipped, like in reconcile_values.
+    columns are skipped, like in pick_first_value.
 
     The *_output_col* columns below persist each component's case-formatted
     value (via openplaces.geo.address.format_address_components), matching

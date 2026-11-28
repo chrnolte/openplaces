@@ -217,7 +217,7 @@ def test_random_groups(sort, pair):
     )
 
 
-# map_distinct, with the token functions apportion_curated_values maps.
+# map_distinct, with the token functions split_curated_values maps.
 TOKENS = [
     'parcel.roll',
     'roll',

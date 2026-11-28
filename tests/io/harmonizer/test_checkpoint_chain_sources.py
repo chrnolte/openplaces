@@ -16,7 +16,7 @@ PIPELINE = [
         'links_recipe_id': 'US_footprint-geospine-2026',
         'links_key': 'footprint_id',
     },
-    {'step': 'reconcile_attributes', 'checkpoint': True},
+    {'step': 'add_source_evidence', 'checkpoint': True},
 ]
 RECIPE = {'entity_recipe': 'US_building-geospine-2026', 'pipeline': PIPELINE}
 

@@ -1,4 +1,4 @@
-"""Tests for the weighted consensus vote in impute_occupancy_type.
+"""Tests for the weighted consensus vote in classify_occupancy_by_source_vote.
 
 With occupancy.evidence_mode: vote, each present evidence entry casts its
 weight (default 1.0) for its residential-bucketed class; the heaviest bucket
@@ -14,7 +14,7 @@ import pandas as pd
 import openplaces.io.curator.occupancy as occ_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
+from openplaces.io.curator.estimators.occupancy import classify_occupancy_by_source_vote
 
 CLASS_MAP = [
     {
@@ -84,7 +84,9 @@ def test_cascade_default_unchanged(monkeypatch):
     curated = _frame(
         fema='Multi Family', parcel='Single Family', overture='Single-Family'
     )
-    out = impute_occupancy_type(_state(curated, evidence_mode='cascade')).curated
+    out = classify_occupancy_by_source_vote(
+        _state(curated, evidence_mode='cascade')
+    ).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
     assert out['occupancy_type_source'].iloc[0] == 'fema'
 
@@ -96,7 +98,7 @@ def test_consensus_outvotes_lone_higher_ranked_source(monkeypatch):
     curated = _frame(
         fema='Multi Family', parcel='Single Family', overture='Single-Family'
     )
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
     assert out['occupancy_type_source'].iloc[0] == 'parcel/overture'
 
@@ -111,7 +113,7 @@ def test_two_real_sources_beat_parcel_overture_consensus(monkeypatch):
         parcel='Single Family',
         overture='Single-Family',
     )
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
     assert out['occupancy_type_source'].iloc[0] == 'nsi/fema'
 
@@ -121,7 +123,7 @@ def test_tie_falls_to_earliest_listed_evidence(monkeypatch):
     # tie -> the earlier listed entry (fema) keeps precedence.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame(fema='Multi Family', parcel='Single Family')
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
     assert out['occupancy_type_source'].iloc[0] == 'fema'
 
@@ -130,7 +132,7 @@ def test_half_weight_overture_loses_one_on_one(monkeypatch):
     # fema (1.0) vs overture (0.5) -> real evidence stays.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame(fema='Multi Family', overture='Single-Family')
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
     assert out['occupancy_type_source'].iloc[0] == 'fema'
 
@@ -138,7 +140,7 @@ def test_half_weight_overture_loses_one_on_one(monkeypatch):
 def test_overture_alone_still_fills_the_gap(monkeypatch):
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame(overture='Single-Family')
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
     assert out['occupancy_type_source'].iloc[0] == 'overture'
 
@@ -149,7 +151,7 @@ def test_non_residential_sources_pool_their_votes(monkeypatch):
     # concrete class comes from the first-listed winning voter (nsi's Retail).
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame(nsi='Retail', fema='Warehouse', parcel='Single Family')
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].astype(object).iloc[0] == 'Retail'
     assert out['occupancy_type_source'].iloc[0] == 'nsi/fema'
 
@@ -162,5 +164,5 @@ def test_no_evidence_leaves_the_row_unclassified(monkeypatch):
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame()
     curated['priority_on_parcel'] = ['secondary']
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].isna().all()

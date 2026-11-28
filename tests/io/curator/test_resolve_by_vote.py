@@ -120,7 +120,7 @@ def test_genuine_multifamily_resolves_to_multifamily():
     )
     assert out['occupancy_type'].iloc[0] == 'Multi-Family'
     # The token is the decision's own name, not the bare 'dwellings' this used
-    # to share with impute_occupancy_type's single_family_dwellings rule.
+    # to share with classify_occupancy_by_source_vote's single_family_dwellings rule.
     assert out['occupancy_type_source'].iloc[0] == 'multi_family_dwellings'
 
 

@@ -22,6 +22,8 @@ from openplaces.io.readers import get_admin_ids, get_entities
 from openplaces.io.steps import (
     RowTrail,
     StepAudit,
+    current_step_name,
+    find_step,
     make_loader,
     make_register,
     warn_undeclared_columns,
@@ -267,6 +269,11 @@ class Curator:
             self.skip_steps = {skip_steps}
         else:
             self.skip_steps = set(skip_steps)
+        if self.skip_steps:
+            # A retired name is known once the step modules have
+            # loaded; the loop compares current names.
+            _load_steps()
+            self.skip_steps = {current_step_name(s) for s in self.skip_steps}
         self._timer = None
         self.audit_steps = audit_steps
         self.step_audit = None
@@ -408,6 +415,9 @@ class Curator:
                 raise ValueError(
                     f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
                 )
+            # A retired name runs its replacement, with a warning, and
+            # the timer and audit carry the current name.
+            step_name, fn = find_step(_STEP_REGISTRY, _load_steps, step_name)
             # Skip when disabled in the recipe (`enabled: false`) or named at the
             # call site (`skip_steps=[...]`). `enabled` is a control key, never a
             # step argument.
@@ -415,10 +425,6 @@ class Curator:
                 if self.verbose:
                     print(f'  [skip] {step_name}')
                 continue
-            fn = _STEP_REGISTRY.get(step_name)
-            if fn is None:
-                _load_steps()
-                fn = _STEP_REGISTRY.get(step_name)
             if fn is None:
                 raise ValueError(
                     f"Unknown curate step: '{step_name}'. "

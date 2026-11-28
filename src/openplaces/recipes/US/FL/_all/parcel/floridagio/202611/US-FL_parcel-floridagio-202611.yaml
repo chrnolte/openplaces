@@ -19,7 +19,7 @@
 # (link_to_reference, consolidate_condo_cluster_footprints,
 # infer_spine_additions), the building geospine
 # (split_outlines_at_parcel_lines), the building spine
-# (classify_footprint_priority, reconcile_attributes),
+# (classify_footprint_priority, add_source_evidence),
 # US_building-openplaces-2026 and US_footprint-cheer-2026
 # (collect_link_ids) all moved to this recipe in every unit. `held`
 # is read by all of those paths (core.held_recipes). It is a vintage

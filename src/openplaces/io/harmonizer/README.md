@@ -176,7 +176,7 @@ recipe it restores, so a patched geometry step does not read as stale.
    null = trimmed-out) to the canonical entity-link path
    (`get_entity_link_path`, beside the finer entity's output). Consumed by
    the curate stage's `collect_link_ids` (parcel_id_all) and
-   `apportion_curated_values` (both filter `link.notna()`). Rewritten on the
+   `split_curated_values` (both filter `link.notna()`). Rewritten on the
    reload path too, so stored labels always match the current crosswalk.
    With snapping enabled, a `link_chain` column records the adjustment:
    `'snapped minor'` on removed pairs (their `link` is null, excluded from
@@ -233,7 +233,7 @@ Writes: `spine` (appended inferred footprints with `source = '{entity_type}.{sou
 polygon of each pair overlapping by at least half of the smaller one, including a
 structure nested in a larger building. Runs after `link_to_reference` has written the
 parcel link sidecar, so the sidecar still lists the dropped ids;
-`apportion_curated_values` skips them. Writes: `spine`.
+`split_curated_values` skips them. Writes: `spine`.
 
 ---
 
@@ -254,10 +254,12 @@ Writes: `spine['priority_on_parcel']` (Categorical).
 
 ### C. ATTRIBUTE EVIDENCE (no value selection)
 
-#### `reconcile_attributes` (attributes/reconcile.py)
-Aggregate reference columns to the spine as source-suffixed evidence columns.
+#### `add_source_evidence` (attributes/reconcile.py)
+Add each linked source's source-suffixed evidence columns to the spine,
+changing no existing column (renamed from `reconcile_attributes` on 2026-11-27; see
+"Renamed steps" in `io/curator/README.md`).
 Attribution only — between-source value selection moved to the curate stage
-(`reconcile_values` in `openplaces.io.curator.reconcilers`).
+(`pick_first_value` in `openplaces.io.curator.reconcilers`).
 
 **Recipe params**:
 - `sources` — list of `{recipe_id or entity_type, columns}` dicts
@@ -308,7 +310,7 @@ The value rows above (`address`, `land_value`, `improvement_value`,
 `apportion_reference_values` in `apportion.py` (`area_fraction` =
 intersection_m2 / sum per parcel, or volume-weighted when
 `use_volume_weight=True` and an `n_stories*` column exists). The curate stage
-(`apportion_curated_values` in `io/curator/evidence.py`) calls the same
+(`split_curated_values` in `io/curator/evidence.py`) calls the same
 function on the persisted link sidecar with *curated* reference values, so the
 two stages cannot drift. The building spine recipe requests no parcel value
 columns at harmonize (they would be empty before the roll merge); the building
@@ -323,7 +325,7 @@ footprint so that the value splits between them by area. (Implemented in
 `apportion_reference_values`.)
 
 The curate step adds two rules on top (both recipe options of
-`apportion_curated_values`): `readmit_trimmed_links` lets a trimmed overlap rejoin a
+`split_curated_values`): `readmit_trimmed_links` lets a trimmed overlap rejoin a
 parcel's split when it is larger than all of the parcel's linked overlaps together (a
 building on several lots), and `floor_area_columns`/`stories_column` scale the shares
 down where the mapped footprints cover under a fifth of the ground area the roll
@@ -371,18 +373,18 @@ B. link_to_reference         parcel, spatial_overlay (min_fraction=1/6, min_area
    link_to_reference         NSI, spatial_point, 3-pass (10 m / 100 m parcel-constrained)
    link_to_reference         Overture dwellings, spatial_point, aggregate_multipoint=True
    classify_footprint_priority  primary/secondary/unknown via dwelling > building evidence
-C. reconcile_attributes      attribution only → *_parcel / *_building_nsi / *_overture cols
+C. add_source_evidence       attribution only → *_parcel / *_building_nsi / *_overture cols
 ```
 
 Curate (`US_footprint-cheer-2026.yaml`):
 ```
-reconcile_values         priority pick (n_dwelling_units, year_built, improvement_value)
+pick_first_value         priority pick (n_dwelling_units, year_built, improvement_value)
 derive_metrics           m2, *_per_area
 infer_group_combined     group_parcel + group_building_nsi → *_inferred
 impute_n_dwelling_units  fill nulls from occupancy via _OCC_UNITS
 infer_occupancy_type     occupancy_type cascade (NSI → group_parcel → geometry → units → role)
 merge_enrichments        roof_shape, n_stories (BRAILS evidence)
-resolve_occupancy        parcel keyword ruleset overrides NSI (reviewed only)
+override_occupancy_by_keywords  parcel keyword ruleset overrides NSI (reviewed only)
 refine_occupancy_height  occupancy_type_cheer HAZUS bands
 cast_categoricals        registry-driven Categorical dtypes
 order_columns            final output schema/order
@@ -400,7 +402,7 @@ order_columns            final output schema/order
 | infer_spine_additions | `spine` (appended), `metadata['inferred_from_{rid}']` |
 | resolve_overlaps | `spine` |
 | classify_footprint_priority | `spine['priority_on_parcel']` |
-| reconcile_attributes | `spine[*_suffixed evidence columns]` |
+| add_source_evidence | `spine[*_suffixed evidence columns]` |
 
 ---
 
@@ -410,8 +412,8 @@ order_columns            final output schema/order
 2. **MultiIndex crosswalk** — supports 1:N spine-to-reference relationships for value distribution.
 3. **Dwelling > building evidence hierarchy** (Lochhead Table 4) — dwelling points suppress parcel values for non-dwelling-linked siblings.
 4. **Area-weighted distribution** — `improvement_value` and `n_dwelling_units` split proportionally; `land_value` and `address` assigned to the primary footprint only.
-5. **Priority-based column selection** — `.bfill(axis=1)` on suffixed columns selects first non-null across sources (now the curate `reconcile_values` step).
-6. **Inferred footprints** — parcel-only coverage creates synthetic spine entries, attributed directly (no area weighting) in `reconcile_attributes`.
+5. **Priority-based column selection** — `.bfill(axis=1)` on suffixed columns selects first non-null across sources (now the curate `pick_first_value` step).
+6. **Inferred footprints** — parcel-only coverage creates synthetic spine entries, attributed directly (no area weighting) in `add_source_evidence`.
 
 ---
 
@@ -752,7 +754,7 @@ The step sub-modules:
   recipe, copies every column of another spine's output onto this one
   through a one-to-one key.
 - `attributes/` — attribute source columns to the spine as suffixed evidence
-  columns (`reconcile_attributes`, in `reconcile.py` with the polygon and
+  columns (`add_source_evidence`, in `reconcile.py` with the polygon and
   point attribution in `polygon.py` and `point.py`), assign each
   footprint's parcel priority (`classify_footprint_priority`,
   `priority.py`), build the combined land-use label the parcel classifier
@@ -761,7 +763,7 @@ The step sub-modules:
   (`shared_land.py`, `condo_clusters.py`), estimate property counts and
   attribute dwelling addresses; one package since 2026-09-29 (until then
   a 2,615-line module), every name re-exported by the package file, the
-  step loader importing it explicitly. `reconcile_attributes`'s `columns` list is
+  step loader importing it explicitly. `add_source_evidence`'s `columns` list is
   ordered, and each entry is either a column or a list of alternatives
   **coalesced per row** — the default is `[use_group, use_group_code]` then
   `[use_subgroup, use_subgroup_code]`, so a source whose raw code has no

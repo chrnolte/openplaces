@@ -2,7 +2,7 @@
 
 plans/slow-steps-same-output-faster.md, R5: `vote_dynamic_values` calls
 its row vote once per distinct combination of evidence instead of once
-per row, for every caller (`impute_occupancy_type`, the pooled-vote
+per row, for every caller (`classify_occupancy_by_source_vote`, the pooled-vote
 indicator, `reconcile_land_use`). The previous function is kept below;
 both run on the same fabricated evidence and their winners and tokens
 are compared exactly, including the Python type of every value: rows

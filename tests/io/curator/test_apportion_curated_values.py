@@ -1,4 +1,4 @@
-"""Tests for `apportion_curated_values` (curate-stage parcel value attribution).
+"""Tests for `split_curated_values` (curate-stage parcel value attribution).
 
 The step re-uses the n:m footprint-parcel link sidecar persisted by the
 harmonize overlay (save_link: true) and the shared apportionment
@@ -15,7 +15,7 @@ import pytest
 import openplaces.io.curator.evidence as evidence_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.evidence import apportion_curated_values
+from openplaces.io.curator.evidence import split_curated_values
 from tests.links_patching import patch_links
 
 
@@ -111,7 +111,7 @@ def _apportion(
         _sidecar() if sidecar is None else sidecar,
         _curated_parcels() if ref is None else ref,
     )
-    return apportion_curated_values(
+    return split_curated_values(
         _state(df),
         recipe_id='US_parcel-openplaces-2026',
         columns=columns
@@ -182,9 +182,9 @@ def test_dwelling_linked_footprint_takes_whole_parcel_value(monkeypatch, tmp_pat
 
 def test_unknown_column_semantics_raise():
     # Raised before any IO: dominant-reference attributes belong to
-    # link_curated_entity, not this step.
+    # copy_from_curated_entity, not this step.
     with pytest.raises(ValueError, match='no apportionment semantics'):
-        apportion_curated_values(
+        split_curated_values(
             _state(_curated_footprints()),
             recipe_id='ref',
             columns={'use_group_combined': 'use_group_combined_parcel'},
@@ -319,7 +319,7 @@ def test_missing_sidecar_raises(monkeypatch, tmp_path):
         lambda *a, **k: tmp_path / 'absent.parquet',
     )
     with pytest.raises(FileNotFoundError, match='save_link'):
-        apportion_curated_values(
+        split_curated_values(
             _state(_curated_footprints()),
             recipe_id='ref',
             columns={'improvement_value': 'improvement_value_parcel'},

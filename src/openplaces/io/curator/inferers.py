@@ -777,7 +777,7 @@ from openplaces.io.curator.estimators.manufactured_homes import (  # noqa: E402
     flag_manufactured_home_communities,
 )
 from openplaces.io.curator.estimators.occupancy import (  # noqa: E402
-    impute_occupancy_type,
+    classify_occupancy_by_source_vote,
 )
 from openplaces.io.curator.estimators.stories import (  # noqa: E402
     derive_stories_from_height,
@@ -793,7 +793,7 @@ __all__ = [
     'derive_metrics',
     'derive_indicators',
     'derive_stories_from_height',
-    'impute_occupancy_type',
+    'classify_occupancy_by_source_vote',
     'classify_manufactured_homes',
     'flag_manufactured_home_communities',
     'derive_group_class_share',

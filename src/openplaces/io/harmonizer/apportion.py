@@ -4,9 +4,9 @@ Single implementation of "spread a reference polygon's values (e.g. a
 parcel's improvement value) across the spine entities overlapping it",
 following Lochhead et al. (2026, Table 4). Used by both pipeline stages:
 
-- harmonize: :func:`~openplaces.io.harmonizer.attributes.reconcile_attributes`
+- harmonize: :func:`~openplaces.io.harmonizer.attributes.add_source_evidence`
   feeds it the in-memory identity overlay;
-- curate: the ``apportion_curated_values`` step feeds it the link sidecar
+- curate: the ``split_curated_values`` step feeds it the link sidecar
   persisted by the harmonize overlay (``save_link: true``), joined to the
   *curated* reference entity's values.
 
@@ -66,7 +66,7 @@ def secondary_pairs_from(column: pd.Series | None) -> set[tuple]:
 
 # Reference columns this module knows how to apportion; anything else is the
 # caller's business (e.g. the registry-driven generic aggregation in
-# reconcile_attributes).
+# add_source_evidence).
 APPORTIONED_VALUE_COLUMNS = (
     'improvement_value',
     'n_dwellings',

@@ -61,8 +61,8 @@ pipeline:
   # The building geospine's rows and its own links: the parcel overlay
   # its split re-keyed to the buildings at the (footprint, parcel) pair
   # and wrote beside its output, where the curate steps that read a
-  # link by the curated entity's geospine (link_curated_entity,
-  # apportion_curated_values, collect_link_ids) find it, and the NSI
+  # link by the curated entity's geospine (copy_from_curated_entity,
+  # split_curated_values, collect_link_ids) find it, and the NSI
   # and Overture point links. Which links exist, and with what
   # thresholds, is read from the geospine's own pipeline, so the YAMLs
   # cannot drift (plans/buildings-from-parcel-pieces.md, step 2).
@@ -105,7 +105,7 @@ pipeline:
   # checkpoint: the spine after this step is persisted; a rerun whose
   # changes sit in later steps restores it instead of re-running the
   # load and reconcile prefix (about two-thirds of an attribute rerun).
-  - step: reconcile_attributes
+  - step: add_source_evidence
     checkpoint: true
     sources:
       - entity_type: parcel

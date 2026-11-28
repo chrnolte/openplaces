@@ -21,7 +21,7 @@ import pytest
 import openplaces.io.curator.evidence as evidence_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.evidence import apportion_curated_values
+from openplaces.io.curator.evidence import split_curated_values
 from openplaces.io.curator.imputers import impute_from_group_statistic
 from openplaces.io.curator.provenance import is_imputed, mark_imputed, record_sources
 from tests.links_patching import patch_links
@@ -109,7 +109,7 @@ class TestApportionmentPropagation:
 
     def _apportion(self, monkeypatch, tmp_path, footprints, sidecar, ref):
         self._patch(monkeypatch, tmp_path, sidecar, ref)
-        return apportion_curated_values(
+        return split_curated_values(
             _state(footprints),
             recipe_id='US_parcel-openplaces-2026',
             columns={'improvement_value_imputed': 'structure_value'},

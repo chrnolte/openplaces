@@ -77,7 +77,7 @@ is needed — which is another reason a mapped column must exist in the registry
 Curated outputs are consumed by other curated outputs.
 `US_footprint-cheer-2026` pulls `use_group_combined`, `land_use_class` and
 `manufactured_home_community` from `US_parcel-openplaces-2026` through
-`link_curated_entity`. **Re-curating parcels makes curated footprints stale**,
+`copy_from_curated_entity`. **Re-curating parcels makes curated footprints stale**,
 so the parcel lane runs first and the footprint lane follows.
 
 Curated per-unit files write to `data_dir: core`, never `share`. A curated

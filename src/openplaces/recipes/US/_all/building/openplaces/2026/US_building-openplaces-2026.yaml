@@ -192,7 +192,7 @@ pipeline:
   # CHEER states. Declared all-null so the vote and downstream readers
   # keep their missing-column strictness for everything else. No-op
   # wherever the evidence exists.
-  - step: declare_columns
+  - step: add_empty_columns
     columns:
       - occupancy_type_building_nsi
       - group_building_nsi
@@ -222,13 +222,13 @@ pipeline:
 
   # Link the curated parcel attributes (occupancy, use group, and community
   # flags) by parcel_id to drive the downstream reconciliation and inference
-  # steps. manufactured_home_community seeds impute_occupancy_type below
+  # steps. manufactured_home_community seeds classify_occupancy_by_source_vote below
   # with the parcel lane's one-pass classification; flag_manufactured_home_
   # communities later intentionally overwrites it under the same name with
   # the richer, footprint-occupancy-based refinement (see that step's
   # docstring) -- not a name collision to fix, the final value there is
   # meant to supersede this seed.
-  - step: link_curated_entity
+  - step: copy_from_curated_entity
     recipe_id: US_parcel-openplaces-2026
     columns:
       use_group_combined: use_group_combined_parcel
@@ -261,7 +261,7 @@ pipeline:
   # one (building_style is mapped for a handful of NC counties), so
   # the column is allowed to be absent from a county's curated parcels
   # without relaxing the strictness of the link above.
-  - step: link_curated_entity
+  - step: copy_from_curated_entity
     recipe_id: US_parcel-openplaces-2026
     allow_missing: true
     columns:
@@ -282,7 +282,7 @@ pipeline:
   #   non-secondary footprints linked to it.
   # - imputed land and improvement values are directly mapped to canonical land_value and
   #   structure_value columns without extra reconciliation.
-  - step: apportion_curated_values
+  - step: split_curated_values
     recipe_id: US_parcel-openplaces-2026
     columns:
       improvement_value: improvement_value_parcel
@@ -302,7 +302,7 @@ pipeline:
       # the weights the improvement value uses (floor area or overlap,
       # dwelling-point suppression, none on a secondary, whose share
       # passes to the others). It is the first lane of n_dwellings in
-      # reconcile_values below, so a building's value per dwelling is
+      # pick_first_value below, so a building's value per dwelling is
       # its lot's improvement per unit wherever the roll states units.
       n_dwellings: n_dwellings_parcel
     land_use_column: land_use_class
@@ -353,8 +353,8 @@ pipeline:
   # The denominator of the manufactured-home value test: the parcel's own
   # value, undivided.
   #
-  # It has to be pulled AFTER apportion_curated_values, under names that
-  # step does not write. The `link_curated_entity` above already maps the
+  # It has to be pulled AFTER split_curated_values, under names that
+  # step does not write. The `copy_from_curated_entity` above already maps the
   # parcel's undivided improvement_value/land_value, but onto
   # `improvement_value_parcel`/`land_value_parcel` -- the very names
   # apportionment then overwrites with each building's apportioned share.
@@ -380,7 +380,7 @@ pipeline:
   # parcel lacks. The two names are
   # fixed here, so the misspelling the strict default guards against
   # cannot hide behind it.
-  - step: link_curated_entity
+  - step: copy_from_curated_entity
     recipe_id: US_parcel-openplaces-2026
     allow_missing: true
     columns:
@@ -405,7 +405,7 @@ pipeline:
   # filter_numeric_at_least on area_ha), which the harmonized building
   # and the overlay can still name (transition review 3.5). A building
   # whose dominant lot was dropped keeps no parcel_id.
-  - step: keep_curated_ids
+  - step: empty_unknown_ids
     recipe_id: US_parcel-openplaces-2026
     columns: [parcel_id, parcel_id_all]
 
@@ -457,7 +457,7 @@ pipeline:
           roof_shape_confidence_3_building_cheer: roof_shape_confidence_3
           # Kept as evidence like foundation above: canonical
           # construction_type is reconciled against NSI below, and
-          # reconcile_values reads evidence columns, not values a
+          # pick_first_value reads evidence columns, not values a
           # merge already folded into the canonical name.
           construction_type_building_cheer: construction_type_building_cheer
           has_garage_building_cheer: has_garage
@@ -536,7 +536,7 @@ pipeline:
 
   # Suppress Overture dwelling counts on parcels that have been curated
   # as vacant (trusting the multi-source parcel land-use classification).
-  - step: suppress_where
+  - step: empty_selected_cells
     column: n_dwellings_overture
     condition_column: land_use_class_parcel
     condition_value: Vacant
@@ -546,13 +546,13 @@ pipeline:
   # UNITS at 0) passes 0 to its footprints (one that states nothing
   # passes nothing), and a secondary receives 0 by rule. A share of one half or less (a lot of one
   # stated dwelling and two or three dwelling buildings) rounds to no
-  # dwelling (cast_integers rounds half to even) on a building that
+  # dwelling (round_to_integers rounds half to even) on a building that
   # holds one. Both are emptied, and the footprint falls through to
   # Overture and NSI as before.
   # Measured 2026-10-24 on the 34 units of the boston page (scratch
   # curate): with only zeros emptied, 1,254 of 166,763 footprints taking
   # the roll's share rounded to 0 dwellings.
-  - step: suppress_where
+  - step: empty_selected_cells
     column: n_dwellings_parcel
     indicators:
       - {type: numeric_at_most, column: n_dwellings_parcel, max: 0.5}
@@ -585,7 +585,7 @@ pipeline:
   #   has no point.
   # Reconcile phase: runs before any vote (moved ahead of the Overture
   # vote 2026-09-29; neither reads the other's output).
-  - step: reconcile_values
+  - step: pick_first_value
     priority:
       n_dwellings_preliminary:
         [n_dwellings_parcel, n_dwellings_overture, n_dwellings_nsi]
@@ -636,7 +636,7 @@ pipeline:
   # Since 2026-11-11 a cluster footprint is always a real outline over 9
   # or more lots, so this guard should find none; it stays as a check.
   # After derive_metrics, which computes both area_m2 and the ratio.
-  - step: suppress_where
+  - step: empty_selected_cells
     phase_override: reads area_m2 and the ratio derive_metrics computes
     column: [structure_value, structure_value_per_area]
     indicators:
@@ -704,7 +704,7 @@ pipeline:
 
       # Reviewed-only: unreviewed ruleset rows (MODULAR, bare MH, COMMERCIAL,
       # RETAIL) stay out of the class decision, preserving the gate
-      # resolve_occupancy's keyword override already applied.
+      # override_occupancy_by_keywords's keyword override already applied.
       - output: occupancy_keyword_class
         type: ruleset_class
         # The crosswalked vocabulary only. Reading the coalesced column
@@ -797,10 +797,10 @@ pipeline:
     target: n_dwellings_preliminary
 
   # Determine base occupancy class via weighted consensus voting and fallback rules.
-  - step: impute_occupancy_type
+  - step: classify_occupancy_by_source_vote
 
   # Apply keyword overrides, value-share flags, and conflict summaries.
-  - step: resolve_occupancy
+  - step: override_occupancy_by_keywords
     ruleset: parcel-occupancy-keywords.csv
 
   # The roll's site-built statement, as the Manufactured Home vote's
@@ -825,7 +825,7 @@ pipeline:
   # reconcile step kept here, after the first votes, because the
   # indicators above read year_built and n_stories as they stand at that
   # point; moving these two reconciles up changes what the votes see.
-  - step: reconcile_values
+  - step: pick_first_value
     phase_override: >-
       the indicators derived above read year_built and n_stories before
       these lanes are reconciled; moving the step changes the vote
@@ -898,7 +898,7 @@ pipeline:
     min_rows: 100
 
   # Reconcile canonical roof shape, foundation and construction type.
-  - step: reconcile_values
+  - step: pick_first_value
     phase_override: >-
       kept where it ran when it also reconciled n_stories, after the
       first votes; moving it is a change of its own to measure
@@ -922,7 +922,7 @@ pipeline:
       #
       # Residue to know about: ~2% of rows carry a joined value such as
       # 'Slab; Crawl', where several NSI points land on one footprint with
-      # differing foundations. reconcile_attributes joins every string
+      # differing foundations. add_source_evidence joins every string
       # column it is not specifically handling, ignoring the registry's
       # per-attribute aggregation (it honors it for numeric columns) --
       # the same reason address_number_dwelling_overture and
@@ -1143,8 +1143,8 @@ pipeline:
 
   # Question 2. Each decision is gated by question 1's answer, so the three
   # classes partition cleanly instead of competing across populations.
-  # base_output snapshots the incoming class (from impute_occupancy_type /
-  # resolve_occupancy) so the residual decisions below can refuse to
+  # base_output snapshots the incoming class (from classify_occupancy_by_source_vote /
+  # override_occupancy_by_keywords) so the residual decisions below can refuse to
   # overwrite a positively non-residential base -- permits confirmed
   # ~2,650 New Hanover footprints (churches, retail, warehouses) that the
   # Single-Family residual had claimed, an error CHEER cannot see because
@@ -2024,7 +2024,7 @@ pipeline:
   # values look like, so the section count arrives here as a category
   # of '1'/'2'/'3' rather than as a number. n_stories is not here:
   # decide_stories writes it as a float that keeps a roll's half story.
-  - step: cast_integers
+  - step: round_to_integers
     columns: [year_built, n_dwellings, n_sections]
 
   # Drop transient intermediate/evidence columns and enforce canonical schema order.

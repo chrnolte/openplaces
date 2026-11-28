@@ -156,6 +156,29 @@ repository.
   claim's date. A stale number is documentation debt to re-measure, never
   a reason to delete the number.
 
+## Step and function names
+- A step or function name starts with a verb that says its main effect
+  on the table (maintainer's rule, 2026-11-27). The test: write the one
+  sentence that says what it does; if that sentence's verb is not the
+  name's verb, the name is wrong. Side outputs go in its docstring and
+  its `writes` declaration and do not by themselves call for a
+  separate step.
+- The verb names the effect, not the intent or pipeline jargon
+  (`resolve`, `reconcile`, `derive`, `enrich`, `adopt`). There is no
+  closed verb list: reuse a verb already in use for the same kind of
+  effect before coining one (verbs in use: `io/curator/README.md`).
+- A generic mechanism is named for the mechanism and takes the column
+  as a parameter (`pick_first_value`); a step that reads one fact's
+  settings carries the fact's name (`override_occupancy_by_keywords`).
+  One general step with a parameter beats several near-identical ones;
+  never merge steps whose rules differ.
+- A step that writes only into missing cells says `fill` (`impute` for
+  an estimate marked imputed). No value change hides behind a format
+  verb: `cast` changes types only, rounding is `round`.
+- A rename keeps the old name registered as deprecated
+  (`deprecated=` on `_register`) and adds a row to "Renamed steps" in
+  `io/curator/README.md`.
+
 ## Directory structure
 Write all plans to ``<repository_root>/plans/``. Never write a plan outside the
 repository, not to a home directory and not to whatever scratch, notes, or plan

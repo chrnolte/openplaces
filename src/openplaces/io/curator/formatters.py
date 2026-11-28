@@ -36,9 +36,14 @@ def _categorical_columns(args) -> list[str]:
 
 
 # Fills only the columns that are absent, so it writes, never decides.
-@_register('declare_columns', phase='gather', writes=['{columns}'])
-def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
-    """Ensure the listed columns exist, writing missing ones as all-null.
+@_register(
+    'add_empty_columns',
+    phase='gather',
+    writes=['{columns}'],
+    deprecated=('declare_columns',),
+)
+def add_empty_columns(state: CurateState, columns: list[str]) -> CurateState:
+    """Add each listed column that is absent, as an empty column.
 
     A recipe that runs across regions with uneven reference coverage
     (e.g. a footprint source or point inventory that was never built for
@@ -64,7 +69,7 @@ def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
         curated[col] = np.nan
     if added and state.verbose:
         print(
-            f'  declare_columns: {len(added)} absent column(s) '
+            f'  add_empty_columns: {len(added)} absent column(s) '
             f'declared null: {", ".join(added)}'
         )
     return state
@@ -195,16 +200,23 @@ def cast_categoricals(state: CurateState) -> CurateState:
     return state
 
 
-@_register('cast_integers', phase='format', reads=['{columns}'], writes=['{columns}'])
-def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
-    """Cast numeric columns to a nullable integer dtype.
+@_register(
+    'round_to_integers',
+    phase='format',
+    reads=['{columns}'],
+    writes=['{columns}'],
+    deprecated=('cast_integers',),
+)
+def round_to_integers(state: CurateState, columns: list[str]) -> CurateState:
+    """Round numeric columns to whole numbers, stored as nullable integers.
 
-    Unlike ``fill_missing_numeric``, this does not fill missing values with a
-    placeholder — a row with no evidence stays missing (``pd.NA``), not a
-    misleading 0 (e.g. year 0). Values are rounded before casting, since a
-    reconciled column can legitimately be non-integer (e.g. a fallback median
-    across several buildings) even though the canonical attribute is a whole
-    number.
+    pandas rounds half to even (2.5 becomes 2, 3.5 becomes 4), and text
+    that is not a number becomes missing. Unlike `fill_missing_numeric`,
+    this does not fill missing values with a placeholder: a row with no
+    evidence stays missing (`pd.NA`), not a misleading 0 (a year 0).
+    The rounding is a value change, not only a type change: a chosen
+    column can be non-integer (a fallback median across several
+    buildings) even though the canonical attribute is a whole number.
 
     Parameters
     ----------

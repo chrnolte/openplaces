@@ -57,7 +57,7 @@ pipeline:
       address: address_original
       city: city_original
 
-  - step: reconcile_attributes
+  - step: add_source_evidence
     sources:
       - recipe_id: dwelling-overture-2025
         columns: [address_street, address_number, postal_code, city]
@@ -158,7 +158,7 @@ pipeline:
   # Attach the modal NSI building group per parcel (group_building_nsi), the
   # linked-data signal the parcel land-use classifier votes on -- from the
   # point crosswalk the geospine persisted.
-  - step: reconcile_attributes
+  - step: add_source_evidence
     sources:
       - recipe_id: US_building-nsi-2026
         # structure_value is required: reconcile picks each parcel's dominant NSI
@@ -169,7 +169,7 @@ pipeline:
 
   # Assign the dominant FEMA occupancy class by overlap area, from the
   # overlay crosswalk the geospine persisted.
-  - step: reconcile_attributes
+  - step: add_source_evidence
     checkpoint: true
     sources:
       - recipe_id: US_footprint-fema-2023

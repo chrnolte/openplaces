@@ -297,11 +297,14 @@ def _run_lanes(pipeline, frame):
     fill, the inputs every later vote reads."""
     _load_steps()
     state = _state(frame.copy(), get_recipe_by_id(BUILDING_RECIPE))
-    names = ['suppress_where', 'reconcile_values', 'resolve_by_vote']
+    names = ['empty_selected_cells', 'pick_first_value', 'resolve_by_vote']
     started = False
     for entry in pipeline:
         name = entry.get('step')
-        if name == 'suppress_where' and entry.get('column') == 'n_dwellings_overture':
+        if (
+            name == 'empty_selected_cells'
+            and entry.get('column') == 'n_dwellings_overture'
+        ):
             started = True
         if not started:
             continue
@@ -325,7 +328,7 @@ def test_the_vote_inputs_are_the_same_as_before_the_move():
     before = copy.deepcopy(now)
     for entry in before:
         priority = entry.get('priority') or {}
-        if entry.get('step') == 'reconcile_values' and (
+        if entry.get('step') == 'pick_first_value' and (
             'n_dwellings_preliminary' in priority
         ):
             entry['priority'] = {

@@ -73,13 +73,14 @@ def read_curated_reference(recipe_id, admin_id, ref_key) -> pd.DataFrame:
 
 
 @_register(
-    'link_curated_entity',
+    'copy_from_curated_entity',
     phase='gather',
     reads=['{entity_key}'],
     writes=['{columns:values}'],
     reads_from={'recipe_id': ['{columns:keys}', '{ref_key}']},
+    deprecated=('link_curated_entity',),
 )
-def link_curated_entity(
+def copy_from_curated_entity(
     state: CurateState,
     recipe_id: str,
     columns: dict,
@@ -87,7 +88,7 @@ def link_curated_entity(
     ref_key: str = 'parcel_id',
     allow_missing: bool = False,
 ) -> CurateState:
-    """Join another curated entity's attributes onto the current one by a shared id.
+    """Copy a curated entity's values whole onto every row sharing its id.
 
     Reads the output of a curate-stage recipe and maps each named column onto
     the current entity (1:many ref -> entity) on the id key. This is how, e.g.,
@@ -133,7 +134,9 @@ def link_curated_entity(
     curated = state.curated
     if entity_key not in curated.columns:
         if state.verbose:
-            print(f"  link_curated_entity: entity has no '{entity_key}'; skipping.")
+            print(
+                f"  copy_from_curated_entity: entity has no '{entity_key}'; skipping."
+            )
         return state
 
     ref = read_curated_reference(recipe_id, state.admin_id, ref_key)
@@ -157,7 +160,7 @@ def link_curated_entity(
     if state.verbose:
         matched = int(key.isin(set(lookup.index)).sum())
         print(
-            f'  link_curated_entity: {matched:,}/{len(curated):,} rows '
+            f'  copy_from_curated_entity: {matched:,}/{len(curated):,} rows '
             f'matched {recipe_id} ({len(columns)} columns).'
         )
     state.curated = curated
@@ -387,7 +390,7 @@ def _stated_built_area(
     the columns gets its own area instead: its improvement value is
     read as spread over the lot, so outlines covering a small part of
     the lot keep only that part (see the *lot_area_when_unstated*
-    option of :func:`apportion_curated_values`). A record that states
+    option of :func:`split_curated_values`). A record that states
     floor area but no story count still states nothing.
     """
     from openplaces.core.provenance import is_imputed
@@ -602,7 +605,7 @@ def _floors_per_entity(state, index, floor_weight: dict) -> pd.Series | None:
     }
     if unknown or 'recipe_id' not in floor_weight:
         raise ValueError(
-            'apportion_curated_values: floor_weight takes recipe_id, '
+            'split_curated_values: floor_weight takes recipe_id, '
             'stories_column, height_column, story_height_m, '
             'unmeasured_max_m2, entity_recipe and key; got '
             f'{sorted(floor_weight)}.'
@@ -785,7 +788,7 @@ def _secondary_pairs_off_complexes(
 # nested recipe_id names; reads_from takes a top-level parameter only,
 # so that read is not declared.
 @_register(
-    'apportion_curated_values',
+    'split_curated_values',
     phase='gather',
     reads=[
         '{priority_column}',
@@ -805,8 +808,9 @@ def _secondary_pairs_off_complexes(
             '{stories_column}',
         ]
     },
+    deprecated=('apportion_curated_values',),
 )
-def apportion_curated_values(
+def split_curated_values(
     state: CurateState,
     recipe_id: str,
     columns: dict,
@@ -827,9 +831,9 @@ def apportion_curated_values(
     lot_area_when_unstated: dict | None = None,
     floor_weight: dict | None = None,
 ) -> CurateState:
-    """Apportion a curated reference entity's values over the n:m link sidecar.
+    """Split a curated reference entity's values among the rows it links to.
 
-    The value-column counterpart of :func:`link_curated_entity`: instead of
+    The value-column counterpart of :func:`copy_from_curated_entity`: instead of
     mapping each entity's dominant reference's undivided value, this re-uses
     the n:m overlay persisted by the harmonize stage (``link_to_reference``
     with ``save_link: true``) and the shared apportionment implementation
@@ -852,7 +856,7 @@ def apportion_curated_values(
     columns : dict
         Mapping of ``{ref_column: entity_column}``. Every ref column must be
         one the shared apportionment knows
-        (``APPORTIONED_VALUE_COLUMNS``); use :func:`link_curated_entity`
+        (``APPORTIONED_VALUE_COLUMNS``); use :func:`copy_from_curated_entity`
         for plain dominant-reference attributes.
     entity_type : str, optional
         Reference entity type; resolves the link sidecar the same way the
@@ -971,9 +975,9 @@ def apportion_curated_values(
     unknown = [c for c in columns if c not in APPORTIONED_VALUE_COLUMNS]
     if unknown:
         raise ValueError(
-            f'apportion_curated_values: no apportionment semantics for '
+            f'split_curated_values: no apportionment semantics for '
             f'{unknown}; supported: {list(APPORTIONED_VALUE_COLUMNS)}. '
-            'Use link_curated_entity for dominant-reference attributes.'
+            'Use copy_from_curated_entity for dominant-reference attributes.'
         )
 
     ref = read_curated_reference(recipe_id, state.admin_id, ref_key)
@@ -985,7 +989,7 @@ def apportion_curated_values(
                 np.nan, index=state.curated.index, dtype='float64'
             )
         if state.verbose:
-            print(f'  apportion_curated_values: {recipe_id} has no rows; skipped.')
+            print(f'  split_curated_values: {recipe_id} has no rows; skipped.')
         return state
     # A ref column can be legitimately absent when its source never provided
     # that attribute (e.g. a parcel source with no improvement_value split);
@@ -996,7 +1000,7 @@ def apportion_curated_values(
     missing = [c for c in columns if c not in ref.columns]
     if missing and state.verbose:
         print(
-            f'  apportion_curated_values: {missing} missing from curated '
+            f'  split_curated_values: {missing} missing from curated '
             f"reference '{recipe_id}'; skipping."
         )
     ref_values = (
@@ -1024,7 +1028,7 @@ def apportion_curated_values(
                 )
         elif state.verbose:
             print(
-                f'  apportion_curated_values: {land_use_column!r} missing from '
+                f'  split_curated_values: {land_use_column!r} missing from '
                 f"curated reference '{recipe_id}'; skipping the land-use rules."
             )
 
@@ -1036,7 +1040,7 @@ def apportion_curated_values(
         ref_key=ref_key,
         readmit_trimmed_links=readmit_trimmed_links,
         min_trimmed_area_m2=min_trimmed_area_m2,
-        step='apportion_curated_values',
+        step='split_curated_values',
     )
     # A link naming a parcel the curated table lacks passes it no value.
     # Some are expected (parcels a curate filter dropped); a large count
@@ -1045,7 +1049,7 @@ def apportion_curated_values(
     unknown = ~pairs['parcel_id'].isin(ref_values.index)
     if unknown.any():
         warnings.warn(
-            f'apportion_curated_values: {int(unknown.sum()):,d} of {len(pairs):,d} '
+            f'split_curated_values: {int(unknown.sum()):,d} of {len(pairs):,d} '
             f'links in {state.admin_id} name '
             f'{pairs.loc[unknown, "parcel_id"].nunique():,d} parcels absent from '
             'the curated reference; their values are not apportioned.',
@@ -1058,13 +1062,13 @@ def apportion_curated_values(
         unknown_keys = set(rule) - {'column', 'pattern', 'max_mapped_m2'}
         if unknown_keys or 'column' not in rule or 'pattern' not in rule:
             raise ValueError(
-                'apportion_curated_values: lot_area_when_unstated takes '
+                'split_curated_values: lot_area_when_unstated takes '
                 "'column', 'pattern' and optionally 'max_mapped_m2'; got "
                 f'{sorted(rule)}.'
             )
         if rule['column'] not in ref.columns:
             raise ValueError(
-                f'apportion_curated_values: lot_area_when_unstated column '
+                f'split_curated_values: lot_area_when_unstated column '
                 f'{rule["column"]!r} is not on the curated reference.'
             )
         selector = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key)
@@ -1178,7 +1182,7 @@ def apportion_curated_values(
     if state.verbose:
         n_linked = curated.index.isin(set(pairs[id_col])).sum()
         print(
-            f'  apportion_curated_values: {n_linked:,}/{len(curated):,} rows '
+            f'  split_curated_values: {n_linked:,}/{len(curated):,} rows '
             f'linked to {recipe_id} ({len(columns)} columns).'
         )
     state.curated = curated
@@ -1331,19 +1335,20 @@ def collect_link_ids(
 # Blanks the ids another curate dropped and keeps the rest, so it
 # writes its columns and decides none.
 @_register(
-    'keep_curated_ids',
+    'empty_unknown_ids',
     phase='gather',
     reads=['{columns}'],
     writes=['{columns}'],
     reads_from={'recipe_id': ['{ref_key}']},
+    deprecated=('keep_curated_ids',),
 )
-def keep_curated_ids(
+def empty_unknown_ids(
     state: CurateState,
     recipe_id: str,
     columns: tuple[str, ...] | list[str] = ('parcel_id', 'parcel_id_all'),
     ref_key: str = 'parcel_id',
 ) -> CurateState:
-    """Keep only ids that name a row of another curated output.
+    """Empty ids that name no row of another curated output.
 
     The parcel curate drops some harmonized parcels (slivers under
     1 m2, `filter_numeric_at_least` on ``area_ha``), but a building or
@@ -1409,7 +1414,7 @@ def keep_curated_ids(
 
     if state.verbose:
         detail = ', '.join(f'{c} {n:,}' for c, n in removed.items())
-        print(f'  keep_curated_ids: rows changed: {detail or "none"}.')
+        print(f'  empty_unknown_ids: rows changed: {detail or "none"}.')
     state.curated = curated
     return state
 

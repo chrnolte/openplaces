@@ -30,7 +30,7 @@ pipeline_patch:
   - discard: merge_enrichments
     key: recipes
     values: [US_footprint_footprint-overture-2026]
-  - set: apportion_curated_values
+  - set: split_curated_values
     params:
       floor_weight: null
   - set: flag_unconfirmed_height
