@@ -1013,3 +1013,113 @@ def test_filled_values_are_clipped_to_their_class_bound():
     assert clipped.tolist() == [False] * 63 + [True]
     assert clipped_values.iloc[-1] == pytest.approx(200_000.0)
     assert clipped_values.iloc[0] == 50_000.0
+
+
+# Fabricated value of each target, a label under its own rules.
+_LABEL_VALUES = {
+    'area_m2': 120.0,
+    'year_built': 1950,
+    'n_stories': 2,
+    'construction_type': 'Wood',
+    'foundation_type': 'Slab',
+    'roof_shape': 'Gable',
+    'has_garage': 1,
+    'n_sections': 2,
+    'n_dwellings': 1,
+    'structure_value': 100_000.0,
+    'replacement_cost': 200_000.0,
+    'depreciated_replacement_cost': 150_000.0,
+}
+
+
+def _observed_and_imputed(column, with_source=True):
+    # Fabricated: two cells with the same value, one read off a
+    # source and one curate filled from a peer group.
+    frame = pd.DataFrame({column: [_LABEL_VALUES[column]] * 2})
+    if with_source:
+        frame[f'{column}_source'] = ['parcel', 'parcel.class_city+imputed']
+    return frame
+
+
+@pytest.mark.parametrize('spec', bi.TARGETS, ids=lambda s: s.column)
+def test_a_cell_openplaces_filled_is_no_label_but_stays_observed(spec):
+    frame = _observed_and_imputed(spec.column)
+    labels = bi.labels_for(spec, frame)
+    assert labels.notna().tolist() == [True, False]
+    # It is still the bundle's value: kept, not refilled.
+    assert bi.labels_for(spec, frame, train=False).notna().all()
+
+
+@pytest.mark.parametrize('column', ['area_m2', 'has_garage'])
+def test_an_attribute_without_a_source_column_keeps_every_label(column):
+    spec = next(s for s in bi.TARGETS if s.column == column)
+    frame = _observed_and_imputed(column, with_source=False)
+    assert bi.labels_for(spec, frame).notna().all()
+
+
+def test_a_cell_openplaces_filled_is_no_donor():
+    # Fabricated: target county A and donor county B, each with one
+    # recorded year and one curate filled.
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['A', 'A', 'A', 'B', 'B'],
+            'region_id': 'r',
+            'occupancy_type': 'Single-Family',
+            'year_built': [np.nan, 1950, 1960, 1970, 1980],
+            'year_built_source': [
+                None,
+                'parcel',
+                'parcel.class_city+imputed',
+                'parcel',
+                'parcel.class_city+imputed',
+            ],
+        }
+    )
+    imputer = object.__new__(bi.Imputer)
+    imputer.frame = frame
+    imputer.config = SimpleNamespace(own_cap=10, donor_cap=10)
+    imputer.seed = 0
+    imputer.donors = SimpleNamespace(weights=lambda c, s, cfg: np.ones(len(s)))
+    imputer.extensions = bi.ImputationExtensions()
+    imputer._x = lambda idx, spec, filled: pd.DataFrame(
+        {'area_m2': [100.0] * len(idx)}, index=idx
+    )
+    trained = {}
+
+    def record(spec, x, y, w, xt, patterns=None):
+        trained['rows'] = list(x.index)
+        return np.full(len(xt), 1955.0)
+
+    imputer._guarded_fit_predict = record
+    spec = bi.TargetSpec('year_built', 'year', per_county=True)
+    y = imputer._labels(spec)
+    target = pd.Series([True, False, False, False, False])
+    imputer._fit_predict_county(spec, y, None, 'A', target, exclude=False)
+    # The recorded years train, own and donor; the filled ones do not.
+    assert sorted(trained['rows']) == [1, 3]
+
+
+def test_a_park_value_curate_filled_does_not_set_the_park_factor():
+    # Fabricated county: 25 park homes on the roll at $20,000 and 30
+    # whose $40,000 curate filled, against a model value of $40,000.
+    # Read as roll values, the filled ones would move the factor to 1.
+    n, m = 25, 30
+    frame = pd.DataFrame(
+        {
+            'admin3_id': ['US-XX-AAA'] * (n + m),
+            'occupancy_type': ['Manufactured Home'] * (n + m),
+            'structure_value': [20000.0] * n + [40000.0] * m,
+            'structure_value_source': ['parcel'] * n
+            + ['parcel.class_city+imputed'] * m,
+            'area_m2': [100.0] * (n + m),
+            'n_manufactured_homes_per_parcel': [40] * (n + m),
+            'manufactured_home_community': [True] * (n + m),
+        }
+    )
+    imputer = object.__new__(bi.Imputer)
+    imputer.frame = frame
+    imputer.value_scale = pd.Series(1.0, index=frame.index)
+    current = pd.Series(40000.0, index=frame.index)
+    missing = pd.Series(True, index=frame.index)
+    imputer._apply_park_factor(current, missing, lambda message: None)
+    assert imputer.park_factor == pytest.approx(0.5)

@@ -342,8 +342,13 @@ share:
     #
     # What the models do (decided with the maintainer, 2026-10-14 to
     # 2026-10-24):
-    # - Labels are parcel-recorded values only; NSI fields are named
-    #   inputs, never labels (NSI years are area lookups).
+    # - Labels are the curated values, never a cell openplaces filled
+    #   (an `imputed` token). Year built and structure value take no
+    #   NSI-sourced cell (NSI years are area lookups); NSI fields are
+    #   their named inputs. Story count, construction and foundation
+    #   learn from NSI values (maintainer's decision, 2026-11-27),
+    #   which are partly modeled themselves; dwellings take the
+    #   curated value whatever its source, NSI included.
     # - Year built and structure value: one model per county, trained
     #   on its own labels plus donor counties weighted by centroid
     #   distance alone (`donors`; design limit L30: no county is paired

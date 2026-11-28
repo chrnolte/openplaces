@@ -333,6 +333,14 @@ flag, or with homes whose unit's curated file lacked it, raises
 `MissingParkFlagError` naming the units: a count of homes standing in
 would be a second park rule. Donor weights are untouched by it.
 
+**A cell curate filled trains no building-imputation model**
+(`drop_imputed_cells`; maintainer, 2026-11-27). Where a column's
+`_source` carries the `imputed` marker, the cell is no label, in its own
+county or as a donor, and does not inform the park factor; it still
+ships as observed, with its own token. A column without a `_source`
+column (footprint area and garage in the CHEER footprint inventory)
+keeps every label: nothing tells a filled cell apart there.
+
 The QGIS side is `qgis/load_joined_parquet.py`, which resolves the whole set from
 any one of its files. It picks the join key at load time (`_join_id`, then
 `geo_id`, then whichever entity id the two files share), so one algorithm reads
