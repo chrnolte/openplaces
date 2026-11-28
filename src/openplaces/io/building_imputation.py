@@ -1,12 +1,30 @@
-"""Impute building attributes from parcel-recorded evidence, without NSI.
+"""Impute building attributes of a curated footprint inventory.
 
 Fills the primary columns of a curated footprint inventory (year built,
 structure value, roof shape, story count, construction, foundation,
-garage, sections, dwellings, footprint area) for primary buildings. NSI
-values never reach these columns; NSI fields enter only as named model
-inputs, so a model learns how parcel-recorded values relate to them
-where both exist and applies that relation where parcel values are
-missing.
+garage, sections, dwellings, footprint area) for primary buildings.
+A column's labels are its curated values, less the cells openplaces
+itself filled (drop_imputed_cells). Where those values came from
+differs by column:
+- year built and structure value: never from NSI. Cells whose token
+  names NSI are no labels, and NSI fields enter only as named model
+  inputs, so a model learns how parcel-recorded values relate to them
+  where both exist and applies that relation where parcel values are
+  missing;
+- story count, construction and foundation: the imputation learns from
+  NSI values (maintainer's decision, 2026-11-27). Labels are whatever
+  source the curate reconciled the column from (LABEL_EVIDENCE), most
+  often NSI, and the NSI field is kept out of that model's inputs.
+  NSI's own values for these attributes are partly modeled, so a
+  filled cell here learns in part from another model's estimates;
+- dwellings: whatever source the curate reconciled the column from,
+  NSI included;
+- roof shape, garage, sections and footprint area: the curated value,
+  whatever its source.
+
+Measured 2026-11-27 on US-TX-GAL: NSI tokens on 122,542 of 122,962 story-count labels.
+Measured 2026-11-27 on US-FL-LA: NSI tokens on every construction and foundation label.
+Measured 2026-11-27 on US-NC-NHA: NSI tokens on 86,173 of 88,162 foundation labels.
 
 NSI's own two cost measures (depreciated_replacement_cost and
 replacement_cost) are filled too, where NSI has no point, each in its
@@ -29,7 +47,7 @@ scikit-learn. Taken from that work:
 - spatially blocked evaluation only, since random masking selects the
   wrong method;
 - NSI-assigned years are area lookups that flatter accuracy, so
-  accuracy is reported by data source and NSI values are not labels.
+  accuracy is reported by data source and NSI years are not labels.
 His implemented contributions (the validity repairs, gap-trained
 boosting, and the Stage 2b evaluation on buildings as sparse as the
 real gaps) are not in this module: they plug in through
@@ -40,7 +58,8 @@ Added here, for the production inventory:
   counties weighted by their distance, so a county
   without parcel values can be filled; donors only where a county's
   own labels are too sparse to be a sample of it;
-- parcel-recorded labels only, with NSI as named inputs;
+- parcel-recorded labels for year built and structure value, with NSI
+  as named inputs, and no label a cell openplaces filled;
 - values in a common year (county price index, revaluation years), a
   separate zero part and a manufactured-home model;
 - a log-value model with unbiased totals and residual draws, so the
@@ -74,6 +93,8 @@ from sklearn.ensemble import (
     HistGradientBoostingClassifier,
     HistGradientBoostingRegressor,
 )
+
+from openplaces.core.provenance import is_imputed
 
 MODEL_VERSION = 'building-imputation-v0.1'
 # Base seed of every random step (samples, gap patterns, fits, draws);
@@ -383,6 +404,39 @@ def is_nsi_token(tokens: pd.Series) -> pd.Series:
     """Flag provenance tokens that name NSI as a route part."""
     parts = tokens.astype('string').str.lower().str.split(r'[+/]', regex=True)
     return parts.map(lambda p: isinstance(p, list) and 'nsi' in p).astype(bool)
+
+
+def drop_imputed_cells(
+    frame: pd.DataFrame, column: str, values: pd.Series
+) -> pd.Series:
+    """Empty the cells of *values* that openplaces itself filled.
+
+    A cell is openplaces' own estimate where its `{column}_source`
+    token carries the imputed marker (`provenance.is_imputed`): curate
+    filled it from a peer group or a model, or an earlier imputation
+    did. Such a cell is never a label, so no model
+    here learns from another model's output, in its own county or as a
+    donor to another. Without a `{column}_source` column in *frame*
+    nothing can be told apart, and *values* is returned unchanged.
+
+    Parameters
+    ----------
+    frame : DataFrame
+        The model frame, indexed like *values*.
+    column : str
+        Canonical column whose sidecar is read.
+    values : Series
+        Candidate labels of *column*.
+
+    Returns
+    -------
+    Series
+        *values* with the imputed cells set to missing.
+    """
+    source = f'{column}_source'
+    if source not in frame.columns:
+        return values
+    return values.where(~is_imputed(frame[source]).to_numpy())
 
 
 def year_labels(frame: pd.DataFrame) -> pd.Series:
@@ -1112,7 +1166,18 @@ def labels_for(spec: TargetSpec, frame: pd.DataFrame, train: bool = True) -> pd.
 
     With *train* False, the values kept as observed (not refilled),
     which for structure value also include 'unclear' manufactured homes.
+    With *train*, a cell openplaces filled is no label
+    (:func:`drop_imputed_cells`), for every target alike; it is still
+    kept as observed and ships with its own token.
     """
+    values = _usable_values(spec, frame, train)
+    if train:
+        values = drop_imputed_cells(frame, spec.column, values)
+    return values
+
+
+def _usable_values(spec: TargetSpec, frame: pd.DataFrame, train: bool) -> pd.Series:
+    """Observed values of *spec* by the target's own rules alone."""
     if spec.kind == 'year':
         return year_labels(frame)
     if spec.kind == 'value':
@@ -1858,6 +1923,9 @@ class Imputer:
         is_mh = applies_to(MANUFACTURED_VALUE, frame)
         park = is_mh & park_flags(frame, is_mh) & missing
         value = pd.to_numeric(frame['structure_value'], errors='coerce')
+        # The factor is fit on roll values, so a value curate filled
+        # informs it no more than it trains a model.
+        value = drop_imputed_cells(frame, 'structure_value', value)
         source = frame['structure_value_source'].astype('string').fillna('')
         area = _numeric_column(frame, 'area_m2')
         on_roll = (
@@ -3150,8 +3218,9 @@ def impute_delivery(
             else False
         )
     for column in ('year_built', 'structure_value'):
-        # NSI never reaches a delivery: NSI-sourced cells outside the
-        # imputed rows (secondary buildings) are emptied with their source.
+        # No NSI year or structure value reaches a delivery: such cells
+        # outside the imputed rows (secondary buildings) are emptied
+        # with their source. Other columns ship NSI-sourced values.
         nsi = is_nsi_token(frame[f'{column}_source'].fillna(''))
         drop = nsi & ~flags[column]
         block.loc[drop, [column, f'{column}_source']] = np.nan
