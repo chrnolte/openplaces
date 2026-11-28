@@ -159,7 +159,7 @@ def test_curator_runs_an_old_name_and_times_the_new_one(monkeypatch):
         return state
 
     class _Timer:
-        def mark(self, label):
+        def mark(self, label, **metadata):
             marks.append(label)
 
     monkeypatch.setitem(cur._STEP_REGISTRY, 't_new', step)
