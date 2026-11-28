@@ -575,8 +575,11 @@ pipeline:
   # (" | ") or a reduced count needs its dtype again.
   - step: cast_categoricals
 
+  # n_stories is not rounded. It keeps a roll's half story, and on an
+  # outline holding several buildings it is the mean of their stories,
+  # so a fraction can also be a mean (ruling of 2026-11-27).
   - step: cast_integers
-    columns: [year_built, n_stories, n_dwellings, n_sections]
+    columns: [year_built, n_dwellings, n_sections]
 
   # The building curate's drop list, under the footprint names: it
   # already dropped these from its output, and the footprint spine's
