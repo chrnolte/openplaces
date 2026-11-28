@@ -135,6 +135,24 @@ pipeline_patch:
             "41": 0.0
             "42": 0.0
             "43": 0.0
+        # Florida DEP's state land acquisitions
+        # (US-FL_transaction-fldep-2026) carry no qualification code;
+        # their `conveyance_type` says what kind of transfer to a
+        # public agency each was. Every kind is one the state's own
+        # qualification grades 0 (code 18, to or from a government
+        # agency; a donation or exchange is no market price either).
+        # `fill_only`, so a deed graded by its code keeps that grade.
+        # The deals recipe is held, so this grades rows only once a
+        # curate recipe reads it.
+        - output: sale_arms_length_confidence
+          type: value_map
+          column: conveyance_type
+          fill_only: true
+          mapping:
+            acquisition: 0.0
+            donation: 0.0
+            exchange: 0.0
+            agency_transfer: 0.0
         # The two 0.7 groups are different problems a consumer
         # treats differently: a parcel that changed between
         # assessment and sale is a target problem, a deed covering
@@ -227,6 +245,19 @@ pipeline_patch:
             "43": disqualified
             "98": pending
             "99": pending
+        # The DEP acquisitions (see the confidence map above): a
+        # purchase is the state's `government_transfer` group, the
+        # label code 18 takes; a donation, exchange or transfer
+        # between agencies is no sale at all.
+        - output: sale_qualification_group
+          type: value_map
+          column: conveyance_type
+          fill_only: true
+          mapping:
+            acquisition: government_transfer
+            donation: not_a_sale
+            exchange: not_a_sale
+            agency_transfer: not_a_sale
   - insert_before: keep_registered_columns
     step:
       step: join_temporal_snapshot

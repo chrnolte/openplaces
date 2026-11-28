@@ -287,7 +287,15 @@ def test_national_recipe_grades_no_state_vocabulary():
     }
     assert 'sale_qualification_code' not in columns
     florida = _grading_specs(graded, 'US-FL')
-    assert {spec['column'] for spec in florida} == {'sale_qualification_code'}
+    # The DOR's qualification codes, and the kind of conveyance DEP's
+    # state land acquisitions state (fill_only, behind the codes).
+    assert {spec['column'] for spec in florida} == {
+        'sale_qualification_code',
+        'conveyance_type',
+    }
+    assert all(
+        spec.get('fill_only') for spec in florida if spec['column'] == 'conveyance_type'
+    )
 
 
 def test_wisconsin_sale_is_graded_from_conveyance_and_relationship():

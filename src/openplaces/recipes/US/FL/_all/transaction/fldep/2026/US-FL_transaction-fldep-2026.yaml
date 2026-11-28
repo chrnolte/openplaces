@@ -63,7 +63,11 @@
 # (median 1.67 times), so no single price, acreage or date belongs to
 # its outline. `price`, `area_ha_nominal` and `sale_date` stay empty
 # there; `price_raw` keeps the source text. A price of 0 is kept as
-# stated (donations, exchanges and transfers are not told apart here).
+# stated; `conveyance_type` tells a donation, an exchange or a transfer
+# between agencies from a purchase (below). FGDL's copy of DEP's
+# metadata (state_owned_land_aug24.xml, definitions credited to FDEP)
+# defines the price: "The final price paid for the closed acquisition
+# pursuit as identified on the Closing Statements."
 #
 # Closing date: CLOSED_DATE_STRING is DD-MON-YY (CLOSED_DATE is the
 # same text). DOCUMENT_DATE (a real date, unmapped) is a different
@@ -105,11 +109,43 @@
 #     multi-closing records of the price lists; every list but one
 #     repeats a single value).
 #
-# Unmapped, no registry home: PROJECT_NAME (1,290 values),
-# RESERVATION_IND, REVERTER_IND, FUNDING_* and
-# FUND_SRC_CONTRIBUTION_AMT, SHARED_OWNER_*, PERCENT_OWNED,
-# MANAGING_AGENCY_NAME, LAND_INPUT_STATUS_NAME, LAND_ACTION_NAME
-# (Inventory 79,294; disposition stages 349; Deleted 2), ACRE_TYPE_NAME.
+# Kind of conveyance (`conveyance_type`, the vocabulary of the
+# Colombian acquisition source: `acquisition`, the land was bought).
+# DEP defines FUNDING_SOURCE_NAME as "The source of funding that the
+# funding agency used for the acquisition" (FGDL metadata, as above).
+# Most values name a fund (Conservation and Recreation Lands, P2000,
+# Florida Forever, agency funds, grants) and read `acquisition`. Four
+# name a kind instead and say the land was not bought: 'Donation
+# Value' (`donation`), 'Exchange Value' and 'Settlement Agreement
+# Exchange' (`exchange`, land given for land), 'Agency Transfer'
+# (`agency_transfer`, from another public body). The fund's name is
+# not carried. Florida's curate patch grades the kinds
+# (US-FL_transaction-openplaces-2026): every one is a transfer to a
+# public agency, which the state's own sale qualification grades 0.
+# Per land id (2026-11-25, file of 2026-10-24): acquisition 40,107,
+# donation 2,145, exchange 171, agency_transfer 119, missing 21 (18
+# lists mixing kinds, 2 'Unknown', 1 empty). Price 0 on 923
+# acquisitions and 2,378 of the other kinds; empty on 2,346
+# acquisitions, nearly all 'Agency Funded-Other'.
+#
+# Unmapped, with the reason (plans/florida-acquisition-fields.md):
+# - PROJECT_NAME (1,290 values; DEP: "The Project Name(s) of major
+#   established boundaries that have parcels remaining to be purchased
+#   inside that boundary"): a few values are a person's name, so no
+#   name and no key derived from one is carried.
+# - RESERVATION_IND and REVERTER_IND (DEP: "whether there are any
+#   reservations" / "reverters on the land"): a state of the land's
+#   title today, not saying what is reserved, by whom, or whether this
+#   closing created it; Y on 309 and 28 land ids.
+# - LAND_ACTION_NAME (DEP: "any activities that are currently being
+#   performed on the land"; Inventory 79,294 rows, disposition stages
+#   349, Deleted 2): the state's handling of its inventory today, not
+#   the acquisition.
+# - FUNDING_AGENCY_NAME (who paid), FUNDING_SOURCE_KEY,
+#   OTHER_FUNDING_SOURCE_NAME and FUNDING_AGENCY_OTHER (free text),
+#   FUND_SRC_CONTRIBUTION_AMT, SHARED_OWNER_*, PERCENT_OWNED (100 on
+#   all but one land id), MANAGING_AGENCY_NAME, LAND_INPUT_STATUS_NAME,
+#   ACRE_TYPE_NAME: no registry home.
 # Unmapped as internal: OWNED_LAND_KEY, LAND_INVENTORY_KEY (equals the
 # land id), INTERNAL_AGENCY_ID, GIS_PARCEL_ID (DEP's polygon id, not a
 # county parcel number), FL_SOLARIS_FACILITY_ID, the *_KEY columns,
@@ -209,9 +245,21 @@ transformations:
     type: unary
     operation: to_datetime
     args: {format: "%m/%d/%Y"}
+  # The kind of conveyance, from FUNDING_SOURCE_NAME (see header):
+  # four of its values name a kind, every other value names the fund
+  # that paid. Later patterns overwrite earlier ones. A list holding
+  # one kind only takes it; a list mixing kinds, and 'Unknown', stay
+  # missing.
   - output: conveyance_type
-    type: expression
-    expression: "'acquisition'"
+    input: FUNDING_SOURCE_NAME
+    type: remap_pattern
+    patterns:
+      - {pattern: '.+', value: acquisition}
+      - {pattern: '.*(Donation|Exchange|Agency Transfer|Unknown)', value: null}
+      - {pattern: '(Donation Value(;|$))+$', value: donation}
+      - pattern: '((Exchange Value|Settlement Agreement Exchange)(;|$))+$'
+        value: exchange
+      - {pattern: '(Agency Transfer(;|$))+$', value: agency_transfer}
   - output: price_period
     type: expression
     expression: "'total'"
