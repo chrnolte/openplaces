@@ -45,7 +45,7 @@ pipeline:
   # New England's town-level admin3 units. Declared all-null so the vote
   # and downstream readers keep their missing-column strictness for
   # everything else. No-op wherever the evidence exists.
-  - step: declare_columns
+  - step: add_empty_columns
     columns:
       - group_building_nsi
       - group_footprint_fema
@@ -212,8 +212,8 @@ pipeline:
   # The dwelling-kind counts above exist only where a county's roll or
   # building record carries unit types (a few TX districts and NC
   # counties today). Declared so that the footprint recipe's
-  # link_curated_entity finds them in every county, all-null elsewhere.
-  - step: declare_columns
+  # copy_from_curated_entity finds them in every county, all-null elsewhere.
+  - step: add_empty_columns
     columns:
       - n_manufactured_home_units
       - n_travel_trailers
@@ -226,10 +226,10 @@ pipeline:
   # source brought a use code to the spine: a unit covered only by a
   # geometry layer, such as Virginia's VGIN parcels in Alexandria,
   # Arlington and Falls Church (US-VA-AL, US-VA-AR, US-VA-FC). Declared
-  # so that the footprint recipe's link_curated_entity finds them there,
+  # so that the footprint recipe's copy_from_curated_entity finds them there,
   # all-null; the steps below that read them already treat a missing
   # label as no evidence, so the vote is unchanged.
-  - step: declare_columns
+  - step: add_empty_columns
     columns:
       - use_group_combined
       - use_group_combined_labeled

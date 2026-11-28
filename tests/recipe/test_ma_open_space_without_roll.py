@@ -9,7 +9,7 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.reconcilers import suppress_where
+from openplaces.io.curator.reconcilers import empty_selected_cells
 from openplaces.recipe import apply_recipe_patches, get_recipe_by_id
 
 PARCEL = 'US_parcel-openplaces-2026'
@@ -24,7 +24,7 @@ def _open_space_rule(steps):
     return next(
         s
         for s in steps
-        if s['step'] == 'suppress_where'
+        if s['step'] == 'empty_selected_cells'
         and any(
             i.get('column') == 'protected_open_space_share'
             for i in s.get('indicators', [])
@@ -68,7 +68,7 @@ def test_open_space_without_a_roll_record_loses_its_home_class():
     params = {
         k: v for k, v in rule.items() if k not in ('step', 'enabled', 'phase_override')
     }
-    out = suppress_where(state, **params).curated['land_use_class']
+    out = empty_selected_cells(state, **params).curated['land_use_class']
     assert pd.isna(out['reservation'])
     assert out['restricted_house'] == 'Single-Family'
     assert out['small_share'] == 'Single-Family'

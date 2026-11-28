@@ -159,7 +159,7 @@ def classify_occupancy(
     return _add_prediction_column(state, predictions, column)
 
 
-@_register('detect_n_stories', 'detect_nfloors', writes=['{column}'])
+@_register('detect_n_stories', writes=['{column}'], deprecated=('detect_nfloors',))
 def detect_n_stories(
     state: EnrichState,
     image_recipe: str | None = None,

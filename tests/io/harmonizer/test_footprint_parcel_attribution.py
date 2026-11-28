@@ -9,7 +9,7 @@ should only be populated when it would add information beyond the single
 dominant/reconciled value already stored separately. A parcel-derived
 synthetic fallback footprint (geometry_source contains '.') never enters the
 normal overlay, so its evidence comes from a separate inferred-backfill path
-that must also propagate parcel_id_local -- without it, link_curated_entity
+that must also propagate parcel_id_local -- without it, copy_from_curated_entity
 can never find that footprint's curated parcel downstream. Id columns
 (`{entity}_id*`) keep their bare name rather than the usual `_parcel`-style
 suffix, unless that bare name would collide with a column the spine already

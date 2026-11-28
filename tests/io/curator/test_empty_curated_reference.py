@@ -51,7 +51,7 @@ def test_an_empty_reference_links_nothing(reference):
     # What the curate of a unit without parcels saves.
     save_parquet(pd.DataFrame(), reference)
 
-    state = evidence.link_curated_entity(
+    state = evidence.copy_from_curated_entity(
         _state(_buildings()), 'US_parcel-x-2026', columns={'use_group': 'use_parcel'}
     )
 
@@ -62,7 +62,7 @@ def test_an_empty_reference_links_nothing(reference):
 def test_an_empty_reference_keeps_no_id(reference):
     save_parquet(pd.DataFrame(), reference)
 
-    state = evidence.keep_curated_ids(_state(_buildings()), 'US_parcel-x-2026')
+    state = evidence.empty_unknown_ids(_state(_buildings()), 'US_parcel-x-2026')
 
     assert state.curated['parcel_id'].isna().all()
 
@@ -71,7 +71,7 @@ def test_an_empty_reference_apportions_nothing(reference):
     # No overlay link exists in the test: the step must not need one.
     save_parquet(pd.DataFrame(), reference)
 
-    state = evidence.apportion_curated_values(
+    state = evidence.split_curated_values(
         _state(_buildings()),
         'US_parcel-x-2026',
         columns={'improvement_value': 'structure_value'},
@@ -87,7 +87,7 @@ def test_an_empty_reference_with_geometry_links_nothing(reference):
     )
     save_parquet(empty, reference)
 
-    state = evidence.link_curated_entity(
+    state = evidence.copy_from_curated_entity(
         _state(_buildings()), 'US_parcel-x-2026', columns={'use_group': 'use_parcel'}
     )
 
@@ -98,13 +98,13 @@ def test_a_reference_with_rows_but_no_id_still_raises(reference):
     save_parquet(pd.DataFrame({'use_group': ['residential']}), reference)
 
     with pytest.raises(ValueError, match="has no 'parcel_id' column"):
-        evidence.link_curated_entity(
+        evidence.copy_from_curated_entity(
             _state(_buildings()),
             'US_parcel-x-2026',
             columns={'use_group': 'use_parcel'},
         )
     with pytest.raises(ValueError, match="has no 'parcel_id' column"):
-        evidence.keep_curated_ids(_state(_buildings()), 'US_parcel-x-2026')
+        evidence.empty_unknown_ids(_state(_buildings()), 'US_parcel-x-2026')
 
 
 def test_a_table_without_rows_or_sidecar_reads_with_geometry(tmp_path):

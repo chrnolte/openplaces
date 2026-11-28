@@ -216,7 +216,7 @@ share:
   # Columns computed from others without a `_source` sidecar of their
   # own: a bundle withholds such a cell wherever it withholds one of its
   # inputs (io/delivery/redaction.py, rule 7). occupancy_type_parcel is
-  # the roll's use class in occupancy terms (resolve_occupancy below,
+  # the roll's use class in occupancy terms (override_occupancy_by_keywords below,
   # its keyword proposal from use_group_combined_parcel, else
   # group_parcel), so it ships only where the roll's class may
   # (maintainer, 2026-10-24); occupancy_type_conflict names the
@@ -567,7 +567,7 @@ pipeline:
 
   # Only lots the parcel curate kept: it drops slivers under 1 m2,
   # which the overlay can still list (transition review 3.5).
-  - step: keep_curated_ids
+  - step: empty_unknown_ids
     recipe_id: US_parcel-openplaces-2026
     columns: [parcel_id, parcel_id_all]
 
@@ -575,7 +575,7 @@ pipeline:
   # (" | ") or a reduced count needs its dtype again.
   - step: cast_categoricals
 
-  - step: cast_integers
+  - step: round_to_integers
     columns: [year_built, n_stories, n_dwellings, n_sections]
 
   # The building curate's drop list, under the footprint names: it

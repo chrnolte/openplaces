@@ -3,7 +3,7 @@ Pipeline steps that attach reference-dataset evidence to the spine,
 one module per concern since 2026-09-29 (until then a single
 2,615-line module):
 
-- reconcile: reconcile_attributes and rename_columns, with the
+- reconcile: add_source_evidence and rename_columns, with the
   polygon and point attribution in polygon and point
 - priority: classify_footprint_priority
 - use_classes: derive_use_classes
@@ -54,7 +54,7 @@ from openplaces.io.harmonizer.attributes.property_counts import (  # noqa: F401
 from openplaces.io.harmonizer.attributes.reconcile import (  # noqa: F401
     _attribute_absent_point_reference,
     _collect_dwelling_linked,
-    reconcile_attributes,
+    add_source_evidence,
     rename_columns,
 )
 from openplaces.io.harmonizer.attributes.shared_land import (  # noqa: F401

@@ -25,10 +25,10 @@ def test_curate_blanks_land_use_after_the_vote_in_massachusetts_only():
     steps = _steps('US_parcel-openplaces-2026', 'US-MA-WIN')
     names = [s['step'] for s in steps]
     i = names.index('reconcile_land_use')
-    assert names[i + 1] == 'suppress_where'
+    assert names[i + 1] == 'empty_selected_cells'
     assert steps[i + 1]['column'] == ['land_use_class']
     other = [s['step'] for s in _steps('US_parcel-openplaces-2026', 'US-NC-NHA')]
-    assert other[other.index('reconcile_land_use') + 1] != 'suppress_where'
+    assert other[other.index('reconcile_land_use') + 1] != 'empty_selected_cells'
 
 
 def test_polygon_type_is_registered():

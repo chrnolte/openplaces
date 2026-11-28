@@ -55,14 +55,18 @@ def _vote_evidence_class(
 # occupancy block, not from step arguments, so they are not declared
 # as reads (plans/occupancy-and-dwellings-one-decider.md, O1).
 @_register(
-    'impute_occupancy_type',
+    'classify_occupancy_by_source_vote',
     phase='infer',
     writes=['occupancy_type', 'occupancy_type_source'],
     decides=['occupancy_type'],
+    deprecated=('impute_occupancy_type',),
 )
-def impute_occupancy_type(state: CurateState) -> CurateState:
-    """Impute ``occupancy_type`` from ordered evidence, then dwellings.
+def classify_occupancy_by_source_vote(state: CurateState) -> CurateState:
+    """Classify every row's occupancy by the class its sources name most.
 
+    Each source's code is translated into the class list first, then
+    the sources vote by weight. The class is written on every row from
+    scratch, so a row whose sources name nothing stays missing.
     Vocabulary, evidence columns, and thresholds all come from the recipe
     ``occupancy`` config block; this step holds no source- or class-specific
     names.
@@ -147,7 +151,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     if state.verbose:
         counts = curated['occupancy_type'].value_counts(dropna=False)
         print(
-            '  impute_occupancy_type: '
+            '  classify_occupancy_by_source_vote: '
             + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
         )
     return state

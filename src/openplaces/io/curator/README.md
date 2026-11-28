@@ -40,18 +40,19 @@ rejected on 2026-09-29: gathering is 7% to 35% of a county's curate time
 A registered step may declare the columns it reads, writes and decides
 (`io/steps`, read by `python -m openplaces.flow.lineage`), and no recipe
 may declare two deciders of one column (`tests/flow/test_lineage.py`).
-`reconcile_values`, `apportion_curated_values`, `divide_account_values`,
-`impute_from_group_statistic`, `impute_occupancy_type`,
+`pick_first_value`, `split_curated_values`, `divide_account_values`,
+`impute_from_group_statistic`, `classify_occupancy_by_source_vote`,
 `flag_manufactured_home_communities`, `decide_dwellings` and a
 `resolve_by_vote` with `preserve_base: false` (its target and
 `flag_column`) decide. A step that keeps rows it does not claim only
 writes: a vote that keeps the base class, a fill (`impute_n_dwellings`,
 `reconcile_land_use`), a translation table (`translate_descriptions`),
-a gate (`suppress_where`) and a reviewed correction
+a gate (`empty_selected_cells`) and a reviewed correction
 (`apply_reviewed_corrections`, which declares `*` because its sidecar
 names the columns). So the building class is decided once, by
-`impute_occupancy_type`, and the votes after it (`resolve_occupancy`,
-the main vote, the second pass, the height bands) are writers of it.
+`classify_occupancy_by_source_vote`, and the steps after it
+(`override_occupancy_by_keywords`, the main vote, the second pass, the
+height bands) are writers of it.
 Where a state patch puts a translation table in place of the cohort
 statistic (`group_parcel` in MA and WI), that column has no declared
 decider in the patched recipe. The steps that build a column of their
@@ -92,7 +93,7 @@ buildings have classes; a second parcel pass after the building
 curate is to replace it.
 
 **A building's dwelling count is decided after its class.** The
-building curate's lanes (`reconcile_values`: the roll's apportioned
+building curate's lanes (`pick_first_value`: the roll's apportioned
 share, Overture's address points, NSI; then `impute_n_dwellings`'s
 class lookup) write `n_dwellings_preliminary`, which no vote reads, so
 the votes see what they saw when the lanes wrote `n_dwellings`.
@@ -151,11 +152,12 @@ Steps are organized by the nature of the transformation:
   `derive_indicators` value measured by strict intersection only;
   maintainer, 2026-10-24).
 - `reconcilers.py` — resolve conflicts between competing source columns
-  (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
+  (`pick_first_value` priority selection; `override_occupancy_by_keywords`
+  reviewed keyword corrections;
   `resolve_by_vote`, the single voting seam every curate classification
   resolves through)
 - `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
-  `impute_from_group_statistic`, `impute_occupancy_type`)
+  `impute_from_group_statistic`, `classify_occupancy_by_source_vote`)
 - `aggregation.py` — reduce another entity's rows onto the curated rows
   they belong to (`aggregate_from_entities`), on either side of a link
   table: a curated parcel takes its properties' rows through the
@@ -304,7 +306,7 @@ Steps are organized by the nature of the transformation:
   missing too, because a missing value is never at least the minimum;
   the parcel recipe's 1 m2 floor on `area_ha` relies on every curated
   parcel carrying an area. Links that name a dropped parcel stay in
-  their tables (`apportion_curated_values` warns with a count).
+  their tables (`split_curated_values` warns with a count).
 - `transactions.py` — steps for the transaction entity, which **grade and
   flag and never drop**. Since 2026-09-29 the rows arrive from
   `US_transaction-spine-2026` already as the entity: one row per recorded
@@ -437,7 +439,7 @@ invented where none existed. Only estimation of a genuinely missing value
 counts.
 
 The hard part is propagation, not the decision: `impute_land_value` knows which
-rows it estimated, and the marker has to survive `apportion_curated_values`
+rows it estimated, and the marker has to survive `split_curated_values`
 (which crosses parcel → building) to reach the delivered
 `structure_value_source`. Both dropped or flattened it before 2026-08-21.
 
@@ -450,7 +452,7 @@ evidence; `US_footprint-spine-2026` is the outline geometry alone, see the
 harmonizer README). Curation outputs are
 full entity recipes, not sidecar evidence tables.
 
-**Building values are pieces of the parcel's.** `apportion_curated_values`,
+**Building values are pieces of the parcel's.** `split_curated_values`,
 in the building curate, splits a parcel's improvement value among the
 footprints of its buildings (one outline per building today) by overlap
 area,
@@ -480,8 +482,8 @@ Harmonize saves a placeholder for a unit with nothing to build from (no
 rows, no column but `_join_id`), and the curate of it saves one too,
 running no step (`io.readers.is_placeholder_output`). A later curate
 reading it as a reference (`read_curated_reference`, behind
-`link_curated_entity`, `apportion_curated_values` and
-`keep_curated_ids`) gets a frame without rows whose one column is the
+`copy_from_curated_entity`, `split_curated_values` and
+`empty_unknown_ids`) gets a frame without rows whose one column is the
 id, so every join matches nothing; `get_entities` returns it without
 rows, with an empty geometry column when geometry was asked for, and
 `export_delivery` pools the region without it. A reference with rows
@@ -489,4 +491,61 @@ but no id column still raises, and so does a missing file: the unit
 was then not built, which is a different fault from having no rows.
 
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
+
+## Step names
+
+The naming rules are in AGENTS.md ("Step and function names"). This
+section serves all three stages that dispatch steps (harmonize, enrich,
+curate), since their registry code is shared (`io/steps.py`).
+
+### Renamed steps
+
+A renamed step keeps its old name registered as deprecated
+(`_register(..., deprecated=('old_name',))`, recorded in
+`io.steps.DEPRECATED_STEP_NAMES`). A recipe that still writes the old
+name runs the same function, with one `DeprecatedStepNameWarning` per
+name per process, and timers, audit reports and column checks show the
+new name. A `pipeline_patch` must spell a step the way its pipeline
+does: a patch that names the old step against a pipeline that uses the
+new one (or the reverse) stops with a `ValueError`. Logs and plans
+written before a rename carry the old name; look it up here.
+
+| old | new | stage | renamed |
+|---|---|---|---|
+| `reconcile_attributes` | `add_source_evidence` | harmonize | 2026-11-27 |
+| `declare_columns` | `add_empty_columns` | curate | 2026-11-27 |
+| `suppress_where` | `empty_selected_cells` | curate | 2026-11-27 |
+| `reconcile_values` | `pick_first_value` | curate | 2026-11-27 |
+| `impute_occupancy_type` | `classify_occupancy_by_source_vote` | curate | 2026-11-27 |
+| `link_curated_entity` | `copy_from_curated_entity` | curate | 2026-11-27 |
+| `apportion_curated_values` | `split_curated_values` | curate | 2026-11-27 |
+| `keep_curated_ids` | `empty_unknown_ids` | curate | 2026-11-27 |
+| `cast_integers` | `round_to_integers` | curate | 2026-11-27 |
+| `resolve_occupancy` | `override_occupancy_by_keywords` | curate | 2026-11-27 |
+| `detect_nfloors` | `detect_n_stories` | enrich | earlier alias, deprecated 2026-11-27 |
+
+### Verbs in use
+
+Leading verbs of current step names and the effect each one names. The
+list describes use, it does not close it: a new kind of effect takes a
+new verb, and a verb already here is reused for the same effect.
+
+- **add**: create columns or rows that did not exist.
+- **copy**: write a value unchanged from one row of another table or
+  entity.
+- **split**: divide one row's value over several rows, the shares
+  adding up to the whole.
+- **pick**: choose one of several present values in a row, by a stated
+  order.
+- **fill**: write only into missing cells.
+- **impute**: fill missing cells with an estimate marked `imputed`.
+- **empty**: set cells to missing, with their `_source` label.
+- **classify**: write a class on every row from evidence, by stated
+  rules or votes.
+- **decide**: write the final value of a registry column by ordered
+  rules; the column's one deciding step.
+- **override**: replace a decided value where a reviewed rule or a
+  person says otherwise, and label it.
+- **round**: round values (a value change).
+- **cast**: change a column's type, never its values.
 

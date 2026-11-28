@@ -64,4 +64,4 @@ def test_pitt_curated_footprints_read_no_overture_evidence():
 
     assert OVERTURE in merged(national)
     assert OVERTURE not in merged(patched)
-    assert _step(patched, 'apportion_curated_values')['floor_weight'] is None
+    assert _step(patched, 'split_curated_values')['floor_weight'] is None

@@ -209,7 +209,7 @@ def _attribute_polygon_reference(
 
     # The dominant parcel's own globally-unique id (the overlay's true join
     # key), so the curate stage can join the curated parcel lane back onto
-    # each footprint (link_curated_entity — see its entity_key/ref_key docs
+    # each footprint (copy_from_curated_entity — see its entity_key/ref_key docs
     # for why the globally-unique id, not a locally-scoped one). Only
     # meaningful for a parcel reference: the overlay's reference-side index
     # is always internally named 'parcel_id' regardless of the actual

@@ -52,7 +52,7 @@ from openplaces.table import require_unique_index
 
 
 # Writes no spine column: its products are the crosswalk, the overlay
-# and the link sidecar, which reconcile_attributes and curate read.
+# and the link sidecar, which add_source_evidence and curate read.
 @_register(
     'link_to_reference',
     phase='geometry',

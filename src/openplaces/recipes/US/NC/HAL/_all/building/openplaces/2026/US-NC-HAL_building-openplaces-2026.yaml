@@ -39,9 +39,9 @@ pipeline_patch:
   # so the patch names no occurrence that could shift.
   - insert_before: classify_manufactured_homes
     step:
-      step: suppress_where
+      step: empty_selected_cells
       phase_override: >-
-        withdraws a column derive_indicators wrote after resolve_occupancy,
+        withdraws a column derive_indicators wrote after override_occupancy_by_keywords,
         before the vote reads it
       column: occupancy_statement_parcel
       indicators:

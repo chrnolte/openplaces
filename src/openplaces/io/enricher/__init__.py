@@ -18,7 +18,13 @@ from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.steps import StepAudit, make_loader, make_register
+from openplaces.io.steps import (
+    StepAudit,
+    current_step_name,
+    find_step,
+    make_loader,
+    make_register,
+)
 from openplaces.recipe import (
     find_entity_recipe_id,
     get_output_path,
@@ -130,10 +136,8 @@ def lookup_step(step_name: str) -> Callable:
     ValueError
         For a name no step module registers.
     """
-    fn = _STEP_REGISTRY.get(step_name)
-    if fn is None:
-        _load_steps()
-        fn = _STEP_REGISTRY.get(step_name)
+    # A retired name finds its replacement, with a warning.
+    _, fn = find_step(_STEP_REGISTRY, _load_steps, step_name)
     if fn is None:
         raise ValueError(
             f"Unknown enrich step: '{step_name}'. "
@@ -537,6 +541,9 @@ class Enricher:
                     print(f'  [skip] {step_name}')
                 continue
             fn = lookup_step(step_name)
+            # The steps are loaded now, so a retired name translates;
+            # the timer and audit carry the current name.
+            step_name = current_step_name(step_name)
             params = {k: v for k, v in step_cfg.items() if k not in ('step', 'enabled')}
             state = fn(state, **params)
             if audit is not None:

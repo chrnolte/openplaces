@@ -331,7 +331,7 @@ property spine  →  footprint geospine  →  building geospine and spine  →  
 - The **footprint geospine consumes parcel ingests**; the **building spine**
   is built from it, and the **parcel chain consumes the building spine**.
   Adding a parcel source invalidates all three.
-- **`US_building-openplaces-2026` links curated parcels** via `link_curated_entity`
+- **`US_building-openplaces-2026` links curated parcels** via `copy_from_curated_entity`
   (`use_group_combined`, `land_use_class`, `manufactured_home_community`). New
   parcel sources make curated footprints stale — re-curate them.
 - **Do not re-run an enrichment whose reference data does not cover your

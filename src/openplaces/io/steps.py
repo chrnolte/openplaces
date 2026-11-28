@@ -9,8 +9,10 @@ in that the harmonizer's decorator also records a phase. This module is
 the one copy. It sits below the stages in the layer hierarchy and
 imports nothing from openplaces at module level (the audit report's
 default path reads `openplaces.path` when it is written), so any stage
-may use it. It also holds the column declarations and the audit mode
-that checks them against what each step did.
+may use it. It also holds the column declarations, the audit mode
+that checks them against what each step did, and the map of step
+names a rename retired (`DEPRECATED_STEP_NAMES`), which the dispatch
+loops translate with a warning.
 
 Each stage keeps its registry as a module-level dict of its own
 (``_STEP_REGISTRY``, and the harmonizer's ``_STEP_PHASES``): tests
@@ -59,6 +61,92 @@ RECIPE_ARGUMENT = '@recipe'
 
 class UndeclaredColumnWarning(UserWarning):
     """A step added a column that its declaration does not list."""
+
+
+class DeprecatedStepNameWarning(FutureWarning):
+    """A recipe called a step by a name that a rename retired.
+
+    A FutureWarning, not a DeprecationWarning: the reader is a recipe
+    author, and Python hides a DeprecationWarning raised outside
+    `__main__` by default.
+    """
+
+
+#: Every retired step name, mapped to the name that replaced it. Filled
+#: by `make_register` from each registration's `deprecated` names; the
+#: stages' dispatch loops read it through `current_step_name`. One map
+#: for all stages: a retired name means one thing everywhere.
+DEPRECATED_STEP_NAMES: dict[str, str] = {}
+
+#: The retired names already warned about in this process.
+_WARNED_STEP_NAMES: set[str] = set()
+
+
+def current_step_name(name: str) -> str:
+    """The name a step is registered under now, for a recipe's *name*.
+
+    A name a rename retired (`DEPRECATED_STEP_NAMES`) is translated to
+    its replacement, with one `DeprecatedStepNameWarning` per retired
+    name per process; any other name is returned as it is. The
+    dispatch loops call it once per step, so timers, audit reports and
+    column checks carry the current name whatever the recipe wrote.
+
+    Parameters
+    ----------
+    name : str
+        A step name as a recipe's pipeline gives it.
+
+    Returns
+    -------
+    str
+        The current name.
+    """
+    replacement = DEPRECATED_STEP_NAMES.get(name)
+    if replacement is None:
+        return name
+    if name not in _WARNED_STEP_NAMES:
+        _WARNED_STEP_NAMES.add(name)
+        warnings.warn(
+            f'step {name!r} was renamed to {replacement!r}; the old name '
+            'still runs the same step but will be removed. Write '
+            f'{replacement!r} in the recipe.',
+            DeprecatedStepNameWarning,
+            stacklevel=2,
+        )
+    return replacement
+
+
+def find_step(
+    registry: Mapping[str, Callable], load_steps: Callable[[], None], name: str
+) -> tuple[str, Callable | None]:
+    """A stage's step for a recipe's *name*, and the step's current name.
+
+    The step modules load lazily, and a retired name is known only once
+    the module registering its replacement has loaded, so the name is
+    translated again after a load.
+
+    Parameters
+    ----------
+    registry : Mapping
+        The stage's name-to-function mapping.
+    load_steps : Callable
+        The stage's loader (`make_loader`).
+    name : str
+        The step name as the recipe gives it.
+
+    Returns
+    -------
+    tuple
+        The current name and the function, or None for a name no step
+        module registers.
+    """
+    name = current_step_name(name)
+    fn = registry.get(name)
+    if fn is None:
+        load_steps()
+        name = current_step_name(name)
+        fn = registry.get(name)
+    return name, fn
 
 
 @dataclass(frozen=True)
@@ -553,7 +641,10 @@ def make_register(
         read from that recipe's table) and ``drops`` (the columns the
         step removes, as names, templates, callables or a `DropRule`;
         a removal is not a write, so lineage never counts it as one).
-        See `resolve_step_columns`.
+        See `resolve_step_columns`. ``deprecated`` lists names a rename
+        retired: each is registered for the same function and recorded
+        in `DEPRECATED_STEP_NAMES` as replaced by the first of *names*,
+        so a recipe still using it runs the step with a warning.
     """
 
     def _register(
@@ -564,7 +655,16 @@ def make_register(
         decides=None,
         reads_from: Mapping | None = None,
         drops=None,
+        deprecated: tuple[str, ...] = (),
     ) -> Callable:
+        if isinstance(deprecated, str):
+            deprecated = (deprecated,)
+        for old in deprecated:
+            held = DEPRECATED_STEP_NAMES.get(old)
+            if held is not None and held != names[0]:
+                raise ValueError(
+                    f'step name {old!r} is already retired in favor of {held!r}'
+                )
         declared = None
         given = (reads, writes, decides, reads_from, drops)
         if any(value is not None for value in given):
@@ -611,7 +711,7 @@ def make_register(
                 )
 
         def decorator(fn: Callable) -> Callable:
-            for name in names:
+            for name in (*names, *deprecated):
                 # A second step under a taken name used to replace the
                 # first without a word: an admin step registered as
                 # 'resolve_overlaps' on 2026-09-30 displaced the
@@ -627,6 +727,8 @@ def make_register(
                 registry[name] = fn
                 if phases is not None:
                     phases[name] = phase
+            for old in deprecated:
+                DEPRECATED_STEP_NAMES[old] = names[0]
             if declared is not None:
                 setattr(fn, _COLUMNS_ATTRIBUTE, declared)
             return fn

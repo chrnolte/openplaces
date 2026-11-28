@@ -18,7 +18,7 @@ import openplaces.io.curator.reconcilers as rec
 import openplaces.path as op_path
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.estimators.occupancy import impute_occupancy_type
+from openplaces.io.curator.estimators.occupancy import classify_occupancy_by_source_vote
 
 CLASS_MAP = [
     {
@@ -114,7 +114,7 @@ def test_impute_occupancy_type_is_nsi_first(monkeypatch):
             'group_parcel': ['Single Family', 'Single Family'],
         }
     )
-    out = impute_occupancy_type(_state(curated))
+    out = classify_occupancy_by_source_vote(_state(curated))
     # row 0: NSI present -> Manufactured Home (not the parcel Single-Family);
     # row 1: NSI absent -> parcel fills -> Single-Family.
     assert list(out.curated['occupancy_type'].astype(object)) == [
@@ -139,7 +139,7 @@ def test_conflict_is_categorical_summary_and_base_kept(monkeypatch, tmp_path):
             'n_dwellings': [1.0, 1.0],
         }
     )
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     # No corrections fire -> NSI base unchanged.
     assert list(out['occupancy_type'].astype(object)) == [
         'Manufactured Home',
@@ -163,7 +163,7 @@ def test_conflict_buckets_non_residential(monkeypatch, tmp_path):
             'n_dwellings': [1.0, 1.0],
         }
     )
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     conf = out['occupancy_type_conflict'].astype(object).tolist()
     # Non-residential nsi vs residential parcel -> bucketed conflict.
     assert conf[0] == 'nsi: Non-Residential | parcel: Single-Family'
@@ -210,7 +210,7 @@ def test_conflict_lists_all_present_sources(monkeypatch, tmp_path):
         timer=None,
         curated=curated,
     )
-    out = rec.resolve_occupancy(state, ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(state, ruleset='kw.csv').curated
     conf = out['occupancy_type_conflict'].astype(object).tolist()
     # Row 0: parcel disagrees -> sources grouped by value (nsi + fema agree),
     # groups ordered by first-appearing label in recipe order.
@@ -238,17 +238,18 @@ def test_reviewed_keyword_overrides_nsi(monkeypatch, tmp_path):
         ],
     )
     curated = _base_frame(use_group_combined_parcel=['MANUFACTURED HOUSING'])
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     assert out['occupancy_type'].iloc[0] == 'Manufactured Home'
 
 
 def test_zero_improvement_keeps_base_and_no_review_flag(monkeypatch, tmp_path):
-    # resolve_occupancy no longer classes zero-value as Manufactured Home (that
-    # is now a resolve_by_vote indicator); the base class is kept and, since
-    # the review flag is for nonzero shares only, it stays False.
+    # override_occupancy_by_keywords no longer classes zero-value as
+    # Manufactured Home (that is now a resolve_by_vote indicator); the
+    # base class is kept and, since the review flag is for nonzero
+    # shares only, it stays False.
     _patch(monkeypatch, tmp_path, keyword_rules=[])
     curated = _base_frame(improvement_value_parcel=[0.0])
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     assert out['occupancy_type'].iloc[0] == 'Single-Family'
     assert bool(out['occupancy_type_review'].iloc[0]) is False
 
@@ -257,7 +258,7 @@ def test_low_improvement_ratio_sets_review_flag(monkeypatch, tmp_path):
     _patch(monkeypatch, tmp_path, keyword_rules=[])
     # 1000 / (1000 + 50000) = 0.0196 < 0.025 -> review, no class change.
     curated = _base_frame(improvement_value_parcel=[1000.0])
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     assert bool(out['occupancy_type_review'].iloc[0]) is True
     assert out['occupancy_type'].iloc[0] == 'Single-Family'
 
@@ -267,14 +268,14 @@ def test_dwellings_do_not_override_in_resolve_occupancy(monkeypatch, tmp_path):
     # base class must be left untouched.
     _patch(monkeypatch, tmp_path, keyword_rules=[])
     curated = _base_frame(n_dwellings=[3.0])
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     assert out['occupancy_type'].iloc[0] == 'Single-Family'
 
 
 def test_missing_occupancy_config_columns_noop(monkeypatch, tmp_path):
     _patch(monkeypatch, tmp_path, keyword_rules=[])
     curated = pd.DataFrame({'use_group_combined_parcel': ['RES']})  # no occupancy_type
-    out = rec.resolve_occupancy(_state(curated), ruleset='kw.csv').curated
+    out = rec.override_occupancy_by_keywords(_state(curated), ruleset='kw.csv').curated
     assert 'occupancy_type_conflict' not in out.columns
 
 
@@ -284,7 +285,7 @@ def test_unknown_class_passes_through(monkeypatch):
     curated = pd.DataFrame(
         {'occupancy_type_building_nsi': ['Retail'], 'group_parcel': [None]}
     )
-    out = impute_occupancy_type(_state(curated))
+    out = classify_occupancy_by_source_vote(_state(curated))
     assert out.curated['occupancy_type'].iloc[0] == 'Retail'
 
 
@@ -302,7 +303,7 @@ def test_secondary_priority_is_no_longer_decided_here(monkeypatch):
             'priority_on_parcel': ['secondary'],
         }
     )
-    out = impute_occupancy_type(_state(curated)).curated
+    out = classify_occupancy_by_source_vote(_state(curated)).curated
     assert out['occupancy_type'].isna().all()
 
 
@@ -311,7 +312,7 @@ def test_review_flag_never_true_for_zero_improvement(
     monkeypatch, tmp_path, improvement
 ):
     _patch(monkeypatch, tmp_path, keyword_rules=[])
-    out = rec.resolve_occupancy(
+    out = rec.override_occupancy_by_keywords(
         _state(_base_frame(improvement_value_parcel=[improvement])), ruleset='kw.csv'
     ).curated
     if improvement == 0.0:

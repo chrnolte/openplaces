@@ -1,4 +1,4 @@
-"""keep_curated_ids drops ids the parcel curate no longer carries.
+"""empty_unknown_ids drops ids the parcel curate no longer carries.
 
 The parcel curate drops slivers under 1 m2; a building or footprint can
 still name one (transition review 3.5). All ids are fabricated.
@@ -35,7 +35,7 @@ def curated_parcels(tmp_path, monkeypatch):
 
 
 def _run(curated):
-    return evidence.keep_curated_ids(
+    return evidence.empty_unknown_ids(
         _state(curated), recipe_id='US_parcel-openplaces-2026'
     ).curated
 
@@ -79,4 +79,4 @@ def test_an_absent_column_is_skipped(curated_parcels):
 def test_the_reference_must_be_a_curate_recipe(curated_parcels):
     curated = pd.DataFrame({'parcel_id': ['a']}, index=pd.Index(['b1']))
     with pytest.raises(ValueError, match="stage 'curate'"):
-        evidence.keep_curated_ids(_state(curated), recipe_id='US_parcel-geospine-2026')
+        evidence.empty_unknown_ids(_state(curated), recipe_id='US_parcel-geospine-2026')

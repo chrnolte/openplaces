@@ -1,5 +1,5 @@
 """Attach source columns from established crosswalks as
-suffixed evidence columns (reconcile_attributes), and
+suffixed evidence columns (add_source_evidence), and
 rename_columns.
 """
 
@@ -100,7 +100,7 @@ def _attribute_absent_point_reference(
     ref_entity_type = state.reference_types.get(recipe_id, entity_type)
     if sgt is None or not str(sgt).endswith('point'):
         warnings.warn(
-            f'reconcile_attributes: crosswalk for {recipe_id!r} not in state; skipping.'
+            f'add_source_evidence: crosswalk for {recipe_id!r} not in state; skipping.'
         )
         return state
 
@@ -314,7 +314,7 @@ def _point_writes(source: dict) -> list[str]:
 
 
 def _reconcile_writes(arguments) -> list[str]:
-    """Every evidence column `reconcile_attributes` writes, but the
+    """Every evidence column `add_source_evidence` writes, but the
     relational counts (`_reconcile_counts`)."""
     names = []
     for source in _reconcile_sources(arguments):
@@ -342,15 +342,21 @@ def _reconcile_counts(arguments) -> list[str]:
 # (`steps.RECIPE_ARGUMENT`). A name that hangs on a unit's own
 # reference (an `entity_type` source) carries `*` for its source id.
 @_register(
-    'reconcile_attributes',
+    'add_source_evidence',
     writes=[_reconcile_writes, _reconcile_counts],
     decides=[_reconcile_counts],
+    deprecated=('reconcile_attributes',),
 )
-def reconcile_attributes(
+def add_source_evidence(
     state: HarmonizeState,
     sources: list[dict] | None = None,
 ) -> HarmonizeState:
-    """Aggregate reference attributes to the spine via established crosswalks.
+    """Add each linked source's suffixed evidence columns to the spine.
+
+    No existing column is changed. Each value is formed from the source
+    rows linked to the spine row: a sum, a mean, the dominant class, a
+    parcel's share by overlap or a link count; a value is copied
+    unchanged only where one source row links to it.
 
     For each source in *sources*, looks up the crosswalk in
     ``state.crosswalks`` (resolved via ``recipe_id`` or ``entity_type``) and
@@ -404,7 +410,7 @@ def reconcile_attributes(
             crosswalk_keys = list(state.get_crosswalks_by_type(entity_type).keys())
         else:
             warnings.warn(
-                'reconcile_attributes: source entry has neither '
+                'add_source_evidence: source entry has neither '
                 "'recipe_id' nor 'entity_type'; skipping."
             )
             continue
@@ -417,7 +423,7 @@ def reconcile_attributes(
             crosswalk = state.crosswalks.get(crosswalk_key)
             if crosswalk is None:
                 warnings.warn(
-                    f'reconcile_attributes: crosswalk for '
+                    f'add_source_evidence: crosswalk for '
                     f'{crosswalk_key!r} not in state; skipping.'
                 )
                 continue

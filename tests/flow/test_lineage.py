@@ -99,7 +99,7 @@ def test_structure_value_chain_declares_its_deciding_steps():
             'land_value_imputed',
             'improvement_value_imputed',
         },
-        ('US_building-openplaces-2026', 'apportion_curated_values'): {
+        ('US_building-openplaces-2026', 'split_curated_values'): {
             'structure_value',
             'improvement_value_parcel',
             'land_value',
@@ -117,9 +117,12 @@ def test_structure_value_is_decided_once_in_the_building_curate():
     recipe_id = 'US_building-openplaces-2026'
     building = [use for use in _value_chain_steps() if use.recipe_id == recipe_id]
     found = lineage.writers('structure_value', building)
-    assert [use.step for use in found] == ['apportion_curated_values', 'suppress_where']
+    assert [use.step for use in found] == [
+        'split_curated_values',
+        'empty_selected_cells',
+    ]
     assert [use.step for use in found if 'structure_value' in use.decides] == [
-        'apportion_curated_values'
+        'split_curated_values'
     ]
     # The chain from the curated lot: the improvement value the split
     # divides is the one impute_land_value decides.
@@ -238,8 +241,8 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
         ],
         (parcel, 'manufactured_home_community'): [('resolve_by_vote', True)],
         (building, 'occupancy_type'): [
-            ('impute_occupancy_type', True),
-            ('resolve_occupancy', False),
+            ('classify_occupancy_by_source_vote', True),
+            ('override_occupancy_by_keywords', False),
             ('resolve_by_vote', False),
             ('resolve_by_vote', False),
             ('resolve_by_vote', False),
@@ -247,15 +250,15 @@ def test_occupancy_chain_declares_its_writers_and_deciders():
         ],
         (building, 'n_dwellings'): [
             ('decide_dwellings', True),
-            ('cast_integers', False),
+            ('round_to_integers', False),
         ],
         (building, 'land_use_class'): [('cast_categoricals', False)],
         (building, 'group_parcel'): [
-            ('link_curated_entity', False),
+            ('copy_from_curated_entity', False),
             ('cast_categoricals', False),
         ],
         (building, 'manufactured_home_community'): [
-            ('link_curated_entity', False),
+            ('copy_from_curated_entity', False),
             ('flag_manufactured_home_communities', True),
         ],
     }
@@ -285,7 +288,7 @@ def test_one_step_decides_the_building_dwelling_count(admin_id):
     last_class_writer = max(p for p in class_writers if p not in corrections)
     assert deciders[0].position > last_class_writer
     preliminary = [use.step for use in uses if 'n_dwellings_preliminary' in use.decides]
-    assert preliminary == ['reconcile_values']
+    assert preliminary == ['pick_first_value']
 
 
 def test_a_reviewed_correction_is_listed_as_writing_the_chain():
@@ -446,7 +449,7 @@ def test_reconcile_attributes_declares_its_evidence_columns():
     # the spine's entity type; the declaration reads both off the
     # recipe. A point reference writes suffixed evidence, a polygon
     # overlay also its two relational counts, which it decides.
-    steps = [use for use in lineage.all_steps() if use.step == 'reconcile_attributes']
+    steps = [use for use in lineage.all_steps() if use.step == 'add_source_evidence']
     by_recipe = {}
     for use in steps:
         by_recipe.setdefault(use.recipe_id, set()).update(use.writes)

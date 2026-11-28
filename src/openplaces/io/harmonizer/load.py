@@ -83,7 +83,7 @@ def load_geospine(
     behind: `spine`, `crosswalks`, `overlays`, prepared `references`
     (overlay links only; nothing downstream reads a point reference),
     `reference_types`, `source_geometry_types`, and the
-    `inferred_from_{recipe_id}` metadata frames `reconcile_attributes`
+    `inferred_from_{recipe_id}` metadata frames `add_source_evidence`
     uses to attribute parcel-inferred spine rows directly.
 
     Which links to restore, and with what configuration, is read from the
@@ -117,8 +117,8 @@ def load_geospine(
     this spine's own geospine output, under the paths
     `geo.link.get_entity_link_path(<this geospine>, <reference>)`
     resolves, so that the curate steps that read a link sidecar by the
-    curated entity's geospine (`link_curated_entity`,
-    `apportion_curated_values`, `collect_link_ids`) find the building's
+    curated entity's geospine (`copy_from_curated_entity`,
+    `split_curated_values`, `collect_link_ids`) find the building's
     parcel pairs where they look for them. The written
     copy is the source sidecar's rows with the id column renamed and
     re-keyed, its footer fingerprint kept, and `LINK_REKEYED_FROM_KEY`
@@ -828,8 +828,8 @@ def _restore_link(
                     ),
                 )
                 # Fall through to the type bookkeeping below rather than
-                # returning: reconcile_attributes names this reference's
-                # (all-null) evidence columns from it.
+                # returning: add_source_evidence names this
+                # reference's (all-null) evidence columns from it.
                 linked = None
                 empty_reference = True
             if not empty_reference:
@@ -948,7 +948,7 @@ def _restore_inferred(
 
     infer_spine_additions stamps each parcel-inferred spine row with
     `geometry_source = '{entity_type}.{source_id}'` and records the source
-    entity's id in `geometry_source_id`; `reconcile_attributes` attributes
+    entity's id in `geometry_source_id`; `add_source_evidence` attributes
     those rows directly (no area weighting) from
     `metadata['inferred_from_{recipe_id}']`, which held the seeding
     reference ids in a 'parcel_id' column. Reconstruct exactly that frame

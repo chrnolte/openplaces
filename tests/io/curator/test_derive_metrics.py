@@ -30,7 +30,7 @@ def test_derive_metrics_builds_total_value_per_area():
 
 
 def test_derive_metrics_does_not_touch_total_value_source():
-    # 'total_value_source' is a provenance sidecar reconcile_values writes;
+    # 'total_value_source' is a provenance sidecar pick_first_value writes;
     # it must not be mistaken for the 'total_value' column via a prefix
     # match.
     state = _state(total_value=[500.0], total_value_source=['improvement_value_parcel'])
@@ -39,7 +39,7 @@ def test_derive_metrics_does_not_touch_total_value_source():
 
 
 def test_derive_metrics_does_not_touch_improvement_value_source():
-    # improvement_value_source (a reconcile_values provenance sidecar for a
+    # improvement_value_source (a pick_first_value provenance sidecar for a
     # bare 'improvement_value' column) starts with 'improvement_value' and
     # would otherwise be swept up by the prefix match and divided as if it
     # were numeric, raising a TypeError (str / float).

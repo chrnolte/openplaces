@@ -1,4 +1,4 @@
-"""Tests for `link_curated_entity` (formerly `link_curated_parcels`).
+"""Tests for `copy_from_curated_entity` (formerly `link_curated_parcels`).
 
 Both default keys are the bare `parcel_id`: an id column (`{entity}_id*`)
 never carries the usual `_{source}`/`_{entity}_{source}` provenance suffix
@@ -20,7 +20,7 @@ import pytest
 import openplaces.io.curator.evidence as evidence_mod
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.evidence import link_curated_entity
+from openplaces.io.curator.evidence import copy_from_curated_entity
 
 
 def _state(df: pd.DataFrame) -> CurateState:
@@ -47,7 +47,7 @@ def test_joins_on_default_bare_id_key(monkeypatch):
     ref = pd.DataFrame({'parcel_id': ['p1', 'p2'], 'group_parcel': ['A', 'B']})
     _patch(monkeypatch, ref)
 
-    out = link_curated_entity(
+    out = copy_from_curated_entity(
         _state(entity), recipe_id='ref', columns={'group_parcel': 'group_parcel'}
     ).curated
 
@@ -62,7 +62,7 @@ def test_missing_ref_key_raises(monkeypatch):
     _patch(monkeypatch, ref)
 
     with pytest.raises(ValueError, match="no 'parcel_id' column"):
-        link_curated_entity(
+        copy_from_curated_entity(
             _state(entity), recipe_id='ref', columns={'group_parcel': 'group_parcel'}
         )
 
@@ -76,7 +76,7 @@ def test_ref_key_as_index_is_reset(monkeypatch):
     ).set_index('parcel_id')
     _patch(monkeypatch, ref)
 
-    out = link_curated_entity(
+    out = copy_from_curated_entity(
         _state(entity), recipe_id='ref', columns={'group_parcel': 'group_parcel'}
     ).curated
 
@@ -88,7 +88,7 @@ def test_missing_entity_key_skips(monkeypatch):
     ref = pd.DataFrame({'parcel_id': ['p1'], 'group_parcel': ['A']})
     _patch(monkeypatch, ref)
 
-    out = link_curated_entity(
+    out = copy_from_curated_entity(
         _state(entity), recipe_id='ref', columns={'group_parcel': 'group_parcel'}
     ).curated
     assert 'group_parcel' not in out.columns
@@ -99,7 +99,7 @@ def test_custom_keys(monkeypatch):
     ref = pd.DataFrame({'nsi_id': ['b1', 'b2'], 'occupancy_type': ['SF', 'MF']})
     _patch(monkeypatch, ref)
 
-    out = link_curated_entity(
+    out = copy_from_curated_entity(
         _state(entity),
         recipe_id='ref',
         columns={'occupancy_type': 'occupancy_type_nsi'},
@@ -115,7 +115,7 @@ def test_missing_ref_column_raises_by_default(monkeypatch):
     _patch(monkeypatch, ref)
 
     with pytest.raises(ValueError, match="'building_style' missing"):
-        link_curated_entity(
+        copy_from_curated_entity(
             _state(entity),
             recipe_id='ref',
             columns={'building_style': 'building_style_parcel'},
@@ -129,7 +129,7 @@ def test_allow_missing_writes_an_empty_column(monkeypatch):
     ref = pd.DataFrame({'parcel_id': ['p1', 'p2'], 'group_parcel': ['A', 'B']})
     _patch(monkeypatch, ref)
 
-    out = link_curated_entity(
+    out = copy_from_curated_entity(
         _state(entity),
         recipe_id='ref',
         columns={'building_style': 'building_style_parcel', 'group_parcel': 'g'},
@@ -145,4 +145,4 @@ def test_requires_curate_stage(monkeypatch):
     _patch(monkeypatch, ref, stage='harmonize')
 
     with pytest.raises(ValueError, match="must have stage 'curate'"):
-        link_curated_entity(_state(entity), recipe_id='ref', columns={})
+        copy_from_curated_entity(_state(entity), recipe_id='ref', columns={})

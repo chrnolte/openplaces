@@ -28,7 +28,7 @@ def _national(pipeline=None):
         'entity': Entity('parcel', 'fabricated', '2026'),
         'pipeline': pipeline
         or [
-            {'step': 'declare_columns', 'columns': ['a']},
+            {'step': 'add_empty_columns', 'columns': ['a']},
             {'step': 'exclude_by_value', 'column': 'id', 'values': ['WATER']},
             {'step': 'derive_indicators', 'indicators': []},
             {'step': 'resolve_by_vote', 'target': 't', 'decisions': []},
@@ -79,10 +79,10 @@ def test_set_insert_replace_and_remove():
         [
             {'set': 'resolve_by_vote', 'params': {'min_score': 2}},
             {
-                'insert_after': 'declare_columns',
+                'insert_after': 'add_empty_columns',
                 'step': {'step': 'merge_enrichments', 'recipes': []},
             },
-            {'insert_before': 'order_columns', 'step': {'step': 'cast_integers'}},
+            {'insert_before': 'order_columns', 'step': {'step': 'round_to_integers'}},
             {
                 'replace': 'derive_indicators',
                 'step': {'step': 'derive_indicators', 'indicators': [{'output': 'x'}]},
@@ -92,11 +92,11 @@ def test_set_insert_replace_and_remove():
     )
     patched, _ = apply_recipe_patches(recipe, 'US-XX-YY', patches=[patch])
     assert _steps(patched) == [
-        'declare_columns',
+        'add_empty_columns',
         'merge_enrichments',
         'derive_indicators',
         'resolve_by_vote',
-        'cast_integers',
+        'round_to_integers',
         'order_columns',
     ]
     vote = next(s for s in patched['pipeline'] if s['step'] == 'resolve_by_vote')

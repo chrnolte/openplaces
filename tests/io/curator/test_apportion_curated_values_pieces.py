@@ -1,4 +1,4 @@
-"""apportion_curated_values over the cut overlay (parcel pieces).
+"""split_curated_values over the cut overlay (parcel pieces).
 
 plans/buildings-from-parcel-pieces.md, step 3: each piece takes its own
 parcel's values, and what a parcel's buildings receive in all is what
@@ -12,7 +12,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from openplaces.io.curator.evidence import apportion_curated_values
+from openplaces.io.curator.evidence import split_curated_values
 from tests.io.curator.test_apportion_curated_values import _patch, _state
 from tests.io.harmonizer.test_parcel_pieces import _row_of_four, _split
 
@@ -47,7 +47,7 @@ def _apportion(monkeypatch, tmp_path, cut):
     spine, flat, stats = _split(spine, lots, points if cut else [], values)
     assert stats['outlines_cut'] == (1 if cut else 0)
     _patch(monkeypatch, tmp_path, flat, LOT_VALUES)
-    out = apportion_curated_values(
+    out = split_curated_values(
         _state(_curated(spine)),
         recipe_id='US_parcel-openplaces-2026',
         columns=COLUMNS,

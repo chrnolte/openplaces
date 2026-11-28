@@ -1,4 +1,4 @@
-"""Tests for the apportion_curated_values curate step."""
+"""Tests for the split_curated_values curate step."""
 
 import pandas as pd
 import pytest
@@ -8,7 +8,7 @@ from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io import to_parquet
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.evidence import apportion_curated_values
+from openplaces.io.curator.evidence import split_curated_values
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
@@ -75,7 +75,7 @@ def _state():
 def test_missing_ref_column_skipped_not_raised(data_root):
     _write_sidecar()
     _write_curated_parcels(with_improvement_value=False)
-    state = apportion_curated_values(
+    state = split_curated_values(
         _state(),
         recipe_id=PARCEL_CURATE,
         columns={
@@ -94,7 +94,7 @@ def test_missing_ref_column_skipped_not_raised(data_root):
 def test_present_columns_still_apportion(data_root):
     _write_sidecar()
     _write_curated_parcels(with_improvement_value=True)
-    state = apportion_curated_values(
+    state = split_curated_values(
         _state(),
         recipe_id=PARCEL_CURATE,
         columns={

@@ -122,8 +122,8 @@ def is_manufactured_home_park(
 
 # Rewrites both columns on every row from the final classes, so it
 # decides them in the building curate; the lot vote's flag that
-# link_curated_entity carries in is only written there. The lot side
-# keeps a proxy until a second parcel pass reads this flag
+# copy_from_curated_entity carries in is only written there. The lot
+# side keeps a proxy until a second parcel pass reads this flag
 # (plans/occupancy-and-dwellings-one-decider.md, O5).
 @_register(
     'flag_manufactured_home_communities',
@@ -153,8 +153,8 @@ def flag_manufactured_home_communities(
     under the same name (*output*, default ``manufactured_home_community``) the
     parcel curation lane's own ``classify_parcel_land_use`` flag uses -- this
     step's value is the intentional final word, overwriting whatever
-    ``link_curated_entity`` relayed from the parcel lane earlier in this
-    recipe (already consumed by then, see ``impute_occupancy_type``). A
+    ``copy_from_curated_entity`` relayed from the parcel lane earlier in this
+    recipe (already consumed by then, see ``classify_occupancy_by_source_vote``). A
     future second parcel pass can write this correction back to the parcel
     dataset.
 
@@ -202,8 +202,8 @@ def flag_manufactured_home_communities(
 
     curated = state.curated
     # Prefer the globally-unique parcel_id over locally-scoped fallbacks (see
-    # link_curated_entity for why); grouping by a non-unique key would
-    # silently pool unrelated parcels' counts together.
+    # copy_from_curated_entity for why); grouping by a non-unique key
+    # would silently pool unrelated parcels' counts together.
     parcel_col = next(
         (
             c

@@ -111,7 +111,7 @@ pipeline_patch:
       fill_only: false
   - insert_after: reconcile_land_use
     step:
-      step: suppress_where
+      step: empty_selected_cells
       phase_override: >-
         the polygon type and the roll's absence decide only after the
         land-use vote has filled the class
@@ -125,7 +125,7 @@ pipeline_patch:
           values: [none, estimated]
   - insert_after: reconcile_land_use
     step:
-      step: suppress_where
+      step: empty_selected_cells
       phase_override: >-
         the open space share and the roll's absence decide only after the
         land-use vote has filled the class

@@ -271,7 +271,7 @@ def flag_duplicate_points(
     as does any point at a unique location. Returns an object Series aligned
     to *ref* (null = kept); rows are never dropped here — the exclusion is
     applied where the evidence is merged onto a spine
-    (:func:`~openplaces.io.harmonizer.attributes.reconcile_attributes`).
+    (:func:`~openplaces.io.harmonizer.attributes.add_source_evidence`).
     """
     resolution = pd.Series(pd.NA, index=ref.index, dtype=object)
     if not ignore_sources or 'source' not in ref.columns or key_col not in ref.columns:
@@ -410,7 +410,7 @@ def _link_spatial_point(
             saved_empty=lambda: entity_outputs_exist(recipe_id, state.admin_id),
         )
         # Record the reference's type even with nothing to link:
-        # reconcile_attributes needs it to name this source's evidence
+        # add_source_evidence needs it to name this source's evidence
         # columns, which it writes as nulls so a zero-coverage unit's
         # spine carries the same columns as its neighbors'.
         if entity_type:

@@ -63,7 +63,7 @@ def attribute_dwelling_address(
     own ``reconcile_addresses`` can declare a source built from this relayed
     evidence. This alone misses a dwelling point whose footprint was never
     detected at all; pair it with a direct parcel<->dwelling spatial link
-    (``link_to_reference``/``reconcile_attributes``, same as the footprint
+    (``link_to_reference``/``add_source_evidence``, same as the footprint
     spine's own dwelling link) as a lower-priority fallback source for that
     case.
 
@@ -72,7 +72,7 @@ def attribute_dwelling_address(
     *priority_column* is absent from the footprint entity (there would be no
     way to tell which footprint should represent the parcel) -- the same
     "missing evidence is tolerated" convention used throughout this codebase
-    (``reconcile_addresses``/``reconcile_attributes``/``reconcile_values``).
+    (``reconcile_addresses``/``add_source_evidence``/``pick_first_value``).
 
     Parameters
     ----------
@@ -97,7 +97,7 @@ def attribute_dwelling_address(
         (first row kept) if absent.
     columns : dict of {footprint column: parcel column}, optional
         Columns to copy (default: the four raw dwelling-overture evidence
-        columns ``reconcile_attributes`` writes on the footprint spine,
+        columns ``add_source_evidence`` writes on the footprint spine,
         mapped to the same names with ``_overture`` swapped for
         ``_footprint`` -- e.g. ``address_street_dwelling_overture`` ->
         ``address_street_dwelling_footprint``, distinct names so a direct

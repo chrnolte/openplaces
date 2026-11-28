@@ -1,4 +1,4 @@
-"""reconcile_attributes' joins give what pandas' call per group gave.
+"""add_source_evidence' joins give what pandas' call per group gave.
 
 plans/slow-steps-same-output-faster.md, R1: the point reference's text
 columns and collected ids, the polygon reference's `parcel_id_all`, and

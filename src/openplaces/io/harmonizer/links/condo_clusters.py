@@ -362,7 +362,7 @@ def _append_to_sidecar(
 ) -> None:
     """Add *added* to link_to_reference's overlay sidecar, if one exists.
 
-    The curate readers (apportion_curated_values, collect_link_ids) and
+    The curate readers (split_curated_values, collect_link_ids) and
     the building geospine read the sidecar, not the in-memory crosswalk;
     without these rows a footprint kept whole would reach only the lots
     the overlay kept. The sidecar's stored fingerprint is reused as is.

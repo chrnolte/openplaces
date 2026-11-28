@@ -1,6 +1,6 @@
 """A reference with no rows for an admin unit still owes its columns.
 
-`reconcile_attributes` used to emit nothing for a point reference whose
+`add_source_evidence` used to emit nothing for a point reference whose
 link step returned early on zero coverage, so a rural county's spine
 lacked evidence columns its neighbors carried. The columns are now
 written null, following the enricher's contract that a declared column is
@@ -62,7 +62,7 @@ def test_zero_coverage_point_reference_still_writes_its_columns(monkeypatch):
     assert OVERTURE not in state.crosswalks
     assert state.reference_types[OVERTURE] == 'dwelling'
 
-    state = attrs.reconcile_attributes(state, sources=_sources())
+    state = attrs.add_source_evidence(state, sources=_sources())
     out = state.spine
 
     # The same names a covered unit gets, all null, plus a zero count.
@@ -91,7 +91,7 @@ def test_declared_column_missing_from_a_covered_reference_is_still_written(
     )
     assert OVERTURE in state.crosswalks
 
-    state = attrs.reconcile_attributes(state, sources=_sources())
+    state = attrs.add_source_evidence(state, sources=_sources())
     out = state.spine
 
     assert 'postal_code_dwelling_overture' in out.columns
@@ -108,7 +108,7 @@ def test_absent_non_point_reference_warns_rather_than_inventing_columns():
     import pytest
 
     with pytest.warns(UserWarning, match='not in state'):
-        state = attrs.reconcile_attributes(
+        state = attrs.add_source_evidence(
             state, sources=[{'recipe_id': 'some_parcels', 'columns': ['land_value']}]
         )
     assert list(state.spine.columns) == before
